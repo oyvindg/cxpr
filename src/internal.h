@@ -237,7 +237,7 @@ struct cxpr_context {
  */
 typedef struct {
     char* name;               /**< Function name, owned */
-    cxpr_func_ptr sync_func;    /**< Sync function pointer (or NULL) */
+    cxpr_func_ptr sync_func;    /**< Sync function pointer (or NULL for defined functions) */
     size_t min_args;
     size_t max_args;
     void* userdata;
@@ -246,6 +246,12 @@ typedef struct {
     char** struct_fields;     /**< Owned array of field name strings (e.g. {"x","y","z"}) */
     size_t fields_per_arg;    /**< Number of fields per struct argument */
     size_t struct_argc;       /**< Number of struct arguments accepted */
+    /* Defined function (expression-based, via cxpr_registry_define) */
+    cxpr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
+    char**     defined_param_names;        /**< Parameter name array, owned */
+    size_t     defined_param_count;        /**< Number of parameters */
+    char***    defined_param_fields;       /**< Per-param field lists; NULL entry = scalar */
+    size_t*    defined_param_field_counts; /**< Per-param field counts */
 } cxpr_func_entry;
 
 #define CXPR_REGISTRY_INITIAL_CAPACITY 64

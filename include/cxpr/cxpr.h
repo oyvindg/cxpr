@@ -571,6 +571,33 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
  */
 void cxpr_register_builtins(cxpr_registry* reg);
 
+/**
+ * @brief Register an expression-based function from a definition string.
+ *
+ * Parses a definition of the form `name(p1, p2, ...) => body` and registers
+ * a callable function.  Parameters that appear as `param.field` in the body
+ * are treated as struct arguments (caller passes an identifier, fields are
+ * read from the context).  Parameters with no dot-access are plain scalars.
+ *
+ * @code
+ * // Struct params — fields inferred from body
+ * cxpr_registry_define(reg,
+ *     "distance3(goal, pose) => "
+ *     "sqrt((goal.x-pose.x)^2 + (goal.y-pose.y)^2 + (goal.z-pose.z)^2)");
+ *
+ * // Scalar params
+ * cxpr_registry_define(reg, "sum(a, b) => a + b");
+ *
+ * // Mixed struct + $params
+ * cxpr_registry_define(reg, "clamp_val(p) => clamp(p.value, $lo, $hi)");
+ * @endcode
+ *
+ * @param reg  Registry to add to
+ * @param def  Null-terminated definition string
+ * @return     cxpr_error — code is CXPR_OK on success
+ */
+cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def);
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Evaluator API
  * ═══════════════════════════════════════════════════════════════════════════ */

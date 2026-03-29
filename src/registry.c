@@ -139,6 +139,35 @@ static void free_struct_fields(cxpr_func_entry* entry) {
     entry->struct_argc = 0;
 }
 
+/** @brief Free defined-function data from an entry (safe to call on C-function entries). */
+static void free_defined_fn(cxpr_func_entry* entry) {
+    if (!entry->defined_body) return;
+    cxpr_ast_free(entry->defined_body);
+    entry->defined_body = NULL;
+    if (entry->defined_param_fields) {
+        for (size_t i = 0; i < entry->defined_param_count; i++) {
+            if (entry->defined_param_fields[i]) {
+                for (size_t f = 0; f < entry->defined_param_field_counts[i]; f++) {
+                    free(entry->defined_param_fields[i][f]);
+                }
+                free(entry->defined_param_fields[i]);
+            }
+        }
+        free(entry->defined_param_fields);
+        entry->defined_param_fields = NULL;
+    }
+    if (entry->defined_param_names) {
+        for (size_t i = 0; i < entry->defined_param_count; i++) {
+            free(entry->defined_param_names[i]);
+        }
+        free(entry->defined_param_names);
+        entry->defined_param_names = NULL;
+    }
+    free(entry->defined_param_field_counts);
+    entry->defined_param_field_counts = NULL;
+    entry->defined_param_count = 0;
+}
+
 /**
  * @brief Free registry and all its entries.
  * @param[in] reg Registry to free (no-op if NULL)
@@ -151,6 +180,7 @@ void cxpr_registry_free(cxpr_registry* reg) {
         }
         free(reg->entries[i].name);
         free_struct_fields(&reg->entries[i]);
+        free_defined_fn(&reg->entries[i]);
     }
     free(reg->entries);
     free(reg);
@@ -178,6 +208,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
             existing->userdata_free(existing->userdata);
         }
         free_struct_fields(existing);
+        free_defined_fn(existing);
         existing->sync_func = func;
         existing->min_args = min_args;
         existing->max_args = max_args;
@@ -344,6 +375,7 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
     if (existing) {
         if (existing->userdata_free) existing->userdata_free(existing->userdata);
         free_struct_fields(existing);
+        free_defined_fn(existing);
         existing->sync_func = func;
         existing->min_args = struct_argc;
         existing->max_args = struct_argc;
@@ -424,6 +456,274 @@ void cxpr_register_builtins(cxpr_registry* reg) {
 
     cxpr_registry_add_ternary(reg, "if", cxpr_if);
 
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * cxpr_registry_define — expression-based function definitions
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+#define CXPR_DEF_MAX_PARAMS 16
+#define CXPR_DEF_MAX_FIELDS 32
+
+/** @brief Per-parameter inferred field set (temporary, used only during define). */
+typedef struct {
+    const char* fields[CXPR_DEF_MAX_FIELDS]; /**< Borrowed pointers into body AST strings */
+    size_t count;
+} cxpr_def_field_set;
+
+/** @brief Walk body AST collecting param.field accesses for each parameter. */
+static void collect_fields_in_ast(
+    const cxpr_ast* node,
+    const char* const* param_names, size_t param_count,
+    cxpr_def_field_set* sets
+) {
+    if (!node) return;
+
+    if (node->type == CXPR_NODE_FIELD_ACCESS) {
+        const char* obj = node->data.field_access.object;
+        const char* fld = node->data.field_access.field;
+        for (size_t i = 0; i < param_count; i++) {
+            if (strcmp(obj, param_names[i]) != 0) continue;
+            bool dup = false;
+            for (size_t f = 0; f < sets[i].count; f++) {
+                if (strcmp(sets[i].fields[f], fld) == 0) { dup = true; break; }
+            }
+            if (!dup && sets[i].count < CXPR_DEF_MAX_FIELDS) {
+                sets[i].fields[sets[i].count++] = fld;
+            }
+            break;
+        }
+        return;
+    }
+
+    switch (node->type) {
+    case CXPR_NODE_BINARY_OP:
+        collect_fields_in_ast(node->data.binary_op.left,  param_names, param_count, sets);
+        collect_fields_in_ast(node->data.binary_op.right, param_names, param_count, sets);
+        break;
+    case CXPR_NODE_UNARY_OP:
+        collect_fields_in_ast(node->data.unary_op.operand, param_names, param_count, sets);
+        break;
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0; i < node->data.function_call.argc; i++) {
+            collect_fields_in_ast(node->data.function_call.args[i], param_names, param_count, sets);
+        }
+        break;
+    case CXPR_NODE_TERNARY:
+        collect_fields_in_ast(node->data.ternary.condition,    param_names, param_count, sets);
+        collect_fields_in_ast(node->data.ternary.true_branch,  param_names, param_count, sets);
+        collect_fields_in_ast(node->data.ternary.false_branch, param_names, param_count, sets);
+        break;
+    default:
+        break;
+    }
+}
+
+/** @brief Helper: return true if c is a valid identifier character. */
+static bool is_ident_char(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_';
+}
+
+/**
+ * @brief Register an expression-based function from a definition string.
+ *
+ * Format: `name(param1, param2, ...) => body_expression`
+ *
+ * Parameters that appear as `param.field` in the body are treated as struct
+ * arguments — the caller passes an identifier and the fields are read from
+ * the context.  Parameters with no dot-access are treated as plain scalars.
+ *
+ * Examples:
+ * @code
+ * cxpr_registry_define(reg,
+ *     "distance3(goal, pose) => "
+ *     "sqrt((goal.x-pose.x)^2 + (goal.y-pose.y)^2 + (goal.z-pose.z)^2)");
+ * cxpr_registry_define(reg, "sum(a, b) => a + b");
+ * cxpr_registry_define(reg, "dot2(u, v) => u.x*v.x + u.y*v.y");
+ * cxpr_registry_define(reg, "clamp_val(p) => clamp(p.value, $min, $max)");
+ * @endcode
+ *
+ * @param reg  Registry to add to
+ * @param def  Null-terminated definition string
+ * @return     cxpr_error with code CXPR_OK on success, or an error code
+ */
+cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def) {
+    cxpr_error err = {0};
+    if (!reg || !def) {
+        err.code = CXPR_ERR_SYNTAX;
+        err.message = "NULL registry or definition";
+        return err;
+    }
+
+    const char* p = def;
+    while (*p == ' ' || *p == '\t') p++;
+
+    /* --- Parse function name --- */
+    const char* name_start = p;
+    while (is_ident_char(*p)) p++;
+    size_t name_len = (size_t)(p - name_start);
+    if (name_len == 0) {
+        err.code = CXPR_ERR_SYNTAX; err.message = "Expected function name";
+        return err;
+    }
+    char fname[256];
+    if (name_len >= sizeof(fname)) {
+        err.code = CXPR_ERR_SYNTAX; err.message = "Function name too long";
+        return err;
+    }
+    memcpy(fname, name_start, name_len);
+    fname[name_len] = '\0';
+
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '(') {
+        err.code = CXPR_ERR_SYNTAX; err.message = "Expected '(' after function name";
+        return err;
+    }
+    p++;
+
+    /* --- Parse parameter list --- */
+    char param_buf[CXPR_DEF_MAX_PARAMS][64];
+    size_t param_count = 0;
+
+    while (true) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == ')') { p++; break; }
+        if (param_count > 0) {
+            if (*p != ',') {
+                err.code = CXPR_ERR_SYNTAX; err.message = "Expected ',' or ')' in parameter list";
+                return err;
+            }
+            p++;
+            while (*p == ' ' || *p == '\t') p++;
+        }
+        const char* pstart = p;
+        while (is_ident_char(*p)) p++;
+        size_t plen = (size_t)(p - pstart);
+        if (plen == 0) {
+            err.code = CXPR_ERR_SYNTAX; err.message = "Expected parameter name";
+            return err;
+        }
+        if (param_count >= CXPR_DEF_MAX_PARAMS) {
+            err.code = CXPR_ERR_SYNTAX; err.message = "Too many parameters (max 16)";
+            return err;
+        }
+        if (plen >= 64) {
+            err.code = CXPR_ERR_SYNTAX; err.message = "Parameter name too long";
+            return err;
+        }
+        memcpy(param_buf[param_count], pstart, plen);
+        param_buf[param_count][plen] = '\0';
+        param_count++;
+    }
+
+    /* --- Expect '=>' --- */
+    while (*p == ' ' || *p == '\t') p++;
+    if (p[0] != '=' || p[1] != '>') {
+        err.code = CXPR_ERR_SYNTAX; err.message = "Expected '=>'";
+        return err;
+    }
+    p += 2;
+    while (*p == ' ' || *p == '\t') p++;
+
+    if (!*p) {
+        err.code = CXPR_ERR_SYNTAX; err.message = "Empty function body";
+        return err;
+    }
+
+    /* --- Parse body expression --- */
+    cxpr_parser* parser = cxpr_parser_new();
+    if (!parser) {
+        err.code = CXPR_ERR_OUT_OF_MEMORY; err.message = "Out of memory";
+        return err;
+    }
+    cxpr_ast* body_ast = cxpr_parse(parser, p, &err);
+    cxpr_parser_free(parser);
+    if (!body_ast) return err; /* err already set by cxpr_parse */
+
+    /* --- Infer per-parameter field lists from body AST --- */
+    const char* pnames[CXPR_DEF_MAX_PARAMS];
+    for (size_t i = 0; i < param_count; i++) pnames[i] = param_buf[i];
+
+    cxpr_def_field_set sets[CXPR_DEF_MAX_PARAMS];
+    memset(sets, 0, sizeof(sets));
+    collect_fields_in_ast(body_ast, pnames, param_count, sets);
+
+    /* --- Allocate owned structures --- */
+    char** owned_names   = (char**)calloc(param_count ? param_count : 1, sizeof(char*));
+    char*** owned_fields  = (char***)calloc(param_count ? param_count : 1, sizeof(char**));
+    size_t* owned_counts  = (size_t*)calloc(param_count ? param_count : 1, sizeof(size_t));
+    if (!owned_names || !owned_fields || !owned_counts) goto oom;
+
+    for (size_t i = 0; i < param_count; i++) {
+        owned_names[i] = strdup(param_buf[i]);
+        if (!owned_names[i]) goto oom;
+
+        owned_counts[i] = sets[i].count;
+        if (sets[i].count > 0) {
+            owned_fields[i] = (char**)calloc(sets[i].count, sizeof(char*));
+            if (!owned_fields[i]) goto oom;
+            for (size_t f = 0; f < sets[i].count; f++) {
+                owned_fields[i][f] = strdup(sets[i].fields[f]);
+                if (!owned_fields[i][f]) goto oom;
+            }
+        }
+    }
+
+    /* --- Install into registry --- */
+    {
+        cxpr_func_entry* existing = cxpr_registry_find(reg, fname);
+        if (existing) {
+            if (existing->userdata_free) existing->userdata_free(existing->userdata);
+            free_struct_fields(existing);
+            free_defined_fn(existing);
+            existing->sync_func                  = NULL;
+            existing->min_args                   = param_count;
+            existing->max_args                   = param_count;
+            existing->userdata                   = NULL;
+            existing->userdata_free              = NULL;
+            existing->defined_body               = body_ast;
+            existing->defined_param_names        = owned_names;
+            existing->defined_param_count        = param_count;
+            existing->defined_param_fields       = owned_fields;
+            existing->defined_param_field_counts = owned_counts;
+            return err; /* CXPR_OK */
+        }
+
+        if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
+        cxpr_func_entry* entry           = &reg->entries[reg->count++];
+        entry->name                      = strdup(fname);
+        entry->sync_func                 = NULL;
+        entry->min_args                  = param_count;
+        entry->max_args                  = param_count;
+        entry->userdata                  = NULL;
+        entry->userdata_free             = NULL;
+        entry->defined_body              = body_ast;
+        entry->defined_param_names       = owned_names;
+        entry->defined_param_count       = param_count;
+        entry->defined_param_fields      = owned_fields;
+        entry->defined_param_field_counts = owned_counts;
+        return err; /* CXPR_OK */
+    }
+
+oom:
+    cxpr_ast_free(body_ast);
+    if (owned_names) {
+        for (size_t i = 0; i < param_count; i++) free(owned_names[i]);
+        free(owned_names);
+    }
+    if (owned_fields) {
+        for (size_t i = 0; i < param_count; i++) {
+            if (owned_fields[i]) {
+                for (size_t f = 0; f < owned_counts[i]; f++) free(owned_fields[i][f]);
+                free(owned_fields[i]);
+            }
+        }
+        free(owned_fields);
+    }
+    free(owned_counts);
+    err.code = CXPR_ERR_OUT_OF_MEMORY; err.message = "Out of memory";
+    return err;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
