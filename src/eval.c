@@ -11,6 +11,109 @@
 #include <math.h>
 #include <stdio.h>
 
+static double cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
+                             const cxpr_registry* reg, cxpr_error* err);
+
+static double cxpr_eval_defined_function(cxpr_func_entry* entry, const cxpr_ast* call_ast,
+                                         const cxpr_context* ctx, const cxpr_registry* reg,
+                                         cxpr_error* err) {
+    const size_t argc = call_ast->data.function_call.argc;
+    cxpr_context* tmp;
+    double scalar_args[32];
+    bool scalar_only = true;
+
+    if (argc != entry->defined_param_count) {
+        if (err) { err->code = CXPR_ERR_WRONG_ARITY; err->message = "Wrong number of arguments"; }
+        return NAN;
+    }
+
+    tmp = cxpr_context_overlay_new(ctx);
+    if (!tmp) {
+        if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+        return NAN;
+    }
+
+    for (size_t i = 0; i < entry->defined_param_count; i++) {
+        const char* pname = entry->defined_param_names[i];
+        const cxpr_ast* arg = call_ast->data.function_call.args[i];
+
+        if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
+            scalar_only = false;
+            if (arg->type != CXPR_NODE_IDENTIFIER) {
+                if (err) { err->code = CXPR_ERR_SYNTAX; err->message = "Struct argument must be an identifier"; }
+                cxpr_context_free(tmp);
+                return NAN;
+            }
+
+            for (size_t f = 0; f < entry->defined_param_field_counts[i]; f++) {
+                const char* fld = entry->defined_param_fields[i][f];
+                const char* obj = arg->data.identifier.name;
+                char src_key[256], dst_key[256];
+                bool found = false;
+                double val;
+
+                snprintf(src_key, sizeof(src_key), "%s.%s", obj, fld);
+                snprintf(dst_key, sizeof(dst_key), "%s.%s", pname, fld);
+                val = cxpr_context_get(ctx, src_key, &found);
+                if (!found) {
+                    if (err) { err->code = CXPR_ERR_UNKNOWN_IDENTIFIER; err->message = "Unknown struct field"; }
+                    cxpr_context_free(tmp);
+                    return NAN;
+                }
+                cxpr_context_set(tmp, dst_key, val);
+            }
+        } else {
+            const double val = cxpr_eval_node(arg, ctx, reg, err);
+            if (err && err->code != CXPR_OK) {
+                cxpr_context_free(tmp);
+                return NAN;
+            }
+            if (i < 32) scalar_args[i] = val;
+            cxpr_context_set(tmp, pname, val);
+        }
+    }
+
+    if (!entry->defined_program && !entry->defined_program_failed) {
+        cxpr_error compile_err = {0};
+        if (scalar_only && argc <= 32) {
+            entry->defined_program = (cxpr_program*)calloc(1, sizeof(cxpr_program));
+            if (entry->defined_program) {
+                if (!cxpr_ir_compile_with_locals(entry->defined_body, reg,
+                                                (const char* const*)entry->defined_param_names,
+                                                entry->defined_param_count,
+                                                &entry->defined_program->ir, &compile_err)) {
+                    free(entry->defined_program);
+                    entry->defined_program = NULL;
+                }
+            } else {
+                compile_err.code = CXPR_ERR_OUT_OF_MEMORY;
+                compile_err.message = "Out of memory";
+            }
+        } else {
+            entry->defined_program = cxpr_compile(entry->defined_body, reg, &compile_err);
+        }
+        if (!entry->defined_program) {
+            entry->defined_program_failed = true;
+        }
+    }
+
+    if (entry->defined_program) {
+        const double result =
+            (scalar_only && argc <= 32)
+                ? cxpr_ir_eval_with_locals(&entry->defined_program->ir, ctx, reg,
+                                           scalar_args, argc, err)
+                : cxpr_program_eval(entry->defined_program, tmp, reg, err);
+        cxpr_context_free(tmp);
+        return result;
+    }
+
+    {
+        const double result = cxpr_eval_node(entry->defined_body, tmp, reg, err);
+        cxpr_context_free(tmp);
+        return result;
+    }
+}
+
 /**
  * @brief Internal recursive evaluator.
  */
@@ -151,51 +254,7 @@ static double cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
 
         /* Defined function (expression-based, registered via cxpr_registry_define) */
         if (entry->defined_body) {
-            if (argc != entry->defined_param_count) {
-                if (err) { err->code = CXPR_ERR_WRONG_ARITY; err->message = "Wrong number of arguments"; }
-                return NAN;
-            }
-            cxpr_context* tmp = cxpr_context_clone(ctx);
-            if (!tmp) {
-                if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
-                return NAN;
-            }
-            for (size_t i = 0; i < entry->defined_param_count; i++) {
-                const char* pname = entry->defined_param_names[i];
-                const cxpr_ast* arg = ast->data.function_call.args[i];
-
-                if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
-                    /* Struct parameter: arg must be a plain identifier */
-                    if (arg->type != CXPR_NODE_IDENTIFIER) {
-                        if (err) { err->code = CXPR_ERR_SYNTAX; err->message = "Struct argument must be an identifier"; }
-                        cxpr_context_free(tmp);
-                        return NAN;
-                    }
-                    const char* obj = arg->data.identifier.name;
-                    for (size_t f = 0; f < entry->defined_param_field_counts[i]; f++) {
-                        const char* fld = entry->defined_param_fields[i][f];
-                        char src_key[256], dst_key[256];
-                        snprintf(src_key, sizeof(src_key), "%s.%s", obj, fld);
-                        snprintf(dst_key, sizeof(dst_key), "%s.%s", pname, fld);
-                        bool found = false;
-                        double val = cxpr_context_get(ctx, src_key, &found);
-                        if (!found) {
-                            if (err) { err->code = CXPR_ERR_UNKNOWN_IDENTIFIER; err->message = "Unknown struct field"; }
-                            cxpr_context_free(tmp);
-                            return NAN;
-                        }
-                        cxpr_context_set(tmp, dst_key, val);
-                    }
-                } else {
-                    /* Scalar parameter: evaluate arg expression */
-                    double val = cxpr_eval_node(arg, ctx, reg, err);
-                    if (err && err->code != CXPR_OK) { cxpr_context_free(tmp); return NAN; }
-                    cxpr_context_set(tmp, pname, val);
-                }
-            }
-            double result = cxpr_eval_node(entry->defined_body, tmp, reg, err);
-            cxpr_context_free(tmp);
-            return result;
+            return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         }
 
         /* Struct-aware expansion: distance3(goal, pose) → goal.x,goal.y,goal.z,pose.x,... */

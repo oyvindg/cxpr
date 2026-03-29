@@ -85,6 +85,32 @@ int main(void) {
 }
 ```
 
+## Execution Model
+
+`cxpr` now has two execution paths for the same expression language:
+
+- `cxpr_eval(ast, ...)` evaluates the AST directly.
+- `cxpr_compile(ast, ...)` builds a reusable compiled program, and `cxpr_program_eval(...)` runs that program repeatedly.
+
+AST is still the primary representation. It remains the source of truth for parsing, reference extraction, dependency analysis, and error reporting. The compiled program is only a runtime optimization layer for repeated evaluation; it does not introduce a new language, a new type system, or a broader library scope.
+
+In the current implementation, compiled programs may mix native IR instructions with fallback steps that delegate to the existing AST evaluator when that is the simplest way to preserve semantics.
+
+```c
+cxpr_ast* ast = cxpr_parse(parser, "sqrt(x*x + y*y) > $limit", &err);
+cxpr_program* prog = cxpr_compile(ast, reg, &err);
+
+double ast_value = cxpr_eval(ast, ctx, reg, &err);
+double ir_value  = cxpr_program_eval(prog, ctx, reg, &err);
+
+cxpr_program_free(prog);
+cxpr_ast_free(ast);
+```
+
+Use the compiled program path when the same parsed expression will be evaluated many times with different context values.
+
+The local benchmark validates AST and compiled-program results on every iteration before reporting timings. On one recent local run, the compiled path improved simple arithmetic to `1.11x`, native function calls to `1.59x`, and expression-defined functions to `4.54x`.
+
 ## Expression Syntax
 
 ```
@@ -229,7 +255,7 @@ exposure > $limit and sqrt(var_1d) > $risk_budget
 
 ## Formula Engine
 
-`FormulaEngine` allows formulas to reference each other. It performs a topological sort at compile time so evaluation always runs in correct dependency order.
+`FormulaEngine` allows formulas to reference each other. It performs a topological sort at compile time so evaluation always runs in correct dependency order. The engine still uses ASTs for dependency analysis and formula structure, but it now compiles each formula to a reusable internal program during `cxpr_formula_compile(...)` and uses that compiled path during evaluation.
 
 ```c
 cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
@@ -257,6 +283,16 @@ cmake -S . -B build
 cmake --build build
 ctest --test-dir build --verbose
 ```
+
+To build and run the local benchmark:
+
+```bash
+cmake -S . -B build -DCXPR_BUILD_BENCHMARKS=ON
+cmake --build build
+./build/benchmarks/cxpr_bench_ir
+```
+
+The benchmark checks AST vs IR equivalence per iteration and aborts on the first mismatch before reporting timing results.
 
 ## Tests
 

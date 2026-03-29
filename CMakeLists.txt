@@ -18,6 +18,7 @@ add_library(cxpr STATIC
     src/parser.c
     src/ast.c
     src/eval.c
+    src/ir.c
     src/context.c
     src/registry.c
     src/formula.c
@@ -47,6 +48,14 @@ option(CXPR_BUILD_TESTS "Build cxpr tests" ${PROJECT_IS_TOP_LEVEL})
 if(CXPR_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Benchmarks
+# ═══════════════════════════════════════════════════════════════════════════
+option(CXPR_BUILD_BENCHMARKS "Build cxpr benchmarks" ${PROJECT_IS_TOP_LEVEL})
+if(CXPR_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

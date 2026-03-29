@@ -214,10 +214,17 @@ void cxpr_hashmap_destroy(cxpr_hashmap* map);
 void cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
 /** @brief Look up a value by key. */
 double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found);
+/** @brief Precompute the internal string hash used by cxpr hash maps. */
+unsigned long cxpr_hash_string(const char* str);
+/** @brief Look up a value by key using a precomputed hash. */
+double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
+                                  unsigned long hash, bool* found);
 /** @brief Remove all entries without freeing the map itself. */
 void cxpr_hashmap_clear(cxpr_hashmap* map);
 /** @brief Deep copy a hash map. */
 cxpr_hashmap* cxpr_hashmap_clone(const cxpr_hashmap* map);
+/** @brief Create a new overlay context that falls back to a parent context. */
+cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Context structure
@@ -226,6 +233,7 @@ cxpr_hashmap* cxpr_hashmap_clone(const cxpr_hashmap* map);
 struct cxpr_context {
     cxpr_hashmap variables;     /**< Runtime variables */
     cxpr_hashmap params;        /**< Compile-time parameters ($name) */
+    const struct cxpr_context* parent; /**< Optional parent context for local overlays */
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -248,6 +256,8 @@ typedef struct {
     size_t struct_argc;       /**< Number of struct arguments accepted */
     /* Defined function (expression-based, via cxpr_registry_define) */
     cxpr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
+    cxpr_program* defined_program;         /**< Lazily compiled body program; NULL until needed */
+    bool       defined_program_failed;     /**< Sticky flag when program compilation is unsupported */
     char**     defined_param_names;        /**< Parameter name array, owned */
     size_t     defined_param_count;        /**< Number of parameters */
     char***    defined_param_fields;       /**< Per-param field lists; NULL entry = scalar */
@@ -278,6 +288,95 @@ struct cxpr_parser {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * Internal IR / compiled plan structures
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Minimal opcode set for IR v1.
+ *
+ * V1 intentionally supports only constants, runtime variables, $params,
+ * basic arithmetic, and return.
+ */
+typedef enum {
+    CXPR_OP_PUSH_CONST,
+    CXPR_OP_LOAD_LOCAL,
+    CXPR_OP_LOAD_VAR,
+    CXPR_OP_LOAD_PARAM,
+    CXPR_OP_LOAD_FIELD,
+    CXPR_OP_ADD,
+    CXPR_OP_SUB,
+    CXPR_OP_MUL,
+    CXPR_OP_DIV,
+    CXPR_OP_CMP_EQ,
+    CXPR_OP_CMP_NEQ,
+    CXPR_OP_CMP_LT,
+    CXPR_OP_CMP_LTE,
+    CXPR_OP_CMP_GT,
+    CXPR_OP_CMP_GTE,
+    CXPR_OP_NOT,
+    CXPR_OP_NEG,
+    CXPR_OP_CALL_FUNC,
+    CXPR_OP_CALL_DEFINED,
+    CXPR_OP_CALL_AST,
+    CXPR_OP_JUMP,
+    CXPR_OP_JUMP_IF_FALSE,
+    CXPR_OP_JUMP_IF_TRUE,
+    CXPR_OP_RETURN
+} cxpr_opcode;
+
+/**
+ * @brief A single IR instruction.
+ *
+ * The operand is interpreted according to opcode:
+ * - PUSH_CONST: literal double in value
+ * - LOAD_VAR / LOAD_PARAM: borrowed symbol name in name
+ * - CALL_AST: borrowed AST pointer in ast
+ * - JUMP / conditional jumps: target index in index
+ * - arithmetic / comparisons / return: no extra operand
+ */
+typedef struct {
+    cxpr_opcode op;
+    double value;
+    const char* name;
+    const cxpr_ast* ast;
+    const cxpr_func_entry* func;
+    unsigned long hash;
+    size_t index;
+} cxpr_ir_instr;
+
+/**
+ * @brief Internal compiled program representation.
+ *
+ * This stays internal until a public cxpr_program API is introduced.
+ */
+typedef struct {
+    cxpr_ir_instr* code;        /**< Owned instruction array */
+    size_t count;               /**< Number of instructions */
+    size_t capacity;            /**< Allocated instruction capacity */
+} cxpr_ir_program;
+
+struct cxpr_program {
+    cxpr_ir_program ir;
+};
+
+/** @brief Reset and free the storage owned by an IR program. */
+void cxpr_ir_program_reset(cxpr_ir_program* program);
+/** @brief Compile a supported AST into an internal IR program. */
+bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
+                     cxpr_ir_program* program, cxpr_error* err);
+/** @brief Compile an AST into IR with local identifiers bound to slots. */
+bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
+                                 const char* const* local_names, size_t local_count,
+                                 cxpr_ir_program* program, cxpr_error* err);
+/** @brief Evaluate an internal IR program against a context and registry. */
+double cxpr_ir_eval(const cxpr_ir_program* program, const cxpr_context* ctx,
+                    const cxpr_registry* reg, cxpr_error* err);
+/** @brief Evaluate an IR program with an optional local-slot frame. */
+double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
+                                const cxpr_registry* reg, const double* locals,
+                                size_t local_count, cxpr_error* err);
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * Formula engine structure
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -288,6 +387,7 @@ typedef struct {
     char* name;               /**< Formula name, owned */
     char* expression;         /**< Original expression string, owned */
     cxpr_ast* ast;              /**< Parsed AST (NULL until compiled) */
+    cxpr_program* program;      /**< Compiled program cache (NULL until compiled) */
     double result;            /**< Evaluation result */
     bool evaluated;
 } cxpr_formula_entry;

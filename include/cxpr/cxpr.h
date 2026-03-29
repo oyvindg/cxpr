@@ -31,6 +31,7 @@ typedef struct cxpr_parser cxpr_parser;
 typedef struct cxpr_ast cxpr_ast;
 typedef struct cxpr_context cxpr_context;
 typedef struct cxpr_registry cxpr_registry;
+typedef struct cxpr_program cxpr_program;
 typedef struct cxpr_formula_engine cxpr_formula_engine;
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -626,6 +627,53 @@ double cxpr_eval(const cxpr_ast* ast, const cxpr_context* ctx,
  */
 bool cxpr_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
                   const cxpr_registry* reg, cxpr_error* err);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Compiled Program API
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Compile an AST into a reusable internal execution plan.
+ *
+ * The current implementation may mix native IR instructions with
+ * fallback steps that preserve existing evaluator semantics.
+ *
+ * @param ast Parsed AST
+ * @param reg Function registry used for validation/runtime compatibility
+ * @param[out] err Error output (can be NULL)
+ * @return Compiled program, or NULL on error
+ */
+cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_error* err);
+
+/**
+ * @brief Evaluate a compiled program to a double value.
+ *
+ * @param prog Compiled program
+ * @param ctx Variable context
+ * @param reg Function registry
+ * @param[out] err Error output (can be NULL)
+ * @return Evaluation result, or NaN on error
+ */
+double cxpr_program_eval(const cxpr_program* prog, const cxpr_context* ctx,
+                         const cxpr_registry* reg, cxpr_error* err);
+
+/**
+ * @brief Evaluate a compiled program as boolean (non-zero = true).
+ *
+ * @param prog Compiled program
+ * @param ctx Variable context
+ * @param reg Function registry
+ * @param[out] err Error output (can be NULL)
+ * @return true if result != 0.0, false otherwise
+ */
+bool cxpr_program_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
+                            const cxpr_registry* reg, cxpr_error* err);
+
+/**
+ * @brief Free a compiled program.
+ * @param prog Compiled program (NULL-safe)
+ */
+void cxpr_program_free(cxpr_program* prog);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Formula Engine API (multi-formula with dependencies)

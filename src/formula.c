@@ -238,6 +238,7 @@ void cxpr_formula_engine_free(cxpr_formula_engine* engine) {
         free(engine->formulas[i].name);
         free(engine->formulas[i].expression);
         cxpr_ast_free(engine->formulas[i].ast);
+        cxpr_program_free(engine->formulas[i].program);
     }
     free(engine->formulas);
     free(engine->eval_order);
@@ -277,6 +278,7 @@ bool cxpr_formula_add(cxpr_formula_engine* engine, const char* name,
     entry->name = strdup(name);
     entry->expression = strdup(expression);
     entry->ast = ast;
+    entry->program = NULL;
     entry->result = 0.0;
     entry->evaluated = false;
 
@@ -300,11 +302,21 @@ bool cxpr_formula_compile(cxpr_formula_engine* engine, cxpr_error* err) {
     }
 
     bool ok = cxpr_formula_topo_sort(engine, err);
-    if (ok) {
-        engine->compiled = true;
-        if (err) err->code = CXPR_OK;
+    if (!ok) return false;
+
+    for (size_t i = 0; i < engine->count; i++) {
+        cxpr_formula_entry* f = &engine->formulas[i];
+        cxpr_program_free(f->program);
+        f->program = cxpr_compile(f->ast, engine->registry, err);
+        if (!f->program) {
+            engine->compiled = false;
+            return false;
+        }
     }
-    return ok;
+
+    engine->compiled = true;
+    if (err) err->code = CXPR_OK;
+    return true;
 }
 
 /**
@@ -336,7 +348,11 @@ void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_
         cxpr_formula_entry* f = &engine->formulas[idx];
 
         cxpr_error eval_err = {0};
-        f->result = cxpr_eval(f->ast, ctx, engine->registry, &eval_err);
+        if (f->program) {
+            f->result = cxpr_program_eval(f->program, ctx, engine->registry, &eval_err);
+        } else {
+            f->result = cxpr_eval(f->ast, ctx, engine->registry, &eval_err);
+        }
         if (eval_err.code != CXPR_OK) {
             if (err) *err = eval_err;
             return;

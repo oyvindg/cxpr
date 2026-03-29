@@ -14,7 +14,7 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** @brief djb2 hash function for string keys. */
-static unsigned long cxpr_hash_string(const char* str) {
+unsigned long cxpr_hash_string(const char* str) {
     /* djb2 hash */
     unsigned long hash = 5381;
     int c;
@@ -98,12 +98,13 @@ void cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value) {
  * @param[out] found Optional; set to true if key was found
  * @return The value, or 0.0 if not found
  */
-double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found) {
+double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
+                                  unsigned long hash, bool* found) {
     if (!map->entries || map->count == 0) {
         if (found) *found = false;
         return 0.0;
     }
-    unsigned long hash = cxpr_hash_string(key) % map->capacity;
+    hash %= map->capacity;
     while (map->entries[hash].key) {
         if (strcmp(map->entries[hash].key, key) == 0) {
             if (found) *found = true;
@@ -113,6 +114,10 @@ double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found) {
     }
     if (found) *found = false;
     return 0.0;
+}
+
+double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found) {
+    return cxpr_hashmap_get_prehashed(map, key, cxpr_hash_string(key), found);
 }
 
 /**
@@ -162,6 +167,14 @@ cxpr_context* cxpr_context_new(void) {
     if (!ctx) return NULL;
     cxpr_hashmap_init(&ctx->variables);
     cxpr_hashmap_init(&ctx->params);
+    ctx->parent = NULL;
+    return ctx;
+}
+
+cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent) {
+    cxpr_context* ctx = cxpr_context_new();
+    if (!ctx) return NULL;
+    ctx->parent = parent;
     return ctx;
 }
 
@@ -196,6 +209,7 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
     }
     clone->variables = *var_clone;
     clone->params = *param_clone;
+    clone->parent = NULL;
     free(var_clone);
     free(param_clone);
     return clone;
@@ -220,7 +234,13 @@ void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
  */
 double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx) { if (found) *found = false; return 0.0; }
-    return cxpr_hashmap_get(&ctx->variables, name, found);
+    {
+        double value = cxpr_hashmap_get(&ctx->variables, name, found);
+        if (found && *found) return value;
+    }
+    if (ctx->parent) return cxpr_context_get(ctx->parent, name, found);
+    if (found) *found = false;
+    return 0.0;
 }
 
 /**
@@ -242,7 +262,13 @@ void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
  */
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx) { if (found) *found = false; return 0.0; }
-    return cxpr_hashmap_get(&ctx->params, name, found);
+    {
+        double value = cxpr_hashmap_get(&ctx->params, name, found);
+        if (found && *found) return value;
+    }
+    if (ctx->parent) return cxpr_context_get_param(ctx->parent, name, found);
+    if (found) *found = false;
+    return 0.0;
 }
 
 /**

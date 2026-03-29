@@ -142,6 +142,9 @@ static void free_struct_fields(cxpr_func_entry* entry) {
 /** @brief Free defined-function data from an entry (safe to call on C-function entries). */
 static void free_defined_fn(cxpr_func_entry* entry) {
     if (!entry->defined_body) return;
+    cxpr_program_free(entry->defined_program);
+    entry->defined_program = NULL;
+    entry->defined_program_failed = false;
     cxpr_ast_free(entry->defined_body);
     entry->defined_body = NULL;
     if (entry->defined_param_fields) {
@@ -683,6 +686,8 @@ cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def) {
             existing->userdata                   = NULL;
             existing->userdata_free              = NULL;
             existing->defined_body               = body_ast;
+            existing->defined_program            = NULL;
+            existing->defined_program_failed     = false;
             existing->defined_param_names        = owned_names;
             existing->defined_param_count        = param_count;
             existing->defined_param_fields       = owned_fields;
@@ -699,6 +704,8 @@ cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def) {
         entry->userdata                  = NULL;
         entry->userdata_free             = NULL;
         entry->defined_body              = body_ast;
+        entry->defined_program           = NULL;
+        entry->defined_program_failed    = false;
         entry->defined_param_names       = owned_names;
         entry->defined_param_count       = param_count;
         entry->defined_param_fields      = owned_fields;

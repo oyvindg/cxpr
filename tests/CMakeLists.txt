@@ -2,6 +2,8 @@ file(GLOB CXPR_C_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.test.c")
 
 set(CXPR_C_TEST_INTERNAL_INCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/lexer.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ir.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/formula_ir.test.c"
 )
 
 foreach(test_file IN LISTS CXPR_C_TESTS)
