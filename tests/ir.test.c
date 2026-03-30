@@ -744,6 +744,76 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     printf("  ✓ test_ir_eval_defined_function_matches_ast\n");
 }
 
+static void test_ir_eval_nested_defined_function_matches_ast(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_register_builtins(reg);
+    err = cxpr_registry_define(reg, "sq(x) => x * x");
+    assert(err.code == CXPR_OK);
+    err = cxpr_registry_define(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))");
+    assert(err.code == CXPR_OK);
+    cxpr_ast* ast = cxpr_parse(p, "hyp2(x, y)", &err);
+    assert(ast);
+    cxpr_context_set(ctx, "x", 3.0);
+    cxpr_context_set(ctx, "y", 4.0);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(ast_result, ir_result);
+    ASSERT_DOUBLE_EQ(ir_result, 5.0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_nested_defined_function_matches_ast\n");
+}
+
+static void test_ir_compile_repeated_multiplication_to_square(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "x * x + y * y", &err);
+    assert(ast);
+    cxpr_context_set(ctx, "x", 3.0);
+    cxpr_context_set(ctx, "y", 4.0);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 4);
+    assert(program.code[0].op == CXPR_OP_LOAD_VAR_SQUARE);
+    assert(program.code[1].op == CXPR_OP_LOAD_VAR_SQUARE);
+    assert(program.code[2].op == CXPR_OP_ADD);
+    assert(program.code[3].op == CXPR_OP_RETURN);
+
+    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(ast_result, ir_result);
+    ASSERT_DOUBLE_EQ(ir_result, 25.0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_compile_repeated_multiplication_to_square\n");
+}
+
 static void test_ir_constant_folding_reduces_program(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -827,6 +897,8 @@ int main(void) {
     test_ir_eval_builtin_function_matches_ast();
     test_ir_eval_struct_function_matches_ast();
     test_ir_eval_defined_function_matches_ast();
+    test_ir_eval_nested_defined_function_matches_ast();
+    test_ir_compile_repeated_multiplication_to_square();
     test_ir_constant_folding_reduces_program();
     test_ir_constant_folding_keeps_div_zero_runtime_error();
     printf("All IR tests passed!\n");

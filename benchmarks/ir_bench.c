@@ -22,6 +22,22 @@ static double native_hyp2(double x, double y) {
     return sqrt(x * x + y * y);
 }
 
+static double native_f3(double x, double y, double z) {
+    return sqrt((x * x + y * y) + z * z);
+}
+
+static double native_f5(double a, double b, double c, double d) {
+    const double t1 = a * a + b * b;
+    const double t2 = c * c + d * d;
+    return sqrt(t1 + t2);
+}
+
+static double native_f5_adapter(const double* args, size_t argc, void* userdata) {
+    (void)argc;
+    (void)userdata;
+    return native_f5(args[0], args[1], args[2], args[3]);
+}
+
 static long long now_ns(void) {
     struct timespec ts;
     timespec_get(&ts, TIME_UTC);
@@ -190,6 +206,11 @@ int main(void) {
         { "function_call", "sqrt(a*a + b*b) + pow(c, 2) - abs(d)", 250000, 0 },
         { "defined_fn", "hyp2(a, b) + hyp2(c, d) - sq(e)", 200000, 0 },
         { "native_fn", "native_hyp2(a, b) + native_hyp2(c, d) - native_sq(e)", 200000, 0 },
+        { "defined_chain", "f3(a, b, c) + f3(d, e, f) - sq(g)", 120000, 0 },
+        { "native_chain", "native_f3(a, b, c) + native_f3(d, e, f) - native_sq(g)", 120000, 0 },
+        { "mixed_chain", "f3(a, b, c) + native_f3(d, e, f) - native_sq(g)", 120000, 0 },
+        { "deep_defined", "f5(a, b, c, d) + f5(e, f, g, h)", 80000, 0 },
+        { "deep_native", "native_f5(a, b, c, d) + native_f5(e, f, g, h)", 80000, 0 },
         { "context_churn", "a + b * c - d / e + x * y - z", 200000, 1 },
     };
     size_t i;
@@ -206,6 +227,8 @@ int main(void) {
     cxpr_register_builtins(reg);
     cxpr_registry_add_unary(reg, "native_sq", native_sq);
     cxpr_registry_add_binary(reg, "native_hyp2", native_hyp2);
+    cxpr_registry_add_ternary(reg, "native_f3", native_f3);
+    cxpr_registry_add(reg, "native_f5", native_f5_adapter, 4, 4, NULL, NULL);
 
     err = cxpr_registry_define(reg, "sq(x) => x * x");
     if (err.code != CXPR_OK) {
@@ -219,6 +242,24 @@ int main(void) {
     err = cxpr_registry_define(reg, "hyp2(x, y) => sqrt(sq(x) + sq(y))");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define hyp2: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define(reg, "f3(x, y, z) => sqrt(hyp2(x, y) + sq(z))");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define f3: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define(reg, "f5(a, b, c, d) => sqrt((a*a + b*b) + (c*c + d*d))");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define f5: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
         cxpr_parser_free(parser);

@@ -307,14 +307,19 @@ Mål: innføre en liten intern IR eller "compiled plan" for raskere evaluering, 
 - [x] Test før avslutning:
   - [x] benchmarken kan kjøres
   - [x] resultatene er forståelige og lagret i repoet eller dokumentert i plan/README
-  Verifisering: benchmarken kan bygges som `./build/benchmarks/cxpr_bench_ir` og validerer nå AST vs IR per iterasjon, ikke bare på totalsum. Resultater fra en senere lokal kjøring etter lokal-slot-optimalisering for defined functions:
-  - `simple_arith`: AST `113.30 ns/eval`, IR `102.31 ns/eval`, speedup `1.11x`
-  - `nested_expr`: AST `173.21 ns/eval`, IR `167.25 ns/eval`, speedup `1.04x`
-  - `function_call`: AST `299.02 ns/eval`, IR `188.51 ns/eval`, speedup `1.59x`
-  - `defined_fn`: AST `1704.81 ns/eval`, IR `375.17 ns/eval`, speedup `4.54x`
-  - `native_fn`: AST `494.09 ns/eval`, IR `151.71 ns/eval`, speedup `3.26x`
-  - `context_churn`: AST `270.45 ns/eval`, IR `256.92 ns/eval`, speedup `1.05x`
-  Tolkning: IR-pathen gir nå reell gevinst for både vanlige uttrykk, native funksjonskall og expression-defined functions. `defined_fn` er fortsatt tregere enn `native_fn` i absolutte tall, men forskjellen er kraftig redusert sammenlignet med den opprinnelige fallback-baserte implementasjonen.
+  Verifisering: benchmarken kan bygges som `./build/benchmarks/cxpr_bench_ir` og validerer nå AST vs IR per iterasjon, ikke bare på totalsum. Resultater fra en senere lokal kjøring etter inline/substitusjon, builtin-spesialisering og fused square-loads:
+  - `simple_arith`: AST `115.07 ns/eval`, IR `97.63 ns/eval`, speedup `1.18x`
+  - `nested_expr`: AST `173.76 ns/eval`, IR `153.09 ns/eval`, speedup `1.14x`
+  - `function_call`: AST `362.91 ns/eval`, IR `140.75 ns/eval`, speedup `2.58x`
+  - `defined_fn`: AST `688.41 ns/eval`, IR `114.44 ns/eval`, speedup `6.02x`
+  - `native_fn`: AST `515.52 ns/eval`, IR `146.06 ns/eval`, speedup `3.53x`
+  - `defined_chain`: AST `771.17 ns/eval`, IR `229.70 ns/eval`, speedup `3.36x`
+  - `native_chain`: AST `558.04 ns/eval`, IR `203.39 ns/eval`, speedup `2.74x`
+  - `mixed_chain`: AST `621.15 ns/eval`, IR `212.82 ns/eval`, speedup `2.92x`
+  - `deep_defined`: AST `608.61 ns/eval`, IR `226.01 ns/eval`, speedup `2.69x`
+  - `deep_native`: AST `433.88 ns/eval`, IR `187.65 ns/eval`, speedup `2.31x`
+  - `context_churn`: AST `279.20 ns/eval`, IR `243.96 ns/eval`, speedup `1.14x`
+  Tolkning: IR-pathen gir nå tydelig gevinst også for nested expression-defined functions. I de beste tilfellene kan `defined_fn` bli raskere enn tilsvarende native callback-path, fordi compile-time inlining og mønstergjenkjenning kan fjerne dispatch-kost som fortsatt finnes for generiske native funksjonskall.
 
 ## Ikke-mål
 

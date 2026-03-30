@@ -109,7 +109,7 @@ cxpr_ast_free(ast);
 
 Use the compiled program path when the same parsed expression will be evaluated many times with different context values.
 
-The local benchmark validates AST and compiled-program results on every iteration before reporting timings. On one recent local run, the compiled path improved simple arithmetic to `1.11x`, native function calls to `1.59x`, and expression-defined functions to `4.54x`.
+The local benchmark validates AST and compiled-program results on every iteration before reporting timings. On one recent local run, the compiled path improved simple arithmetic to `1.18x`, native function calls to `3.53x`, expression-defined functions to `6.02x`, nested defined chains to `3.36x`, and deeper defined expressions to `2.69x`.
 
 ## Expression Syntax
 

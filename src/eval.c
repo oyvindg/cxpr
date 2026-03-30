@@ -18,27 +18,41 @@ static double cxpr_eval_defined_function(cxpr_func_entry* entry, const cxpr_ast*
                                          const cxpr_context* ctx, const cxpr_registry* reg,
                                          cxpr_error* err) {
     const size_t argc = call_ast->data.function_call.argc;
-    cxpr_context* tmp;
+    cxpr_context* tmp = NULL;
     double scalar_args[32];
-    bool scalar_only = true;
+    bool scalar_only = (argc <= 32);
 
     if (argc != entry->defined_param_count) {
         if (err) { err->code = CXPR_ERR_WRONG_ARITY; err->message = "Wrong number of arguments"; }
         return NAN;
     }
 
-    tmp = cxpr_context_overlay_new(ctx);
-    if (!tmp) {
-        if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
-        return NAN;
+    for (size_t i = 0; i < entry->defined_param_count; i++) {
+        if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
+            scalar_only = false;
+            break;
+        }
+    }
+
+    if (scalar_only) {
+        for (size_t i = 0; i < entry->defined_param_count; i++) {
+            const double val = cxpr_eval_node(call_ast->data.function_call.args[i], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            scalar_args[i] = val;
+        }
+    } else {
+        tmp = cxpr_context_overlay_new(ctx);
+        if (!tmp) {
+            if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+            return NAN;
+        }
     }
 
     for (size_t i = 0; i < entry->defined_param_count; i++) {
         const char* pname = entry->defined_param_names[i];
         const cxpr_ast* arg = call_ast->data.function_call.args[i];
 
-        if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
-            scalar_only = false;
+        if (!scalar_only && entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
             if (arg->type != CXPR_NODE_IDENTIFIER) {
                 if (err) { err->code = CXPR_ERR_SYNTAX; err->message = "Struct argument must be an identifier"; }
                 cxpr_context_free(tmp);
@@ -62,13 +76,12 @@ static double cxpr_eval_defined_function(cxpr_func_entry* entry, const cxpr_ast*
                 }
                 cxpr_context_set(tmp, dst_key, val);
             }
-        } else {
+        } else if (!scalar_only) {
             const double val = cxpr_eval_node(arg, ctx, reg, err);
             if (err && err->code != CXPR_OK) {
                 cxpr_context_free(tmp);
                 return NAN;
             }
-            if (i < 32) scalar_args[i] = val;
             cxpr_context_set(tmp, pname, val);
         }
     }
@@ -99,17 +112,27 @@ static double cxpr_eval_defined_function(cxpr_func_entry* entry, const cxpr_ast*
 
     if (entry->defined_program) {
         const double result =
-            (scalar_only && argc <= 32)
+            (scalar_only)
                 ? cxpr_ir_eval_with_locals(&entry->defined_program->ir, ctx, reg,
                                            scalar_args, argc, err)
                 : cxpr_program_eval(entry->defined_program, tmp, reg, err);
-        cxpr_context_free(tmp);
+        if (tmp) cxpr_context_free(tmp);
         return result;
     }
 
     {
+        if (scalar_only) {
+            tmp = cxpr_context_overlay_new(ctx);
+            if (!tmp) {
+                if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+                return NAN;
+            }
+            for (size_t i = 0; i < entry->defined_param_count; i++) {
+                cxpr_context_set(tmp, entry->defined_param_names[i], scalar_args[i]);
+            }
+        }
         const double result = cxpr_eval_node(entry->defined_body, tmp, reg, err);
-        cxpr_context_free(tmp);
+        if (tmp) cxpr_context_free(tmp);
         return result;
     }
 }
