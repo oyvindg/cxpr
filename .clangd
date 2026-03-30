@@ -1,2 +1,11 @@
 CompileFlags:
   CompilationDatabase: build
+---
+If:
+  PathMatch: ^.*\.(c|h)$
+CompileFlags:
+  Compiler: gcc
+  Add:
+    - -std=c11
+    - -Iinclude
+    - -Isrc
