@@ -1622,7 +1622,7 @@ static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program
 
 static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
                                             unsigned long hash, bool* found) {
-    const double value;
+    double value;
 
     if (!ctx) {
         if (found) *found = false;
@@ -1638,7 +1638,7 @@ static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char*
 
 static double cxpr_ir_context_get_param_prehashed(const cxpr_context* ctx, const char* name,
                                                   unsigned long hash, bool* found) {
-    const double value;
+    double value;
 
     if (!ctx) {
         if (found) *found = false;
