@@ -582,22 +582,22 @@ void cxpr_register_builtins(cxpr_registry* reg);
  *
  * @code
  * // Struct params — fields inferred from body
- * cxpr_registry_define(reg,
+ * cxpr_registry_define_fn(reg,
  *     "distance3(goal, pose) => "
  *     "sqrt((goal.x-pose.x)^2 + (goal.y-pose.y)^2 + (goal.z-pose.z)^2)");
  *
  * // Scalar params
- * cxpr_registry_define(reg, "sum(a, b) => a + b");
+ * cxpr_registry_define_fn(reg, "sum(a, b) => a + b");
  *
  * // Mixed struct + $params
- * cxpr_registry_define(reg, "clamp_val(p) => clamp(p.value, $lo, $hi)");
+ * cxpr_registry_define_fn(reg, "clamp_val(p) => clamp(p.value, $lo, $hi)");
  * @endcode
  *
  * @param reg  Registry to add to
  * @param def  Null-terminated definition string
  * @return     cxpr_error — code is CXPR_OK on success
  */
-cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def);
+cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Evaluator API

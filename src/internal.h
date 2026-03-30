@@ -267,7 +267,7 @@ typedef struct {
     char** struct_fields;     /**< Owned array of field name strings (e.g. {"x","y","z"}) */
     size_t fields_per_arg;    /**< Number of fields per struct argument */
     size_t struct_argc;       /**< Number of struct arguments accepted */
-    /* Defined function (expression-based, via cxpr_registry_define) */
+    /* Defined function (expression-based, via cxpr_registry_define_fn) */
     cxpr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
     cxpr_program* defined_program;         /**< Lazily compiled body program; NULL until needed */
     bool       defined_program_failed;     /**< Sticky flag when program compilation is unsupported */

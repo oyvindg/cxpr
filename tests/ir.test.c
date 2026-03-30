@@ -725,7 +725,7 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_register_builtins(reg);
-    err = cxpr_registry_define(reg, "sum2(a, b) => a + b");
+    err = cxpr_registry_define_fn(reg, "sum2(a, b) => a + b");
     assert(err.code == CXPR_OK);
     cxpr_ast* ast = cxpr_parse(p, "sum2(x, y)", &err);
     assert(ast);
@@ -758,9 +758,9 @@ static void test_ir_eval_nested_defined_function_matches_ast(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_register_builtins(reg);
-    err = cxpr_registry_define(reg, "sq(x) => x * x");
+    err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
     assert(err.code == CXPR_OK);
-    err = cxpr_registry_define(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))");
+    err = cxpr_registry_define_fn(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))");
     assert(err.code == CXPR_OK);
     cxpr_ast* ast = cxpr_parse(p, "hyp2(x, y)", &err);
     assert(ast);

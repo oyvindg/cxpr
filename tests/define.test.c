@@ -1,6 +1,6 @@
 /**
  * @file define.test.c
- * @brief Tests for cxpr_registry_define — expression-based function definitions.
+ * @brief Tests for cxpr_registry_define_fn — expression-based function definitions.
  *
  * Tests covered:
  * - Scalar params:  sum(a, b) => a + b
@@ -45,7 +45,7 @@ static void test_scalar_params(void) {
     cxpr_register_builtins(reg);
     cxpr_context* ctx = cxpr_context_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "sum(a, b) => a + b");
+    cxpr_error err = cxpr_registry_define_fn(reg, "sum(a, b) => a + b");
     assert(err.code == CXPR_OK);
 
     cxpr_context_set(ctx, "x", 3.0);
@@ -68,7 +68,7 @@ static void test_struct_params_distance3(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
 
-    cxpr_error err = cxpr_registry_define(reg,
+    cxpr_error err = cxpr_registry_define_fn(reg,
         "distance3(goal, pose) => "
         "sqrt((goal.x-pose.x)^2 + (goal.y-pose.y)^2 + (goal.z-pose.z)^2)");
     assert(err.code == CXPR_OK);
@@ -92,7 +92,7 @@ static void test_struct_params_dot2(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
 
-    cxpr_error err = cxpr_registry_define(reg, "dot2(u, v) => u.x*v.x + u.y*v.y");
+    cxpr_error err = cxpr_registry_define_fn(reg, "dot2(u, v) => u.x*v.x + u.y*v.y");
     assert(err.code == CXPR_OK);
 
     cxpr_context* ctx = cxpr_context_new();
@@ -114,7 +114,7 @@ static void test_struct_with_dollar_params(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
 
-    cxpr_error err = cxpr_registry_define(reg,
+    cxpr_error err = cxpr_registry_define_fn(reg,
         "clamp_val(p) => clamp(p.value, $lo, $hi)");
     assert(err.code == CXPR_OK);
 
@@ -140,9 +140,9 @@ static void test_defined_fn_calls_defined_fn(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
 
-    cxpr_error err = cxpr_registry_define(reg, "sq(x) => x * x");
+    cxpr_error err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
     assert(err.code == CXPR_OK);
-    err = cxpr_registry_define(reg, "hyp(a, b) => sqrt(sq(a) + sq(b))");
+    err = cxpr_registry_define_fn(reg, "hyp(a, b) => sqrt(sq(a) + sq(b))");
     assert(err.code == CXPR_OK);
 
     cxpr_context* ctx = cxpr_context_new();
@@ -158,7 +158,7 @@ static void test_defined_fn_used_in_comparison(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
 
-    cxpr_error err = cxpr_registry_define(reg,
+    cxpr_error err = cxpr_registry_define_fn(reg,
         "dist2(a, b) => sqrt((a.x-b.x)^2 + (a.y-b.y)^2)");
     assert(err.code == CXPR_OK);
 
@@ -180,7 +180,7 @@ static void test_overwrite(void) {
     cxpr_register_builtins(reg);
     cxpr_context* ctx = cxpr_context_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "double_it(x) => x * 2");
+    cxpr_error err = cxpr_registry_define_fn(reg, "double_it(x) => x * 2");
     assert(err.code == CXPR_OK);
     cxpr_context_set(ctx, "v", 5.0);
     double r = eval_expr("double_it(v)", ctx, reg, &err);
@@ -188,7 +188,7 @@ static void test_overwrite(void) {
     ASSERT_APPROX(r, 10.0);
 
     /* Overwrite with triple */
-    err = cxpr_registry_define(reg, "double_it(x) => x * 3");
+    err = cxpr_registry_define_fn(reg, "double_it(x) => x * 3");
     assert(err.code == CXPR_OK);
     r = eval_expr("double_it(v)", ctx, reg, &err);
     assert(err.code == CXPR_OK);
@@ -201,7 +201,7 @@ static void test_overwrite(void) {
 static void test_error_bad_body_syntax(void) {
     cxpr_registry* reg = cxpr_registry_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "bad(x) => x +* y");
+    cxpr_error err = cxpr_registry_define_fn(reg, "bad(x) => x +* y");
     assert(err.code != CXPR_OK);
 
     cxpr_registry_free(reg);
@@ -210,7 +210,7 @@ static void test_error_bad_body_syntax(void) {
 static void test_error_missing_arrow(void) {
     cxpr_registry* reg = cxpr_registry_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "f(x) x + 1");
+    cxpr_error err = cxpr_registry_define_fn(reg, "f(x) x + 1");
     assert(err.code == CXPR_ERR_SYNTAX);
 
     cxpr_registry_free(reg);
@@ -221,7 +221,7 @@ static void test_error_wrong_arity_at_call(void) {
     cxpr_register_builtins(reg);
     cxpr_context* ctx = cxpr_context_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "add(a, b) => a + b");
+    cxpr_error err = cxpr_registry_define_fn(reg, "add(a, b) => a + b");
     assert(err.code == CXPR_OK);
 
     double r = eval_expr("add(1)", ctx, reg, &err);
@@ -237,7 +237,7 @@ static void test_error_struct_arg_not_identifier(void) {
     cxpr_register_builtins(reg);
     cxpr_context* ctx = cxpr_context_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "len2(v) => sqrt(v.x^2 + v.y^2)");
+    cxpr_error err = cxpr_registry_define_fn(reg, "len2(v) => sqrt(v.x^2 + v.y^2)");
     assert(err.code == CXPR_OK);
 
     /* Passing a number literal where a struct identifier is required */
@@ -254,7 +254,7 @@ static void test_error_missing_field_in_context(void) {
     cxpr_register_builtins(reg);
     cxpr_context* ctx = cxpr_context_new();
 
-    cxpr_error err = cxpr_registry_define(reg, "len2(v) => sqrt(v.x^2 + v.y^2)");
+    cxpr_error err = cxpr_registry_define_fn(reg, "len2(v) => sqrt(v.x^2 + v.y^2)");
     assert(err.code == CXPR_OK);
 
     cxpr_context_set(ctx, "p.x", 3.0); /* only x, no y */
@@ -270,7 +270,7 @@ static void test_error_missing_field_in_context(void) {
 static void test_registry_lookup_arity(void) {
     cxpr_registry* reg = cxpr_registry_new();
 
-    cxpr_registry_define(reg, "f(a, b, c) => a + b + c");
+    cxpr_registry_define_fn(reg, "f(a, b, c) => a + b + c");
 
     size_t min_args, max_args;
     bool found = cxpr_registry_lookup(reg, "f", &min_args, &max_args);

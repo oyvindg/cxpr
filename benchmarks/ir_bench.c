@@ -230,7 +230,7 @@ int main(void) {
     cxpr_registry_add_ternary(reg, "native_f3", native_f3);
     cxpr_registry_add(reg, "native_f5", native_f5_adapter, 4, 4, NULL, NULL);
 
-    err = cxpr_registry_define(reg, "sq(x) => x * x");
+    err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define sq: %s\n", err.message);
         cxpr_registry_free(reg);
@@ -239,7 +239,7 @@ int main(void) {
         return 1;
     }
 
-    err = cxpr_registry_define(reg, "hyp2(x, y) => sqrt(sq(x) + sq(y))");
+    err = cxpr_registry_define_fn(reg, "hyp2(x, y) => sqrt(sq(x) + sq(y))");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define hyp2: %s\n", err.message);
         cxpr_registry_free(reg);
@@ -248,7 +248,7 @@ int main(void) {
         return 1;
     }
 
-    err = cxpr_registry_define(reg, "f3(x, y, z) => sqrt(hyp2(x, y) + sq(z))");
+    err = cxpr_registry_define_fn(reg, "f3(x, y, z) => sqrt(hyp2(x, y) + sq(z))");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define f3: %s\n", err.message);
         cxpr_registry_free(reg);
@@ -257,7 +257,7 @@ int main(void) {
         return 1;
     }
 
-    err = cxpr_registry_define(reg, "f5(a, b, c, d) => sqrt((a*a + b*b) + (c*c + d*d))");
+    err = cxpr_registry_define_fn(reg, "f5(a, b, c, d) => sqrt((a*a + b*b) + (c*c + d*d))");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define f5: %s\n", err.message);
         cxpr_registry_free(reg);

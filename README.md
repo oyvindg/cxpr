@@ -85,16 +85,23 @@ int main(void) {
 }
 ```
 
-## Execution Model
+## AST vs IR
 
 `cxpr` now has two execution paths for the same expression language:
 
 - `cxpr_eval(ast, ...)` evaluates the AST directly.
 - `cxpr_compile(ast, ...)` builds a reusable compiled program, and `cxpr_program_eval(...)` runs that program repeatedly.
 
-AST is still the primary representation. It remains the source of truth for parsing, reference extraction, dependency analysis, and error reporting. The compiled program is only a runtime optimization layer for repeated evaluation; it does not introduce a new language, a new type system, or a broader library scope.
+The AST is still the primary representation. It is what parsing produces, and it remains the source of truth for reference extraction, dependency analysis, validation, and error reporting. If you need to inspect or understand an expression structurally, you are working with the AST.
 
-In the current implementation, compiled programs may mix native IR instructions with fallback steps that delegate to the existing AST evaluator when that is the simplest way to preserve semantics.
+The IR is a compiled runtime plan built from that AST. Its job is narrower: make repeated evaluation cheaper. It does not define a second language, and it does not replace the AST in the library design. In the current implementation, a compiled program may mix native IR instructions with fallback steps that still delegate to the AST evaluator when that is the simplest way to preserve semantics.
+
+In practice, the intended flow is:
+
+1. Parse text into an AST.
+2. Use the AST for validation, introspection, or dependency work.
+3. Compile the AST to IR when the same expression will run many times.
+4. Reuse the compiled program across many context updates.
 
 ```c
 cxpr_ast* ast = cxpr_parse(parser, "sqrt(x*x + y*y) > $limit", &err);
@@ -175,6 +182,52 @@ cxpr_registry_add(reg, "lookup", fn_lookup,
 ```
 
 Functions return `double`. Booleans are `1.0` / `0.0` by convention.
+
+### Expression-Defined Functions
+
+You can also register functions from expressions instead of C callbacks:
+
+```c
+cxpr_registry_define_fn(reg, "sq(x) => x * x");
+cxpr_registry_define_fn(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))");
+cxpr_registry_define_fn(reg, "clamp_score(x) => x > 1 ? 1 : (x < -1 ? -1 : x)");
+```
+
+Defined functions use the same expression language as normal formulas, can call built-ins, and can call other registered functions, including other defined functions.
+
+The definition syntax is:
+
+```text
+name(param1, param2, ...) => expression_body
+```
+
+Examples:
+
+```c
+cxpr_registry_define_fn(reg, "sum(a, b) => a + b");
+cxpr_registry_define_fn(reg, "lerp(a, b, t) => a + (b - a) * t");
+cxpr_registry_define_fn(reg, "energy(m, v) => 0.5 * m * v * v");
+```
+
+Parameters can also behave like struct arguments when the body accesses fields from them. In that case the caller passes an identifier prefix and the fields are read from the context.
+
+```c
+cxpr_registry_define_fn(reg, "dot2(u, v) => u.x * v.x + u.y * v.y");
+cxpr_registry_define_fn(reg, "len2(p) => sqrt(p.x * p.x + p.y * p.y)");
+```
+
+```text
+dot2(goal, velocity)
+len2(body)
+```
+
+This lets you write compact domain helpers without needing a C callback for every small formula. It is especially useful for:
+
+- reusable scalar helpers like `sq`, `hyp2`, or `clamp_score`
+- configurable host-defined DSL building blocks
+- struct-aware helpers such as `dot2(u, v)` or `len2(body)`
+
+If a function name is redefined, the latest definition replaces the previous one.
 
 ## Domain Examples
 
@@ -311,27 +364,39 @@ The benchmark checks AST vs IR equivalence per iteration and aborts on the first
 
 ## Project Structure
 
-```
+```text
 cxpr/
-├── include/cxpr/cxpr.h   # Public C11 API (fully documented)
+├── include/
+│   └── cxpr/
+│       └── cxpr.h        # Public C11 API
 ├── src/
-│   ├── internal.h        # Internal data structures
+│   ├── internal.h        # Internal data structures and IR types
 │   ├── lexer.c           # Tokenizer
-│   ├── parser.c          # Recursive descent parser → AST
+│   ├── parser.c          # Recursive descent parser -> AST
 │   ├── ast.c             # AST construction, inspection, reference extraction
 │   ├── eval.c            # Recursive tree-walk evaluator
-│   ├── context.c         # Variable/parameter storage (hash map)
-│   ├── registry.c        # Function registry + built-ins
-│   └── formula.c         # FormulaEngine with topological sort
+│   ├── ir.c              # Internal compiled IR / program evaluator
+│   ├── context.c         # Variable/parameter storage
+│   ├── registry.c        # Function registry, built-ins, defined functions
+│   └── formula.c         # FormulaEngine with dependency ordering + program caching
+├── benchmarks/
+│   ├── CMakeLists.txt
+│   └── ir_bench.c        # AST vs IR benchmark with per-iteration validation
 ├── tests/
+│   ├── CMakeLists.txt
+│   ├── define.test.c     # cxpr_registry_define_fn and nested defined functions
+│   ├── errors.test.c     # Error codes, parse/eval failures
+│   ├── eval.test.c       # Tree-walk evaluator coverage
+│   ├── formula.test.c    # FormulaEngine behavior
+│   ├── formula_ir.test.c # Compiled FormulaEngine path
+│   ├── ir.test.c         # Internal IR compile/eval parity
 │   ├── lexer.test.c
-│   ├── parser.test.c
-│   ├── eval.test.c
 │   ├── math.test.c
+│   ├── parser.test.c
 │   ├── precedence.test.c
-│   ├── formula.test.c
-│   ├── errors.test.c
-│   └── simulation.test.c
+│   ├── program.test.c    # Public compiled-program API tests
+│   ├── simulation.test.c
+│   └── struct_fn.test.c  # Struct-aware function expansion
 └── CMakeLists.txt
 ```
 

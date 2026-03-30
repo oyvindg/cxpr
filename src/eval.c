@@ -275,7 +275,7 @@ static double cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
             return NAN;
         }
 
-        /* Defined function (expression-based, registered via cxpr_registry_define) */
+        /* Defined function (expression-based, registered via cxpr_registry_define_fn) */
         if (entry->defined_body) {
             return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         }

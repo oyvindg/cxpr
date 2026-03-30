@@ -247,7 +247,7 @@ Mål: innføre en liten intern IR eller "compiled plan" for raskere evaluering, 
 - [x] Test før neste steg:
   - [x] test minst én defined function
   - [x] test AST-eval vs IR-eval
-  Verifisering: en `sum2(a, b) => a + b`-funksjon definert via `cxpr_registry_define(...)` evalueres likt via AST og IR-fallback.
+  Verifisering: en `sum2(a, b) => a + b`-funksjon definert via `cxpr_registry_define_fn(...)` evalueres likt via AST og IR-fallback.
 
 ### 19. Legg til enkel konstantfolding
 

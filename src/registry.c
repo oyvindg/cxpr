@@ -494,7 +494,7 @@ void cxpr_register_builtins(cxpr_registry* reg) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * cxpr_registry_define — expression-based function definitions
+ * cxpr_registry_define_fn — expression-based function definitions
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 #define CXPR_DEF_MAX_PARAMS 16
@@ -571,19 +571,19 @@ static bool is_ident_char(char c) {
  *
  * Examples:
  * @code
- * cxpr_registry_define(reg,
+ * cxpr_registry_define_fn(reg,
  *     "distance3(goal, pose) => "
  *     "sqrt((goal.x-pose.x)^2 + (goal.y-pose.y)^2 + (goal.z-pose.z)^2)");
- * cxpr_registry_define(reg, "sum(a, b) => a + b");
- * cxpr_registry_define(reg, "dot2(u, v) => u.x*v.x + u.y*v.y");
- * cxpr_registry_define(reg, "clamp_val(p) => clamp(p.value, $min, $max)");
+ * cxpr_registry_define_fn(reg, "sum(a, b) => a + b");
+ * cxpr_registry_define_fn(reg, "dot2(u, v) => u.x*v.x + u.y*v.y");
+ * cxpr_registry_define_fn(reg, "clamp_val(p) => clamp(p.value, $min, $max)");
  * @endcode
  *
  * @param reg  Registry to add to
  * @param def  Null-terminated definition string
  * @return     cxpr_error with code CXPR_OK on success, or an error code
  */
-cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def) {
+cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
     cxpr_error err = {0};
     if (!reg || !def) {
         err.code = CXPR_ERR_SYNTAX;
