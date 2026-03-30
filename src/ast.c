@@ -409,7 +409,44 @@ const cxpr_ast* cxpr_ast_function_arg(const cxpr_ast* ast, size_t index) {
     if (index >= ast->data.function_call.argc) return NULL;
     return ast->data.function_call.args[index];
 }
+/**
+ * @brief Get producer name of a PRODUCER_ACCESS node.
+ * @param ast AST node (must be CXPR_NODE_PRODUCER_ACCESS).
+ * @return Producer name, or NULL if ast is NULL or wrong type.
+ */
+const char* cxpr_ast_producer_name(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_PRODUCER_ACCESS) ? ast->data.producer_access.name : NULL;
+}
 
+/**
+ * @brief Get output field of a PRODUCER_ACCESS node.
+ * @param ast AST node (must be CXPR_NODE_PRODUCER_ACCESS).
+ * @return Output field name, or NULL if ast is NULL or wrong type.
+ */
+const char* cxpr_ast_producer_field(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_PRODUCER_ACCESS) ? ast->data.producer_access.field : NULL;
+}
+
+/**
+ * @brief Get argument count of a PRODUCER_ACCESS node.
+ * @param ast AST node (must be CXPR_NODE_PRODUCER_ACCESS).
+ * @return Argument count, or 0 if ast is NULL or wrong type.
+ */
+size_t cxpr_ast_producer_argc(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_PRODUCER_ACCESS) ? ast->data.producer_access.argc : 0;
+}
+
+/**
+ * @brief Get argument at index of a PRODUCER_ACCESS node.
+ * @param ast AST node (must be CXPR_NODE_PRODUCER_ACCESS).
+ * @param index Argument index (0-based).
+ * @return Argument AST, or NULL if ast is NULL, wrong type, or index out of range.
+ */
+const cxpr_ast* cxpr_ast_producer_arg(const cxpr_ast* ast, size_t index) {
+    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS) return NULL;
+    if (index >= ast->data.producer_access.argc) return NULL;
+    return ast->data.producer_access.args[index];
+}
 /**
  * @brief Get condition of a TERNARY node.
  * @param ast AST node (must be CXPR_NODE_TERNARY).
