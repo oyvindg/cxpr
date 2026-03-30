@@ -10,6 +10,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
@@ -224,6 +225,28 @@ static void test_bool_literals(void) {
     printf("  \u2713 test_bool_literals\n");
 }
 
+static void test_struct_bool_field_equality(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_context *ctx = cxpr_context_new();
+    const char *field_names[] = {"active"};
+    cxpr_field_value field_values[] = {cxpr_fv_bool(true)};
+    cxpr_struct_value *sensor = cxpr_struct_value_new(field_names, field_values, 1);
+    cxpr_field_value r;
+
+    assert(sensor != NULL);
+    cxpr_context_set_struct(ctx, "sensor", sensor);
+    cxpr_struct_value_free(sensor);
+
+    r = eval_typed("sensor.active == true", ctx, reg);
+    assert(r.type == CXPR_FIELD_BOOL);
+    assert(r.b == true);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  \u2713 test_struct_bool_field_equality\n");
+}
+
 /* ── logical operators require bool operands and return bool ─────────── */
 
 static void test_logical_operators(void) {
@@ -419,6 +442,7 @@ int main(void) {
     test_arithmetic_double();
     test_comparison_returns_bool();
     test_bool_literals();
+    test_struct_bool_field_equality();
     test_logical_operators();
     test_ternary_typed();
     test_type_errors();

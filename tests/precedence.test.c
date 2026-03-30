@@ -33,7 +33,61 @@ static double eval_expr(const char* expr) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_ast_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
+        assert(0);
+    }
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    return result;
+}
+
+static bool eval_bool_expr(const char* expr) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_error err = {0};
+
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    if (!ast) {
+        fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
+        assert(0);
+    }
+    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
+        assert(0);
+    }
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    return result;
+}
+
+static bool eval_bool_expr_ctx(const char* expr, const char* names[], const double values[]) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_error err = {0};
+
+    for (int i = 0; names[i] != NULL; i++) {
+        cxpr_context_set(ctx, names[i], values[i]);
+    }
+
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    if (!ast) {
+        fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
+        assert(0);
+    }
+    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -69,7 +123,7 @@ static double eval_expr_ctx(const char* expr, const char* names[], const double 
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_ast_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -129,9 +183,9 @@ static void test_power_before_mul(void) {
 
 static void test_comparison_after_arithmetic(void) {
     /* 2 + 3 < 10 should be (2+3) < 10 = true */
-    ASSERT_DOUBLE_EQ(eval_expr("2 + 3 < 10"), 1.0);
+    assert(eval_bool_expr("2 + 3 < 10") == true);
     /* 2 + 3 > 10 should be (2+3) > 10 = false */
-    ASSERT_DOUBLE_EQ(eval_expr("2 + 3 > 10"), 0.0);
+    assert(eval_bool_expr("2 + 3 > 10") == false);
     printf("  ✓ test_comparison_after_arithmetic\n");
 }
 
@@ -141,9 +195,9 @@ static void test_comparison_after_arithmetic(void) {
 
 static void test_and_before_or(void) {
     /* false or true and true = false or (true and true) = false or true = true */
-    ASSERT_DOUBLE_EQ(eval_expr("false or true and true"), 1.0);
+    assert(eval_bool_expr("false or true and true") == true);
     /* true or false and false = true or (false and false) = true or false = true */
-    ASSERT_DOUBLE_EQ(eval_expr("true or false and false"), 1.0);
+    assert(eval_bool_expr("true or false and false") == true);
     printf("  ✓ test_and_before_or\n");
 }
 
@@ -153,9 +207,9 @@ static void test_and_before_or(void) {
 
 static void test_not_precedence(void) {
     /* not true and false = (not true) and false = false and false = false */
-    ASSERT_DOUBLE_EQ(eval_expr("not true and false"), 0.0);
+    assert(eval_bool_expr("not true and false") == false);
     /* not false or true = (not false) or true = true or true = true */
-    ASSERT_DOUBLE_EQ(eval_expr("not false or true"), 1.0);
+    assert(eval_bool_expr("not false or true") == true);
     printf("  ✓ test_not_precedence\n");
 }
 
@@ -191,22 +245,22 @@ static void test_unary_minus_precedence(void) {
 static void test_relational_before_equality(void) {
     /* a < b == c < d should parse as (a < b) == (c < d)
        With values: 1 < 5 == 3 < 10 → true == true → true */
-    ASSERT_DOUBLE_EQ(eval_expr_ctx("a < b == c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){1,5,3,10}), 1.0);
+    assert(eval_bool_expr_ctx("a < b == c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){1,5,3,10}) == true);
 
     /* 5 < 1 == 10 < 3 → false == false → true */
-    ASSERT_DOUBLE_EQ(eval_expr_ctx("a < b == c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){5,1,10,3}), 1.0);
+    assert(eval_bool_expr_ctx("a < b == c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){5,1,10,3}) == true);
 
     /* 1 < 5 != 10 < 3 → true != false → true */
-    ASSERT_DOUBLE_EQ(eval_expr_ctx("a < b != c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){1,5,10,3}), 1.0);
+    assert(eval_bool_expr_ctx("a < b != c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){1,5,10,3}) == true);
 
     /* 1 < 5 != 3 < 10 → true != true → false */
-    ASSERT_DOUBLE_EQ(eval_expr_ctx("a < b != c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){1,5,3,10}), 0.0);
+    assert(eval_bool_expr_ctx("a < b != c < d", (const char*[]){"a","b","c","d",NULL}, (double[]){1,5,3,10}) == false);
 
     /* 5 > 3 == 10 >= 10 → true == true → true */
-    ASSERT_DOUBLE_EQ(eval_expr_ctx("a > b == c >= d", (const char*[]){"a","b","c","d",NULL}, (double[]){5,3,10,10}), 1.0);
+    assert(eval_bool_expr_ctx("a > b == c >= d", (const char*[]){"a","b","c","d",NULL}, (double[]){5,3,10,10}) == true);
 
     /* 3 <= 3 == 5 >= 6 → true == false → false */
-    ASSERT_DOUBLE_EQ(eval_expr_ctx("a <= b == c >= d", (const char*[]){"a","b","c","d",NULL}, (double[]){3,3,5,6}), 0.0);
+    assert(eval_bool_expr_ctx("a <= b == c >= d", (const char*[]){"a","b","c","d",NULL}, (double[]){3,3,5,6}) == false);
 
     printf("  ✓ test_relational_before_equality\n");
 }
@@ -219,7 +273,7 @@ static void test_parentheses_override(void) {
     ASSERT_DOUBLE_EQ(eval_expr("(2 + 3) * 4"), 20.0);
     ASSERT_DOUBLE_EQ(eval_expr("2 * (3 + 4)"), 14.0);
     /* (false or true) and false = true and false = false */
-    ASSERT_DOUBLE_EQ(eval_expr("(false or true) and false"), 0.0);
+    assert(eval_bool_expr("(false or true) and false") == false);
     printf("  ✓ test_parentheses_override\n");
 }
 
@@ -243,7 +297,7 @@ static void test_complex_mixed(void) {
     /* 1 + 2 * 3 ^ 2 = 1 + 2*9 = 1 + 18 = 19 */
     ASSERT_DOUBLE_EQ(eval_expr("1 + 2 * 3 ^ 2"), 19.0);
     /* 2 + 3 < 10 and 5 > 2 = true and true = true */
-    ASSERT_DOUBLE_EQ(eval_expr("2 + 3 < 10 and 5 > 2"), 1.0);
+    assert(eval_bool_expr("2 + 3 < 10 and 5 > 2") == true);
     printf("  ✓ test_complex_mixed\n");
 }
 
@@ -268,8 +322,8 @@ static void test_nested_parentheses(void) {
     ASSERT_DOUBLE_EQ(eval_expr("(-(-(-1)))"), -1.0);
 
     /* Nested parentheses with comparison and logic */
-    ASSERT_DOUBLE_EQ(eval_expr("((3 > 2) and (1 < 5))"), 1.0);
-    ASSERT_DOUBLE_EQ(eval_expr("not ((3 < 2) or (1 > 5))"), 1.0);
+    assert(eval_bool_expr("((3 > 2) and (1 < 5))") == true);
+    assert(eval_bool_expr("not ((3 < 2) or (1 > 5))") == true);
 
     /* Nested function calls inside parentheses */
     ASSERT_DOUBLE_EQ(eval_expr("(max(1, 2) + min(3, 4)) * 2"), 10.0);

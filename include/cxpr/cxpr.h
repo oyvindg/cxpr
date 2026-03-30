@@ -34,6 +34,7 @@ typedef struct cxpr_context cxpr_context;
 typedef struct cxpr_registry cxpr_registry;
 typedef struct cxpr_program cxpr_program;
 typedef struct cxpr_formula_engine cxpr_formula_engine;
+typedef struct cxpr_struct_value cxpr_struct_value;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Error handling
@@ -50,8 +51,83 @@ typedef enum {
     CXPR_ERR_WRONG_ARITY,           /**< Wrong number of function arguments */
     CXPR_ERR_DIVISION_BY_ZERO,      /**< Division by zero */
     CXPR_ERR_CIRCULAR_DEPENDENCY,   /**< Circular dependency in formula engine */
+    CXPR_ERR_TYPE_MISMATCH,         /**< Value type not accepted by operator/context */
     CXPR_ERR_OUT_OF_MEMORY          /**< Memory allocation failed */
 } cxpr_error_code;
+
+/**
+ * @brief Runtime type tag for cxpr values.
+ */
+typedef enum {
+    CXPR_FIELD_DOUBLE = 0,
+    CXPR_FIELD_BOOL = 1,
+    CXPR_FIELD_STRUCT = 2
+} cxpr_field_type;
+
+/**
+ * @brief A typed cxpr value.
+ */
+typedef struct {
+    cxpr_field_type type;
+    union {
+        double d;
+        bool b;
+        cxpr_struct_value* s;
+    };
+} cxpr_field_value;
+
+/**
+ * @brief Owned collection of named typed fields.
+ */
+struct cxpr_struct_value {
+    const char** field_names;
+    cxpr_field_value* field_values;
+    size_t field_count;
+};
+
+/**
+ * @brief Construct a double field value.
+ * @param d Scalar double payload.
+ * @return Typed field value tagged as `CXPR_FIELD_DOUBLE`.
+ */
+static inline cxpr_field_value cxpr_fv_double(double d) {
+    return (cxpr_field_value){ .type = CXPR_FIELD_DOUBLE, .d = d };
+}
+
+/**
+ * @brief Construct a bool field value.
+ * @param b Boolean payload.
+ * @return Typed field value tagged as `CXPR_FIELD_BOOL`.
+ */
+static inline cxpr_field_value cxpr_fv_bool(bool b) {
+    return (cxpr_field_value){ .type = CXPR_FIELD_BOOL, .b = b };
+}
+
+/**
+ * @brief Construct a struct field value.
+ * @param s Nested struct payload.
+ * @return Typed field value tagged as `CXPR_FIELD_STRUCT`.
+ */
+static inline cxpr_field_value cxpr_fv_struct(cxpr_struct_value* s) {
+    return (cxpr_field_value){ .type = CXPR_FIELD_STRUCT, .s = s };
+}
+
+/**
+ * @brief Allocate a deep-copied struct value.
+ * @param field_names Field name array.
+ * @param field_values Field value array parallel to `field_names`.
+ * @param field_count Number of fields to copy.
+ * @return Newly allocated struct value, or NULL on allocation failure.
+ */
+cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
+                                         const cxpr_field_value* field_values,
+                                         size_t field_count);
+
+/**
+ * @brief Free a struct value and all nested owned data.
+ * @param s Struct value to free. Safe to pass NULL.
+ */
+void cxpr_struct_value_free(cxpr_struct_value* s);
 
 /**
  * @brief Error information structure.
@@ -107,8 +183,17 @@ void cxpr_ast_free(cxpr_ast* ast);
 
 /**
  * @brief Construct a NUMBER AST node.
+ * @param value Numeric literal payload.
+ * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_number(double value);
+
+/**
+ * @brief Construct a BOOL AST node.
+ * @param value Boolean literal payload.
+ * @return Newly allocated AST node, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_bool(bool value);
 
 /**
  * @brief Construct an IDENTIFIER AST node.
@@ -124,6 +209,17 @@ cxpr_ast* cxpr_ast_new_variable(const char* name);
  * @brief Construct a FIELD_ACCESS AST node.
  */
 cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field);
+
+/**
+ * @brief Construct a PRODUCER_ACCESS AST node.
+ * @param name Producer name.
+ * @param args Owned argument AST array.
+ * @param argc Number of arguments.
+ * @param field Output field name.
+ * @return Newly allocated AST node, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args,
+                                       size_t argc, const char* field);
 
 /**
  * @brief Construct a BINARY_OP AST node.
@@ -154,9 +250,12 @@ cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch, cxpr_
  */
 typedef enum {
     CXPR_NODE_NUMBER,               /**< Numeric literal (double) */
+    CXPR_NODE_BOOL,                 /**< Boolean literal */
     CXPR_NODE_IDENTIFIER,           /**< Variable reference (e.g. "rsi") */
     CXPR_NODE_VARIABLE,             /**< Parameter reference (e.g. "$oversold") */
     CXPR_NODE_FIELD_ACCESS,         /**< Dotted field (e.g. "macd.histogram") */
+    CXPR_NODE_CHAIN_ACCESS,         /**< Chained field access (e.g. "a.b.c") */
+    CXPR_NODE_PRODUCER_ACCESS,      /**< Struct producer field access (e.g. "macd(12,3).line") */
     CXPR_NODE_BINARY_OP,            /**< Binary operator (+, -, *, /, <, and, etc.) */
     CXPR_NODE_UNARY_OP,             /**< Unary operator (-, not) */
     CXPR_NODE_FUNCTION_CALL,        /**< Function call (e.g. "cross_above(a, b)") */
@@ -204,6 +303,8 @@ const char* cxpr_ast_field_object(const cxpr_ast* ast);
  * @return Field name, e.g. "histogram" from "macd.histogram"
  */
 const char* cxpr_ast_field_name(const cxpr_ast* ast);
+size_t cxpr_ast_chain_depth(const cxpr_ast* ast);
+const char* cxpr_ast_chain_segment(const cxpr_ast* ast, size_t index);
 
 /**
  * @brief Get the operator of a BINARY_OP or UNARY_OP node.
@@ -348,6 +449,13 @@ void cxpr_context_free(cxpr_context* ctx);
 cxpr_context* cxpr_context_clone(const cxpr_context* ctx);
 
 /**
+ * @brief Create an overlay context that falls back to a parent context.
+ * @param parent Parent context to query on misses.
+ * @return New overlay context, or NULL on allocation failure.
+ */
+cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
+
+/**
  * @brief Set a runtime variable.
  * @param ctx Context
  * @param name Variable name
@@ -386,6 +494,35 @@ double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* f
  * @param ctx Context
  */
 void cxpr_context_clear(cxpr_context* ctx);
+
+/**
+ * @brief Store a named native struct in the context.
+ * @param ctx Destination context.
+ * @param name Struct binding name.
+ * @param value Struct value to deep-copy into the context.
+ */
+void cxpr_context_set_struct(cxpr_context* ctx, const char* name,
+                             const cxpr_struct_value* value);
+
+/**
+ * @brief Look up a named native struct in the context chain.
+ * @param ctx Context to query.
+ * @param name Struct binding name.
+ * @return Borrowed struct value owned by the context, or NULL when absent.
+ */
+const cxpr_struct_value* cxpr_context_get_struct(const cxpr_context* ctx,
+                                                 const char* name);
+
+/**
+ * @brief Look up a typed field from a named native struct.
+ * @param ctx Context to query.
+ * @param name Struct binding name.
+ * @param field Field name inside the struct.
+ * @param[out] found Set to true on success, false on miss. May be NULL.
+ * @return Borrowed typed field value. Struct pointers remain owned by the context.
+ */
+cxpr_field_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
+                                        const char* field, bool* found);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Prefixed Field API
@@ -428,6 +565,9 @@ void cxpr_context_set_fields(cxpr_context* ctx, const char* prefix,
  * @return Function result as double
  */
 typedef double (*cxpr_func_ptr)(const double* args, size_t argc, void* userdata);
+typedef void (*cxpr_struct_producer_ptr)(const double* args, size_t argc,
+                                         cxpr_field_value* out, size_t field_count,
+                                         void* userdata);
 /**
  * @brief Optional destructor for function user data.
  * @param userdata User data pointer to release (may be NULL)
@@ -560,11 +700,30 @@ double cxpr_registry_call(const cxpr_registry* reg, const char* name,
  * @param userdata        User data passed to func (can be NULL)
  * @param free_userdata   Optional userdata cleanup callback (can be NULL)
  */
-void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
+void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
                                   cxpr_func_ptr func,
                                   const char* const* fields, size_t fields_per_arg,
                                   size_t struct_argc,
                                   void* userdata, cxpr_userdata_free_fn free_userdata);
+
+/**
+ * @brief Register a struct-producing function.
+ * @param reg Registry to add to.
+ * @param name Producer name used from expressions.
+ * @param func Producer callback that fills `field_count` typed outputs.
+ * @param min_args Minimum supported argument count.
+ * @param max_args Maximum supported argument count.
+ * @param fields Output field names in the same order as `out`.
+ * @param field_count Number of produced fields.
+ * @param userdata User data passed to the producer.
+ * @param free_userdata Optional destructor for `userdata`.
+ */
+void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
+                                       cxpr_struct_producer_ptr func,
+                                       size_t min_args, size_t max_args,
+                                       const char* const* fields, size_t field_count,
+                                       void* userdata,
+                                       cxpr_userdata_free_fn free_userdata);
 
 /**
  * @brief Register all built-in math functions to a registry.
@@ -605,26 +764,37 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def);
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * @brief Evaluate an AST to a double value.
+ * @brief Evaluate an AST to a typed value.
  * @param ast Parsed AST
  * @param ctx Variable context
  * @param reg Function registry
  * @param[out] err Error output (can be NULL)
- * @return Evaluation result, or NaN on error
+ * @return Evaluation result, or a sentinel double NaN on error
  */
-double cxpr_ast_eval(const cxpr_ast* ast, const cxpr_context* ctx,
-                     const cxpr_registry* reg, cxpr_error* err);
+cxpr_field_value cxpr_ast_eval(const cxpr_ast* ast, const cxpr_context* ctx,
+                               const cxpr_registry* reg, cxpr_error* err);
+
+/**
+ * @brief Evaluate an AST and require a double result.
+ * @param ast Parsed AST.
+ * @param ctx Variable context.
+ * @param reg Function registry.
+ * @param[out] err Error output. Receives `CXPR_ERR_TYPE_MISMATCH` on non-double results.
+ * @return Double result, or NaN on error.
+ */
+double cxpr_ast_eval_double(const cxpr_ast* ast, const cxpr_context* ctx,
+                            const cxpr_registry* reg, cxpr_error* err);
 
 /**
  * @brief Evaluate an AST to a boolean value.
  *
- * Returns true if the double result is non-zero (i.e. != 0.0).
+ * Requires the expression result to be a bool.
  *
  * @param ast Parsed AST
  * @param ctx Variable context
  * @param reg Function registry
  * @param[out] err Error output (can be NULL)
- * @return true if result != 0.0, false otherwise
+ * @return bool result, or false on error
  */
 bool cxpr_ast_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
                         const cxpr_registry* reg, cxpr_error* err);
@@ -647,19 +817,30 @@ bool cxpr_ast_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
 cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_error* err);
 
 /**
- * @brief Evaluate a compiled program to a double value.
+ * @brief Evaluate a compiled program to a typed value.
  *
  * @param prog Compiled program
  * @param ctx Variable context
  * @param reg Function registry
  * @param[out] err Error output (can be NULL)
- * @return Evaluation result, or NaN on error
+ * @return Evaluation result, or a sentinel double NaN on error
  */
-double cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
-                    const cxpr_registry* reg, cxpr_error* err);
+cxpr_field_value cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
+                              const cxpr_registry* reg, cxpr_error* err);
 
 /**
- * @brief Evaluate a compiled program as boolean (non-zero = true).
+ * @brief Evaluate a compiled program and require a double result.
+ * @param prog Compiled program.
+ * @param ctx Variable context.
+ * @param reg Function registry.
+ * @param[out] err Error output. Receives `CXPR_ERR_TYPE_MISMATCH` on non-double results.
+ * @return Double result, or NaN on error.
+ */
+double cxpr_ir_eval_double(const cxpr_program* prog, const cxpr_context* ctx,
+                           const cxpr_registry* reg, cxpr_error* err);
+
+/**
+ * @brief Evaluate a compiled program as boolean.
  *
  * @param prog Compiled program
  * @param ctx Variable context

@@ -82,7 +82,7 @@ static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_regist
 
     for (i = 0; i < iterations; ++i) {
         if (mutate_context) mutate_values(ctx, i);
-        total += cxpr_ast_eval(ast, ctx, reg, &err);
+        total += cxpr_ast_eval_double(ast, ctx, reg, &err);
         if (err.code != CXPR_OK) {
             fprintf(stderr, "AST benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
@@ -100,7 +100,7 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
 
     for (i = 0; i < iterations; ++i) {
         if (mutate_context) mutate_values(ctx, i);
-        total += cxpr_ir_eval(program, ctx, reg, &err);
+        total += cxpr_ir_eval_double(program, ctx, reg, &err);
         if (err.code != CXPR_OK) {
             fprintf(stderr, "IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
@@ -126,8 +126,8 @@ static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
 
         ast_err = (cxpr_error){0};
         ir_err = (cxpr_error){0};
-        ast_value = cxpr_ast_eval(ast, ctx, reg, &ast_err);
-        ir_value = cxpr_ir_eval(program, ctx, reg, &ir_err);
+        ast_value = cxpr_ast_eval_double(ast, ctx, reg, &ast_err);
+        ir_value = cxpr_ir_eval_double(program, ctx, reg, &ir_err);
 
         if (ast_err.code != ir_err.code) {
             fprintf(stderr,

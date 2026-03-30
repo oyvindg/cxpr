@@ -80,7 +80,7 @@ static void test_zero_arg_producer_basic(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
-    cxpr_registry_add_struct_producer(reg, "macd", zero_arg_producer,
+    cxpr_registry_add_struct(reg, "macd", zero_arg_producer,
                                       0, 0, fields, 2, NULL, NULL);
 
     g_zero_call_count = 0;
@@ -100,7 +100,7 @@ static void test_zero_arg_producer_called_once(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
-    cxpr_registry_add_struct_producer(reg, "macd", zero_arg_producer,
+    cxpr_registry_add_struct(reg, "macd", zero_arg_producer,
                                       0, 0, fields, 2, NULL, NULL);
 
     /* two field accesses on the same producer within one eval → one call */
@@ -139,7 +139,7 @@ static void test_arg_producer(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
-    cxpr_registry_add_struct_producer(reg, "macd", arg_producer,
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
                                       2, 2, fields, 2, NULL, NULL);
 
     g_arg_call_count = 0;
@@ -161,7 +161,7 @@ static void test_arg_producer_called_once_for_two_fields(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
-    cxpr_registry_add_struct_producer(reg, "macd", arg_producer,
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
                                       2, 2, fields, 2, NULL, NULL);
 
     g_arg_call_count = 0;
@@ -189,7 +189,7 @@ static void test_bool_output_field(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"value", "active"};
-    cxpr_registry_add_struct_producer(reg, "sensor", bool_output_producer,
+    cxpr_registry_add_struct(reg, "sensor", bool_output_producer,
                                       0, 0, fields, 2, NULL, NULL);
 
     cxpr_field_value r = eval_typed("sensor.active", ctx, reg);
@@ -224,7 +224,7 @@ static void test_host_set_takes_priority(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"v"};
-    cxpr_registry_add_struct_producer(reg, "obj", priority_producer,
+    cxpr_registry_add_struct(reg, "obj", priority_producer,
                                       0, 0, fields, 1, NULL, NULL);
 
     cxpr_field_value vals[] = {cxpr_fv_double(42.0)};
@@ -261,7 +261,7 @@ static void test_clear_causes_recall(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"v"};
-    cxpr_registry_add_struct_producer(reg, "obj", recallable_producer,
+    cxpr_registry_add_struct(reg, "obj", recallable_producer,
                                       0, 0, fields, 1, NULL, NULL);
 
     g_recall_count = 0;
@@ -286,7 +286,7 @@ static void test_wrong_arity(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"v"};
-    cxpr_registry_add_struct_producer(reg, "obj", arg_producer,
+    cxpr_registry_add_struct(reg, "obj", arg_producer,
                                       2, 2, fields, 1, NULL, NULL);
 
     eval_typed_fails("obj(1.0).v", ctx, reg, CXPR_ERR_WRONG_ARITY);
@@ -304,7 +304,7 @@ static void test_unknown_field(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line"};
-    cxpr_registry_add_struct_producer(reg, "macd", zero_arg_producer,
+    cxpr_registry_add_struct(reg, "macd", zero_arg_producer,
                                       0, 0, fields, 1, NULL, NULL);
 
     eval_typed_fails("macd.nonexistent", ctx, reg, CXPR_ERR_UNKNOWN_IDENTIFIER);
@@ -322,7 +322,7 @@ static void test_ir_parity(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
-    cxpr_registry_add_struct_producer(reg, "macd", zero_arg_producer,
+    cxpr_registry_add_struct(reg, "macd", zero_arg_producer,
                                       0, 0, fields, 2, NULL, NULL);
 
     /* zero-arg producer */
@@ -338,7 +338,7 @@ static void test_ir_parity(void) {
     cxpr_register_builtins(reg);
 
     /* arg-bearing producer */
-    cxpr_registry_add_struct_producer(reg, "macd", arg_producer,
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
                                       2, 2, fields, 2, NULL, NULL);
     g_arg_call_count = 0;
     r = ir_eval_typed("macd(14.0, 3.0).line > 0.0", ctx, reg);

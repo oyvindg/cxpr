@@ -220,12 +220,12 @@ static void test_sma_crossover(void) {
 
     /* Pre-parse expressions (like codegen would) */
     cxpr_ast* entry_ast = cxpr_parse(p,
-        "cross_above(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) and close > sma_slow",
+        "cross_above(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) == 1 and close > sma_slow",
         &err);
     assert(entry_ast);
 
     cxpr_ast* exit_ast = cxpr_parse(p,
-        "cross_below(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) or close < sma_slow * 0.98",
+        "cross_below(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) == 1 or close < sma_slow * 0.98",
         &err);
     assert(exit_ast);
 
@@ -316,7 +316,7 @@ static void test_ema_convergence(void) {
         cxpr_context_set(ctx, "prev_ema", expr_ema);
         cxpr_context_set(ctx, "close", bars[i].close);
         err.code = CXPR_OK;
-        expr_ema = cxpr_ast_eval(ema_expr, ctx, reg, &err);
+        expr_ema = cxpr_ast_eval_double(ema_expr, ctx, reg, &err);
         assert(err.code == CXPR_OK);
 
         /* They should be bit-identical since the formula is the same */
@@ -601,13 +601,13 @@ static void test_full_strategy_simulation(void) {
 
                 /* Compute position size */
                 err.code = CXPR_OK;
-                double size = cxpr_ast_eval(size_ast, ctx, reg, &err);
+                double size = cxpr_ast_eval_double(size_ast, ctx, reg, &err);
                 assert(err.code == CXPR_OK);
                 assert(size >= 1.0 && size <= 100.0);
 
                 /* Compute stop loss */
                 err.code = CXPR_OK;
-                double sl = cxpr_ast_eval(stoploss_ast, ctx, reg, &err);
+                double sl = cxpr_ast_eval_double(stoploss_ast, ctx, reg, &err);
                 assert(err.code == CXPR_OK);
                 assert(sl < bars[i].close && "Stop loss must be below entry");
 
@@ -673,7 +673,7 @@ static void test_formula_engine_indicators(void) {
     assert(cxpr_formula_add(engine, "position_size",
         "floor(max(1, 100 - risk_score))", &err));
     assert(cxpr_formula_add(engine, "signal",
-        "position_size > 50 and rsi < 60 and atr_norm < 3", &err));
+        "if(position_size > 50 and rsi < 60 and atr_norm < 3, 1, 0)", &err));
 
     /* Compile (resolves dependencies) */
     assert(cxpr_formula_compile(engine, &err));
@@ -767,13 +767,13 @@ static void test_stress_multi_expression(void) {
     /* Pre-parse 8 different expressions */
     const char* expressions[] = {
         /* 0: trend following */
-        "ema_fast > ema_slow and close > ema_fast and rsi > 50",
+        "if(ema_fast > ema_slow and close > ema_fast and rsi > 50, 1, 0)",
         /* 1: mean reversion */
-        "close < bb_lower and rsi < 30",
+        "if(close < bb_lower and rsi < 30, 1, 0)",
         /* 2: breakout */
-        "close > bb_upper and vol_ratio(atr, close) > 2",
+        "if(close > bb_upper and vol_ratio(atr, close) > 2, 1, 0)",
         /* 3: momentum */
-        "pct_change(close, prev_close) > 1.0 and rsi > 60 and rsi < 80",
+        "if(pct_change(close, prev_close) > 1.0 and rsi > 60 and rsi < 80, 1, 0)",
         /* 4: risk sizing */
         "clamp(floor(10000 / (atr * 3)), 1, 200)",
         /* 5: composite score */
@@ -781,7 +781,7 @@ static void test_stress_multi_expression(void) {
         /* 6: volatility regime */
         "vol_ratio(atr, close) < 1.5 ? 1.0 : (vol_ratio(atr, close) < 3.0 ? 0.5 : 0.0)",
         /* 7: everything kitchen sink */
-        "((ema_fast > ema_slow and not (rsi > 80)) or (close < bb_lower and rsi < 35)) and vol_ratio(atr, close) < 4 and abs(pct_change(close, prev_close)) < 5",
+        "if(((ema_fast > ema_slow and not (rsi > 80)) or (close < bb_lower and rsi < 35)) and vol_ratio(atr, close) < 4 and abs(pct_change(close, prev_close)) < 5, 1, 0)",
     };
     int n_expr = 8;
 
@@ -820,7 +820,7 @@ static void test_stress_multi_expression(void) {
 
         for (int j = 0; j < n_expr; j++) {
             err.code = CXPR_OK;
-            double result = cxpr_ast_eval(asts[j], ctx, reg, &err);
+            double result = cxpr_ast_eval_double(asts[j], ctx, reg, &err);
             assert(err.code == CXPR_OK);
             assert(!isnan(result) && "Result must not be NaN");
             eval_count++;

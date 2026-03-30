@@ -26,12 +26,29 @@
 /* ─── helper ─────────────────────────────────────────────────────────────── */
 
 static double eval_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
-                         cxpr_error* out_err) {
+                        cxpr_error* out_err) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     if (!ast) { if (out_err) *out_err = err; cxpr_parser_free(p); return NAN; }
-    double result = cxpr_ast_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
+    if (out_err) *out_err = err;
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    return result;
+}
+
+static bool eval_bool_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
+                           cxpr_error* out_err) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    if (!ast) {
+        if (out_err) *out_err = err;
+        cxpr_parser_free(p);
+        return false;
+    }
+    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
@@ -167,9 +184,9 @@ static void test_defined_fn_used_in_comparison(void) {
     cxpr_context_set(ctx, "q.x", 3.0); cxpr_context_set(ctx, "q.y", 4.0);
     cxpr_context_set_param(ctx, "r", 10.0);
 
-    double result = eval_expr("dist2(p, q) < $r", ctx, reg, &err);
+    bool result = eval_bool_expr("dist2(p, q) < $r", ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    assert(result == 1.0); /* 5 < 10 */
+    assert(result == true); /* 5 < 10 */
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);

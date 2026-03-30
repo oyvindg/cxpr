@@ -11,6 +11,10 @@
 #include <math.h>
 
 #define CXPR_IR_INLINE_DEPTH_LIMIT 8
+#define CXPR_IR_INFER_DEPTH_LIMIT 32
+#define CXPR_IR_RESULT_UNKNOWN 0
+#define CXPR_IR_RESULT_DOUBLE 1
+#define CXPR_IR_RESULT_BOOL 2
 
 typedef struct cxpr_ir_subst_frame {
     const char* const* names;
@@ -18,6 +22,21 @@ typedef struct cxpr_ir_subst_frame {
     size_t count;
     const struct cxpr_ir_subst_frame* parent;
 } cxpr_ir_subst_frame;
+
+static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
+                                            unsigned long hash, bool* found);
+static double cxpr_ir_context_get_param_prehashed(const cxpr_context* ctx, const char* name,
+                                                  unsigned long hash, bool* found);
+static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+                                                    const cxpr_context* ctx,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_field_value* args,
+                                                    size_t argc, cxpr_error* err);
+static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
+                                              const cxpr_context* ctx,
+                                              const cxpr_field_value* stack_args,
+                                              size_t argc, cxpr_error* err);
+static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry);
 
 /**
  * @brief Free the storage owned by an internal IR program.
@@ -28,6 +47,8 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
     program->code = NULL;
     program->count = 0;
     program->capacity = 0;
+    program->ast = NULL;
+    program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
 }
 
 /**
@@ -57,6 +78,7 @@ static bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr,
 const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
+    case CXPR_OP_PUSH_BOOL: return "PUSH_BOOL";
     case CXPR_OP_LOAD_LOCAL: return "LOAD_LOCAL";
     case CXPR_OP_LOAD_LOCAL_SQUARE: return "LOAD_LOCAL_SQUARE";
     case CXPR_OP_LOAD_VAR: return "LOAD_VAR";
@@ -65,6 +87,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_LOAD_PARAM_SQUARE: return "LOAD_PARAM_SQUARE";
     case CXPR_OP_LOAD_FIELD: return "LOAD_FIELD";
     case CXPR_OP_LOAD_FIELD_SQUARE: return "LOAD_FIELD_SQUARE";
+    case CXPR_OP_LOAD_CHAIN: return "LOAD_CHAIN";
     case CXPR_OP_ADD: return "ADD";
     case CXPR_OP_SUB: return "SUB";
     case CXPR_OP_MUL: return "MUL";
@@ -87,6 +110,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_ROUND: return "ROUND";
     case CXPR_OP_POW: return "POW";
     case CXPR_OP_CLAMP: return "CLAMP";
+    case CXPR_OP_CALL_PRODUCER: return "CALL_PRODUCER";
     case CXPR_OP_CALL_FUNC: return "CALL_FUNC";
     case CXPR_OP_CALL_DEFINED: return "CALL_DEFINED";
     case CXPR_OP_CALL_AST: return "CALL_AST";
@@ -120,14 +144,14 @@ static bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out) {
         *out = ast->data.number.value;
         return true;
 
+    case CXPR_NODE_BOOL:
+    case CXPR_NODE_CHAIN_ACCESS:
+        return false;
+
     case CXPR_NODE_UNARY_OP:
         if (!cxpr_ir_constant_value(ast->data.unary_op.operand, out)) return false;
         if (ast->data.unary_op.op == CXPR_TOK_MINUS) {
             *out = -*out;
-            return true;
-        }
-        if (ast->data.unary_op.op == CXPR_TOK_NOT) {
-            *out = (*out == 0.0) ? 1.0 : 0.0;
             return true;
         }
         return false;
@@ -143,14 +167,6 @@ static bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out) {
             if (right == 0.0) return false;
             *out = left / right;
             return true;
-        case CXPR_TOK_EQ: *out = (left == right) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_NEQ: *out = (left != right) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_LT: *out = (left < right) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_LTE: *out = (left <= right) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_GT: *out = (left > right) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_GTE: *out = (left >= right) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_AND: *out = (left != 0.0 && right != 0.0) ? 1.0 : 0.0; return true;
-        case CXPR_TOK_OR: *out = (left != 0.0 || right != 0.0) ? 1.0 : 0.0; return true;
         default:
             return false;
         }
@@ -176,6 +192,9 @@ static bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
     case CXPR_NODE_NUMBER:
         return left->data.number.value == right->data.number.value;
 
+    case CXPR_NODE_BOOL:
+        return left->data.boolean.value == right->data.boolean.value;
+
     case CXPR_NODE_IDENTIFIER:
         return strcmp(left->data.identifier.name, right->data.identifier.name) == 0;
 
@@ -184,6 +203,29 @@ static bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
 
     case CXPR_NODE_FIELD_ACCESS:
         return strcmp(left->data.field_access.full_key, right->data.field_access.full_key) == 0;
+
+    case CXPR_NODE_CHAIN_ACCESS:
+        if (left->data.chain_access.depth != right->data.chain_access.depth) return false;
+        for (i = 0; i < left->data.chain_access.depth; ++i) {
+            if (strcmp(left->data.chain_access.path[i], right->data.chain_access.path[i]) != 0) {
+                return false;
+            }
+        }
+        return true;
+
+    case CXPR_NODE_PRODUCER_ACCESS:
+        if (strcmp(left->data.producer_access.name, right->data.producer_access.name) != 0 ||
+            strcmp(left->data.producer_access.field, right->data.producer_access.field) != 0 ||
+            left->data.producer_access.argc != right->data.producer_access.argc) {
+            return false;
+        }
+        for (i = 0; i < left->data.producer_access.argc; ++i) {
+            if (!cxpr_ir_ast_equal(left->data.producer_access.args[i],
+                                   right->data.producer_access.args[i])) {
+                return false;
+            }
+        }
+        return true;
 
     case CXPR_NODE_UNARY_OP:
         return left->data.unary_op.op == right->data.unary_op.op &&
@@ -220,19 +262,18 @@ static bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
     }
 }
 
-/** @brief Report a syntax-flavored IR runtime error and return NAN. */
-static double cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
+/** @brief Report an IR runtime error and return a NaN sentinel value. */
+static cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
     if (err) {
         err->code = CXPR_ERR_SYNTAX;
         err->message = message;
     }
-    return NAN;
+    return cxpr_fv_double(NAN);
 }
 
 /** @brief Push one value onto the IR evaluation stack. */
-static bool cxpr_ir_stack_push(double* stack, size_t* sp, double value,
+static bool cxpr_ir_stack_push(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
                                size_t capacity, cxpr_error* err) {
-    (void)stack;
     if (*sp >= capacity) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -256,6 +297,893 @@ static bool cxpr_ir_require_stack(size_t sp, size_t need, cxpr_error* err) {
     return true;
 }
 
+static bool cxpr_ir_require_type(cxpr_field_value value, cxpr_field_type type,
+                                 cxpr_error* err, const char* message) {
+    if (value.type != type) {
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = message;
+        }
+        return false;
+    }
+    return true;
+}
+
+static cxpr_field_value cxpr_ir_make_not_found(cxpr_error* err, const char* message) {
+    if (err) {
+        err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
+        err->message = message;
+    }
+    return cxpr_fv_double(NAN);
+}
+
+static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
+                                                    size_t depth) {
+    unsigned char left_kind;
+    unsigned char right_kind;
+    unsigned char cond_kind;
+    cxpr_func_entry* entry;
+    size_t i;
+
+    if (!ast || depth > CXPR_IR_INFER_DEPTH_LIMIT) return CXPR_IR_RESULT_UNKNOWN;
+
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_VARIABLE:
+        return CXPR_IR_RESULT_DOUBLE;
+
+    case CXPR_NODE_BOOL:
+        return CXPR_IR_RESULT_BOOL;
+
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+    case CXPR_NODE_PRODUCER_ACCESS:
+        return CXPR_IR_RESULT_UNKNOWN;
+
+    case CXPR_NODE_UNARY_OP:
+        left_kind = cxpr_ir_infer_fast_result_kind(ast->data.unary_op.operand, reg, depth + 1);
+        if (ast->data.unary_op.op == CXPR_TOK_MINUS &&
+            left_kind == CXPR_IR_RESULT_DOUBLE) {
+            return CXPR_IR_RESULT_DOUBLE;
+        }
+        if (ast->data.unary_op.op == CXPR_TOK_NOT &&
+            left_kind == CXPR_IR_RESULT_BOOL) {
+            return CXPR_IR_RESULT_BOOL;
+        }
+        return CXPR_IR_RESULT_UNKNOWN;
+
+    case CXPR_NODE_BINARY_OP:
+        left_kind = cxpr_ir_infer_fast_result_kind(ast->data.binary_op.left, reg, depth + 1);
+        right_kind = cxpr_ir_infer_fast_result_kind(ast->data.binary_op.right, reg, depth + 1);
+        if (!left_kind || !right_kind) return CXPR_IR_RESULT_UNKNOWN;
+        switch (ast->data.binary_op.op) {
+        case CXPR_TOK_PLUS:
+        case CXPR_TOK_MINUS:
+        case CXPR_TOK_STAR:
+        case CXPR_TOK_SLASH:
+        case CXPR_TOK_PERCENT:
+        case CXPR_TOK_POWER:
+            return (left_kind == CXPR_IR_RESULT_DOUBLE &&
+                    right_kind == CXPR_IR_RESULT_DOUBLE)
+                       ? CXPR_IR_RESULT_DOUBLE
+                       : CXPR_IR_RESULT_UNKNOWN;
+        case CXPR_TOK_LT:
+        case CXPR_TOK_LTE:
+        case CXPR_TOK_GT:
+        case CXPR_TOK_GTE:
+            return (left_kind == CXPR_IR_RESULT_DOUBLE &&
+                    right_kind == CXPR_IR_RESULT_DOUBLE)
+                       ? CXPR_IR_RESULT_BOOL
+                       : CXPR_IR_RESULT_UNKNOWN;
+        case CXPR_TOK_AND:
+        case CXPR_TOK_OR:
+            return (left_kind == CXPR_IR_RESULT_BOOL &&
+                    right_kind == CXPR_IR_RESULT_BOOL)
+                       ? CXPR_IR_RESULT_BOOL
+                       : CXPR_IR_RESULT_UNKNOWN;
+        case CXPR_TOK_EQ:
+        case CXPR_TOK_NEQ:
+            return (left_kind == right_kind &&
+                    (left_kind == CXPR_IR_RESULT_DOUBLE ||
+                     left_kind == CXPR_IR_RESULT_BOOL))
+                       ? CXPR_IR_RESULT_BOOL
+                       : CXPR_IR_RESULT_UNKNOWN;
+        default:
+            return CXPR_IR_RESULT_UNKNOWN;
+        }
+
+    case CXPR_NODE_TERNARY:
+        cond_kind = cxpr_ir_infer_fast_result_kind(ast->data.ternary.condition, reg, depth + 1);
+        left_kind = cxpr_ir_infer_fast_result_kind(ast->data.ternary.true_branch, reg, depth + 1);
+        right_kind =
+            cxpr_ir_infer_fast_result_kind(ast->data.ternary.false_branch, reg, depth + 1);
+        if (cond_kind == CXPR_IR_RESULT_BOOL && left_kind == right_kind &&
+            (left_kind == CXPR_IR_RESULT_DOUBLE || left_kind == CXPR_IR_RESULT_BOOL)) {
+            return left_kind;
+        }
+        return CXPR_IR_RESULT_UNKNOWN;
+
+    case CXPR_NODE_FUNCTION_CALL:
+        if (strcmp(ast->data.function_call.name, "if") == 0 &&
+            ast->data.function_call.argc == 3) {
+            cond_kind =
+                cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[0], reg, depth + 1);
+            left_kind =
+                cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[1], reg, depth + 1);
+            right_kind =
+                cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[2], reg, depth + 1);
+            if ((cond_kind == CXPR_IR_RESULT_BOOL || cond_kind == CXPR_IR_RESULT_DOUBLE) &&
+                left_kind == CXPR_IR_RESULT_DOUBLE &&
+                right_kind == CXPR_IR_RESULT_DOUBLE) {
+                return CXPR_IR_RESULT_DOUBLE;
+            }
+            return CXPR_IR_RESULT_UNKNOWN;
+        }
+
+        entry = cxpr_registry_find(reg, ast->data.function_call.name);
+        if (!entry || entry->struct_fields || entry->struct_producer) {
+            return CXPR_IR_RESULT_UNKNOWN;
+        }
+
+        for (i = 0; i < ast->data.function_call.argc; ++i) {
+            if (cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[i], reg, depth + 1) !=
+                CXPR_IR_RESULT_DOUBLE) {
+                return CXPR_IR_RESULT_UNKNOWN;
+            }
+        }
+
+        if (entry->sync_func && !entry->defined_body) return CXPR_IR_RESULT_DOUBLE;
+        if (entry->defined_body && cxpr_ir_defined_is_scalar_only(entry)) {
+            return cxpr_ir_infer_fast_result_kind(entry->defined_body, reg, depth + 1);
+        }
+        return CXPR_IR_RESULT_UNKNOWN;
+
+    default:
+        return CXPR_IR_RESULT_UNKNOWN;
+    }
+}
+
+static cxpr_field_value cxpr_ir_load_var_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
+                                               cxpr_error* err) {
+    bool found = false;
+    double value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
+    if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+    return cxpr_fv_double(value);
+}
+
+static cxpr_field_value cxpr_ir_load_param_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
+                                                 cxpr_error* err) {
+    bool found = false;
+    double value = cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
+    if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
+    return cxpr_fv_double(value);
+}
+
+static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry* reg,
+                                                 const cxpr_ir_instr* instr, cxpr_error* err) {
+    const char* dot;
+    bool found = false;
+    cxpr_field_value value;
+    char root[128];
+    size_t root_len;
+
+    if (!ctx || !instr || !instr->name) {
+        return cxpr_ir_runtime_error(err, "Invalid field access");
+    }
+
+    dot = strchr(instr->name, '.');
+    if (!dot) {
+        return cxpr_ir_runtime_error(err, "Malformed field access");
+    }
+
+    root_len = (size_t)(dot - instr->name);
+    if (root_len == 0 || root_len >= sizeof(root)) {
+        return cxpr_ir_runtime_error(err, "Field access root too long");
+    }
+
+    memcpy(root, instr->name, root_len);
+    root[root_len] = '\0';
+
+    value = cxpr_context_get_field(ctx, root, dot + 1, &found);
+    if (found) return value;
+
+    if (reg) {
+        cxpr_func_entry* producer = cxpr_registry_find(reg, root);
+        if (producer && producer->struct_producer &&
+            producer->min_args == 0 && producer->max_args == 0) {
+            cxpr_field_value produced = cxpr_ir_call_producer(producer, root, ctx, NULL, 0, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            value = cxpr_context_get_field(ctx, root, dot + 1, &found);
+            if (found) return value;
+            (void)produced;
+        }
+    }
+
+    if (!found) {
+        value = cxpr_fv_double(cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found));
+    }
+    if (!found) {
+        return cxpr_ir_make_not_found(err, "Unknown field access");
+    }
+    return value;
+}
+
+static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
+                                                 cxpr_error* err) {
+    char* path;
+    char* segment;
+    char* saveptr = NULL;
+    const cxpr_struct_value* current;
+    cxpr_field_value value = cxpr_fv_double(NAN);
+    bool found = false;
+
+    if (!ctx || !instr || !instr->name) {
+        return cxpr_ir_runtime_error(err, "Invalid chain access");
+    }
+
+    path = strdup(instr->name);
+    if (!path) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return cxpr_fv_double(NAN);
+    }
+
+    segment = strtok_r(path, ".", &saveptr);
+    if (!segment) {
+        free(path);
+        return cxpr_ir_runtime_error(err, "Malformed chain access");
+    }
+
+    current = cxpr_context_get_struct(ctx, segment);
+    if (!current) {
+        free(path);
+        return cxpr_ir_make_not_found(err, "Unknown identifier");
+    }
+
+    segment = strtok_r(NULL, ".", &saveptr);
+    while (segment) {
+        char* next = strtok_r(NULL, ".", &saveptr);
+        found = false;
+        for (size_t i = 0; i < current->field_count; ++i) {
+            if (strcmp(current->field_names[i], segment) == 0) {
+                value = current->field_values[i];
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            free(path);
+            return cxpr_ir_make_not_found(err, "Unknown identifier");
+        }
+        if (!next) {
+            free(path);
+            return value;
+        }
+        if (!cxpr_ir_require_type(value, CXPR_FIELD_STRUCT, err,
+                                  "Chained access requires struct intermediate")) {
+            free(path);
+            return cxpr_fv_double(NAN);
+        }
+        current = value.s;
+        segment = next;
+    }
+
+    free(path);
+    return cxpr_ir_runtime_error(err, "Malformed chain access");
+}
+
+static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
+                                              const cxpr_context* ctx,
+                                              const cxpr_field_value* stack_args,
+                                              size_t argc, cxpr_error* err) {
+    cxpr_context* mutable_ctx = (cxpr_context*)ctx;
+    const cxpr_struct_value* existing;
+    cxpr_field_value outputs[64];
+    cxpr_struct_value* produced;
+    double args[32];
+
+    if (!entry || !entry->struct_producer) {
+        return cxpr_ir_runtime_error(err, "Invalid producer opcode");
+    }
+
+    existing = cxpr_context_get_struct(ctx, name);
+    if (existing) return cxpr_fv_struct((cxpr_struct_value*)existing);
+
+    if (argc < entry->min_args || argc > entry->max_args) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Wrong number of arguments";
+        }
+        return cxpr_fv_double(NAN);
+    }
+    if (argc > 32 || entry->fields_per_arg > 64) {
+        return cxpr_ir_runtime_error(err, "Producer arity too large");
+    }
+
+    for (size_t i = 0; i < argc; ++i) {
+        if (!cxpr_ir_require_type(stack_args[i], CXPR_FIELD_DOUBLE, err,
+                                  "Producer arguments must be doubles")) {
+            return cxpr_fv_double(NAN);
+        }
+        args[i] = stack_args[i].d;
+    }
+
+    entry->struct_producer(args, argc, outputs, entry->fields_per_arg, entry->userdata);
+    produced = cxpr_struct_value_new((const char* const*)entry->struct_fields,
+                                     outputs, entry->fields_per_arg);
+    if (!produced) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return cxpr_fv_double(NAN);
+    }
+    cxpr_context_set_struct(mutable_ctx, name, produced);
+    cxpr_struct_value_free(produced);
+    existing = cxpr_context_get_struct(ctx, name);
+    return cxpr_fv_struct((cxpr_struct_value*)existing);
+}
+
+static bool cxpr_ir_push_squared(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
+                                 cxpr_error* err) {
+    if (!cxpr_ir_require_type(value, CXPR_FIELD_DOUBLE, err,
+                              "Square operation requires double operand")) {
+        return false;
+    }
+    value.d *= value.d;
+    return cxpr_ir_stack_push(stack, sp, value, 64, err);
+}
+
+static bool cxpr_ir_pop1(cxpr_field_value* stack, size_t* sp, cxpr_field_value* out,
+                         cxpr_error* err) {
+    if (!cxpr_ir_require_stack(*sp, 1, err)) return false;
+    *out = stack[--(*sp)];
+    return true;
+}
+
+static bool cxpr_ir_pop2(cxpr_field_value* stack, size_t* sp, cxpr_field_value* left,
+                         cxpr_field_value* right, cxpr_error* err) {
+    if (!cxpr_ir_require_stack(*sp, 2, err)) return false;
+    *right = stack[--(*sp)];
+    *left = stack[--(*sp)];
+    return true;
+}
+
+static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
+                                           const cxpr_registry* reg, const double* locals,
+                                           size_t local_count, cxpr_error* err) {
+    cxpr_field_value stack[64];
+    size_t sp = 0;
+    size_t ip = 0;
+
+    if (err) *err = (cxpr_error){0};
+    if (!program || !program->code) {
+        return cxpr_ir_runtime_error(err, "Empty IR program");
+    }
+
+    while (ip < program->count) {
+        const cxpr_ir_instr* instr = &program->code[ip];
+        cxpr_field_value a, b, result;
+        double args[32];
+
+        switch (instr->op) {
+        case CXPR_OP_PUSH_CONST:
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_fv_double(instr->value), 64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_PUSH_BOOL:
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_fv_bool(instr->value != 0.0), 64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_LOAD_LOCAL:
+            if (instr->index >= local_count) {
+                return cxpr_ir_runtime_error(err, "Unknown local variable");
+            }
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_fv_double(locals[instr->index]), 64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_LOAD_LOCAL_SQUARE:
+            if (instr->index >= local_count) {
+                return cxpr_ir_runtime_error(err, "Unknown local variable");
+            }
+            if (!cxpr_ir_push_squared(stack, &sp, cxpr_fv_double(locals[instr->index]), err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_LOAD_VAR:
+            result = cxpr_ir_load_var_value(ctx, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_LOAD_VAR_SQUARE:
+            result = cxpr_ir_load_var_value(ctx, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_LOAD_PARAM:
+            result = cxpr_ir_load_param_value(ctx, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_LOAD_PARAM_SQUARE:
+            result = cxpr_ir_load_param_value(ctx, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_LOAD_FIELD:
+            result = cxpr_ir_load_field_value(ctx, reg, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_LOAD_FIELD_SQUARE:
+            result = cxpr_ir_load_field_value(ctx, reg, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_LOAD_CHAIN:
+            result = cxpr_ir_load_chain_value(ctx, instr, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_ADD:
+        case CXPR_OP_SUB:
+        case CXPR_OP_MUL:
+        case CXPR_OP_DIV:
+        case CXPR_OP_MOD:
+        case CXPR_OP_POW:
+        case CXPR_OP_CMP_EQ:
+        case CXPR_OP_CMP_NEQ:
+        case CXPR_OP_CMP_LT:
+        case CXPR_OP_CMP_LTE:
+        case CXPR_OP_CMP_GT:
+        case CXPR_OP_CMP_GTE:
+            if (!cxpr_ir_pop2(stack, &sp, &a, &b, err)) return cxpr_fv_double(NAN);
+            switch (instr->op) {
+            case CXPR_OP_ADD:
+            case CXPR_OP_SUB:
+            case CXPR_OP_MUL:
+            case CXPR_OP_DIV:
+            case CXPR_OP_MOD:
+            case CXPR_OP_POW:
+                if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                          "Arithmetic requires double operands") ||
+                    !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                                          "Arithmetic requires double operands")) {
+                    return cxpr_fv_double(NAN);
+                }
+                if (instr->op == CXPR_OP_DIV && b.d == 0.0) {
+                    if (err) {
+                        err->code = CXPR_ERR_DIVISION_BY_ZERO;
+                        err->message = "Division by zero";
+                    }
+                    return cxpr_fv_double(NAN);
+                }
+                if (instr->op == CXPR_OP_MOD && b.d == 0.0) {
+                    if (err) {
+                        err->code = CXPR_ERR_DIVISION_BY_ZERO;
+                        err->message = "Modulo by zero";
+                    }
+                    return cxpr_fv_double(NAN);
+                }
+                switch (instr->op) {
+                case CXPR_OP_ADD: result = cxpr_fv_double(a.d + b.d); break;
+                case CXPR_OP_SUB: result = cxpr_fv_double(a.d - b.d); break;
+                case CXPR_OP_MUL: result = cxpr_fv_double(a.d * b.d); break;
+                case CXPR_OP_DIV: result = cxpr_fv_double(a.d / b.d); break;
+                case CXPR_OP_MOD: result = cxpr_fv_double(fmod(a.d, b.d)); break;
+                default: result = cxpr_fv_double(pow(a.d, b.d)); break;
+                }
+                break;
+            case CXPR_OP_CMP_EQ:
+            case CXPR_OP_CMP_NEQ:
+                if (a.type != b.type ||
+                    (a.type != CXPR_FIELD_DOUBLE && a.type != CXPR_FIELD_BOOL)) {
+                    if (err) {
+                        err->code = CXPR_ERR_TYPE_MISMATCH;
+                        err->message = "Equality requires matching double/bool operands";
+                    }
+                    return cxpr_fv_double(NAN);
+                }
+                if (a.type == CXPR_FIELD_DOUBLE) {
+                    result = cxpr_fv_bool(instr->op == CXPR_OP_CMP_EQ ? (a.d == b.d) : (a.d != b.d));
+                } else {
+                    result = cxpr_fv_bool(instr->op == CXPR_OP_CMP_EQ ? (a.b == b.b) : (a.b != b.b));
+                }
+                break;
+            default:
+                if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                          "Comparison requires double operands") ||
+                    !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                                          "Comparison requires double operands")) {
+                    return cxpr_fv_double(NAN);
+                }
+                switch (instr->op) {
+                case CXPR_OP_CMP_LT: result = cxpr_fv_bool(a.d < b.d); break;
+                case CXPR_OP_CMP_LTE: result = cxpr_fv_bool(a.d <= b.d); break;
+                case CXPR_OP_CMP_GT: result = cxpr_fv_bool(a.d > b.d); break;
+                default: result = cxpr_fv_bool(a.d >= b.d); break;
+                }
+                break;
+            }
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_SQUARE:
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                      "Square operation requires double operand")) {
+                return cxpr_fv_double(NAN);
+            }
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_fv_double(a.d * a.d), 64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_NOT:
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_BOOL, err,
+                                      "Logical not requires bool operand")) {
+                return cxpr_fv_double(NAN);
+            }
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_fv_bool(!a.b), 64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_NEG:
+        case CXPR_OP_SIGN:
+        case CXPR_OP_SQRT:
+        case CXPR_OP_ABS:
+        case CXPR_OP_FLOOR:
+        case CXPR_OP_CEIL:
+        case CXPR_OP_ROUND:
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                      "Numeric intrinsic requires double operand")) {
+                return cxpr_fv_double(NAN);
+            }
+            switch (instr->op) {
+            case CXPR_OP_NEG: result = cxpr_fv_double(-a.d); break;
+            case CXPR_OP_SIGN: result = cxpr_fv_double((a.d > 0.0) - (a.d < 0.0)); break;
+            case CXPR_OP_SQRT: result = cxpr_fv_double(sqrt(a.d)); break;
+            case CXPR_OP_ABS: result = cxpr_fv_double(fabs(a.d)); break;
+            case CXPR_OP_FLOOR: result = cxpr_fv_double(floor(a.d)); break;
+            case CXPR_OP_CEIL: result = cxpr_fv_double(ceil(a.d)); break;
+            default: result = cxpr_fv_double(round(a.d)); break;
+            }
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_CLAMP:
+            if (!cxpr_ir_pop2(stack, &sp, &result, &b, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                      "clamp() requires double operands") ||
+                !cxpr_ir_require_type(result, CXPR_FIELD_DOUBLE, err,
+                                      "clamp() requires double operands") ||
+                !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                                      "clamp() requires double operands")) {
+                return cxpr_fv_double(NAN);
+            }
+            if (a.d < result.d) a.d = result.d;
+            if (a.d > b.d) a.d = b.d;
+            if (!cxpr_ir_stack_push(stack, &sp, a, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_CALL_FUNC:
+            if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
+            if (instr->index > 32) return cxpr_ir_runtime_error(err, "Too many function arguments");
+            for (size_t i = 0; i < instr->index; ++i) {
+                a = stack[sp - instr->index + i];
+                if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                          "Function arguments must be doubles")) {
+                    return cxpr_fv_double(NAN);
+                }
+                args[i] = a.d;
+            }
+            sp -= instr->index;
+            if (!cxpr_ir_stack_push(stack, &sp,
+                                    cxpr_fv_double(instr->func->sync_func(args, instr->index,
+                                                                          instr->func->userdata)),
+                                    64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_CALL_DEFINED:
+            if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
+            result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+                                                 &stack[sp - instr->index], instr->index, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            sp -= instr->index;
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_CALL_PRODUCER:
+            if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
+            result = cxpr_ir_call_producer((cxpr_func_entry*)instr->func, instr->name, ctx,
+                                           &stack[sp - instr->index], instr->index, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            sp -= instr->index;
+            break;
+        case CXPR_OP_CALL_AST:
+            result = cxpr_ast_eval(instr->ast, ctx, reg, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_JUMP:
+            ip = instr->index;
+            continue;
+        case CXPR_OP_JUMP_IF_FALSE:
+        case CXPR_OP_JUMP_IF_TRUE:
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_BOOL, err,
+                                      "Conditional jump requires bool operand")) {
+                return cxpr_fv_double(NAN);
+            }
+            if ((instr->op == CXPR_OP_JUMP_IF_FALSE && !a.b) ||
+                (instr->op == CXPR_OP_JUMP_IF_TRUE && a.b)) {
+                ip = instr->index;
+                continue;
+            }
+            break;
+        case CXPR_OP_RETURN:
+            if (!cxpr_ir_pop1(stack, &sp, &result, err)) return cxpr_fv_double(NAN);
+            if (sp != 0) {
+                return cxpr_ir_runtime_error(err, "IR stack not empty at return");
+            }
+            return result;
+        default:
+            return cxpr_ir_runtime_error(err, "Unsupported IR opcode");
+        }
+
+        ++ip;
+    }
+
+    return cxpr_ir_runtime_error(err, "IR program fell off end without return");
+}
+
+static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
+                                       const cxpr_registry* reg, const double* locals,
+                                       size_t local_count, cxpr_error* err) {
+    double stack[64];
+    size_t sp = 0;
+    size_t ip = 0;
+
+    if (err) *err = (cxpr_error){0};
+    if (!program || !program->code) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "Empty IR program";
+        }
+        return NAN;
+    }
+
+    while (ip < program->count) {
+        const cxpr_ir_instr* instr = &program->code[ip];
+        double a, b, value;
+        double args[32];
+
+        switch (instr->op) {
+        case CXPR_OP_PUSH_CONST:
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = instr->value;
+            break;
+        case CXPR_OP_PUSH_BOOL:
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = instr->value != 0.0 ? 1.0 : 0.0;
+            break;
+        case CXPR_OP_LOAD_LOCAL:
+            if (instr->index >= local_count) {
+                return cxpr_ir_runtime_error(err, "Unknown local variable").d;
+            }
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = locals[instr->index];
+            break;
+        case CXPR_OP_LOAD_LOCAL_SQUARE:
+            if (instr->index >= local_count) {
+                return cxpr_ir_runtime_error(err, "Unknown local variable").d;
+            }
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            value = locals[instr->index];
+            stack[sp++] = value * value;
+            break;
+        case CXPR_OP_LOAD_VAR: {
+            bool found = false;
+            value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
+            if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier").d;
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value;
+            break;
+        }
+        case CXPR_OP_LOAD_VAR_SQUARE: {
+            bool found = false;
+            value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
+            if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier").d;
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value * value;
+            break;
+        }
+        case CXPR_OP_LOAD_PARAM: {
+            bool found = false;
+            value = cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
+            if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value;
+            break;
+        }
+        case CXPR_OP_LOAD_PARAM_SQUARE: {
+            bool found = false;
+            value = cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
+            if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value * value;
+            break;
+        }
+        case CXPR_OP_ADD:
+        case CXPR_OP_SUB:
+        case CXPR_OP_MUL:
+        case CXPR_OP_DIV:
+        case CXPR_OP_MOD:
+        case CXPR_OP_POW:
+        case CXPR_OP_CMP_EQ:
+        case CXPR_OP_CMP_NEQ:
+        case CXPR_OP_CMP_LT:
+        case CXPR_OP_CMP_LTE:
+        case CXPR_OP_CMP_GT:
+        case CXPR_OP_CMP_GTE:
+            if (sp < 2) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            b = stack[--sp];
+            a = stack[--sp];
+            switch (instr->op) {
+            case CXPR_OP_ADD: value = a + b; break;
+            case CXPR_OP_SUB: value = a - b; break;
+            case CXPR_OP_MUL: value = a * b; break;
+            case CXPR_OP_DIV:
+                if (b == 0.0) {
+                    if (err) {
+                        err->code = CXPR_ERR_DIVISION_BY_ZERO;
+                        err->message = "Division by zero";
+                    }
+                    return NAN;
+                }
+                value = a / b;
+                break;
+            case CXPR_OP_MOD:
+                if (b == 0.0) {
+                    if (err) {
+                        err->code = CXPR_ERR_DIVISION_BY_ZERO;
+                        err->message = "Modulo by zero";
+                    }
+                    return NAN;
+                }
+                value = fmod(a, b);
+                break;
+            case CXPR_OP_POW: value = pow(a, b); break;
+            case CXPR_OP_CMP_EQ: value = (a == b) ? 1.0 : 0.0; break;
+            case CXPR_OP_CMP_NEQ: value = (a != b) ? 1.0 : 0.0; break;
+            case CXPR_OP_CMP_LT: value = (a < b) ? 1.0 : 0.0; break;
+            case CXPR_OP_CMP_LTE: value = (a <= b) ? 1.0 : 0.0; break;
+            case CXPR_OP_CMP_GT: value = (a > b) ? 1.0 : 0.0; break;
+            default: value = (a >= b) ? 1.0 : 0.0; break;
+            }
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value;
+            break;
+        case CXPR_OP_SQUARE:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] *= stack[sp - 1];
+            break;
+        case CXPR_OP_NOT:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = stack[sp - 1] == 0.0 ? 1.0 : 0.0;
+            break;
+        case CXPR_OP_NEG:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = -stack[sp - 1];
+            break;
+        case CXPR_OP_SIGN:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            value = stack[sp - 1];
+            stack[sp - 1] = (value > 0.0) - (value < 0.0);
+            break;
+        case CXPR_OP_SQRT:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = sqrt(stack[sp - 1]);
+            break;
+        case CXPR_OP_ABS:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = fabs(stack[sp - 1]);
+            break;
+        case CXPR_OP_FLOOR:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = floor(stack[sp - 1]);
+            break;
+        case CXPR_OP_CEIL:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = ceil(stack[sp - 1]);
+            break;
+        case CXPR_OP_ROUND:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            stack[sp - 1] = round(stack[sp - 1]);
+            break;
+        case CXPR_OP_CLAMP:
+            if (sp < 3) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            b = stack[--sp];
+            a = stack[--sp];
+            value = stack[--sp];
+            if (value < a) value = a;
+            if (value > b) value = b;
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value;
+            break;
+        case CXPR_OP_CALL_FUNC:
+            if (sp < instr->index) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            if (instr->index > 32) {
+                return cxpr_ir_runtime_error(err, "Too many function arguments").d;
+            }
+            for (size_t i = 0; i < instr->index; ++i) {
+                args[i] = stack[sp - instr->index + i];
+            }
+            sp -= instr->index;
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = instr->func->sync_func(args, instr->index, instr->func->userdata);
+            break;
+        case CXPR_OP_CALL_DEFINED: {
+            cxpr_field_value result;
+            cxpr_field_value scalar_args[32];
+            if (sp < instr->index) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            for (size_t i = 0; i < instr->index; ++i) {
+                scalar_args[i] = cxpr_fv_double(stack[sp - instr->index + i]);
+            }
+            result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+                                                 scalar_args, instr->index, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            sp -= instr->index;
+            if (result.type == CXPR_FIELD_DOUBLE) value = result.d;
+            else if (result.type == CXPR_FIELD_BOOL) value = result.b ? 1.0 : 0.0;
+            else {
+                if (err) {
+                    err->code = CXPR_ERR_TYPE_MISMATCH;
+                    err->message = "Defined function returned non-scalar";
+                }
+                return NAN;
+            }
+            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
+            stack[sp++] = value;
+            break;
+        }
+        case CXPR_OP_JUMP:
+            ip = instr->index;
+            continue;
+        case CXPR_OP_JUMP_IF_FALSE:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            if (stack[--sp] == 0.0) {
+                ip = instr->index;
+                continue;
+            }
+            break;
+        case CXPR_OP_JUMP_IF_TRUE:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            if (stack[--sp] != 0.0) {
+                ip = instr->index;
+                continue;
+            }
+            break;
+        case CXPR_OP_RETURN:
+            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            value = stack[--sp];
+            if (sp != 0) return cxpr_ir_runtime_error(err, "IR stack not empty at return").d;
+            return value;
+        default:
+            return cxpr_ir_runtime_error(err, "Unsupported fast IR opcode").d;
+        }
+
+        ++ip;
+    }
+
+    return cxpr_ir_runtime_error(err, "IR program fell off end without return").d;
+}
+
 static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
     if (!entry || !entry->defined_body) return false;
     for (size_t i = 0; i < entry->defined_param_count; ++i) {
@@ -263,6 +1191,39 @@ static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
             return false;
         }
     }
+    return true;
+}
+
+bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry* reg,
+                                     cxpr_error* err) {
+    if (!entry || !entry->defined_body || !cxpr_ir_defined_is_scalar_only(entry)) {
+        return false;
+    }
+    if (entry->defined_program || entry->defined_program_failed) {
+        return entry->defined_program != NULL;
+    }
+    if (err) *err = (cxpr_error){0};
+
+    entry->defined_program = (cxpr_program*)calloc(1, sizeof(cxpr_program));
+    if (!entry->defined_program) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return false;
+    }
+
+    if (!cxpr_ir_compile_with_locals(entry->defined_body, reg,
+                                     (const char* const*)entry->defined_param_names,
+                                     entry->defined_param_count, &entry->defined_program->ir,
+                                     err)) {
+        entry->defined_program_failed = true;
+        cxpr_program_free(entry->defined_program);
+        entry->defined_program = NULL;
+        return false;
+    }
+
+    entry->defined_program->ast = entry->defined_body;
     return true;
 }
 
@@ -384,9 +1345,12 @@ static double cxpr_ir_context_get_param_prehashed(const cxpr_context* ctx, const
     return 0.0;
 }
 
-static double cxpr_ir_call_defined_scalar(cxpr_func_entry* entry, const cxpr_context* ctx,
-                                          const cxpr_registry* reg, const double* args,
-                                          size_t argc, cxpr_error* err) {
+static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+                                                    const cxpr_context* ctx,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_field_value* args,
+                                                    size_t argc, cxpr_error* err) {
+    double locals[32];
     if (!entry || !entry->defined_body) {
         return cxpr_ir_runtime_error(err, "NULL IR defined function entry");
     }
@@ -395,34 +1359,43 @@ static double cxpr_ir_call_defined_scalar(cxpr_func_entry* entry, const cxpr_con
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = "Wrong number of arguments";
         }
-        return NAN;
+        return cxpr_fv_double(NAN);
     }
 
-    if (!entry->defined_program && !entry->defined_program_failed) {
-        cxpr_error compile_err = {0};
-        entry->defined_program = (cxpr_program*)calloc(1, sizeof(cxpr_program));
-        if (entry->defined_program) {
-            if (!cxpr_ir_compile_with_locals(entry->defined_body, reg,
-                                            (const char* const*)entry->defined_param_names,
-                                            entry->defined_param_count,
-                                            &entry->defined_program->ir, &compile_err)) {
-                free(entry->defined_program);
-                entry->defined_program = NULL;
+    for (size_t i = 0; i < argc; ++i) {
+        if (args[i].type != CXPR_FIELD_DOUBLE) {
+            if (err) {
+                err->code = CXPR_ERR_TYPE_MISMATCH;
+                err->message = "Defined function arguments must be doubles";
             }
-        } else {
-            compile_err.code = CXPR_ERR_OUT_OF_MEMORY;
-            compile_err.message = "Out of memory";
+            return cxpr_fv_double(NAN);
         }
-        if (!entry->defined_program) {
-            entry->defined_program_failed = true;
-        }
+        locals[i] = args[i].d;
     }
 
-    if (entry->defined_program) {
-        return cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg, args, argc, err);
+    if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
+        return cxpr_fv_double(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
+                                                       locals, argc, err));
     }
 
-    return cxpr_ir_runtime_error(err, "Scalar defined function missing compiled program");
+    {
+        cxpr_context* tmp = cxpr_context_overlay_new(ctx);
+        if (!tmp) {
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return cxpr_fv_double(NAN);
+        }
+        for (size_t i = 0; i < argc; ++i) {
+            cxpr_context_set(tmp, entry->defined_param_names[i], locals[i]);
+        }
+        {
+            cxpr_field_value result = cxpr_ast_eval(entry->defined_body, tmp, reg, err);
+            cxpr_context_free(tmp);
+            return result;
+        }
+    }
 }
 
 /**
@@ -463,6 +1436,15 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             },
                             err);
 
+    case CXPR_NODE_BOOL:
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_PUSH_BOOL,
+                                .value = ast->data.boolean.value ? 1.0 : 0.0,
+                                .name = NULL,
+                            },
+                            err);
+
     case CXPR_NODE_IDENTIFIER:
         {
             const cxpr_ir_subst_frame* owner = NULL;
@@ -487,7 +1469,6 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_VAR,
-                                .value = 0.0,
                                 .name = ast->data.identifier.name,
                                 .hash = cxpr_hash_string(ast->data.identifier.name),
                             },
@@ -497,7 +1478,6 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_PARAM,
-                                .value = 0.0,
                                 .name = ast->data.variable.name,
                                 .hash = cxpr_hash_string(ast->data.variable.name),
                             },
@@ -507,11 +1487,71 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_FIELD,
-                                .value = 0.0,
                                 .name = ast->data.field_access.full_key,
                                 .hash = cxpr_hash_string(ast->data.field_access.full_key),
                             },
                             err);
+
+    case CXPR_NODE_CHAIN_ACCESS:
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_LOAD_CHAIN,
+                                .name = ast->data.chain_access.full_key,
+                                .hash = cxpr_hash_string(ast->data.chain_access.full_key),
+                            },
+                            err);
+
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        char* full_key;
+        size_t name_len = strlen(ast->data.producer_access.name);
+        size_t field_len = strlen(ast->data.producer_access.field);
+        cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
+        if (!entry || !entry->struct_producer) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .value = 0.0,
+                                    .ast = ast,
+                                },
+                                err);
+        }
+        for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+            if (!cxpr_ir_compile_node(ast->data.producer_access.args[i], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+        }
+        if (!cxpr_ir_emit(program,
+                          (cxpr_ir_instr){
+                              .op = CXPR_OP_CALL_PRODUCER,
+                              .func = entry,
+                              .name = ast->data.producer_access.name,
+                              .index = ast->data.producer_access.argc,
+                          },
+                          err)) {
+            return false;
+        }
+        full_key = (char*)malloc(name_len + 1 + field_len + 1);
+        if (!full_key) {
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return false;
+        }
+        memcpy(full_key, ast->data.producer_access.name, name_len);
+        full_key[name_len] = '.';
+        memcpy(full_key + name_len + 1, ast->data.producer_access.field, field_len);
+        full_key[name_len + 1 + field_len] = '\0';
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_LOAD_FIELD,
+                                .value = 0.0,
+                                .name = full_key,
+                                .hash = cxpr_hash_string(full_key),
+                            },
+                            err);
+    }
 
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
@@ -524,6 +1564,37 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                     .ast = ast,
                                 },
                                 err);
+        }
+
+        if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
+            size_t false_jump, end_jump;
+
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            false_jump = cxpr_ir_next_index(program);
+            if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP_IF_FALSE }, err)) {
+                return false;
+            }
+
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[1], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            end_jump = cxpr_ir_next_index(program);
+            if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP }, err)) {
+                return false;
+            }
+
+            cxpr_ir_patch_target(program, false_jump, cxpr_ir_next_index(program));
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[2], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+
+            cxpr_ir_patch_target(program, end_jump, cxpr_ir_next_index(program));
+            return true;
         }
 
         if (strcmp(fname, "sqrt") == 0 && ast->data.function_call.argc == 1) {
@@ -676,7 +1747,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                               err)) return false;
 
             if (!cxpr_ir_emit(program,
-                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_CONST, .value = 1.0 },
+                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 1.0 },
                               err)) return false;
             end_jump = cxpr_ir_next_index(program);
             if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP }, err)) return false;
@@ -684,7 +1755,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             cxpr_ir_patch_target(program, left_false_jump, cxpr_ir_next_index(program));
             cxpr_ir_patch_target(program, right_false_jump, cxpr_ir_next_index(program));
             if (!cxpr_ir_emit(program,
-                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_CONST, .value = 0.0 },
+                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 0.0 },
                               err)) return false;
 
             cxpr_ir_patch_target(program, end_jump, cxpr_ir_next_index(program));
@@ -711,21 +1782,21 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                               err)) return false;
 
             if (!cxpr_ir_emit(program,
-                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_CONST, .value = 1.0 },
+                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 1.0 },
                               err)) return false;
             end_jump = cxpr_ir_next_index(program);
             if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP }, err)) return false;
 
             cxpr_ir_patch_target(program, left_true_jump, cxpr_ir_next_index(program));
             if (!cxpr_ir_emit(program,
-                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_CONST, .value = 1.0 },
+                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 1.0 },
                               err)) return false;
             size_t skip_false_jump = cxpr_ir_next_index(program);
             if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP }, err)) return false;
 
             cxpr_ir_patch_target(program, right_false_jump, cxpr_ir_next_index(program));
             if (!cxpr_ir_emit(program,
-                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_CONST, .value = 0.0 },
+                              (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 0.0 },
                               err)) return false;
 
             cxpr_ir_patch_target(program, end_jump, cxpr_ir_next_index(program));
@@ -886,6 +1957,8 @@ bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
     }
 
     cxpr_ir_program_reset(program);
+    program->ast = ast;
+    program->fast_result_kind = cxpr_ir_infer_fast_result_kind(ast, reg, 0);
 
     if (!cxpr_ir_compile_node(ast, program, reg, local_names, local_count,
                               NULL, 0, err)) {
@@ -921,390 +1994,36 @@ bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_ir_prog
 double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err) {
-    if (err) *err = (cxpr_error){0};
-
-    if (!program || !program->code || program->count == 0) {
+    if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        return cxpr_ir_exec_scalar_fast(program, ctx, reg, locals, local_count, err);
+    }
+    cxpr_field_value value = cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
+    if (err && err->code != CXPR_OK) return NAN;
+    if (value.type != CXPR_FIELD_DOUBLE) {
         if (err) {
-            err->code = CXPR_ERR_SYNTAX;
-            err->message = "Empty IR program";
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to double";
         }
         return NAN;
     }
-
-    double stack[64];
-    const size_t stack_capacity = sizeof(stack) / sizeof(stack[0]);
-    size_t sp = 0;
-    const cxpr_ir_instr* code = program->code;
-
-    for (size_t ip = 0; ip < program->count; ip++) {
-        const cxpr_ir_instr* instr = &code[ip];
-        switch (instr->op) {
-        case CXPR_OP_PUSH_CONST:
-            if (!cxpr_ir_stack_push(stack, &sp, instr->value, stack_capacity, err)) return NAN;
-            break;
-
-        case CXPR_OP_LOAD_LOCAL:
-            if (!locals || instr->index >= local_count) {
-                return cxpr_ir_runtime_error(err, "Invalid IR local slot");
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, locals[instr->index], stack_capacity, err)) {
-                return NAN;
-            }
-            break;
-
-        case CXPR_OP_LOAD_LOCAL_SQUARE: {
-            double value;
-            if (!locals || instr->index >= local_count) {
-                return cxpr_ir_runtime_error(err, "Invalid IR local slot");
-            }
-            value = locals[instr->index];
-            if (!cxpr_ir_stack_push(stack, &sp, value * value, stack_capacity, err)) {
-                return NAN;
-            }
-            break;
-        }
-
-        case CXPR_OP_LOAD_VAR: {
-            bool found = false;
-            double value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
-            if (!found) {
-                if (err) {
-                    err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                    err->message = "Unknown identifier";
-                }
-                return NAN;
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_LOAD_VAR_SQUARE: {
-            bool found = false;
-            double value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
-            if (!found) {
-                if (err) {
-                    err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                    err->message = "Unknown identifier";
-                }
-                return NAN;
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, value * value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_LOAD_PARAM: {
-            bool found = false;
-            double value =
-                cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
-            if (!found) {
-                if (err) {
-                    err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                    err->message = "Unknown parameter variable";
-                }
-                return NAN;
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_LOAD_PARAM_SQUARE: {
-            bool found = false;
-            double value =
-                cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
-            if (!found) {
-                if (err) {
-                    err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                    err->message = "Unknown parameter variable";
-                }
-                return NAN;
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, value * value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_LOAD_FIELD: {
-            bool found = false;
-            double value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
-            if (!found) {
-                if (err) {
-                    err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                    err->message = "Unknown field access";
-                }
-                return NAN;
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_LOAD_FIELD_SQUARE: {
-            bool found = false;
-            double value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
-            if (!found) {
-                if (err) {
-                    err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                    err->message = "Unknown field access";
-                }
-                return NAN;
-            }
-            if (!cxpr_ir_stack_push(stack, &sp, value * value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_ADD:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = stack[sp - 2] + stack[sp - 1];
-            sp--;
-            break;
-
-        case CXPR_OP_SUB:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = stack[sp - 2] - stack[sp - 1];
-            sp--;
-            break;
-
-        case CXPR_OP_MUL:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = stack[sp - 2] * stack[sp - 1];
-            sp--;
-            break;
-
-        case CXPR_OP_SQUARE:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = stack[sp - 1] * stack[sp - 1];
-            break;
-
-        case CXPR_OP_DIV:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            if (stack[sp - 1] == 0.0) {
-                if (err) {
-                    err->code = CXPR_ERR_DIVISION_BY_ZERO;
-                    err->message = "Division by zero";
-                }
-                return NAN;
-            }
-            stack[sp - 2] = stack[sp - 2] / stack[sp - 1];
-            sp--;
-            break;
-
-        case CXPR_OP_MOD:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            if (stack[sp - 1] == 0.0) {
-                if (err) {
-                    err->code = CXPR_ERR_DIVISION_BY_ZERO;
-                    err->message = "Modulo by zero";
-                }
-                return NAN;
-            }
-            stack[sp - 2] = fmod(stack[sp - 2], stack[sp - 1]);
-            sp--;
-            break;
-
-        case CXPR_OP_CMP_EQ:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = (stack[sp - 2] == stack[sp - 1]) ? 1.0 : 0.0;
-            sp--;
-            break;
-
-        case CXPR_OP_CMP_NEQ:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = (stack[sp - 2] != stack[sp - 1]) ? 1.0 : 0.0;
-            sp--;
-            break;
-
-        case CXPR_OP_CMP_LT:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = (stack[sp - 2] < stack[sp - 1]) ? 1.0 : 0.0;
-            sp--;
-            break;
-
-        case CXPR_OP_CMP_LTE:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = (stack[sp - 2] <= stack[sp - 1]) ? 1.0 : 0.0;
-            sp--;
-            break;
-
-        case CXPR_OP_CMP_GT:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = (stack[sp - 2] > stack[sp - 1]) ? 1.0 : 0.0;
-            sp--;
-            break;
-
-        case CXPR_OP_CMP_GTE:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = (stack[sp - 2] >= stack[sp - 1]) ? 1.0 : 0.0;
-            sp--;
-            break;
-
-        case CXPR_OP_NOT:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = (stack[sp - 1] == 0.0) ? 1.0 : 0.0;
-            break;
-
-        case CXPR_OP_NEG:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = -stack[sp - 1];
-            break;
-
-        case CXPR_OP_SIGN:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = (stack[sp - 1] > 0.0) ? 1.0 : ((stack[sp - 1] < 0.0) ? -1.0 : 0.0);
-            break;
-
-        case CXPR_OP_SQRT:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = sqrt(stack[sp - 1]);
-            break;
-
-        case CXPR_OP_ABS:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = fabs(stack[sp - 1]);
-            break;
-
-        case CXPR_OP_FLOOR:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = floor(stack[sp - 1]);
-            break;
-
-        case CXPR_OP_CEIL:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = ceil(stack[sp - 1]);
-            break;
-
-        case CXPR_OP_ROUND:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            stack[sp - 1] = round(stack[sp - 1]);
-            break;
-
-        case CXPR_OP_POW:
-            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
-            stack[sp - 2] = pow(stack[sp - 2], stack[sp - 1]);
-            sp--;
-            break;
-
-        case CXPR_OP_CLAMP:
-            if (!cxpr_ir_require_stack(sp, 3, err)) return NAN;
-            if (stack[sp - 2] > stack[sp - 1]) {
-                const double tmp = stack[sp - 2];
-                stack[sp - 2] = stack[sp - 1];
-                stack[sp - 1] = tmp;
-            }
-            if (stack[sp - 3] < stack[sp - 2]) stack[sp - 3] = stack[sp - 2];
-            if (stack[sp - 3] > stack[sp - 1]) stack[sp - 3] = stack[sp - 1];
-            sp -= 2;
-            break;
-
-        case CXPR_OP_CALL_FUNC: {
-            const size_t argc = instr->index;
-            double args[32];
-            size_t i;
-
-            if (!cxpr_ir_require_stack(sp, argc, err)) return NAN;
-            if (!instr->func) return cxpr_ir_runtime_error(err, "NULL IR function entry");
-            if (argc < instr->func->min_args || argc > instr->func->max_args) {
-                if (err) {
-                    err->code = CXPR_ERR_WRONG_ARITY;
-                    err->message = "Wrong number of arguments";
-                }
-                return NAN;
-            }
-            if (instr->func->native_kind == CXPR_NATIVE_KIND_NULLARY && argc == 0) {
-                if (!cxpr_ir_stack_push(stack, &sp, instr->func->native_scalar.nullary(),
-                                        stack_capacity, err)) {
-                    return NAN;
-                }
-                break;
-            }
-            if (instr->func->native_kind == CXPR_NATIVE_KIND_UNARY && argc == 1) {
-                stack[sp - 1] = instr->func->native_scalar.unary(stack[sp - 1]);
-                break;
-            }
-            if (instr->func->native_kind == CXPR_NATIVE_KIND_BINARY && argc == 2) {
-                stack[sp - 2] =
-                    instr->func->native_scalar.binary(stack[sp - 2], stack[sp - 1]);
-                sp--;
-                break;
-            }
-            if (instr->func->native_kind == CXPR_NATIVE_KIND_TERNARY && argc == 3) {
-                stack[sp - 3] =
-                    instr->func->native_scalar.ternary(stack[sp - 3], stack[sp - 2], stack[sp - 1]);
-                sp -= 2;
-                break;
-            }
-            if (argc > 32) return cxpr_ir_runtime_error(err, "IR function argc overflow");
-
-            for (i = 0; i < argc; ++i) {
-                args[i] = stack[sp - argc + i];
-            }
-            sp -= argc;
-
-            if (!cxpr_ir_stack_push(stack, &sp,
-                                    instr->func->sync_func(args, argc, instr->func->userdata),
-                                    stack_capacity, err)) {
-                return NAN;
-            }
-            break;
-        }
-
-        case CXPR_OP_CALL_DEFINED: {
-            const size_t argc = instr->index;
-            double args[32];
-            size_t i;
-
-            if (!cxpr_ir_require_stack(sp, argc, err)) return NAN;
-            if (!instr->func) return cxpr_ir_runtime_error(err, "NULL IR defined function entry");
-            if (argc > 32) return cxpr_ir_runtime_error(err, "IR defined argc overflow");
-
-            for (i = 0; i < argc; ++i) {
-                args[i] = stack[sp - argc + i];
-            }
-            sp -= argc;
-
-            if (!cxpr_ir_stack_push(stack, &sp,
-                                    cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func,
-                                                                ctx, reg, args, argc, err),
-                                    stack_capacity, err)) {
-                return NAN;
-            }
-            if (err && err->code != CXPR_OK) return NAN;
-            break;
-        }
-
-        case CXPR_OP_CALL_AST: {
-            double value = cxpr_ast_eval(instr->ast, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return NAN;
-            if (!cxpr_ir_stack_push(stack, &sp, value, stack_capacity, err)) return NAN;
-            break;
-        }
-
-        case CXPR_OP_JUMP:
-            ip = instr->index - 1;
-            break;
-
-        case CXPR_OP_JUMP_IF_FALSE:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            if (stack[--sp] == 0.0) ip = instr->index - 1;
-            break;
-
-        case CXPR_OP_JUMP_IF_TRUE:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            if (stack[--sp] != 0.0) ip = instr->index - 1;
-            break;
-
-        case CXPR_OP_RETURN:
-            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
-            return stack[sp - 1];
-
-        default:
-            return cxpr_ir_runtime_error(err, "Unsupported IR opcode");
-        }
-    }
-
-    return cxpr_ir_runtime_error(err, "IR program missing return");
+    return value.d;
 }
 
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err) {
-    return cxpr_ir_exec_with_locals(program, ctx, reg, NULL, 0, err);
+    if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        return cxpr_ir_exec_scalar_fast(program, ctx, reg, NULL, 0, err);
+    }
+    cxpr_field_value value = cxpr_ir_exec_typed(program, ctx, reg, NULL, 0, err);
+    if (err && err->code != CXPR_OK) return NAN;
+    if (value.type != CXPR_FIELD_DOUBLE) {
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to double";
+        }
+        return NAN;
+    }
+    return value.d;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1325,6 +2044,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
         return NULL;
     }
 
+    prog->ast = ast;
     if (!cxpr_ir_compile(ast, reg, &prog->ir, err)) {
         free(prog);
         return NULL;
@@ -1333,23 +2053,52 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
     return prog;
 }
 
-double cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
-                    const cxpr_registry* reg, cxpr_error* err) {
+cxpr_field_value cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
+                              const cxpr_registry* reg, cxpr_error* err) {
     if (!prog) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
             err->message = "NULL compiled program";
         }
+        return cxpr_fv_double(NAN);
+    }
+    return cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, err);
+}
+
+double cxpr_ir_eval_double(const cxpr_program* prog, const cxpr_context* ctx,
+                           const cxpr_registry* reg, cxpr_error* err) {
+    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        return cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+    }
+    cxpr_field_value value = cxpr_ir_eval(prog, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return NAN;
+    if (value.type != CXPR_FIELD_DOUBLE) {
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to double";
+        }
         return NAN;
     }
-    return cxpr_ir_exec(&prog->ir, ctx, reg, err);
+    return value.d;
 }
 
 bool cxpr_ir_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
                        const cxpr_registry* reg, cxpr_error* err) {
-    const double result = cxpr_ir_eval(prog, ctx, reg, err);
+    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        double value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        if (err && err->code != CXPR_OK) return false;
+        return value != 0.0;
+    }
+    cxpr_field_value value = cxpr_ir_eval(prog, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;
-    return result != 0.0;
+    if (value.type != CXPR_FIELD_BOOL) {
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to bool";
+        }
+        return false;
+    }
+    return value.b;
 }
 
 void cxpr_program_free(cxpr_program* prog) {

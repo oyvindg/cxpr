@@ -36,7 +36,7 @@ build storage and evaluation on top.
 
 ### 0.1  Types in `cxpr.h`
 
-- [ ] Add `cxpr_field_type` enum:
+- [x] Add `cxpr_field_type` enum:
 
   ```c
   typedef enum {
@@ -46,7 +46,7 @@ build storage and evaluation on top.
   } cxpr_field_type;
   ```
 
-- [ ] Forward-declare `cxpr_struct_value` and define `cxpr_field_value`:
+- [x] Forward-declare `cxpr_struct_value` and define `cxpr_field_value`:
 
   ```c
   typedef struct cxpr_struct_value cxpr_struct_value;
@@ -67,7 +67,7 @@ build storage and evaluation on top.
   } cxpr_field_value;
   ```
 
-- [ ] Define `cxpr_struct_value`:
+- [x] Define `cxpr_struct_value`:
 
   ```c
   /**
@@ -86,7 +86,7 @@ build storage and evaluation on top.
 
 ### 0.2  Convenience constructors and lifecycle
 
-- [ ] Declare and implement inline convenience constructors in `cxpr.h`:
+- [x] Declare and implement inline convenience constructors in `cxpr.h`:
 
   ```c
   static inline cxpr_field_value cxpr_fv_double(double d)
@@ -99,7 +99,7 @@ build storage and evaluation on top.
       { return (cxpr_field_value){ .type = CXPR_FIELD_STRUCT, .s = s }; }
   ```
 
-- [ ] Declare `cxpr_struct_value_new` / `cxpr_struct_value_free` in `cxpr.h`:
+- [x] Declare `cxpr_struct_value_new` / `cxpr_struct_value_free` in `cxpr.h`:
 
   ```c
   /**
@@ -116,40 +116,40 @@ build storage and evaluation on top.
   void cxpr_struct_value_free(cxpr_struct_value* s);
   ```
 
-- [ ] Implement `cxpr_struct_value_new` and `cxpr_struct_value_free` in
+- [x] Implement `cxpr_struct_value_new` and `cxpr_struct_value_free` in
       `context.c`.  Recurse into nested `CXPR_FIELD_STRUCT` entries on both
       copy and free.
 
 ### 0.3  New error codes
 
-- [ ] Add to `cxpr_error_code` enum in `cxpr.h`:
+- [x] Add to `cxpr_error_code` enum in `cxpr.h`:
 
   ```c
   CXPR_ERR_TYPE_MISMATCH  /**< Value type not accepted by the operator or context */
   ```
 
-- [ ] Handle it in `cxpr_error_string`.
+- [x] Handle it in `cxpr_error_string`.
 
 ### 0.4  Bool literals and `CXPR_NODE_BOOL`
 
 Bool fields in context are typed in Phase 1, but expressions must also accept
 `true` and `false` as literals that carry the bool type.
 
-- [ ] Add `CXPR_TOK_TRUE` and `CXPR_TOK_FALSE` to the token enum in `internal.h`.
-- [ ] Recognise the keywords `true` and `false` in `cxpr_lexer_next` (`parser.c`).
-- [ ] Add `CXPR_NODE_BOOL` to `cxpr_node_type` enum in `cxpr.h`.
-- [ ] Add the corresponding union branch to `struct cxpr_ast` in `internal.h`:
+- [x] Add `CXPR_TOK_TRUE` and `CXPR_TOK_FALSE` to the token enum in `internal.h`.
+- [x] Recognise the keywords `true` and `false` in `cxpr_lexer_next` (`parser.c`).
+- [x] Add `CXPR_NODE_BOOL` to `cxpr_node_type` enum in `cxpr.h`.
+- [x] Add the corresponding union branch to `struct cxpr_ast` in `internal.h`:
   ```c
   struct { bool value; } boolean;  /* CXPR_NODE_BOOL */
   ```
-- [ ] Add `cxpr_ast_new_bool(bool value)` in `ast.c`; declare in `internal.h`.
-- [ ] In the primary-expression parser, emit `CXPR_NODE_BOOL` for `true`/`false`.
+- [x] Add `cxpr_ast_new_bool(bool value)` in `ast.c`; declare in `internal.h`.
+- [x] In the primary-expression parser, emit `CXPR_NODE_BOOL` for `true`/`false`.
 - [ ] Add to `tests/field_value.test.c`:
-  - [ ] `"true"` evaluates to `cxpr_field_value{BOOL, true}`.
-  - [ ] `"false"` evaluates to `cxpr_field_value{BOOL, false}`.
-  - [ ] `"true == true"` evaluates to bool `true`.
-  - [ ] `"true == 1"` gives `CXPR_ERR_TYPE_MISMATCH` (bool vs double).
-  - [ ] `"sensor.active == true"` resolves correctly when `active` is a bool
+  - [x] `"true"` evaluates to `cxpr_field_value{BOOL, true}`.
+  - [x] `"false"` evaluates to `cxpr_field_value{BOOL, false}`.
+  - [x] `"true == true"` evaluates to bool `true`.
+  - [x] `"true == 1"` gives `CXPR_ERR_TYPE_MISMATCH` (bool vs double).
+  - [x] `"sensor.active == true"` resolves correctly when `active` is a bool
         field (covered more fully in struct_ctx tests in Phase 1).
 
 ### 0.5  Typed evaluator API and operator type rules
@@ -158,9 +158,9 @@ This section changes the evaluation contract.  All subsequent phases build on it
 
 **Public API (`cxpr.h`)**
 
-- [ ] Change `cxpr_ast_eval` to return `cxpr_field_value` instead of `double`.
-- [ ] Change `cxpr_ir_eval` to return `cxpr_field_value` instead of `double`.
-- [ ] Add convenience wrappers:
+- [x] Change `cxpr_ast_eval` to return `cxpr_field_value` instead of `double`.
+- [x] Change `cxpr_ir_eval` to return `cxpr_field_value` instead of `double`.
+- [x] Add convenience wrappers:
   ```c
   /** Returns the double value, or NAN + CXPR_ERR_TYPE_MISMATCH if not double. */
   double cxpr_ast_eval_double(const cxpr_ast*, const cxpr_context*,
@@ -168,10 +168,10 @@ This section changes the evaluation contract.  All subsequent phases build on it
   double cxpr_ir_eval_double(const cxpr_program*, const cxpr_context*,
                               const cxpr_registry*, cxpr_error*);
   ```
-- [ ] Update `cxpr_ast_eval_bool`: call `cxpr_ast_eval`; if result type is
+- [x] Update `cxpr_ast_eval_bool`: call `cxpr_ast_eval`; if result type is
       `CXPR_FIELD_BOOL` return its value; otherwise set `CXPR_ERR_TYPE_MISMATCH`
       and return `false`.
-- [ ] Update `cxpr_ir_eval_bool` the same way: call `cxpr_ir_eval`; check for
+- [x] Update `cxpr_ir_eval_bool` the same way: call `cxpr_ir_eval`; check for
       `CXPR_FIELD_BOOL`; otherwise `CXPR_ERR_TYPE_MISMATCH` + `false`.
 
 **Operator type rules (enforced in `eval.c` and `ir.c`)**
@@ -191,17 +191,17 @@ Any violation sets `CXPR_ERR_TYPE_MISMATCH` and returns
 
 **IR stack (`ir.c`, `internal.h`)**
 
-- [ ] Change `double stack[64]` to `cxpr_field_value stack[64]` in the IR
+- [x] Change `double stack[64]` to `cxpr_field_value stack[64]` in the IR
       executor.
-- [ ] Update all opcode handlers that push or pop from the stack.
-- [ ] Add `CXPR_OP_PUSH_BOOL` opcode for `CXPR_NODE_BOOL`; emit it in the IR
+- [x] Update all opcode handlers that push or pop from the stack.
+- [x] Add `CXPR_OP_PUSH_BOOL` opcode for `CXPR_NODE_BOOL`; emit it in the IR
       compiler alongside the existing `PUSH_CONST` for numbers.
 
 **Evaluator (`eval.c`)**
 
-- [ ] Add `CXPR_NODE_BOOL` case: return `cxpr_fv_bool(node->data.boolean.value)`.
-- [ ] Update `CXPR_NODE_NUMBER` case: return `cxpr_fv_double(node->data.number.value)`.
-- [ ] Update all binary/unary operator cases to check operand types per the
+- [x] Add `CXPR_NODE_BOOL` case: return `cxpr_fv_bool(node->data.boolean.value)`.
+- [x] Update `CXPR_NODE_NUMBER` case: return `cxpr_fv_double(node->data.number.value)`.
+- [x] Update all binary/unary operator cases to check operand types per the
       table above before computing results.
 
 **Migrate existing tests**
@@ -210,37 +210,37 @@ Changing the return type of `cxpr_ast_eval` / `cxpr_ir_eval` is a hard
 breaking change for existing test files.  Do this as part of the same commit
 that changes the signatures — do not leave the suite broken between steps.
 
-- [ ] In `tests/eval.test.c`: replace all `cxpr_ast_eval(…)` call sites with
+- [x] In `tests/eval.test.c`: replace all `cxpr_ast_eval(…)` call sites with
       `cxpr_ast_eval_double(…)`.  Update the `eval_ok` helper accordingly.
-- [ ] In `tests/program.test.c`: replace `cxpr_ir_eval(…)` with
+- [x] In `tests/program.test.c`: replace `cxpr_ir_eval(…)` with
       `cxpr_ir_eval_double(…)`.
-- [ ] In `tests/ir.test.c`: same.
-- [ ] In `tests/formula_ir.test.c`: same where applicable.
-- [ ] In `tests/precedence.test.c`, `tests/math.test.c`,
+- [x] In `tests/ir.test.c`: same.
+- [x] In `tests/formula_ir.test.c`: same where applicable.
+- [x] In `tests/precedence.test.c`, `tests/math.test.c`,
       `tests/simulation.test.c`: same.
-- [ ] Verify zero failures across the full suite after migration.
+- [x] Verify zero failures across the full suite after migration.
 
 ### 0.6  Tests
 
-- [ ] Add `tests/field_value.test.c`:
-  - [ ] `cxpr_fv_double`, `cxpr_fv_bool`, `cxpr_fv_struct` set correct type and
+- [x] Add `tests/field_value.test.c`:
+  - [x] `cxpr_fv_double`, `cxpr_fv_bool`, `cxpr_fv_struct` set correct type and
         value.
-  - [ ] `cxpr_struct_value_new` deep-copies field names and values.
-  - [ ] Nested struct is deep-copied (mutating the copy does not affect the
+  - [x] `cxpr_struct_value_new` deep-copies field names and values.
+  - [x] Nested struct is deep-copied (mutating the copy does not affect the
         original).
   - [ ] `cxpr_struct_value_free` does not leak (verified by running under
         Valgrind / ASan).
-  - [ ] `"1.0 + 2.0"` → `cxpr_field_value{DOUBLE, 3.0}`.
-  - [ ] `"1.0 < 2.0"` → `cxpr_field_value{BOOL, true}`.
-  - [ ] `"true && false"` → `cxpr_field_value{BOOL, false}`.
-  - [ ] `"true + 1.0"` → `CXPR_ERR_TYPE_MISMATCH`.
-  - [ ] `"1.0 && 0.0"` → `CXPR_ERR_TYPE_MISMATCH` (double where bool expected).
-  - [ ] `"true == 1.0"` → `CXPR_ERR_TYPE_MISMATCH` (mixed types in `==`).
-  - [ ] `cxpr_ast_eval_double` on a bool expression → NAN + `CXPR_ERR_TYPE_MISMATCH`.
-  - [ ] `cxpr_ast_eval_bool` on a double expression → false + `CXPR_ERR_TYPE_MISMATCH`.
-  - [ ] `cxpr_ir_eval` produces identical typed results to `cxpr_ast_eval` for
+  - [x] `"1.0 + 2.0"` → `cxpr_field_value{DOUBLE, 3.0}`.
+  - [x] `"1.0 < 2.0"` → `cxpr_field_value{BOOL, true}`.
+  - [x] `"true && false"` → `cxpr_field_value{BOOL, false}`.
+  - [x] `"true + 1.0"` → `CXPR_ERR_TYPE_MISMATCH`.
+  - [x] `"1.0 && 0.0"` → `CXPR_ERR_TYPE_MISMATCH` (double where bool expected).
+  - [x] `"true == 1.0"` → `CXPR_ERR_TYPE_MISMATCH` (mixed types in `==`).
+  - [x] `cxpr_ast_eval_double` on a bool expression → NAN + `CXPR_ERR_TYPE_MISMATCH`.
+  - [x] `cxpr_ast_eval_bool` on a double expression → false + `CXPR_ERR_TYPE_MISMATCH`.
+  - [x] `cxpr_ir_eval` produces identical typed results to `cxpr_ast_eval` for
         all cases above.
-- [ ] Run full test suite — zero failures before Phase 1.
+- [x] Run full test suite — zero failures before Phase 1.
 
 ---
 
@@ -248,7 +248,7 @@ that changes the signatures — do not leave the suite broken between steps.
 
 ### 1.1  Internal data structure (`internal.h`)
 
-- [ ] Add `cxpr_struct_map_entry`:
+- [x] Add `cxpr_struct_map_entry`:
 
   ```c
   typedef struct {
@@ -257,7 +257,7 @@ that changes the signatures — do not leave the suite broken between steps.
   } cxpr_struct_map_entry;
   ```
 
-- [ ] Add `cxpr_struct_map` (open-addressing, keyed on struct name):
+- [x] Add `cxpr_struct_map` (open-addressing, keyed on struct name):
 
   ```c
   typedef struct {
@@ -267,15 +267,15 @@ that changes the signatures — do not leave the suite broken between steps.
   } cxpr_struct_map;
   ```
 
-- [ ] Add `cxpr_struct_map structs;` field to `struct cxpr_context`.
+- [x] Add `cxpr_struct_map structs;` field to `struct cxpr_context`.
 
-- [ ] Implement in `context.c`: `cxpr_struct_map_init`, `cxpr_struct_map_destroy`,
+- [x] Implement in `context.c`: `cxpr_struct_map_init`, `cxpr_struct_map_destroy`,
       `cxpr_struct_map_clear`, `cxpr_struct_map_clone` (deep-copy via
       `cxpr_struct_value_new`).
 
 ### 1.2  Public API additions (`cxpr.h`)
 
-- [ ] Declare `cxpr_context_set_struct`:
+- [x] Declare `cxpr_context_set_struct`:
 
   ```c
   /**
@@ -289,7 +289,7 @@ that changes the signatures — do not leave the suite broken between steps.
                                 const cxpr_struct_value* value);
   ```
 
-- [ ] Declare `cxpr_context_get_struct`:
+- [x] Declare `cxpr_context_get_struct`:
 
   ```c
   /**
@@ -302,7 +302,7 @@ that changes the signatures — do not leave the suite broken between steps.
                                                     const char*         name);
   ```
 
-- [ ] Declare `cxpr_context_get_field`:
+- [x] Declare `cxpr_context_get_field`:
 
   ```c
   /**
@@ -324,27 +324,27 @@ that changes the signatures — do not leave the suite broken between steps.
 
 ### 1.3  Implement in `context.c`
 
-- [ ] `cxpr_context_set_struct` — upsert via `cxpr_struct_value_new` deep-copy.
-- [ ] `cxpr_context_get_struct` — lookup struct by name, walk parent chain.
-- [ ] `cxpr_context_get_field` — get struct, linear-scan field_names for match,
+- [x] `cxpr_context_set_struct` — upsert via `cxpr_struct_value_new` deep-copy.
+- [x] `cxpr_context_get_struct` — lookup struct by name, walk parent chain.
+- [x] `cxpr_context_get_field` — get struct, linear-scan field_names for match,
       return corresponding `field_values` entry; walk parent chain if struct not
       found locally.
-- [ ] `cxpr_context_free` — call `cxpr_struct_map_destroy`.
-- [ ] `cxpr_context_clone` — deep-copy `structs` map.
-- [ ] `cxpr_context_clear` — call `cxpr_struct_map_clear`.
-- [ ] `cxpr_context_overlay_new` — move declaration from `internal.h` to
+- [x] `cxpr_context_free` — call `cxpr_struct_map_destroy`.
+- [x] `cxpr_context_clone` — deep-copy `structs` map.
+- [x] `cxpr_context_clear` — call `cxpr_struct_map_clear`.
+- [x] `cxpr_context_overlay_new` — move declaration from `internal.h` to
       `cxpr.h` (make public); parent pointer already covers struct chain via
       `cxpr_context_get_struct` parent walk so no implementation change needed.
 
 ### 1.4  Update evaluator (`eval.c`) — `CXPR_NODE_FIELD_ACCESS`
 
-- [ ] Replace current flat-key logic with `cxpr_context_get_field`.
-- [ ] Return the `cxpr_field_value` directly — no type conversion:
+- [x] Replace current flat-key logic with `cxpr_context_get_field`.
+- [x] Return the `cxpr_field_value` directly — no type conversion:
   - `CXPR_FIELD_DOUBLE` → return as-is.
   - `CXPR_FIELD_BOOL`   → return as-is.
   - `CXPR_FIELD_STRUCT` → set `CXPR_ERR_TYPE_MISMATCH`, return `cxpr_fv_double(NAN)`.
     *(Chained access `a.b.c` is handled in Phase 2.)*
-- [ ] Add flat-key fallback: if `cxpr_context_get_field` returns not-found,
+- [x] Add flat-key fallback: if `cxpr_context_get_field` returns not-found,
       fall back to `cxpr_context_get(ctx, "name.field", &found)` and wrap result
       as `cxpr_fv_double(value)` for backward compatibility with callers still
       using `cxpr_context_set_fields`.
@@ -353,37 +353,37 @@ that changes the signatures — do not leave the suite broken between steps.
 
 ### 1.5  Update struct_fn expansion (`eval.c`)
 
-- [ ] In the `entry->struct_fields` expansion loop: replace `snprintf` +
+- [x] In the `entry->struct_fields` expansion loop: replace `snprintf` +
       `cxpr_context_get` with `cxpr_context_get_field`.
-- [ ] Extract the double value: `CXPR_FIELD_DOUBLE` → use `d`; any other type
+- [x] Extract the double value: `CXPR_FIELD_DOUBLE` → use `d`; any other type
       → set `CXPR_ERR_TYPE_MISMATCH` and return `cxpr_fv_double(NAN)`.
       (Struct-fn arguments are inherently scalar — a bool or struct field used
       as a struct-fn argument is a type error.)
 
 ### 1.6  Update IR (`ir.c`) — `CXPR_OP_LOAD_FIELD`
 
-- [ ] Use `cxpr_context_get_field` and push the `cxpr_field_value` directly
+- [x] Use `cxpr_context_get_field` and push the `cxpr_field_value` directly
       onto the typed stack (no conversion), with the same flat-key fallback
       as the AST evaluator.
 
 ### 1.7  Tests
 
-- [ ] Add `tests/struct_ctx.test.c`:
-  - [ ] `set_struct` then `get_field` returns correct `cxpr_field_value` for
+- [x] Add `tests/struct_ctx.test.c`:
+  - [x] `set_struct` then `get_field` returns correct `cxpr_field_value` for
         double, bool, and nested struct fields.
-  - [ ] Bool field returned as `CXPR_FIELD_BOOL` in expression
+  - [x] Bool field returned as `CXPR_FIELD_BOOL` in expression
         `"sensor.active && x > 0.0"` (both operands are bool; result is bool).
-  - [ ] Nested struct field returns `CXPR_FIELD_STRUCT`; accessing it as a
+  - [x] Nested struct field returns `CXPR_FIELD_STRUCT`; accessing it as a
         scalar (`"outer.inner > 0"`) gives `CXPR_ERR_TYPE_MISMATCH`.
-  - [ ] Updating an existing struct replaces it entirely.
-  - [ ] `context_clear` removes all structs.
-  - [ ] `context_clone` deep-copies structs; mutating clone does not affect
+  - [x] Updating an existing struct replaces it entirely.
+  - [x] `context_clear` removes all structs.
+  - [x] `context_clone` deep-copies structs; mutating clone does not affect
         original.
-  - [ ] Overlay context: field found in parent when not in child.
-  - [ ] Flat-key fallback: expression using `cxpr_context_set_fields`
+  - [x] Overlay context: field found in parent when not in child.
+  - [x] Flat-key fallback: expression using `cxpr_context_set_fields`
         (old API) still resolves correctly.
-- [ ] All existing `struct_fn.test.c` tests still pass.
-- [ ] Run full test suite — zero failures before Phase 2.
+- [x] All existing `struct_fn.test.c` tests still pass.
+- [x] Run full test suite — zero failures before Phase 2.
 
 ### 1.8  Formula engine policy
 
@@ -392,13 +392,13 @@ that changes the signatures — do not leave the suite broken between steps.
 are always scalar (`double`)**.  A formula expression that evaluates to `bool`
 or `struct` is a type error at evaluation time.
 
-- [ ] In `cxpr_formula_eval_all`: use `cxpr_ast_eval_double` (or
+- [x] In `cxpr_formula_eval_all`: use `cxpr_ast_eval_double` (or
       `cxpr_ir_eval_double`) internally; propagate `CXPR_ERR_TYPE_MISMATCH` if
       a formula expression returns a non-double value.
-- [ ] `cxpr_formula_get` signature is unchanged — it continues to return
+- [x] `cxpr_formula_get` signature is unchanged — it continues to return
       `double`.
 - [ ] Add to `tests/formula.test.c`:
-  - [ ] A formula whose expression evaluates to bool (e.g. `"x > 0"`) triggers
+  - [x] A formula whose expression evaluates to bool (e.g. `"x > 0"`) triggers
         `CXPR_ERR_TYPE_MISMATCH` during `cxpr_formula_eval_all`.
 
 ---
@@ -410,13 +410,13 @@ This phase extends it to arbitrary depth for nested struct traversal.
 
 ### 2.1  New AST node type
 
-- [ ] Add `CXPR_NODE_CHAIN_ACCESS` to `cxpr_node_type` enum in `cxpr.h`:
+- [x] Add `CXPR_NODE_CHAIN_ACCESS` to `cxpr_node_type` enum in `cxpr.h`:
 
   ```c
   CXPR_NODE_CHAIN_ACCESS  /**< Chained field access (e.g. "a.b.c") */
   ```
 
-- [ ] Add the corresponding union branch to `struct cxpr_ast` in `internal.h`:
+- [x] Add the corresponding union branch to `struct cxpr_ast` in `internal.h`:
 
   ```c
   /* CXPR_NODE_CHAIN_ACCESS */
@@ -426,13 +426,13 @@ This phase extends it to arbitrary depth for nested struct traversal.
   } chain_access;
   ```
 
-- [ ] Add `cxpr_ast_new_chain_access(const char* const* path, size_t depth)` to
+- [x] Add `cxpr_ast_new_chain_access(const char* const* path, size_t depth)` to
       `ast.c` and declare it in `internal.h`.
-- [ ] Free `chain_access.path` entries and array in `cxpr_ast_free`.
+- [x] Free `chain_access.path` entries and array in `cxpr_ast_free`.
 
 ### 2.2  Public AST inspection API (`cxpr.h`)
 
-- [ ] Declare accessor for codegen / host introspection:
+- [x] Declare accessor for codegen / host introspection:
 
   ```c
   /** @brief Get path depth of a CHAIN_ACCESS node (number of segments). */
@@ -444,7 +444,7 @@ This phase extends it to arbitrary depth for nested struct traversal.
 
 ### 2.3  Parser update (`parser.c`)
 
-- [ ] After parsing a plain identifier field-access `a.b`, loop while the next
+- [x] After parsing a plain identifier field-access `a.b`, loop while the next
       token is `CXPR_TOK_DOT`:
   - Consume `.` and the following identifier.
   - Accumulate segments into a path array.
@@ -454,12 +454,12 @@ This phase extends it to arbitrary depth for nested struct traversal.
 
 ### 2.4  Update `cxpr_ast_references` (`ast.c`)
 
-- [ ] Handle `CXPR_NODE_CHAIN_ACCESS`: emit the full dotted path joined by `.`
+- [x] Handle `CXPR_NODE_CHAIN_ACCESS`: emit the full dotted path joined by `.`
       as a single reference string (consistent with existing codegen consumers).
 
 ### 2.5  Evaluator (`eval.c`)
 
-- [ ] Add `CXPR_NODE_CHAIN_ACCESS` case: walk the struct chain segment by
+- [x] Add `CXPR_NODE_CHAIN_ACCESS` case: walk the struct chain segment by
       segment using `cxpr_context_get_struct` / `cxpr_context_get_field`:
   - Look up `path[0]` as a struct in context.
   - For segments `1 … depth-2`: look up each as a field expecting
@@ -470,32 +470,32 @@ This phase extends it to arbitrary depth for nested struct traversal.
 
 ### 2.6  IR (`ir.c`)
 
-- [ ] Add `CXPR_OP_LOAD_CHAIN` to `cxpr_opcode` in `internal.h`.  The
+- [x] Add `CXPR_OP_LOAD_CHAIN` to `cxpr_opcode` in `internal.h`.  The
       instruction carries a `const char**` path pointer and a `size_t depth`
       stored in the `cxpr_ir_instr` (reuse the existing `name` field for a
       joined `"a.b.c"` string and reconstruct segments by splitting on `.` at
       runtime — no extra fields needed in the instr struct).
-- [ ] In the IR compiler (`ir.c`), emit `CXPR_OP_LOAD_CHAIN` for
+- [x] In the IR compiler (`ir.c`), emit `CXPR_OP_LOAD_CHAIN` for
       `CXPR_NODE_CHAIN_ACCESS` nodes by joining the path segments with `.` into
       an owned string stored in `instr.name`.
-- [ ] In the IR executor, handle `CXPR_OP_LOAD_CHAIN`: split `instr.name` on
+- [x] In the IR executor, handle `CXPR_OP_LOAD_CHAIN`: split `instr.name` on
       `.`, walk the struct chain via `cxpr_context_get_struct` /
       `cxpr_context_get_field`, push the final `cxpr_field_value` onto the
       typed stack without conversion (same rules as the AST evaluator in 2.5).
 
 ### 2.7  Tests
 
-- [ ] Add `tests/chain_access.test.c`:
-  - [ ] `"outer.inner.value"` resolves correctly when `inner` is a nested
+- [x] Add `tests/chain_access.test.c`:
+  - [x] `"outer.inner.value"` resolves correctly when `inner` is a nested
         struct field and `value` is a double.
-  - [ ] `"outer.inner.flag"` returns `cxpr_field_value{BOOL, …}` unchanged.
-  - [ ] Three-level nesting `"a.b.c.d"` works.
-  - [ ] Non-struct intermediate field gives `CXPR_ERR_TYPE_MISMATCH`.
-  - [ ] Unknown intermediate struct gives `CXPR_ERR_UNKNOWN_IDENTIFIER`.
-  - [ ] `cxpr_ast_references` returns the full path string for chain nodes.
-  - [ ] Two-segment access `a.b` still emits `CXPR_NODE_FIELD_ACCESS`
+  - [x] `"outer.inner.flag"` returns `cxpr_field_value{BOOL, …}` unchanged.
+  - [x] Three-level nesting `"a.b.c.d"` works.
+  - [x] Non-struct intermediate field gives `CXPR_ERR_TYPE_MISMATCH`.
+  - [x] Unknown intermediate struct gives `CXPR_ERR_UNKNOWN_IDENTIFIER`.
+  - [x] `cxpr_ast_references` returns the full path string for chain nodes.
+  - [x] Two-segment access `a.b` still emits `CXPR_NODE_FIELD_ACCESS`
         (regression test).
-- [ ] Run full test suite — zero failures before Phase 3.
+- [x] Run full test suite — zero failures before Phase 3.
 
 ---
 
@@ -518,7 +518,7 @@ Two call forms are supported:
 
 ### 3.1  Producer function pointer type (`cxpr.h`)
 
-- [ ] Declare:
+- [x] Declare:
 
   ```c
   /**
@@ -543,13 +543,13 @@ Two call forms are supported:
 
 ### 3.2  Parser/AST support for `name(args).field` (`parser.c`, `internal.h`, `ast.c`)
 
-- [ ] Add `CXPR_NODE_PRODUCER_ACCESS` to `cxpr_node_type` in `cxpr.h`:
+- [x] Add `CXPR_NODE_PRODUCER_ACCESS` to `cxpr_node_type` in `cxpr.h`:
 
   ```c
   CXPR_NODE_PRODUCER_ACCESS  /**< Struct-producer call with field access: name(args).field */
   ```
 
-- [ ] Add the corresponding union branch to `struct cxpr_ast` in `internal.h`:
+- [x] Add the corresponding union branch to `struct cxpr_ast` in `internal.h`:
 
   ```c
   /* CXPR_NODE_PRODUCER_ACCESS */
@@ -561,20 +561,20 @@ Two call forms are supported:
   } producer_access;
   ```
 
-- [ ] Add `cxpr_ast_new_producer_access` in `ast.c`; free args array and
+- [x] Add `cxpr_ast_new_producer_access` in `ast.c`; free args array and
       strings in `cxpr_ast_free`.
-- [ ] In the parser: after parsing a primary `IDENTIFIER`, if the next token
+- [x] In the parser: after parsing a primary `IDENTIFIER`, if the next token
       is `(` and the following tokens form an argument list followed by `)` and
       then `.` and another `IDENTIFIER`, emit `CXPR_NODE_PRODUCER_ACCESS`.
   - The lookahead must not conflict with plain function calls; the `.field`
     suffix is the discriminator — ordinary function calls never end with `.field`.
-- [ ] In `cxpr_ast_references`: emit `"name.field"` for producer access nodes
+- [x] In `cxpr_ast_references`: emit `"name.field"` for producer access nodes
       (consistent with FIELD_ACCESS references; the args are not part of the
       reference string).
 
 ### 3.3  Registration API (`cxpr.h`)
 
-- [ ] Declare `cxpr_registry_add_struct_producer`:
+- [x] Declare `cxpr_registry_add_struct`:
 
   ```c
   /**
@@ -602,7 +602,7 @@ Two call forms are supported:
    * @param userdata     User data passed to func (can be NULL)
    * @param free_ud      Optional cleanup callback (can be NULL)
    */
-  void cxpr_registry_add_struct_producer(cxpr_registry*        reg,
+  void cxpr_registry_add_struct(cxpr_registry*        reg,
                                           const char*           name,
                                           cxpr_producer_fn      func,
                                           size_t                min_args,
@@ -615,7 +615,7 @@ Two call forms are supported:
 
 ### 3.4  Internal storage (`internal.h`, `registry.c`)
 
-- [ ] Add producer fields to `cxpr_func_entry`:
+- [x] Add producer fields to `cxpr_func_entry`:
 
   ```c
   cxpr_producer_fn   producer_func;         /* NULL when not a producer */
@@ -625,12 +625,12 @@ Two call forms are supported:
   size_t             producer_max_args;
   ```
 
-- [ ] Implement `cxpr_registry_add_struct_producer` in `registry.c`.
-- [ ] Free producer fields in `cxpr_func_entry` cleanup path.
+- [x] Implement `cxpr_registry_add_struct` in `registry.c`.
+- [x] Free producer fields in `cxpr_func_entry` cleanup path.
 
 ### 3.5  Evaluator integration (`eval.c`)
 
-- [ ] Add `CXPR_NODE_PRODUCER_ACCESS` case:
+- [x] Add `CXPR_NODE_PRODUCER_ACCESS` case:
   1. Evaluate each argument node to a `double`; collect into a stack array.
   2. Validate argc against `producer_min_args`/`producer_max_args`; error with
      `CXPR_ERR_WRONG_ARITY` if out of range.
@@ -650,39 +650,39 @@ Two call forms are supported:
 
 ### 3.6  IR integration (`ir.c`)
 
-- [ ] Add `CXPR_OP_CALL_PRODUCER` opcode to `cxpr_opcode` in `internal.h`.
+- [x] Add `CXPR_OP_CALL_PRODUCER` opcode to `cxpr_opcode` in `internal.h`.
       The instruction carries: `func` pointer to the `cxpr_func_entry`, `name`
       (producer name for context storage), `index` (argc on stack).
-- [ ] In the IR compiler: emit argument nodes then `CXPR_OP_CALL_PRODUCER` for
+- [x] In the IR compiler: emit argument nodes then `CXPR_OP_CALL_PRODUCER` for
       `CXPR_NODE_PRODUCER_ACCESS`; follow with `CXPR_OP_LOAD_FIELD` for the
       field name.
-- [ ] In the IR executor, handle `CXPR_OP_CALL_PRODUCER`: pop `argc` doubles,
+- [x] In the IR executor, handle `CXPR_OP_CALL_PRODUCER`: pop `argc` doubles,
       check context for existing struct, call producer if absent, store result
       in context.  Do not push anything onto the stack (the following
       `LOAD_FIELD` reads from context).
-- [ ] Handle zero-arg producers in `CXPR_OP_LOAD_FIELD` / `CXPR_OP_LOAD_CHAIN`
+- [x] Handle zero-arg producers in `CXPR_OP_LOAD_FIELD` / `CXPR_OP_LOAD_CHAIN`
       the same way as the AST evaluator in 3.5 (check registry, call if absent,
       retry field lookup).
 
 ### 3.7  Tests
 
-- [ ] Add `tests/struct_producer.test.c`:
-  - [ ] Zero-arg producer: `"macd.line > 0 and macd.histogram > 0"` calls
+- [x] Add `tests/struct_producer.test.c`:
+  - [x] Zero-arg producer: `"macd.line > 0 and macd.histogram > 0"` calls
         producer once.
-  - [ ] Argument-bearing producer: `"macd(14, 3).line > 0"` calls producer
+  - [x] Argument-bearing producer: `"macd(14, 3).line > 0"` calls producer
         with args `{14.0, 3.0}`.
-  - [ ] Argument-bearing producer called once when two fields referenced:
+  - [x] Argument-bearing producer called once when two fields referenced:
         `"macd(14, 3).line + macd(14, 3).histogram"`.
-  - [ ] Bool output field from producer returned as `CXPR_FIELD_BOOL` (no conversion).
+  - [x] Bool output field from producer returned as `CXPR_FIELD_BOOL` (no conversion).
   - [ ] Nested struct output field from producer accessible via chain access.
-  - [ ] Explicit `cxpr_context_set_struct` takes priority — producer not called.
-  - [ ] `context_clear` removes cached output; next evaluation calls producer
+  - [x] Explicit `cxpr_context_set_struct` takes priority — producer not called.
+  - [x] `context_clear` removes cached output; next evaluation calls producer
         again.
-  - [ ] Wrong arity gives `CXPR_ERR_WRONG_ARITY`.
-  - [ ] Unknown field on a known producer gives `CXPR_ERR_UNKNOWN_IDENTIFIER`.
-- [ ] `cxpr_ir_eval` produces identical results to `cxpr_ast_eval` for all
+  - [x] Wrong arity gives `CXPR_ERR_WRONG_ARITY`.
+  - [x] Unknown field on a known producer gives `CXPR_ERR_UNKNOWN_IDENTIFIER`.
+- [x] `cxpr_ir_eval` produces identical results to `cxpr_ast_eval` for all
       producer test cases above (parity test).
-- [ ] Run full test suite — zero failures before Phase 4.
+- [x] Run full test suite — zero failures before Phase 4.
 
 ---
 
