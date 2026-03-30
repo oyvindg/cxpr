@@ -113,9 +113,9 @@ static double cxpr_eval_defined_function(cxpr_func_entry* entry, const cxpr_ast*
     if (entry->defined_program) {
         const double result =
             (scalar_only)
-                ? cxpr_ir_eval_with_locals(&entry->defined_program->ir, ctx, reg,
+                ? cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
                                            scalar_args, argc, err)
-                : cxpr_program_eval(entry->defined_program, tmp, reg, err);
+                : cxpr_ir_eval(entry->defined_program, tmp, reg, err);
         if (tmp) cxpr_context_free(tmp);
         return result;
     }
@@ -383,8 +383,8 @@ static double cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
  * @param[out] err   Error output (can be NULL)
  * @return Evaluated result, or NAN on error
  */
-double cxpr_eval(const cxpr_ast* ast, const cxpr_context* ctx,
-               const cxpr_registry* reg, cxpr_error* err) {
+double cxpr_ast_eval(const cxpr_ast* ast, const cxpr_context* ctx,
+                     const cxpr_registry* reg, cxpr_error* err) {
     if (err) *err = (cxpr_error){0};
     return cxpr_eval_node(ast, ctx, reg, err);
 }
@@ -397,9 +397,9 @@ double cxpr_eval(const cxpr_ast* ast, const cxpr_context* ctx,
  * @param[out] err   Error output (can be NULL)
  * @return true if result is non-zero, false otherwise
  */
-bool cxpr_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
-                  const cxpr_registry* reg, cxpr_error* err) {
-    double result = cxpr_eval(ast, ctx, reg, err);
+bool cxpr_ast_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+                        const cxpr_registry* reg, cxpr_error* err) {
+    double result = cxpr_ast_eval(ast, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;
     return result != 0.0;
 }

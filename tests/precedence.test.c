@@ -33,7 +33,7 @@ static double eval_expr(const char* expr) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -69,7 +69,7 @@ static double eval_expr_ctx(const char* expr, const char* names[], const double 
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);

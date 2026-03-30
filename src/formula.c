@@ -349,9 +349,9 @@ void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_
 
         cxpr_error eval_err = {0};
         if (f->program) {
-            f->result = cxpr_program_eval(f->program, ctx, engine->registry, &eval_err);
+            f->result = cxpr_ir_eval(f->program, ctx, engine->registry, &eval_err);
         } else {
-            f->result = cxpr_eval(f->ast, ctx, engine->registry, &eval_err);
+            f->result = cxpr_ast_eval(f->ast, ctx, engine->registry, &eval_err);
         }
         if (eval_err.code != CXPR_OK) {
             if (err) *err = eval_err;

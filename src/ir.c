@@ -54,6 +54,50 @@ static bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr,
     return true;
 }
 
+const char* cxpr_ir_opcode_name(cxpr_opcode op) {
+    switch (op) {
+    case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
+    case CXPR_OP_LOAD_LOCAL: return "LOAD_LOCAL";
+    case CXPR_OP_LOAD_LOCAL_SQUARE: return "LOAD_LOCAL_SQUARE";
+    case CXPR_OP_LOAD_VAR: return "LOAD_VAR";
+    case CXPR_OP_LOAD_VAR_SQUARE: return "LOAD_VAR_SQUARE";
+    case CXPR_OP_LOAD_PARAM: return "LOAD_PARAM";
+    case CXPR_OP_LOAD_PARAM_SQUARE: return "LOAD_PARAM_SQUARE";
+    case CXPR_OP_LOAD_FIELD: return "LOAD_FIELD";
+    case CXPR_OP_LOAD_FIELD_SQUARE: return "LOAD_FIELD_SQUARE";
+    case CXPR_OP_ADD: return "ADD";
+    case CXPR_OP_SUB: return "SUB";
+    case CXPR_OP_MUL: return "MUL";
+    case CXPR_OP_SQUARE: return "SQUARE";
+    case CXPR_OP_DIV: return "DIV";
+    case CXPR_OP_MOD: return "MOD";
+    case CXPR_OP_CMP_EQ: return "CMP_EQ";
+    case CXPR_OP_CMP_NEQ: return "CMP_NEQ";
+    case CXPR_OP_CMP_LT: return "CMP_LT";
+    case CXPR_OP_CMP_LTE: return "CMP_LTE";
+    case CXPR_OP_CMP_GT: return "CMP_GT";
+    case CXPR_OP_CMP_GTE: return "CMP_GTE";
+    case CXPR_OP_NOT: return "NOT";
+    case CXPR_OP_NEG: return "NEG";
+    case CXPR_OP_SIGN: return "SIGN";
+    case CXPR_OP_SQRT: return "SQRT";
+    case CXPR_OP_ABS: return "ABS";
+    case CXPR_OP_FLOOR: return "FLOOR";
+    case CXPR_OP_CEIL: return "CEIL";
+    case CXPR_OP_ROUND: return "ROUND";
+    case CXPR_OP_POW: return "POW";
+    case CXPR_OP_CLAMP: return "CLAMP";
+    case CXPR_OP_CALL_FUNC: return "CALL_FUNC";
+    case CXPR_OP_CALL_DEFINED: return "CALL_DEFINED";
+    case CXPR_OP_CALL_AST: return "CALL_AST";
+    case CXPR_OP_JUMP: return "JUMP";
+    case CXPR_OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
+    case CXPR_OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
+    case CXPR_OP_RETURN: return "RETURN";
+    default: return "UNKNOWN";
+    }
+}
+
 /** @brief Reserve one instruction slot and return its index. */
 static size_t cxpr_ir_next_index(const cxpr_ir_program* program) {
     return program->count;
@@ -375,7 +419,7 @@ static double cxpr_ir_call_defined_scalar(cxpr_func_entry* entry, const cxpr_con
     }
 
     if (entry->defined_program) {
-        return cxpr_ir_eval_with_locals(&entry->defined_program->ir, ctx, reg, args, argc, err);
+        return cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg, args, argc, err);
     }
 
     return cxpr_ir_runtime_error(err, "Scalar defined function missing compiled program");
@@ -508,6 +552,49 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 return false;
             }
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_POW }, err);
+        }
+
+        if (strcmp(fname, "sign") == 0 && ast->data.function_call.argc == 1) {
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_SIGN }, err);
+        }
+
+        if (strcmp(fname, "floor") == 0 && ast->data.function_call.argc == 1) {
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_FLOOR }, err);
+        }
+
+        if (strcmp(fname, "ceil") == 0 && ast->data.function_call.argc == 1) {
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CEIL }, err);
+        }
+
+        if (strcmp(fname, "round") == 0 && ast->data.function_call.argc == 1) {
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_ROUND }, err);
+        }
+
+        if (strcmp(fname, "clamp") == 0 && ast->data.function_call.argc == 3) {
+            size_t i;
+            for (i = 0; i < 3; ++i) {
+                if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
+                                          local_names, local_count, subst, inline_depth, err)) {
+                    return false;
+                }
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
         if (entry->sync_func && !entry->struct_fields && !entry->defined_body) {
@@ -687,6 +774,10 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){ .op = CXPR_OP_DIV, .value = 0.0, .name = NULL },
                                 err);
+        case CXPR_TOK_PERCENT:
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){ .op = CXPR_OP_MOD, .value = 0.0, .name = NULL },
+                                err);
         case CXPR_TOK_EQ:
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){ .op = CXPR_OP_CMP_EQ, .value = 0.0, .name = NULL },
@@ -827,7 +918,7 @@ bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_ir_prog
  * IR currently supports loads, function-call fallback, arithmetic ops,
  * comparison ops, logical ops, jumps, and RETURN.
  */
-double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
+double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err) {
     if (err) *err = (cxpr_error){0};
@@ -995,6 +1086,19 @@ double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_conte
             sp--;
             break;
 
+        case CXPR_OP_MOD:
+            if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
+            if (stack[sp - 1] == 0.0) {
+                if (err) {
+                    err->code = CXPR_ERR_DIVISION_BY_ZERO;
+                    err->message = "Modulo by zero";
+                }
+                return NAN;
+            }
+            stack[sp - 2] = fmod(stack[sp - 2], stack[sp - 1]);
+            sp--;
+            break;
+
         case CXPR_OP_CMP_EQ:
             if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
             stack[sp - 2] = (stack[sp - 2] == stack[sp - 1]) ? 1.0 : 0.0;
@@ -1041,6 +1145,11 @@ double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_conte
             stack[sp - 1] = -stack[sp - 1];
             break;
 
+        case CXPR_OP_SIGN:
+            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
+            stack[sp - 1] = (stack[sp - 1] > 0.0) ? 1.0 : ((stack[sp - 1] < 0.0) ? -1.0 : 0.0);
+            break;
+
         case CXPR_OP_SQRT:
             if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
             stack[sp - 1] = sqrt(stack[sp - 1]);
@@ -1051,10 +1160,37 @@ double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_conte
             stack[sp - 1] = fabs(stack[sp - 1]);
             break;
 
+        case CXPR_OP_FLOOR:
+            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
+            stack[sp - 1] = floor(stack[sp - 1]);
+            break;
+
+        case CXPR_OP_CEIL:
+            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
+            stack[sp - 1] = ceil(stack[sp - 1]);
+            break;
+
+        case CXPR_OP_ROUND:
+            if (!cxpr_ir_require_stack(sp, 1, err)) return NAN;
+            stack[sp - 1] = round(stack[sp - 1]);
+            break;
+
         case CXPR_OP_POW:
             if (!cxpr_ir_require_stack(sp, 2, err)) return NAN;
             stack[sp - 2] = pow(stack[sp - 2], stack[sp - 1]);
             sp--;
+            break;
+
+        case CXPR_OP_CLAMP:
+            if (!cxpr_ir_require_stack(sp, 3, err)) return NAN;
+            if (stack[sp - 2] > stack[sp - 1]) {
+                const double tmp = stack[sp - 2];
+                stack[sp - 2] = stack[sp - 1];
+                stack[sp - 1] = tmp;
+            }
+            if (stack[sp - 3] < stack[sp - 2]) stack[sp - 3] = stack[sp - 2];
+            if (stack[sp - 3] > stack[sp - 1]) stack[sp - 3] = stack[sp - 1];
+            sp -= 2;
             break;
 
         case CXPR_OP_CALL_FUNC: {
@@ -1134,7 +1270,7 @@ double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_conte
         }
 
         case CXPR_OP_CALL_AST: {
-            double value = cxpr_eval(instr->ast, ctx, reg, err);
+            double value = cxpr_ast_eval(instr->ast, ctx, reg, err);
             if (err && err->code != CXPR_OK) return NAN;
             if (!cxpr_ir_stack_push(stack, &sp, value, stack_capacity, err)) return NAN;
             break;
@@ -1166,9 +1302,9 @@ double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_conte
     return cxpr_ir_runtime_error(err, "IR program missing return");
 }
 
-double cxpr_ir_eval(const cxpr_ir_program* program, const cxpr_context* ctx,
+double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err) {
-    return cxpr_ir_eval_with_locals(program, ctx, reg, NULL, 0, err);
+    return cxpr_ir_exec_with_locals(program, ctx, reg, NULL, 0, err);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1197,8 +1333,8 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
     return prog;
 }
 
-double cxpr_program_eval(const cxpr_program* prog, const cxpr_context* ctx,
-                         const cxpr_registry* reg, cxpr_error* err) {
+double cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
+                    const cxpr_registry* reg, cxpr_error* err) {
     if (!prog) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -1206,12 +1342,12 @@ double cxpr_program_eval(const cxpr_program* prog, const cxpr_context* ctx,
         }
         return NAN;
     }
-    return cxpr_ir_eval(&prog->ir, ctx, reg, err);
+    return cxpr_ir_exec(&prog->ir, ctx, reg, err);
 }
 
-bool cxpr_program_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
-                            const cxpr_registry* reg, cxpr_error* err) {
-    const double result = cxpr_program_eval(prog, ctx, reg, err);
+bool cxpr_ir_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
+                       const cxpr_registry* reg, cxpr_error* err) {
+    const double result = cxpr_ir_eval(prog, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;
     return result != 0.0;
 }
@@ -1220,4 +1356,28 @@ void cxpr_program_free(cxpr_program* prog) {
     if (!prog) return;
     cxpr_ir_program_reset(&prog->ir);
     free(prog);
+}
+
+void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
+    size_t i;
+    FILE* stream = out ? out : stdout;
+
+    if (!prog || !prog->ir.code) {
+        fprintf(stream, "<empty program>\n");
+        return;
+    }
+
+    for (i = 0; i < prog->ir.count; ++i) {
+        const cxpr_ir_instr* instr = &prog->ir.code[i];
+        fprintf(stream, "%zu: %s", i, cxpr_ir_opcode_name(instr->op));
+        if (instr->name) fprintf(stream, " name=%s", instr->name);
+        if (instr->func) fprintf(stream, " argc=%zu func=%s", instr->index, instr->func->name);
+        else if (instr->op == CXPR_OP_PUSH_CONST) fprintf(stream, " value=%.17g", instr->value);
+        else if (instr->op == CXPR_OP_JUMP || instr->op == CXPR_OP_JUMP_IF_FALSE ||
+                 instr->op == CXPR_OP_JUMP_IF_TRUE || instr->op == CXPR_OP_LOAD_LOCAL ||
+                 instr->op == CXPR_OP_LOAD_LOCAL_SQUARE) {
+            fprintf(stream, " index=%zu", instr->index);
+        }
+        fprintf(stream, "\n");
+    }
 }

@@ -151,7 +151,7 @@ static void test_eval_error_unknown_identifier(void) {
     cxpr_ast* ast = cxpr_parse(p, "unknown_var + 1", &err);
     assert(ast != NULL);
 
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
 
     cxpr_ast_free(ast);
@@ -175,7 +175,7 @@ static void test_eval_error_unknown_param(void) {
     cxpr_ast* ast = cxpr_parse(p, "$missing_param", &err);
     assert(ast != NULL);
 
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
 
     cxpr_ast_free(ast);
@@ -199,7 +199,7 @@ static void test_eval_error_unknown_function(void) {
     cxpr_ast* ast = cxpr_parse(p, "foobar(1, 2)", &err);
     assert(ast != NULL);
 
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
 
     cxpr_ast_free(ast);
@@ -224,7 +224,7 @@ static void test_eval_error_wrong_arity(void) {
     cxpr_ast* ast = cxpr_parse(p, "sqrt(1, 2, 3)", &err);
     assert(ast != NULL);
 
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_WRONG_ARITY);
 
     cxpr_ast_free(ast);
@@ -234,7 +234,7 @@ static void test_eval_error_wrong_arity(void) {
     assert(ast != NULL);
 
     err = (cxpr_error){0};
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_WRONG_ARITY);
 
     cxpr_ast_free(ast);
@@ -258,7 +258,7 @@ static void test_eval_error_division_by_zero(void) {
     cxpr_ast* ast = cxpr_parse(p, "10 / 0", &err);
     assert(ast != NULL);
 
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
     assert(err.message != NULL);
 
@@ -269,7 +269,7 @@ static void test_eval_error_division_by_zero(void) {
     assert(ast != NULL);
 
     err = (cxpr_error){0};
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
 
     cxpr_ast_free(ast);

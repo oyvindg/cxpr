@@ -252,12 +252,12 @@ static void test_sma_crossover(void) {
         /* Evaluate after warm-up period */
         if ((int)i >= sma_slow_period) {
             err.code = CXPR_OK;
-            bool entry = cxpr_eval_bool(entry_ast, ctx, reg, &err);
+            bool entry = cxpr_ast_eval_bool(entry_ast, ctx, reg, &err);
             assert(err.code == CXPR_OK);
             if (entry) entry_signals++;
 
             err.code = CXPR_OK;
-            bool exit = cxpr_eval_bool(exit_ast, ctx, reg, &err);
+            bool exit = cxpr_ast_eval_bool(exit_ast, ctx, reg, &err);
             assert(err.code == CXPR_OK);
             if (exit) exit_signals++;
         }
@@ -316,7 +316,7 @@ static void test_ema_convergence(void) {
         cxpr_context_set(ctx, "prev_ema", expr_ema);
         cxpr_context_set(ctx, "close", bars[i].close);
         err.code = CXPR_OK;
-        expr_ema = cxpr_eval(ema_expr, ctx, reg, &err);
+        expr_ema = cxpr_ast_eval(ema_expr, ctx, reg, &err);
         assert(err.code == CXPR_OK);
 
         /* They should be bit-identical since the formula is the same */
@@ -384,15 +384,15 @@ static void test_rsi_signals(void) {
 
         if ((int)i >= rsi_period) {
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(oversold_ast, ctx, reg, &err))  oversold_count++;
+            if (cxpr_ast_eval_bool(oversold_ast, ctx, reg, &err))  oversold_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(overbought_ast, ctx, reg, &err)) overbought_count++;
+            if (cxpr_ast_eval_bool(overbought_ast, ctx, reg, &err)) overbought_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(buy_signal_ast, ctx, reg, &err)) buy_signals++;
+            if (cxpr_ast_eval_bool(buy_signal_ast, ctx, reg, &err)) buy_signals++;
             assert(err.code == CXPR_OK);
         }
     }
@@ -471,15 +471,15 @@ static void test_bollinger_bands(void) {
             assert(lower <= sma && "Lower band must be <= middle");
 
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(squeeze_ast, ctx, reg, &err)) squeeze_count++;
+            if (cxpr_ast_eval_bool(squeeze_ast, ctx, reg, &err)) squeeze_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(near_lower_ast, ctx, reg, &err)) near_lower_count++;
+            if (cxpr_ast_eval_bool(near_lower_ast, ctx, reg, &err)) near_lower_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(mean_reversion_ast, ctx, reg, &err)) mean_rev_count++;
+            if (cxpr_ast_eval_bool(mean_reversion_ast, ctx, reg, &err)) mean_rev_count++;
             assert(err.code == CXPR_OK);
         }
     }
@@ -596,18 +596,18 @@ static void test_full_strategy_simulation(void) {
 
         if (!in_position) {
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(entry_ast, ctx, reg, &err)) {
+            if (cxpr_ast_eval_bool(entry_ast, ctx, reg, &err)) {
                 assert(err.code == CXPR_OK);
 
                 /* Compute position size */
                 err.code = CXPR_OK;
-                double size = cxpr_eval(size_ast, ctx, reg, &err);
+                double size = cxpr_ast_eval(size_ast, ctx, reg, &err);
                 assert(err.code == CXPR_OK);
                 assert(size >= 1.0 && size <= 100.0);
 
                 /* Compute stop loss */
                 err.code = CXPR_OK;
-                double sl = cxpr_eval(stoploss_ast, ctx, reg, &err);
+                double sl = cxpr_ast_eval(stoploss_ast, ctx, reg, &err);
                 assert(err.code == CXPR_OK);
                 assert(sl < bars[i].close && "Stop loss must be below entry");
 
@@ -617,7 +617,7 @@ static void test_full_strategy_simulation(void) {
             }
         } else {
             err.code = CXPR_OK;
-            if (cxpr_eval_bool(exit_ast, ctx, reg, &err)) {
+            if (cxpr_ast_eval_bool(exit_ast, ctx, reg, &err)) {
                 assert(err.code == CXPR_OK);
                 total_pnl += bars[i].close - entry_price;
                 in_position = false;
@@ -820,7 +820,7 @@ static void test_stress_multi_expression(void) {
 
         for (int j = 0; j < n_expr; j++) {
             err.code = CXPR_OK;
-            double result = cxpr_eval(asts[j], ctx, reg, &err);
+            double result = cxpr_ast_eval(asts[j], ctx, reg, &err);
             assert(err.code == CXPR_OK);
             assert(!isnan(result) && "Result must not be NaN");
             eval_count++;

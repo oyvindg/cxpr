@@ -48,6 +48,61 @@ static double native_hyp2_test(double x, double y) {
     return sqrt(x * x + y * y);
 }
 
+static void test_ir_eval_modulo_matches_ast(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "a % b", &err);
+    assert(ast);
+    cxpr_context_set(ctx, "a", 17.5);
+    cxpr_context_set(ctx, "b", 3.0);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(ast_result, ir_result);
+    ASSERT_DOUBLE_EQ(ir_result, fmod(17.5, 3.0));
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_modulo_matches_ast\n");
+}
+
+static void test_ir_eval_modulo_by_zero(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "10 % 0", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    double result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(isnan(result));
+    assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
+    assert(strcmp(err.message, "Modulo by zero") == 0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_modulo_by_zero\n");
+}
+
 static void test_ir_compile_number_literal(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
@@ -80,10 +135,10 @@ static void test_ir_eval_number_literal_matches_ast(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -129,10 +184,10 @@ static void test_ir_eval_identifier_matches_ast(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -156,7 +211,7 @@ static void test_ir_eval_unknown_identifier(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double result = cxpr_ir_eval(&program, ctx, NULL, &err);
+    double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
     assert(strcmp(err.message, "Unknown identifier") == 0);
@@ -201,10 +256,10 @@ static void test_ir_eval_parameter_matches_ast(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -228,7 +283,7 @@ static void test_ir_eval_unknown_parameter(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double result = cxpr_ir_eval(&program, ctx, NULL, &err);
+    double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
     assert(strcmp(err.message, "Unknown parameter variable") == 0);
@@ -252,9 +307,9 @@ static void test_ir_eval_addition_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -283,9 +338,9 @@ static void test_ir_eval_nested_add_sub_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -312,9 +367,9 @@ static void test_ir_eval_unary_minus_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -340,9 +395,9 @@ static void test_ir_eval_multiplication_matches_ast(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -372,9 +427,9 @@ static void test_ir_eval_division_and_precedence_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -400,7 +455,7 @@ static void test_ir_eval_division_by_zero(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double result = cxpr_ir_eval(&program, ctx, NULL, &err);
+    double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
     assert(strcmp(err.message, "Division by zero") == 0);
@@ -427,9 +482,9 @@ static void test_ir_eval_field_access_matches_ast(void) {
     assert(program.code[0].op == CXPR_OP_LOAD_FIELD);
     assert(strcmp(program.code[0].name, "body.vx") == 0);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -454,7 +509,7 @@ static void test_ir_eval_unknown_field_access(void) {
     assert(cxpr_ir_compile(ast, NULL, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double result = cxpr_ir_eval(&program, ctx, NULL, &err);
+    double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
     assert(strcmp(err.message, "Unknown field access") == 0);
@@ -490,9 +545,9 @@ static void test_ir_eval_comparisons_match_ast(void) {
         assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
         assert(err.code == CXPR_OK);
 
-        double ast_result = cxpr_eval(ast, ctx, reg, &err);
+        double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
         assert(err.code == CXPR_OK);
-        double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+        double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
         assert(err.code == CXPR_OK);
 
         ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -520,9 +575,9 @@ static void test_ir_eval_not_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -549,9 +604,9 @@ static void test_ir_eval_and_short_circuit_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -578,9 +633,9 @@ static void test_ir_eval_or_short_circuit_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -607,9 +662,9 @@ static void test_ir_eval_ternary_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -638,9 +693,9 @@ static void test_ir_eval_nested_ternary_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -667,9 +722,9 @@ static void test_ir_eval_builtin_function_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -681,6 +736,37 @@ static void test_ir_eval_builtin_function_matches_ast(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
     printf("  ✓ test_ir_eval_builtin_function_matches_ast\n");
+}
+
+static void test_ir_eval_intrinsics_match_ast(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_register_builtins(reg);
+    cxpr_context_set(ctx, "x", -2.4);
+    cxpr_context_set(ctx, "y", 4.2);
+    cxpr_context_set(ctx, "z", 0.7);
+    cxpr_ast* ast = cxpr_parse(p, "round(x) + floor(y) + ceil(z) + sign(x) + clamp(y, 0, 3)", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(ast_result, ir_result);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_intrinsics_match_ast\n");
 }
 
 static void test_ir_eval_struct_function_matches_ast(void) {
@@ -703,9 +789,9 @@ static void test_ir_eval_struct_function_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -736,9 +822,9 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -771,9 +857,9 @@ static void test_ir_eval_nested_defined_function_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -806,9 +892,9 @@ static void test_ir_eval_native_function_fast_path_matches_ast(void) {
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -841,9 +927,9 @@ static void test_ir_compile_repeated_multiplication_to_square(void) {
     assert(program.code[2].op == CXPR_OP_ADD);
     assert(program.code[3].op == CXPR_OP_RETURN);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
@@ -873,9 +959,9 @@ static void test_ir_constant_folding_reduces_program(void) {
     ASSERT_DOUBLE_EQ(program.code[0].value, 14.0);
     assert(program.code[1].op == CXPR_OP_RETURN);
 
-    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    double ast_result = cxpr_ast_eval(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(ast_result, ir_result);
 
@@ -900,7 +986,7 @@ static void test_ir_constant_folding_keeps_div_zero_runtime_error(void) {
     assert(err.code == CXPR_OK);
     assert(program.count > 2);
 
-    double result = cxpr_ir_eval(&program, ctx, reg, &err);
+    double result = cxpr_ir_exec(&program, ctx, reg, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
     assert(strcmp(err.message, "Division by zero") == 0);
@@ -929,6 +1015,8 @@ int main(void) {
     test_ir_eval_multiplication_matches_ast();
     test_ir_eval_division_and_precedence_matches_ast();
     test_ir_eval_division_by_zero();
+    test_ir_eval_modulo_matches_ast();
+    test_ir_eval_modulo_by_zero();
     test_ir_eval_field_access_matches_ast();
     test_ir_eval_unknown_field_access();
     test_ir_eval_comparisons_match_ast();
@@ -938,6 +1026,7 @@ int main(void) {
     test_ir_eval_ternary_matches_ast();
     test_ir_eval_nested_ternary_matches_ast();
     test_ir_eval_builtin_function_matches_ast();
+    test_ir_eval_intrinsics_match_ast();
     test_ir_eval_struct_function_matches_ast();
     test_ir_eval_defined_function_matches_ast();
     test_ir_eval_nested_defined_function_matches_ast();

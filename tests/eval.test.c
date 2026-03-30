@@ -36,7 +36,7 @@ static double eval_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -51,7 +51,7 @@ static bool eval_bool_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     assert(ast);
-    bool result = cxpr_eval_bool(ast, ctx, reg, &err);
+    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
@@ -63,7 +63,7 @@ static cxpr_error_code eval_error(const char* expr, cxpr_context* ctx, cxpr_regi
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     if (!ast) { cxpr_parser_free(p); return err.code; }
-    cxpr_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval(ast, ctx, reg, &err);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     return err.code;

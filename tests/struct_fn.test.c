@@ -35,7 +35,7 @@ static double eval_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
         cxpr_parser_free(p);
         return NAN;
     }
-    double result = cxpr_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_ast_free(ast);
     cxpr_parser_free(p);

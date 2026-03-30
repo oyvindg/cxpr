@@ -14,7 +14,7 @@ Mål: innføre en liten intern IR eller "compiled plan" for raskere evaluering, 
 
 - [x] Les [src/eval.c](/home/evoldoc/_code/cxpr/src/eval.c) og skriv ned hvilke regler IR-evaluering må matche:
   - [x] boolean-konvensjon
-    Dagens evaluator bruker `1.0` og `0.0` for logiske resultater. `cxpr_eval_bool(...)` tolker alle ikke-null-resultater som `true`.
+    Dagens evaluator bruker `1.0` og `0.0` for logiske resultater. `cxpr_ast_eval_bool(...)` tolker alle ikke-null-resultater som `true`.
   - [x] division/modulo by zero
     Ved `/ 0.0` settes `CXPR_ERR_DIVISION_BY_ZERO` med melding `"Division by zero"` og resultatet blir `NAN`. Ved `% 0.0` brukes samme feilkode med melding `"Modulo by zero"` og resultatet blir `NAN`.
   - [x] unknown identifier / unknown function
@@ -267,7 +267,7 @@ Mål: innføre en liten intern IR eller "compiled plan" for raskere evaluering, 
   - [x] eval
   - [x] eval_bool
   - [x] free
-- [x] Ikke endre eller deprekér `cxpr_eval(...)`.
+- [x] Ikke endre eller deprekér `cxpr_ast_eval(...)`.
 - [x] Test før neste steg:
   - [x] legg til public API-tester
   - [x] bekreft at eksisterende API fortsatt oppfører seg likt
@@ -281,7 +281,7 @@ Mål: innføre en liten intern IR eller "compiled plan" for raskere evaluering, 
 - [x] Test før neste steg:
   - [x] kjør eksisterende formula-tester
   - [x] legg til minst én test som sammenligner AST-path og IR-path i formula-engine
-  Verifisering: `./build/tests/test_formula_ir` og `/usr/bin/ctest --test-dir build --verbose` passerte. `FormulaEngine` beholder AST for dependency-analyse, kompilerer hver formel én gang under `cxpr_formula_compile(...)`, og evaluerer via `cxpr_program_eval(...)` når compiled program finnes.
+  Verifisering: `./build/tests/test_formula_ir` og `/usr/bin/ctest --test-dir build --verbose` passerte. `FormulaEngine` beholder AST for dependency-analyse, kompilerer hver formel én gang under `cxpr_formula_compile(...)`, og evaluerer via `cxpr_ir_eval(...)` når compiled program finnes.
 
 ### 22. Dokumenter arkitekturen
 

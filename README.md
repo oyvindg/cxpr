@@ -76,7 +76,7 @@ int main(void) {
     cxpr_ast* ast = cxpr_parse(parser, "rsi < 30 and volume > $min_volume", &err);
     if (!ast) { fprintf(stderr, "parse error: %s\n", err.message); return 1; }
 
-    double result = cxpr_eval(ast, ctx, reg, &err);  // → 1.0
+    double result = cxpr_ast_eval(ast, ctx, reg, &err);  // → 1.0
 
     cxpr_ast_free(ast);
     cxpr_parser_free(parser);
@@ -87,10 +87,10 @@ int main(void) {
 
 ## AST vs IR
 
-`cxpr` now has two execution paths for the same expression language:
+`cxpr` has two execution paths for the same expression language:
 
-- `cxpr_eval(ast, ...)` evaluates the AST directly.
-- `cxpr_compile(ast, ...)` builds a reusable compiled program, and `cxpr_program_eval(...)` runs that program repeatedly.
+- `cxpr_ast_eval(ast, ...)` evaluates the AST directly.
+- `cxpr_compile(ast, ...)` builds a reusable compiled program, and `cxpr_ir_eval(...)` runs that program repeatedly.
 
 The AST is still the primary representation. It is what parsing produces, and it remains the source of truth for reference extraction, dependency analysis, validation, and error reporting. If you need to inspect or understand an expression structurally, you are working with the AST.
 
@@ -107,8 +107,8 @@ In practice, the intended flow is:
 cxpr_ast* ast = cxpr_parse(parser, "sqrt(x*x + y*y) > $limit", &err);
 cxpr_program* prog = cxpr_compile(ast, reg, &err);
 
-double ast_value = cxpr_eval(ast, ctx, reg, &err);
-double ir_value  = cxpr_program_eval(prog, ctx, reg, &err);
+double ast_value = cxpr_ast_eval(ast, ctx, reg, &err);
+double ir_value  = cxpr_ir_eval(prog, ctx, reg, &err);
 
 cxpr_program_free(prog);
 cxpr_ast_free(ast);

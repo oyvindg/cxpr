@@ -325,6 +325,7 @@ typedef enum {
     CXPR_OP_MUL,
     CXPR_OP_SQUARE,
     CXPR_OP_DIV,
+    CXPR_OP_MOD,
     CXPR_OP_CMP_EQ,
     CXPR_OP_CMP_NEQ,
     CXPR_OP_CMP_LT,
@@ -333,9 +334,14 @@ typedef enum {
     CXPR_OP_CMP_GTE,
     CXPR_OP_NOT,
     CXPR_OP_NEG,
+    CXPR_OP_SIGN,
     CXPR_OP_SQRT,
     CXPR_OP_ABS,
+    CXPR_OP_FLOOR,
+    CXPR_OP_CEIL,
+    CXPR_OP_ROUND,
     CXPR_OP_POW,
+    CXPR_OP_CLAMP,
     CXPR_OP_CALL_FUNC,
     CXPR_OP_CALL_DEFINED,
     CXPR_OP_CALL_AST,
@@ -390,12 +396,13 @@ bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
                                  const char* const* local_names, size_t local_count,
                                  cxpr_ir_program* program, cxpr_error* err);
 /** @brief Evaluate an internal IR program against a context and registry. */
-double cxpr_ir_eval(const cxpr_ir_program* program, const cxpr_context* ctx,
+double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err);
 /** @brief Evaluate an IR program with an optional local-slot frame. */
-double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
+double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err);
+const char* cxpr_ir_opcode_name(cxpr_opcode op);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Formula engine structure

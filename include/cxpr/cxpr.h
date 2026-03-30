@@ -8,8 +8,9 @@
 #ifndef CXPR_H
 #define CXPR_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -611,8 +612,8 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def);
  * @param[out] err Error output (can be NULL)
  * @return Evaluation result, or NaN on error
  */
-double cxpr_eval(const cxpr_ast* ast, const cxpr_context* ctx,
-               const cxpr_registry* reg, cxpr_error* err);
+double cxpr_ast_eval(const cxpr_ast* ast, const cxpr_context* ctx,
+                     const cxpr_registry* reg, cxpr_error* err);
 
 /**
  * @brief Evaluate an AST to a boolean value.
@@ -625,8 +626,8 @@ double cxpr_eval(const cxpr_ast* ast, const cxpr_context* ctx,
  * @param[out] err Error output (can be NULL)
  * @return true if result != 0.0, false otherwise
  */
-bool cxpr_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
-                  const cxpr_registry* reg, cxpr_error* err);
+bool cxpr_ast_eval_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+                        const cxpr_registry* reg, cxpr_error* err);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Compiled Program API
@@ -654,8 +655,8 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_e
  * @param[out] err Error output (can be NULL)
  * @return Evaluation result, or NaN on error
  */
-double cxpr_program_eval(const cxpr_program* prog, const cxpr_context* ctx,
-                         const cxpr_registry* reg, cxpr_error* err);
+double cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
+                    const cxpr_registry* reg, cxpr_error* err);
 
 /**
  * @brief Evaluate a compiled program as boolean (non-zero = true).
@@ -666,14 +667,24 @@ double cxpr_program_eval(const cxpr_program* prog, const cxpr_context* ctx,
  * @param[out] err Error output (can be NULL)
  * @return true if result != 0.0, false otherwise
  */
-bool cxpr_program_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
-                            const cxpr_registry* reg, cxpr_error* err);
+bool cxpr_ir_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
+                       const cxpr_registry* reg, cxpr_error* err);
 
 /**
  * @brief Free a compiled program.
  * @param prog Compiled program (NULL-safe)
  */
 void cxpr_program_free(cxpr_program* prog);
+
+/**
+ * @brief Dump a compiled program's instruction stream to a text stream.
+ *
+ * Useful for debugging and benchmarking compiled IR.
+ *
+ * @param prog Compiled program
+ * @param out Output stream (uses stdout when NULL)
+ */
+void cxpr_program_dump(const cxpr_program* prog, FILE* out);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Formula Engine API (multi-formula with dependencies)
