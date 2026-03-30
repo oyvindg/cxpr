@@ -122,6 +122,7 @@ cxpr_registry* cxpr_registry_new(void) {
     if (!reg) return NULL;
     reg->capacity = CXPR_REGISTRY_INITIAL_CAPACITY;
     reg->count = 0;
+    reg->version = 1;
     reg->entries = (cxpr_func_entry*)calloc(reg->capacity, sizeof(cxpr_func_entry));
     if (!reg->entries) { free(reg); return NULL; }
     return reg;
@@ -220,6 +221,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         existing->max_args = max_args;
         existing->userdata = userdata;
         existing->userdata_free = free_userdata;
+        reg->version++;
         return;
     }
 
@@ -236,6 +238,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     entry->max_args = max_args;
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
+    reg->version++;
 }
 
 /** @brief Heap payload for unary adapters. */
@@ -420,6 +423,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
         existing->struct_fields = owned_fields;
         existing->fields_per_arg = fields_per_arg;
         existing->struct_argc = struct_argc;
+        reg->version++;
         return;
     }
 
@@ -437,6 +441,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
     entry->struct_fields = owned_fields;
     entry->fields_per_arg = fields_per_arg;
     entry->struct_argc = struct_argc;
+    reg->version++;
 }
 
 void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
@@ -477,6 +482,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
         entry->struct_fields = owned_fields;
         entry->fields_per_arg = field_count;
         entry->struct_argc = 0;
+        reg->version++;
         return;
     }
 
@@ -494,6 +500,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     entry->struct_fields = owned_fields;
     entry->fields_per_arg = field_count;
     entry->struct_argc = 0;
+    reg->version++;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -787,6 +794,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
             existing->defined_param_count        = param_count;
             existing->defined_param_fields       = owned_fields;
             existing->defined_param_field_counts = owned_counts;
+            reg->version++;
             return err; /* CXPR_OK */
         }
 
@@ -807,6 +815,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         entry->defined_param_count       = param_count;
         entry->defined_param_fields      = owned_fields;
         entry->defined_param_field_counts = owned_counts;
+        reg->version++;
         return err; /* CXPR_OK */
     }
 

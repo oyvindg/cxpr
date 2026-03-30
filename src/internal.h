@@ -174,6 +174,11 @@ struct cxpr_ast {
             char* name;               /**< Function name, owned */
             struct cxpr_ast** args;     /**< Array of argument ASTs, owned */
             size_t argc;              /**< Number of arguments */
+            const struct cxpr_registry* cached_registry; /**< Registry used for cached entry */
+            unsigned long cached_registry_version;       /**< Registry version of cached entry */
+            size_t cached_entry_index;                   /**< Cached entry index inside registry */
+            bool cached_entry_found;                     /**< Whether cached index resolved to a function */
+            bool cached_lookup_valid;                    /**< True when cache fields are initialized */
         } function_call;
 
         /* CXPR_NODE_TERNARY */
@@ -217,6 +222,7 @@ cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch, cxpr_
 
 #define CXPR_HASHMAP_INITIAL_CAPACITY 32
 #define CXPR_HASHMAP_LOAD_FACTOR 0.75
+#define CXPR_CONTEXT_ENTRY_CACHE_SIZE 16
 
 /**
  * @brief Hash map entry for string → double.
@@ -235,12 +241,17 @@ typedef struct {
     size_t count;
 } cxpr_hashmap;
 
+/** @brief Find the backing hash-map slot for a prehashed key, or NULL if absent. */
+const cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_entry(const cxpr_hashmap* map,
+                                                            const char* key,
+                                                            unsigned long hash);
+
 /** @brief Initialize a hash map with default capacity. */
 void cxpr_hashmap_init(cxpr_hashmap* map);
 /** @brief Free all entries and the map's storage. */
 void cxpr_hashmap_destroy(cxpr_hashmap* map);
-/** @brief Insert or update a key-value pair. */
-void cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
+/** @brief Insert or update a key-value pair; returns true when key layout changed. */
+bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
 /** @brief Look up a value by key. */
 double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found);
 /** @brief Precompute the internal string hash used by cxpr hash maps. */
@@ -269,6 +280,13 @@ void cxpr_struct_map_destroy(cxpr_struct_map* map);
 void cxpr_struct_map_clear(cxpr_struct_map* map);
 bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src);
 
+typedef struct {
+    const char* key_ref;
+    unsigned long hash;
+    cxpr_hashmap_entry* entry;
+    cxpr_hashmap_entry* entries_base;
+} cxpr_context_entry_cache;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Context structure
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -277,6 +295,10 @@ struct cxpr_context {
     cxpr_hashmap variables;     /**< Runtime variables */
     cxpr_hashmap params;        /**< Compile-time parameters ($name) */
     cxpr_struct_map structs;    /**< Native typed structs */
+    cxpr_context_entry_cache variable_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    cxpr_context_entry_cache param_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    unsigned long variables_version; /**< Bumped on variable-map structural changes */
+    unsigned long params_version;    /**< Bumped on param-map structural changes */
     const struct cxpr_context* parent; /**< Optional parent context for local overlays */
 };
 
@@ -328,6 +350,7 @@ struct cxpr_registry {
     cxpr_func_entry* entries;   /**< Array of function entries */
     size_t capacity;
     size_t count;
+    unsigned long version;      /**< Bumped whenever entries mutate or move */
 };
 
 /** @brief Find a function entry by name in the registry. */
@@ -390,6 +413,9 @@ typedef enum {
     CXPR_OP_POW,
     CXPR_OP_CLAMP,
     CXPR_OP_CALL_PRODUCER,
+    CXPR_OP_CALL_UNARY,
+    CXPR_OP_CALL_BINARY,
+    CXPR_OP_CALL_TERNARY,
     CXPR_OP_CALL_FUNC,
     CXPR_OP_CALL_DEFINED,
     CXPR_OP_CALL_AST,
@@ -417,12 +443,23 @@ typedef struct {
     union {
         double value;        /* PUSH_CONST, PUSH_BOOL */
         unsigned long hash;  /* LOAD_VAR, LOAD_PARAM, LOAD_FIELD, LOAD_CHAIN */
-        size_t index;        /* LOAD_LOCAL, CALL_FUNC, CALL_DEFINED, CALL_PRODUCER, JUMP* */
+        size_t index;        /* LOAD_LOCAL, CALL_*, CALL_DEFINED, CALL_PRODUCER, JUMP* */
         const cxpr_ast* ast; /* CALL_AST */
     };
 } cxpr_ir_instr;
 
 _Static_assert(sizeof(cxpr_ir_instr) <= 32, "cxpr_ir_instr for stor");
+
+/**
+ * @brief Cached LOAD_VAR / LOAD_PARAM resolution for one IR instruction.
+ */
+typedef struct {
+    const cxpr_context* request_ctx;         /**< Context chain root used for the cached lookup */
+    const cxpr_context* owner_ctx;           /**< Context owning the cached entry */
+    const cxpr_hashmap_entry* entry;         /**< Cached hash-map entry */
+    unsigned long shadow_version;            /**< Structural version summary below the owner */
+    unsigned long version;                   /**< Owner version when cache was populated */
+} cxpr_ir_lookup_cache;
 
 /**
  * @brief Internal compiled program representation.
@@ -434,6 +471,7 @@ typedef struct {
     size_t count;               /**< Number of instructions */
     size_t capacity;            /**< Allocated instruction capacity */
     const cxpr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
+    cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
     unsigned char fast_result_kind; /**< 0=unknown, 1=double, 2=bool for scalar fast-path */
 } cxpr_ir_program;
 

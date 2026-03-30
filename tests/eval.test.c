@@ -350,6 +350,44 @@ static void test_registry_userdata_cleanup(void) {
     printf("  ✓ test_registry_userdata_cleanup\n");
 }
 
+static double test_scale2(const double* args, size_t argc, void* ud) {
+    (void)ud;
+    assert(argc == 1);
+    return args[0] * 2.0;
+}
+
+static double test_scale3(const double* args, size_t argc, void* ud) {
+    (void)ud;
+    assert(argc == 1);
+    return args[0] * 3.0;
+}
+
+static void test_ast_function_cache_invalidates_on_registry_change(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add(reg, "scale", test_scale2, 1, 1, NULL, NULL);
+    ast = cxpr_parse(p, "scale(5)", &err);
+    assert(ast);
+
+    ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err), 10.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_registry_add(reg, "scale", test_scale3, 1, 1, NULL, NULL);
+    ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err), 15.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ast_function_cache_invalidates_on_registry_change\n");
+}
+
 static void test_boolean_literals(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -467,6 +505,7 @@ int main(void) {
     test_wrong_arity();
     test_full_expression();
     test_registry_userdata_cleanup();
+    test_ast_function_cache_invalidates_on_registry_change();
 
     /* Prefixed fields tests */
     test_set_fields();

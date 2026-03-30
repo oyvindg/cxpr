@@ -48,6 +48,10 @@ static double native_hyp2_test(double x, double y) {
     return sqrt(x * x + y * y);
 }
 
+static double native_mix3_test(double x, double y, double z) {
+    return x + y * 10.0 + z * 100.0;
+}
+
 static void test_ir_eval_modulo_matches_ast(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -940,6 +944,53 @@ static void test_ir_eval_native_function_fast_path_matches_ast(void) {
     printf("  ✓ test_ir_eval_native_function_fast_path_matches_ast\n");
 }
 
+static void test_ir_compile_native_function_uses_specialized_call_ops(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_registry_add_unary(reg, "native_sq", native_sq_test);
+    cxpr_registry_add_binary(reg, "native_hyp2", native_hyp2_test);
+    cxpr_registry_add_ternary(reg, "native_mix3", native_mix3_test);
+    cxpr_ast* ast =
+        cxpr_parse(p, "native_sq(a) + native_hyp2(b, c) + native_mix3(d, e, f)", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 12);
+    assert(program.code[0].op == CXPR_OP_LOAD_VAR);
+    assert(program.code[1].op == CXPR_OP_CALL_UNARY);
+    assert(program.code[2].op == CXPR_OP_LOAD_VAR);
+    assert(program.code[3].op == CXPR_OP_LOAD_VAR);
+    assert(program.code[4].op == CXPR_OP_CALL_BINARY);
+    assert(program.code[5].op == CXPR_OP_ADD);
+    assert(program.code[6].op == CXPR_OP_LOAD_VAR);
+    assert(program.code[7].op == CXPR_OP_LOAD_VAR);
+    assert(program.code[8].op == CXPR_OP_LOAD_VAR);
+    assert(program.code[9].op == CXPR_OP_CALL_TERNARY);
+    assert(program.code[10].op == CXPR_OP_ADD);
+    assert(program.code[11].op == CXPR_OP_RETURN);
+    cxpr_context_set(ctx, "a", 2.0);
+    cxpr_context_set(ctx, "b", 3.0);
+    cxpr_context_set(ctx, "c", 4.0);
+    cxpr_context_set(ctx, "d", 5.0);
+    cxpr_context_set(ctx, "e", 6.0);
+    cxpr_context_set(ctx, "f", 7.0);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, ctx, reg, &err),
+                     native_sq_test(2.0) + native_hyp2_test(3.0, 4.0) +
+                         native_mix3_test(5.0, 6.0, 7.0));
+    assert(err.code == CXPR_OK);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_compile_native_function_uses_specialized_call_ops\n");
+}
+
 static void test_ir_compile_repeated_multiplication_to_square(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -973,6 +1024,75 @@ static void test_ir_compile_repeated_multiplication_to_square(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
     printf("  ✓ test_ir_compile_repeated_multiplication_to_square\n");
+}
+
+static void test_ir_eval_reuses_lookup_cache_across_value_updates(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "a + b * c - d / e + x * y - z", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    for (size_t i = 0; i < 16; ++i) {
+        const double t = (double)i * 0.25;
+        cxpr_context_set(ctx, "a", 1.5 + t);
+        cxpr_context_set(ctx, "b", 2.5 + t * 2.0);
+        cxpr_context_set(ctx, "c", 3.5 + t * 3.0);
+        cxpr_context_set(ctx, "d", 4.5 + t * 4.0);
+        cxpr_context_set(ctx, "e", 5.5 + t * 5.0);
+        cxpr_context_set(ctx, "x", 11.5 - t);
+        cxpr_context_set(ctx, "y", 12.5 + t * 0.5);
+        cxpr_context_set(ctx, "z", 13.5 - t * 0.25);
+        ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err),
+                         cxpr_ir_exec(&program, ctx, reg, &err));
+        assert(err.code == CXPR_OK);
+    }
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_reuses_lookup_cache_across_value_updates\n");
+}
+
+static void test_ir_eval_invalidates_parent_lookup_when_child_shadows(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* parent = cxpr_context_new();
+    cxpr_context* child = cxpr_context_overlay_new(parent);
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "x + 1", &err);
+    cxpr_ir_program program = {0};
+
+    assert(p);
+    assert(parent);
+    assert(child);
+    assert(reg);
+    assert(ast);
+
+    cxpr_context_set(parent, "x", 2.0);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, child, reg, &err), 3.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_context_set(child, "x", 7.0);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, child, reg, &err), 8.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(child);
+    cxpr_context_free(parent);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_invalidates_parent_lookup_when_child_shadows\n");
 }
 
 static void test_ir_constant_folding_reduces_program(void) {
@@ -1088,7 +1208,10 @@ int main(void) {
     test_ir_eval_defined_function_matches_ast();
     test_ir_eval_nested_defined_function_matches_ast();
     test_ir_eval_native_function_fast_path_matches_ast();
+    test_ir_compile_native_function_uses_specialized_call_ops();
     test_ir_compile_repeated_multiplication_to_square();
+    test_ir_eval_reuses_lookup_cache_across_value_updates();
+    test_ir_eval_invalidates_parent_lookup_when_child_shadows();
     test_ir_constant_folding_reduces_program();
     test_ir_constant_folding_keeps_div_zero_runtime_error();
     test_ir_exec_rejects_bool_result();

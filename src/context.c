@@ -38,11 +38,11 @@ void cxpr_hashmap_destroy(cxpr_hashmap* map) {
     map->count = 0;
 }
 
-static void cxpr_hashmap_grow(cxpr_hashmap* map) {
+static bool cxpr_hashmap_grow(cxpr_hashmap* map) {
     size_t new_capacity = map->capacity * 2;
     cxpr_hashmap_entry* new_entries =
         (cxpr_hashmap_entry*)calloc(new_capacity, sizeof(cxpr_hashmap_entry));
-    if (!new_entries) return;
+    if (!new_entries) return false;
 
     for (size_t i = 0; i < map->capacity; i++) {
         if (!map->entries[i].key) continue;
@@ -56,25 +56,60 @@ static void cxpr_hashmap_grow(cxpr_hashmap* map) {
     free(map->entries);
     map->entries = new_entries;
     map->capacity = new_capacity;
+    return true;
 }
 
-void cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value) {
-    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-        cxpr_hashmap_grow(map);
-    }
+/**
+ * @brief Find the mutable backing slot for a prehashed key, or NULL if absent.
+ *
+ * @param map Hash map to probe.
+ * @param key Lookup key.
+ * @param hash Precomputed hash for the key.
+ * @return Mutable entry pointer, or NULL when the key is missing.
+ */
+static cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_slot(cxpr_hashmap* map, const char* key,
+                                                            unsigned long hash) {
+    if (!map || !map->entries || map->count == 0) return NULL;
 
-    unsigned long hash = cxpr_hash_string(key) % map->capacity;
+    hash %= map->capacity;
     while (map->entries[hash].key) {
         if (strcmp(map->entries[hash].key, key) == 0) {
-            map->entries[hash].value = value;
-            return;
+            return &map->entries[hash];
         }
+        hash = (hash + 1) % map->capacity;
+    }
+
+    return NULL;
+}
+
+bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value) {
+    cxpr_hashmap_entry* entry;
+    unsigned long hash;
+
+    if (!map || !key) return false;
+
+    hash = cxpr_hash_string(key);
+    entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
+    if (entry) {
+        entry->value = value;
+        return false;
+    }
+
+    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
+        cxpr_hashmap_grow(map);
+        hash %= map->capacity;
+    } else {
+        hash %= map->capacity;
+    }
+
+    while (map->entries[hash].key) {
         hash = (hash + 1) % map->capacity;
     }
 
     map->entries[hash].key = strdup(key);
     map->entries[hash].value = value;
     map->count++;
+    return true;
 }
 
 double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
@@ -95,6 +130,22 @@ double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
 
     if (found) *found = false;
     return 0.0;
+}
+
+const cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_entry(const cxpr_hashmap* map,
+                                                            const char* key,
+                                                            unsigned long hash) {
+    if (!map || !map->entries || map->count == 0) return NULL;
+
+    hash %= map->capacity;
+    while (map->entries[hash].key) {
+        if (strcmp(map->entries[hash].key, key) == 0) {
+            return &map->entries[hash];
+        }
+        hash = (hash + 1) % map->capacity;
+    }
+
+    return NULL;
 }
 
 double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found) {
@@ -309,6 +360,79 @@ static const cxpr_struct_map_entry* cxpr_struct_map_get(const cxpr_struct_map* m
     return slot;
 }
 
+/**
+ * @brief Return the direct-mapped cache bucket for one context key hash.
+ *
+ * @param cache Fixed-size cache array to index.
+ * @param hash Precomputed string hash.
+ * @return Cache bucket associated with the hash.
+ */
+static cxpr_context_entry_cache* cxpr_context_cache_bucket(cxpr_context_entry_cache* cache,
+                                                           unsigned long hash) {
+    return &cache[hash & (CXPR_CONTEXT_ENTRY_CACHE_SIZE - 1)];
+}
+
+/**
+ * @brief Resolve one mutable map entry and refresh the corresponding context cache bucket.
+ *
+ * @param map Hash map to search.
+ * @param cache Fixed-size cache array tied to the map.
+ * @param key Lookup key.
+ * @param hash Precomputed key hash.
+ * @return Mutable entry pointer, or NULL when the key is absent.
+ */
+static cxpr_hashmap_entry* cxpr_context_lookup_cached_entry(cxpr_hashmap* map,
+                                                            cxpr_context_entry_cache* cache,
+                                                            const char* key,
+                                                            unsigned long hash) {
+    cxpr_context_entry_cache* bucket;
+    cxpr_hashmap_entry* entry;
+
+    if (!map || !cache || !key) return NULL;
+
+    bucket = cxpr_context_cache_bucket(cache, hash);
+    if (bucket->entries_base == map->entries && bucket->entry && bucket->entry->key &&
+        bucket->hash == hash && strcmp(bucket->entry->key, key) == 0) {
+        return bucket->entry;
+    }
+
+    entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
+    if (entry) {
+        bucket->key_ref = key;
+        bucket->hash = hash;
+        bucket->entry = entry;
+        bucket->entries_base = map->entries;
+        return entry;
+    }
+
+    bucket->key_ref = NULL;
+    bucket->hash = 0;
+    bucket->entry = NULL;
+    bucket->entries_base = map->entries;
+    return NULL;
+}
+
+/**
+ * @brief Refresh one context cache bucket after inserting or relocating a key.
+ *
+ * @param map Hash map that owns the entry.
+ * @param cache Fixed-size cache array tied to the map.
+ * @param key Lookup key stored by the caller.
+ * @param hash Precomputed key hash.
+ */
+static void cxpr_context_refresh_cache(cxpr_hashmap* map, cxpr_context_entry_cache* cache,
+                                       const char* key, unsigned long hash) {
+    cxpr_context_entry_cache* bucket;
+
+    if (!map || !cache || !key) return;
+
+    bucket = cxpr_context_cache_bucket(cache, hash);
+    bucket->key_ref = key;
+    bucket->hash = hash;
+    bucket->entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
+    bucket->entries_base = map->entries;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Context API
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -319,6 +443,8 @@ cxpr_context* cxpr_context_new(void) {
     cxpr_hashmap_init(&ctx->variables);
     cxpr_hashmap_init(&ctx->params);
     cxpr_struct_map_init(&ctx->structs);
+    ctx->variables_version = 1;
+    ctx->params_version = 1;
     ctx->parent = NULL;
     return ctx;
 }
@@ -360,6 +486,8 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
 
     clone->variables = *var_clone;
     clone->params = *param_clone;
+    clone->variables_version = ctx->variables_version;
+    clone->params_version = ctx->params_version;
     clone->parent = NULL;
     free(var_clone);
     free(param_clone);
@@ -367,18 +495,38 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
 }
 
 void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
-    if (ctx) cxpr_hashmap_set(&ctx->variables, name, value);
+    unsigned long hash;
+    cxpr_hashmap_entry* entry;
+
+    if (ctx) {
+        hash = cxpr_hash_string(name);
+        entry = cxpr_context_lookup_cached_entry(&ctx->variables, ctx->variable_cache, name, hash);
+        if (entry) {
+            entry->value = value;
+            return;
+        }
+        if (cxpr_hashmap_set(&ctx->variables, name, value)) {
+            ctx->variables_version++;
+        }
+        cxpr_context_refresh_cache(&ctx->variables, ctx->variable_cache, name, hash);
+    }
 }
 
 double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) {
+    unsigned long hash;
+    cxpr_hashmap_entry* entry;
+
     if (!ctx) {
         if (found) *found = false;
         return 0.0;
     }
 
-    {
-        double value = cxpr_hashmap_get(&ctx->variables, name, found);
-        if (found && *found) return value;
+    hash = cxpr_hash_string(name);
+    entry = cxpr_context_lookup_cached_entry((cxpr_hashmap*)&ctx->variables,
+                                             ((cxpr_context*)ctx)->variable_cache, name, hash);
+    if (entry) {
+        if (found) *found = true;
+        return entry->value;
     }
     if (ctx->parent) return cxpr_context_get(ctx->parent, name, found);
     if (found) *found = false;
@@ -386,18 +534,38 @@ double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) 
 }
 
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
-    if (ctx) cxpr_hashmap_set(&ctx->params, name, value);
+    unsigned long hash;
+    cxpr_hashmap_entry* entry;
+
+    if (ctx) {
+        hash = cxpr_hash_string(name);
+        entry = cxpr_context_lookup_cached_entry(&ctx->params, ctx->param_cache, name, hash);
+        if (entry) {
+            entry->value = value;
+            return;
+        }
+        if (cxpr_hashmap_set(&ctx->params, name, value)) {
+            ctx->params_version++;
+        }
+        cxpr_context_refresh_cache(&ctx->params, ctx->param_cache, name, hash);
+    }
 }
 
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found) {
+    unsigned long hash;
+    cxpr_hashmap_entry* entry;
+
     if (!ctx) {
         if (found) *found = false;
         return 0.0;
     }
 
-    {
-        double value = cxpr_hashmap_get(&ctx->params, name, found);
-        if (found && *found) return value;
+    hash = cxpr_hash_string(name);
+    entry = cxpr_context_lookup_cached_entry((cxpr_hashmap*)&ctx->params,
+                                             ((cxpr_context*)ctx)->param_cache, name, hash);
+    if (entry) {
+        if (found) *found = true;
+        return entry->value;
     }
     if (ctx->parent) return cxpr_context_get_param(ctx->parent, name, found);
     if (found) *found = false;
@@ -409,6 +577,8 @@ void cxpr_context_clear(cxpr_context* ctx) {
     cxpr_hashmap_clear(&ctx->variables);
     cxpr_hashmap_clear(&ctx->params);
     cxpr_struct_map_clear(&ctx->structs);
+    ctx->variables_version++;
+    ctx->params_version++;
 }
 
 void cxpr_context_set_struct(cxpr_context* ctx, const char* name,
@@ -494,6 +664,6 @@ void cxpr_context_set_fields(cxpr_context* ctx, const char* prefix,
     for (size_t i = 0; i < count; i++) {
         if (!fields[i]) continue;
         snprintf(key, sizeof(key), "%s.%s", prefix, fields[i]);
-        cxpr_hashmap_set(&ctx->variables, key, values[i]);
+        cxpr_context_set(ctx, key, values[i]);
     }
 }

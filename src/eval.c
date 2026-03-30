@@ -30,6 +30,46 @@ static bool cxpr_require_type(cxpr_field_value value, cxpr_field_type type,
     return true;
 }
 
+/**
+ * @brief Resolve and cache the registry entry for a FUNCTION_CALL AST node.
+ *
+ * @param ast Function-call AST node whose cache may be refreshed.
+ * @param reg Registry used for resolution.
+ * @return Matching registry entry, or NULL when the function is unknown.
+ */
+static cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_ast* ast,
+                                                        const cxpr_registry* reg) {
+    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !reg) return NULL;
+
+    if (ast->data.function_call.cached_lookup_valid &&
+        ast->data.function_call.cached_registry == reg &&
+        ast->data.function_call.cached_registry_version == reg->version) {
+        if (!ast->data.function_call.cached_entry_found ||
+            ast->data.function_call.cached_entry_index >= reg->count) {
+            return NULL;
+        }
+        return &((cxpr_registry*)reg)->entries[ast->data.function_call.cached_entry_index];
+    }
+
+    mutable_ast->data.function_call.cached_entry_found = false;
+    mutable_ast->data.function_call.cached_entry_index = 0;
+    for (size_t i = 0; i < reg->count; ++i) {
+        if (reg->entries[i].name &&
+            strcmp(reg->entries[i].name, ast->data.function_call.name) == 0) {
+            mutable_ast->data.function_call.cached_entry_index = i;
+            mutable_ast->data.function_call.cached_entry_found = true;
+            break;
+        }
+    }
+    mutable_ast->data.function_call.cached_registry = reg;
+    mutable_ast->data.function_call.cached_registry_version = reg->version;
+    mutable_ast->data.function_call.cached_lookup_valid = true;
+    if (!mutable_ast->data.function_call.cached_entry_found) return NULL;
+    return &((cxpr_registry*)reg)->entries[mutable_ast->data.function_call.cached_entry_index];
+}
+
 static cxpr_field_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
                                                   const char* field,
                                                   const cxpr_ast* const* arg_nodes,
@@ -432,7 +472,7 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
     case CXPR_NODE_FUNCTION_CALL: {
         const char* name = ast->data.function_call.name;
         size_t argc = ast->data.function_call.argc;
-        cxpr_func_entry* entry = cxpr_registry_find(reg, name);
+        cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
 
         if (!entry) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
         if (entry->defined_body) return cxpr_eval_defined_function(entry, ast, ctx, reg, err);

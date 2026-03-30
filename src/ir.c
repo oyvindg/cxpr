@@ -8,13 +8,16 @@
  */
 
 #include "internal.h"
+#include <assert.h>
 #include <math.h>
+#include <stdint.h>
 
 #define CXPR_IR_INLINE_DEPTH_LIMIT 8
 #define CXPR_IR_INFER_DEPTH_LIMIT 32
 #define CXPR_IR_RESULT_UNKNOWN 0
 #define CXPR_IR_RESULT_DOUBLE 1
 #define CXPR_IR_RESULT_BOOL 2
+#define CXPR_IR_STACK_CAPACITY 64
 
 typedef struct cxpr_ir_subst_frame {
     const char* const* names;
@@ -37,6 +40,7 @@ static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char
                                               const cxpr_field_value* stack_args,
                                               size_t argc, cxpr_error* err);
 static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry);
+static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program);
 
 /**
  * @brief Free the storage owned by an internal IR program.
@@ -44,7 +48,9 @@ static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry);
 void cxpr_ir_program_reset(cxpr_ir_program* program) {
     if (!program) return;
     free(program->code);
+    free(program->lookup_cache);
     program->code = NULL;
+    program->lookup_cache = NULL;
     program->count = 0;
     program->capacity = 0;
     program->ast = NULL;
@@ -111,6 +117,9 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_POW: return "POW";
     case CXPR_OP_CLAMP: return "CLAMP";
     case CXPR_OP_CALL_PRODUCER: return "CALL_PRODUCER";
+    case CXPR_OP_CALL_UNARY: return "CALL_UNARY";
+    case CXPR_OP_CALL_BINARY: return "CALL_BINARY";
+    case CXPR_OP_CALL_TERNARY: return "CALL_TERNARY";
     case CXPR_OP_CALL_FUNC: return "CALL_FUNC";
     case CXPR_OP_CALL_DEFINED: return "CALL_DEFINED";
     case CXPR_OP_CALL_AST: return "CALL_AST";
@@ -317,6 +326,246 @@ static cxpr_field_value cxpr_ir_make_not_found(cxpr_error* err, const char* mess
     return cxpr_fv_double(NAN);
 }
 
+/**
+ * @brief Return stack pop/push counts for one scalar fast-path instruction.
+ *
+ * @param instr Instruction to classify.
+ * @param pops Output count of values consumed from the stack.
+ * @param pushes Output count of values produced onto the stack.
+ * @return true when the opcode is supported by scalar fast-path validation.
+ */
+static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops, size_t* pushes) {
+    if (!instr || !pops || !pushes) return false;
+
+    switch (instr->op) {
+    case CXPR_OP_PUSH_CONST:
+    case CXPR_OP_PUSH_BOOL:
+    case CXPR_OP_LOAD_LOCAL:
+    case CXPR_OP_LOAD_LOCAL_SQUARE:
+    case CXPR_OP_LOAD_VAR:
+    case CXPR_OP_LOAD_VAR_SQUARE:
+    case CXPR_OP_LOAD_PARAM:
+    case CXPR_OP_LOAD_PARAM_SQUARE:
+        *pops = 0;
+        *pushes = 1;
+        return true;
+    case CXPR_OP_ADD:
+    case CXPR_OP_SUB:
+    case CXPR_OP_MUL:
+    case CXPR_OP_DIV:
+    case CXPR_OP_MOD:
+    case CXPR_OP_POW:
+    case CXPR_OP_CMP_EQ:
+    case CXPR_OP_CMP_NEQ:
+    case CXPR_OP_CMP_LT:
+    case CXPR_OP_CMP_LTE:
+    case CXPR_OP_CMP_GT:
+    case CXPR_OP_CMP_GTE:
+    case CXPR_OP_CALL_BINARY:
+        *pops = 2;
+        *pushes = 1;
+        return true;
+    case CXPR_OP_CLAMP:
+    case CXPR_OP_CALL_TERNARY:
+        *pops = 3;
+        *pushes = 1;
+        return true;
+    case CXPR_OP_SQUARE:
+    case CXPR_OP_NOT:
+    case CXPR_OP_NEG:
+    case CXPR_OP_SIGN:
+    case CXPR_OP_SQRT:
+    case CXPR_OP_ABS:
+    case CXPR_OP_FLOOR:
+    case CXPR_OP_CEIL:
+    case CXPR_OP_ROUND:
+    case CXPR_OP_CALL_UNARY:
+        *pops = 1;
+        *pushes = 1;
+        return true;
+    case CXPR_OP_CALL_FUNC:
+    case CXPR_OP_CALL_DEFINED:
+        if (instr->index > 32) return false;
+        *pops = instr->index;
+        *pushes = 1;
+        return true;
+    case CXPR_OP_JUMP_IF_FALSE:
+    case CXPR_OP_JUMP_IF_TRUE:
+        *pops = 1;
+        *pushes = 0;
+        return true;
+    case CXPR_OP_JUMP:
+        *pops = 0;
+        *pushes = 0;
+        return true;
+    case CXPR_OP_RETURN:
+        *pops = 1;
+        *pushes = 0;
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * @brief Prove that a compiled scalar fast-path program has safe stack usage.
+ *
+ * @param program Compiled IR program to validate.
+ * @return true when all reachable paths have valid stack depth and return shape.
+ */
+static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program) {
+    size_t depths[256];
+    size_t worklist[256];
+    size_t work_count = 0;
+
+    if (!program || !program->code || program->count == 0 || program->count > 256) {
+        return false;
+    }
+
+    for (size_t i = 0; i < program->count; ++i) depths[i] = SIZE_MAX;
+    depths[0] = 0;
+    worklist[work_count++] = 0;
+
+    while (work_count > 0) {
+        size_t ip = worklist[--work_count];
+        const cxpr_ir_instr* instr = &program->code[ip];
+        size_t pops = 0;
+        size_t pushes = 0;
+        size_t depth = depths[ip];
+        size_t next_depth;
+
+        if (!cxpr_ir_scalar_stack_effect(instr, &pops, &pushes) || depth < pops) {
+            return false;
+        }
+
+        next_depth = depth - pops + pushes;
+        if (next_depth > CXPR_IR_STACK_CAPACITY) return false;
+
+        if (instr->op == CXPR_OP_RETURN) {
+            if (depth != 1) return false;
+            continue;
+        }
+
+        if (instr->op == CXPR_OP_JUMP) {
+            if (instr->index >= program->count) return false;
+            if (depths[instr->index] == SIZE_MAX) {
+                depths[instr->index] = next_depth;
+                worklist[work_count++] = instr->index;
+            } else if (depths[instr->index] != next_depth) {
+                return false;
+            }
+            continue;
+        }
+
+        if (instr->op == CXPR_OP_JUMP_IF_FALSE || instr->op == CXPR_OP_JUMP_IF_TRUE) {
+            if (instr->index >= program->count || ip + 1 >= program->count) return false;
+            if (depths[instr->index] == SIZE_MAX) {
+                depths[instr->index] = next_depth;
+                worklist[work_count++] = instr->index;
+            } else if (depths[instr->index] != next_depth) {
+                return false;
+            }
+        }
+
+        if (ip + 1 >= program->count) return false;
+        if (depths[ip + 1] == SIZE_MAX) {
+            depths[ip + 1] = next_depth;
+            worklist[work_count++] = ip + 1;
+        } else if (depths[ip + 1] != next_depth) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Return the version counter relevant to one cached scalar lookup.
+ *
+ * @param ctx Context that owns the candidate hash-map entry.
+ * @param param_lookup Whether the lookup targets the param map instead of variables.
+ * @return Matching version counter for cache validation.
+ */
+static unsigned long cxpr_ir_lookup_version(const cxpr_context* ctx, bool param_lookup) {
+    if (!ctx) return 0;
+    return param_lookup ? ctx->params_version : ctx->variables_version;
+}
+
+/**
+ * @brief Summarize structural versions on the path between request and owner contexts.
+ *
+ * @param request_ctx Context from which lookup begins.
+ * @param owner_ctx Context that currently owns the resolved entry.
+ * @param param_lookup Whether the lookup targets the param map instead of variables.
+ * @return Combined version fingerprint for contexts below the owner.
+ */
+static unsigned long cxpr_ir_lookup_shadow_version(const cxpr_context* request_ctx,
+                                                   const cxpr_context* owner_ctx,
+                                                   bool param_lookup) {
+    const cxpr_context* current = request_ctx;
+    unsigned long fingerprint = 1469598103934665603UL;
+
+    while (current && current != owner_ctx) {
+        fingerprint ^= cxpr_ir_lookup_version(current, param_lookup) + 0x9e3779b97f4a7c15UL +
+                       (fingerprint << 6) + (fingerprint >> 2);
+        current = current->parent;
+    }
+
+    return fingerprint;
+}
+
+/**
+ * @brief Resolve one scalar identifier lookup and refresh the per-instruction cache.
+ *
+ * @param ctx Context chain to search.
+ * @param instr IR load instruction carrying key name/hash.
+ * @param cache Mutable cache entry associated with the instruction.
+ * @param param_lookup Whether to search params instead of variables.
+ * @param found Optional output set to true on success.
+ * @return Resolved scalar value, or 0.0 when missing.
+ */
+static double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr* instr,
+                                           cxpr_ir_lookup_cache* cache, bool param_lookup,
+                                           bool* found) {
+    const cxpr_context* current = ctx;
+
+    if (cache && cache->request_ctx == ctx && cache->owner_ctx && cache->entry &&
+        cache->shadow_version == cxpr_ir_lookup_shadow_version(ctx, cache->owner_ctx,
+                                                               param_lookup) &&
+        cache->version == cxpr_ir_lookup_version(cache->owner_ctx, param_lookup)) {
+        if (found) *found = true;
+        return cache->entry->value;
+    }
+
+    while (current) {
+        const cxpr_hashmap_entry* entry =
+            cxpr_hashmap_find_prehashed_entry(param_lookup ? &current->params : &current->variables,
+                                              instr->name, instr->hash);
+        if (entry) {
+            if (cache) {
+                cache->request_ctx = ctx;
+                cache->owner_ctx = current;
+                cache->entry = entry;
+                cache->shadow_version = cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
+                cache->version = cxpr_ir_lookup_version(current, param_lookup);
+            }
+            if (found) *found = true;
+            return entry->value;
+        }
+        current = current->parent;
+    }
+
+    if (cache) {
+        cache->request_ctx = NULL;
+        cache->owner_ctx = NULL;
+        cache->entry = NULL;
+        cache->shadow_version = 0;
+        cache->version = 0;
+    }
+    if (found) *found = false;
+    return 0.0;
+}
+
 static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
                                                     size_t depth) {
     unsigned char left_kind;
@@ -447,7 +696,7 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
 static cxpr_field_value cxpr_ir_load_var_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                                cxpr_error* err) {
     bool found = false;
-    double value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
+    double value = cxpr_ir_lookup_cached_scalar(ctx, instr, NULL, false, &found);
     if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
     return cxpr_fv_double(value);
 }
@@ -455,7 +704,7 @@ static cxpr_field_value cxpr_ir_load_var_value(const cxpr_context* ctx, const cx
 static cxpr_field_value cxpr_ir_load_param_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                                  cxpr_error* err) {
     bool found = false;
-    double value = cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
+    double value = cxpr_ir_lookup_cached_scalar(ctx, instr, NULL, true, &found);
     if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
     return cxpr_fv_double(value);
 }
@@ -697,23 +946,43 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             }
             break;
         case CXPR_OP_LOAD_VAR:
-            result = cxpr_ir_load_var_value(ctx, instr, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            {
+                bool found = false;
+                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
+                    &found));
+                if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+            }
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_LOAD_VAR_SQUARE:
-            result = cxpr_ir_load_var_value(ctx, instr, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            {
+                bool found = false;
+                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
+                    &found));
+                if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+            }
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_LOAD_PARAM:
-            result = cxpr_ir_load_param_value(ctx, instr, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            {
+                bool found = false;
+                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                    &found));
+                if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
+            }
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_LOAD_PARAM_SQUARE:
-            result = cxpr_ir_load_param_value(ctx, instr, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            {
+                bool found = false;
+                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                    &found));
+                if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
+            }
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_LOAD_FIELD:
@@ -871,6 +1140,50 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             if (a.d > b.d) a.d = b.d;
             if (!cxpr_ir_stack_push(stack, &sp, a, 64, err)) return cxpr_fv_double(NAN);
             break;
+        case CXPR_OP_CALL_UNARY:
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                      "Function arguments must be doubles")) {
+                return cxpr_fv_double(NAN);
+            }
+            if (!cxpr_ir_stack_push(stack, &sp,
+                                    cxpr_fv_double(instr->func->native_scalar.unary(a.d)),
+                                    64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_CALL_BINARY:
+            if (!cxpr_ir_pop2(stack, &sp, &a, &b, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                      "Function arguments must be doubles") ||
+                !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                                      "Function arguments must be doubles")) {
+                return cxpr_fv_double(NAN);
+            }
+            if (!cxpr_ir_stack_push(stack, &sp,
+                                    cxpr_fv_double(instr->func->native_scalar.binary(a.d, b.d)),
+                                    64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
+        case CXPR_OP_CALL_TERNARY:
+            if (!cxpr_ir_pop2(stack, &sp, &b, &result, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                                      "Function arguments must be doubles") ||
+                !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                                      "Function arguments must be doubles") ||
+                !cxpr_ir_require_type(result, CXPR_FIELD_DOUBLE, err,
+                                      "Function arguments must be doubles")) {
+                return cxpr_fv_double(NAN);
+            }
+            if (!cxpr_ir_stack_push(
+                    stack, &sp,
+                    cxpr_fv_double(instr->func->native_scalar.ternary(a.d, b.d, result.d)),
+                    64, err)) {
+                return cxpr_fv_double(NAN);
+            }
+            break;
         case CXPR_OP_CALL_FUNC:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
             if (instr->index > 32) return cxpr_ir_runtime_error(err, "Too many function arguments");
@@ -945,7 +1258,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
 static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                                        const cxpr_registry* reg, const double* locals,
                                        size_t local_count, cxpr_error* err) {
-    double stack[64];
+    double stack[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
     size_t ip = 0;
 
@@ -965,57 +1278,57 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
 
         switch (instr->op) {
         case CXPR_OP_PUSH_CONST:
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = instr->value;
             break;
         case CXPR_OP_PUSH_BOOL:
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = instr->value != 0.0 ? 1.0 : 0.0;
             break;
         case CXPR_OP_LOAD_LOCAL:
             if (instr->index >= local_count) {
                 return cxpr_ir_runtime_error(err, "Unknown local variable").d;
             }
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = locals[instr->index];
             break;
         case CXPR_OP_LOAD_LOCAL_SQUARE:
             if (instr->index >= local_count) {
                 return cxpr_ir_runtime_error(err, "Unknown local variable").d;
             }
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             value = locals[instr->index];
             stack[sp++] = value * value;
             break;
         case CXPR_OP_LOAD_VAR: {
             bool found = false;
-            value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
+            value = cxpr_ir_lookup_cached_scalar(
+                ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
+                &found);
             if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier").d;
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value;
             break;
         }
         case CXPR_OP_LOAD_VAR_SQUARE: {
             bool found = false;
-            value = cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found);
+            value = cxpr_ir_lookup_cached_scalar(
+                ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
+                &found);
             if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier").d;
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value * value;
             break;
         }
         case CXPR_OP_LOAD_PARAM: {
             bool found = false;
-            value = cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
+            value = cxpr_ir_lookup_cached_scalar(
+                ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                &found);
             if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value;
             break;
         }
         case CXPR_OP_LOAD_PARAM_SQUARE: {
             bool found = false;
-            value = cxpr_ir_context_get_param_prehashed(ctx, instr->name, instr->hash, &found);
+            value = cxpr_ir_lookup_cached_scalar(
+                ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                &found);
             if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value * value;
             break;
         }
@@ -1031,7 +1344,6 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
         case CXPR_OP_CMP_LTE:
         case CXPR_OP_CMP_GT:
         case CXPR_OP_CMP_GTE:
-            if (sp < 2) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             b = stack[--sp];
             a = stack[--sp];
             switch (instr->op) {
@@ -1066,72 +1378,69 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
             case CXPR_OP_CMP_GT: value = (a > b) ? 1.0 : 0.0; break;
             default: value = (a >= b) ? 1.0 : 0.0; break;
             }
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value;
             break;
         case CXPR_OP_SQUARE:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] *= stack[sp - 1];
             break;
         case CXPR_OP_NOT:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = stack[sp - 1] == 0.0 ? 1.0 : 0.0;
             break;
         case CXPR_OP_NEG:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = -stack[sp - 1];
             break;
         case CXPR_OP_SIGN:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             value = stack[sp - 1];
             stack[sp - 1] = (value > 0.0) - (value < 0.0);
             break;
         case CXPR_OP_SQRT:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = sqrt(stack[sp - 1]);
             break;
         case CXPR_OP_ABS:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = fabs(stack[sp - 1]);
             break;
         case CXPR_OP_FLOOR:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = floor(stack[sp - 1]);
             break;
         case CXPR_OP_CEIL:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = ceil(stack[sp - 1]);
             break;
         case CXPR_OP_ROUND:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             stack[sp - 1] = round(stack[sp - 1]);
             break;
         case CXPR_OP_CLAMP:
-            if (sp < 3) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             b = stack[--sp];
             a = stack[--sp];
             value = stack[--sp];
             if (value < a) value = a;
             if (value > b) value = b;
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value;
             break;
+        case CXPR_OP_CALL_UNARY:
+            a = stack[--sp];
+            stack[sp++] = instr->func->native_scalar.unary(a);
+            break;
+        case CXPR_OP_CALL_BINARY:
+            b = stack[--sp];
+            a = stack[--sp];
+            stack[sp++] = instr->func->native_scalar.binary(a, b);
+            break;
+        case CXPR_OP_CALL_TERNARY:
+            value = stack[--sp];
+            b = stack[--sp];
+            a = stack[--sp];
+            stack[sp++] = instr->func->native_scalar.ternary(a, b, value);
+            break;
         case CXPR_OP_CALL_FUNC:
-            if (sp < instr->index) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
-            if (instr->index > 32) {
-                return cxpr_ir_runtime_error(err, "Too many function arguments").d;
-            }
             for (size_t i = 0; i < instr->index; ++i) {
                 args[i] = stack[sp - instr->index + i];
             }
             sp -= instr->index;
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = instr->func->sync_func(args, instr->index, instr->func->userdata);
             break;
         case CXPR_OP_CALL_DEFINED: {
             cxpr_field_value result;
             cxpr_field_value scalar_args[32];
-            if (sp < instr->index) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             for (size_t i = 0; i < instr->index; ++i) {
                 scalar_args[i] = cxpr_fv_double(stack[sp - instr->index + i]);
             }
@@ -1148,7 +1457,6 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
                 }
                 return NAN;
             }
-            if (sp >= 64) return cxpr_ir_runtime_error(err, "IR stack overflow").d;
             stack[sp++] = value;
             break;
         }
@@ -1156,23 +1464,20 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
             ip = instr->index;
             continue;
         case CXPR_OP_JUMP_IF_FALSE:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             if (stack[--sp] == 0.0) {
                 ip = instr->index;
                 continue;
             }
             break;
         case CXPR_OP_JUMP_IF_TRUE:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
             if (stack[--sp] != 0.0) {
                 ip = instr->index;
                 continue;
             }
             break;
         case CXPR_OP_RETURN:
-            if (sp < 1) return cxpr_ir_runtime_error(err, "IR stack underflow").d;
+            assert(sp == 1);
             value = stack[--sp];
-            if (sp != 0) return cxpr_ir_runtime_error(err, "IR stack not empty at return").d;
             return value;
         default:
             return cxpr_ir_runtime_error(err, "Unsupported fast IR opcode").d;
@@ -1510,7 +1815,6 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_AST,
-                                    .value = 0.0,
                                     .ast = ast,
                                 },
                                 err);
@@ -1546,7 +1850,6 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_FIELD,
-                                .value = 0.0,
                                 .name = full_key,
                                 .hash = cxpr_hash_string(full_key),
                             },
@@ -1560,7 +1863,6 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_AST,
-                                    .value = 0.0,
                                     .ast = ast,
                                 },
                                 err);
@@ -1676,6 +1978,36 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                     return false;
                 }
             }
+            if (entry->native_kind == CXPR_NATIVE_KIND_UNARY &&
+                ast->data.function_call.argc == 1) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_CALL_UNARY,
+                                        .func = entry,
+                                        .index = 1,
+                                    },
+                                    err);
+            }
+            if (entry->native_kind == CXPR_NATIVE_KIND_BINARY &&
+                ast->data.function_call.argc == 2) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_CALL_BINARY,
+                                        .func = entry,
+                                        .index = 2,
+                                    },
+                                    err);
+            }
+            if (entry->native_kind == CXPR_NATIVE_KIND_TERNARY &&
+                ast->data.function_call.argc == 3) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_CALL_TERNARY,
+                                        .func = entry,
+                                        .index = 3,
+                                    },
+                                    err);
+            }
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_FUNC,
@@ -1720,7 +2052,6 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_CALL_AST,
-                                .value = 0.0,
                                 .ast = ast,
                             },
                             err);
@@ -1975,6 +2306,22 @@ bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
                       err)) {
         cxpr_ir_program_reset(program);
         return false;
+    }
+
+    program->lookup_cache =
+        (cxpr_ir_lookup_cache*)calloc(program->count, sizeof(cxpr_ir_lookup_cache));
+    if (program->count > 0 && !program->lookup_cache) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        cxpr_ir_program_reset(program);
+        return false;
+    }
+
+    if (program->fast_result_kind != CXPR_IR_RESULT_UNKNOWN &&
+        !cxpr_ir_validate_scalar_fast_program(program)) {
+        program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
     }
 
     return true;
