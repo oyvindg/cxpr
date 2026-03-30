@@ -58,6 +58,8 @@ target_link_libraries(my_target PRIVATE cxpr::cxpr)
 
 ## Quick Start
 
+Start with the AST path. It is the simplest way to parse and evaluate an expression, and it matches the core mental model of the library.
+
 ```c
 #include <cxpr/cxpr.h>
 #include <stdio.h>
@@ -83,6 +85,14 @@ int main(void) {
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
 }
+```
+
+When the same parsed expression will be evaluated repeatedly with changing context values, compile it once and use the IR path:
+
+```c
+cxpr_program* prog = cxpr_compile(ast, reg, &err);
+double fast_result = cxpr_ir_eval(prog, ctx, reg, &err);
+cxpr_program_free(prog);
 ```
 
 ## AST vs IR
