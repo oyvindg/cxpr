@@ -122,6 +122,7 @@ cxpr_registry* cxpr_registry_new(void) {
     if (!reg) return NULL;
     reg->capacity = CXPR_REGISTRY_INITIAL_CAPACITY;
     reg->count = 0;
+    reg->version = 1;
     reg->entries = (cxpr_func_entry*)calloc(reg->capacity, sizeof(cxpr_func_entry));
     if (!reg->entries) { free(reg); return NULL; }
     return reg;
@@ -213,12 +214,14 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         free_struct_fields(existing);
         free_defined_fn(existing);
         existing->sync_func = func;
+        existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
         existing->min_args = min_args;
         existing->max_args = max_args;
         existing->userdata = userdata;
         existing->userdata_free = free_userdata;
+        reg->version++;
         return;
     }
 
@@ -228,12 +231,14 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = strdup(name);
     entry->sync_func = func;
+    entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = min_args;
     entry->max_args = max_args;
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
+    reg->version++;
 }
 
 /** @brief Heap payload for unary adapters. */
@@ -382,7 +387,7 @@ bool cxpr_registry_lookup(const cxpr_registry* reg, const char* name,
  * @brief Register a struct-aware function that expands identifier arguments
  *        into their component fields before calling the function.
  */
-void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
+void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
                                   cxpr_func_ptr func,
                                   const char* const* fields, size_t fields_per_arg,
                                   size_t struct_argc,
@@ -408,6 +413,7 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
         free_struct_fields(existing);
         free_defined_fn(existing);
         existing->sync_func = func;
+        existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
         existing->min_args = struct_argc;
@@ -417,6 +423,7 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
         existing->struct_fields = owned_fields;
         existing->fields_per_arg = fields_per_arg;
         existing->struct_argc = struct_argc;
+        reg->version++;
         return;
     }
 
@@ -424,6 +431,7 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = strdup(name);
     entry->sync_func = func;
+    entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = struct_argc;
@@ -433,6 +441,66 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
     entry->struct_fields = owned_fields;
     entry->fields_per_arg = fields_per_arg;
     entry->struct_argc = struct_argc;
+    reg->version++;
+}
+
+void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
+                                       cxpr_struct_producer_ptr func,
+                                       size_t min_args, size_t max_args,
+                                       const char* const* fields, size_t field_count,
+                                       void* userdata,
+                                       cxpr_userdata_free_fn free_userdata) {
+    char** owned_fields;
+    cxpr_func_entry* entry;
+
+    if (!reg || !name || !func || !fields || field_count == 0) return;
+
+    owned_fields = (char**)calloc(field_count, sizeof(char*));
+    if (!owned_fields) return;
+    for (size_t i = 0; i < field_count; i++) {
+        owned_fields[i] = strdup(fields[i]);
+        if (!owned_fields[i]) {
+            for (size_t j = 0; j < i; j++) free(owned_fields[j]);
+            free(owned_fields);
+            return;
+        }
+    }
+
+    entry = cxpr_registry_find(reg, name);
+    if (entry) {
+        if (entry->userdata_free) entry->userdata_free(entry->userdata);
+        free_struct_fields(entry);
+        free_defined_fn(entry);
+        entry->sync_func = NULL;
+        entry->struct_producer = func;
+        entry->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+        entry->min_args = min_args;
+        entry->max_args = max_args;
+        entry->userdata = userdata;
+        entry->userdata_free = free_userdata;
+        entry->struct_fields = owned_fields;
+        entry->fields_per_arg = field_count;
+        entry->struct_argc = 0;
+        reg->version++;
+        return;
+    }
+
+    if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
+    entry = &reg->entries[reg->count++];
+    entry->name = strdup(name);
+    entry->sync_func = NULL;
+    entry->struct_producer = func;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+    entry->min_args = min_args;
+    entry->max_args = max_args;
+    entry->userdata = userdata;
+    entry->userdata_free = free_userdata;
+    entry->struct_fields = owned_fields;
+    entry->fields_per_arg = field_count;
+    entry->struct_argc = 0;
+    reg->version++;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -726,6 +794,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
             existing->defined_param_count        = param_count;
             existing->defined_param_fields       = owned_fields;
             existing->defined_param_field_counts = owned_counts;
+            reg->version++;
             return err; /* CXPR_OK */
         }
 
@@ -746,6 +815,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         entry->defined_param_count       = param_count;
         entry->defined_param_fields      = owned_fields;
         entry->defined_param_field_counts = owned_counts;
+        reg->version++;
         return err; /* CXPR_OK */
     }
 

@@ -21,6 +21,14 @@ cxpr_ast* cxpr_ast_new_number(double value) {
     return node;
 }
 
+cxpr_ast* cxpr_ast_new_bool(bool value) {
+    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_BOOL;
+    node->data.boolean.value = value;
+    return node;
+}
+
 cxpr_ast* cxpr_ast_new_identifier(const char* name) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
@@ -59,6 +67,73 @@ cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field) {
 
     if (!node->data.field_access.object || !node->data.field_access.field
         || !node->data.field_access.full_key) {
+        cxpr_ast_free(node);
+        return NULL;
+    }
+    return node;
+}
+
+cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
+    cxpr_ast* node;
+    size_t total_len = 0;
+
+    if (!path || depth < 2) return NULL;
+
+    node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_CHAIN_ACCESS;
+    node->data.chain_access.path = (char**)calloc(depth, sizeof(char*));
+    if (!node->data.chain_access.path) {
+        free(node);
+        return NULL;
+    }
+    node->data.chain_access.depth = depth;
+
+    for (size_t i = 0; i < depth; i++) {
+        node->data.chain_access.path[i] = strdup(path[i]);
+        if (!node->data.chain_access.path[i]) {
+            cxpr_ast_free(node);
+            return NULL;
+        }
+        total_len += strlen(path[i]) + 1;
+    }
+
+    node->data.chain_access.full_key = (char*)malloc(total_len);
+    if (!node->data.chain_access.full_key) {
+        cxpr_ast_free(node);
+        return NULL;
+    }
+
+    node->data.chain_access.full_key[0] = '\0';
+    for (size_t i = 0; i < depth; i++) {
+        if (i > 0) strcat(node->data.chain_access.full_key, ".");
+        strcat(node->data.chain_access.full_key, path[i]);
+    }
+    return node;
+}
+
+cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t argc,
+                                       const char* field) {
+    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    size_t name_len;
+    size_t field_len;
+    if (!node) return NULL;
+    node->type = CXPR_NODE_PRODUCER_ACCESS;
+    node->data.producer_access.name = strdup(name);
+    node->data.producer_access.args = args;
+    node->data.producer_access.argc = argc;
+    node->data.producer_access.field = strdup(field);
+    name_len = strlen(name);
+    field_len = strlen(field);
+    node->data.producer_access.full_key = (char*)malloc(name_len + 1 + field_len + 1);
+    if (node->data.producer_access.full_key) {
+        memcpy(node->data.producer_access.full_key, name, name_len);
+        node->data.producer_access.full_key[name_len] = '.';
+        memcpy(node->data.producer_access.full_key + name_len + 1, field, field_len);
+        node->data.producer_access.full_key[name_len + 1 + field_len] = '\0';
+    }
+    if (!node->data.producer_access.name || !node->data.producer_access.field ||
+        !node->data.producer_access.full_key) {
         cxpr_ast_free(node);
         return NULL;
     }
@@ -146,6 +221,8 @@ void cxpr_ast_free(cxpr_ast* ast) {
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
         break;
+    case CXPR_NODE_BOOL:
+        break;
     case CXPR_NODE_IDENTIFIER:
         free(ast->data.identifier.name);
         break;
@@ -156,6 +233,22 @@ void cxpr_ast_free(cxpr_ast* ast) {
         free(ast->data.field_access.object);
         free(ast->data.field_access.field);
         free(ast->data.field_access.full_key);
+        break;
+    case CXPR_NODE_CHAIN_ACCESS:
+        for (size_t i = 0; i < ast->data.chain_access.depth; i++) {
+            free(ast->data.chain_access.path[i]);
+        }
+        free(ast->data.chain_access.path);
+        free(ast->data.chain_access.full_key);
+        break;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        free(ast->data.producer_access.name);
+        free(ast->data.producer_access.field);
+        free(ast->data.producer_access.full_key);
+        for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
+            cxpr_ast_free(ast->data.producer_access.args[i]);
+        }
+        free(ast->data.producer_access.args);
         break;
     case CXPR_NODE_BINARY_OP:
         cxpr_ast_free(ast->data.binary_op.left);
@@ -236,6 +329,16 @@ const char* cxpr_ast_field_object(const cxpr_ast* ast) {
  */
 const char* cxpr_ast_field_name(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_FIELD_ACCESS) ? ast->data.field_access.field : NULL;
+}
+
+size_t cxpr_ast_chain_depth(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_CHAIN_ACCESS) ? ast->data.chain_access.depth : 0;
+}
+
+const char* cxpr_ast_chain_segment(const cxpr_ast* ast, size_t index) {
+    if (!ast || ast->type != CXPR_NODE_CHAIN_ACCESS) return NULL;
+    if (index >= ast->data.chain_access.depth) return NULL;
+    return ast->data.chain_access.path[index];
 }
 
 /**
@@ -383,6 +486,14 @@ static size_t cxpr_collect_references(const cxpr_ast* ast, const char** names,
         return cxpr_add_unique_name(names, count, max_names, ast->data.identifier.name);
     case CXPR_NODE_FIELD_ACCESS:
         return cxpr_add_unique_name(names, count, max_names, ast->data.field_access.full_key);
+    case CXPR_NODE_CHAIN_ACCESS:
+        return cxpr_add_unique_name(names, count, max_names, ast->data.chain_access.full_key);
+    case CXPR_NODE_PRODUCER_ACCESS:
+        count = cxpr_add_unique_name(names, count, max_names, ast->data.producer_access.full_key);
+        for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
+            count = cxpr_collect_references(ast->data.producer_access.args[i], names, count, max_names);
+        }
+        return count;
     case CXPR_NODE_BINARY_OP:
         count = cxpr_collect_references(ast->data.binary_op.left, names, count, max_names);
         count = cxpr_collect_references(ast->data.binary_op.right, names, count, max_names);
@@ -436,6 +547,11 @@ static size_t cxpr_collect_functions(const cxpr_ast* ast, const char** names,
             count = cxpr_collect_functions(ast->data.function_call.args[i], names, count, max_names);
         }
         return count;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
+            count = cxpr_collect_functions(ast->data.producer_access.args[i], names, count, max_names);
+        }
+        return count;
     case CXPR_NODE_BINARY_OP:
         count = cxpr_collect_functions(ast->data.binary_op.left, names, count, max_names);
         count = cxpr_collect_functions(ast->data.binary_op.right, names, count, max_names);
@@ -487,6 +603,11 @@ static size_t cxpr_collect_variables(const cxpr_ast* ast, const char** names,
     case CXPR_NODE_FUNCTION_CALL:
         for (size_t i = 0; i < ast->data.function_call.argc; i++) {
             count = cxpr_collect_variables(ast->data.function_call.args[i], names, count, max_names);
+        }
+        return count;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
+            count = cxpr_collect_variables(ast->data.producer_access.args[i], names, count, max_names);
         }
         return count;
     case CXPR_NODE_TERNARY:

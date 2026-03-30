@@ -199,23 +199,19 @@ static void test_boolean_literals(void) {
 
     cxpr_lexer_init(&lex, "true");
     tok = cxpr_lexer_next(&lex);
-    assert(tok.type == CXPR_TOK_NUMBER);
-    ASSERT_DOUBLE_EQ(tok.number_value, 1.0);
+    assert(tok.type == CXPR_TOK_TRUE);
 
     cxpr_lexer_init(&lex, "TRUE");
     tok = cxpr_lexer_next(&lex);
-    assert(tok.type == CXPR_TOK_NUMBER);
-    ASSERT_DOUBLE_EQ(tok.number_value, 1.0);
+    assert(tok.type == CXPR_TOK_TRUE);
 
     cxpr_lexer_init(&lex, "false");
     tok = cxpr_lexer_next(&lex);
-    assert(tok.type == CXPR_TOK_NUMBER);
-    ASSERT_DOUBLE_EQ(tok.number_value, 0.0);
+    assert(tok.type == CXPR_TOK_FALSE);
 
     cxpr_lexer_init(&lex, "FALSE");
     tok = cxpr_lexer_next(&lex);
-    assert(tok.type == CXPR_TOK_NUMBER);
-    ASSERT_DOUBLE_EQ(tok.number_value, 0.0);
+    assert(tok.type == CXPR_TOK_FALSE);
 
     printf("  ✓ test_boolean_literals\n");
 }

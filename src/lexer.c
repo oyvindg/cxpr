@@ -106,6 +106,10 @@ static const cxpr_keyword_entry cxpr_keywords[] = {
     {"OR",    CXPR_TOK_OR},
     {"not",   CXPR_TOK_NOT},
     {"NOT",   CXPR_TOK_NOT},
+    {"true",  CXPR_TOK_TRUE},
+    {"TRUE",  CXPR_TOK_TRUE},
+    {"false", CXPR_TOK_FALSE},
+    {"FALSE", CXPR_TOK_FALSE},
     /* Comparison aliases */
     {"eq",    CXPR_TOK_EQ},
     {"EQ",    CXPR_TOK_EQ},
@@ -210,22 +214,6 @@ static cxpr_token cxpr_lexer_identifier(cxpr_lexer* lexer) {
 
     size_t length = (size_t)(lexer->current - start);
 
-    /* Check for boolean literals */
-    if ((length == 4 && (memcmp(start, "true", 4) == 0 || memcmp(start, "TRUE", 4) == 0)) ||
-        (length == 4 && memcmp(start, "True", 4) == 0)) {
-        cxpr_token tok = cxpr_make_token(CXPR_TOK_NUMBER, start, length,
-                                      start_pos, start_line, start_col);
-        tok.number_value = 1.0;
-        return tok;
-    }
-    if ((length == 5 && (memcmp(start, "false", 5) == 0 || memcmp(start, "FALSE", 5) == 0)) ||
-        (length == 5 && memcmp(start, "False", 5) == 0)) {
-        cxpr_token tok = cxpr_make_token(CXPR_TOK_NUMBER, start, length,
-                                      start_pos, start_line, start_col);
-        tok.number_value = 0.0;
-        return tok;
-    }
-
     /* null / NULL — NaN literal (no-value sentinel, like Pine Script's na) */
     if ((length == 4 && (memcmp(start, "null", 4) == 0 || memcmp(start, "NULL", 4) == 0)) ||
         (length == 4 && memcmp(start, "Null", 4) == 0)) {
@@ -236,9 +224,8 @@ static cxpr_token cxpr_lexer_identifier(cxpr_lexer* lexer) {
     }
 
     /* Check for keyword aliases */
-    cxpr_token_type keyword_type = cxpr_check_keyword(start, length);
-    return cxpr_make_token(keyword_type, start, length,
-                         start_pos, start_line, start_col);
+    return cxpr_make_token(cxpr_check_keyword(start, length), start, length,
+                           start_pos, start_line, start_col);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

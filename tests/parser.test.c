@@ -274,12 +274,10 @@ static void test_function_nested(void) {
 static void test_function_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast = parse_ok(p, "macd(12, 26, 9).signal");
-    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
-    assert(strcmp(cxpr_ast_function_name(ast), "macd.signal") == 0);
-    assert(cxpr_ast_function_argc(ast) == 3);
-    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 0)) == CXPR_NODE_NUMBER);
-    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 1)) == CXPR_NODE_NUMBER);
-    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 2)) == CXPR_NODE_NUMBER);
+    const char* refs[4] = {0};
+    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(cxpr_ast_references(ast, refs, 4) == 1);
+    assert(strcmp(refs[0], "macd.signal") == 0);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     printf("  ✓ test_function_field_access\n");

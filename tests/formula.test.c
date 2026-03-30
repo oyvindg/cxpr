@@ -231,6 +231,26 @@ static void test_formula_with_functions(void) {
     printf("  ✓ test_formula_with_functions\n");
 }
 
+static void test_formula_bool_result_type_mismatch(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+
+    cxpr_context_set(ctx, "x", 2.0);
+    assert(cxpr_formula_add(engine, "flag", "x > 0", &err));
+    assert(cxpr_formula_compile(engine, &err));
+
+    cxpr_formula_eval_all(engine, ctx, &err);
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+
+    cxpr_formula_engine_free(engine);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_formula_bool_result_type_mismatch\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: get non-existent formula
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -266,6 +286,7 @@ int main(void) {
     test_self_reference();
     test_independent_formulas();
     test_formula_with_functions();
+    test_formula_bool_result_type_mismatch();
     test_get_nonexistent();
     printf("All formula tests passed!\n");
     return 0;

@@ -398,6 +398,12 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
         return cxpr_ast_new_number(val);
     }
 
+    if (parser_check(p, CXPR_TOK_TRUE) || parser_check(p, CXPR_TOK_FALSE)) {
+        bool value = (p->current.type == CXPR_TOK_TRUE);
+        parser_advance(p);
+        return cxpr_ast_new_bool(value);
+    }
+
     /* Variable ($name) */
     if (parser_check(p, CXPR_TOK_VARIABLE)) {
         char* name = token_to_string(&p->current);
@@ -465,8 +471,7 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                 return NULL;
             }
 
-            /* Optional function field access: func(args).field
-               Encoded as a function call with qualified name "func.field". */
+            /* Optional producer field access: name(args).field */
             if (parser_check(p, CXPR_TOK_DOT)) {
                 parser_advance(p); /* consume '.' */
                 if (!parser_check(p, CXPR_TOK_IDENTIFIER)) {
@@ -491,25 +496,9 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                     return NULL;
                 }
 
-                const size_t name_len = strlen(name);
-                const size_t field_len = strlen(field);
-                char* qualified = (char*)malloc(name_len + 1 + field_len + 1);
-                if (!qualified) {
-                    free(name);
-                    free(field);
-                    for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
-                    free(args);
-                    return NULL;
-                }
-                memcpy(qualified, name, name_len);
-                qualified[name_len] = '.';
-                memcpy(qualified + name_len + 1, field, field_len);
-                qualified[name_len + 1 + field_len] = '\0';
-
-                cxpr_ast* node = cxpr_ast_new_function_call(qualified, args, argc);
+                cxpr_ast* node = cxpr_ast_new_producer_access(name, args, argc, field);
                 free(name);
                 free(field);
-                free(qualified);
                 return node;
             }
 
@@ -518,28 +507,62 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
             return node;
         }
 
-        /* Field access: identifier "." identifier */
+        /* Field access: identifier "." identifier [ "." identifier ]* */
         if (parser_check(p, CXPR_TOK_DOT)) {
-            parser_advance(p); /* consume '.' */
+            char** segments = NULL;
+            size_t depth = 0;
+            size_t capacity = 4;
+            cxpr_ast* node = NULL;
 
-            if (!parser_check(p, CXPR_TOK_IDENTIFIER)) {
-                p->had_error = true;
-                p->last_error.code = CXPR_ERR_SYNTAX;
-                p->last_error.message = "Expected field name after '.'";
-                p->last_error.position = p->current.position;
-                p->last_error.line = p->current.line;
-                p->last_error.column = p->current.column;
+            segments = (char**)calloc(capacity, sizeof(char*));
+            if (!segments) {
                 free(name);
                 return NULL;
             }
+            segments[depth++] = name;
 
-            char* field = token_to_string(&p->current);
-            parser_advance(p);
-            if (!field) { free(name); return NULL; }
+            while (parser_check(p, CXPR_TOK_DOT)) {
+                parser_advance(p);
+                if (!parser_check(p, CXPR_TOK_IDENTIFIER)) {
+                    p->had_error = true;
+                    p->last_error.code = CXPR_ERR_SYNTAX;
+                    p->last_error.message = "Expected field name after '.'";
+                    p->last_error.position = p->current.position;
+                    p->last_error.line = p->current.line;
+                    p->last_error.column = p->current.column;
+                    for (size_t i = 0; i < depth; i++) free(segments[i]);
+                    free(segments);
+                    return NULL;
+                }
+                if (depth == capacity) {
+                    char** new_segments;
+                    capacity *= 2;
+                    new_segments = (char**)realloc(segments, capacity * sizeof(char*));
+                    if (!new_segments) {
+                        for (size_t i = 0; i < depth; i++) free(segments[i]);
+                        free(segments);
+                        return NULL;
+                    }
+                    segments = new_segments;
+                }
+                segments[depth] = token_to_string(&p->current);
+                if (!segments[depth]) {
+                    for (size_t i = 0; i < depth; i++) free(segments[i]);
+                    free(segments);
+                    return NULL;
+                }
+                depth++;
+                parser_advance(p);
+            }
 
-            cxpr_ast* node = cxpr_ast_new_field_access(name, field);
-            free(name);
-            free(field);
+            if (depth == 2) {
+                node = cxpr_ast_new_field_access(segments[0], segments[1]);
+            } else {
+                node = cxpr_ast_new_chain_access((const char* const*)segments, depth);
+            }
+
+            for (size_t i = 0; i < depth; i++) free(segments[i]);
+            free(segments);
             return node;
         }
 

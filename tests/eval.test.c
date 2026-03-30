@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "internal.h"
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
@@ -36,7 +37,7 @@ static double eval_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_ast_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -52,7 +53,10 @@ static bool eval_bool_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     assert(ast);
     bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
-    assert(err.code == CXPR_OK);
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Bool eval failed: %s for '%s'\n", err.message, expr);
+        assert(0);
+    }
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     return result;
@@ -63,7 +67,7 @@ static cxpr_error_code eval_error(const char* expr, cxpr_context* ctx, cxpr_regi
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     if (!ast) { cxpr_parser_free(p); return err.code; }
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_ast_eval_double(ast, ctx, reg, &err);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     return err.code;
@@ -144,12 +148,12 @@ static void test_comparison(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
-    ASSERT_DOUBLE_EQ(eval_ok("3 < 5", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("5 < 3", ctx, reg), 0.0);
-    ASSERT_DOUBLE_EQ(eval_ok("3 == 3", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("3 != 4", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("5 >= 5", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("4 <= 5", ctx, reg), 1.0);
+    assert(eval_bool_ok("3 < 5", ctx, reg) == true);
+    assert(eval_bool_ok("5 < 3", ctx, reg) == false);
+    assert(eval_bool_ok("3 == 3", ctx, reg) == true);
+    assert(eval_bool_ok("3 != 4", ctx, reg) == true);
+    assert(eval_bool_ok("5 >= 5", ctx, reg) == true);
+    assert(eval_bool_ok("4 <= 5", ctx, reg) == true);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_comparison\n");
@@ -159,12 +163,12 @@ static void test_logical(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
-    ASSERT_DOUBLE_EQ(eval_ok("true and true", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("true and false", ctx, reg), 0.0);
-    ASSERT_DOUBLE_EQ(eval_ok("false or true", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("false or false", ctx, reg), 0.0);
-    ASSERT_DOUBLE_EQ(eval_ok("not false", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("not true", ctx, reg), 0.0);
+    assert(eval_bool_ok("true and true", ctx, reg) == true);
+    assert(eval_bool_ok("true and false", ctx, reg) == false);
+    assert(eval_bool_ok("false or true", ctx, reg) == true);
+    assert(eval_bool_ok("false or false", ctx, reg) == false);
+    assert(eval_bool_ok("not false", ctx, reg) == true);
+    assert(eval_bool_ok("not true", ctx, reg) == false);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_logical\n");
@@ -218,11 +222,22 @@ static double test_macd_signal(const double* args, size_t argc, void* ud) {
     return args[0] - args[1] + args[2];
 }
 
+static void test_macd_signal_producer(const double* args, size_t argc,
+                                      cxpr_field_value* out, size_t field_count,
+                                      void* ud) {
+    (void)ud;
+    assert(argc == 3);
+    assert(field_count == 1);
+    out[0] = cxpr_fv_double(args[0] - args[1] + args[2]);
+}
+
 static void test_function_call_field_access(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
+    const char* fields[] = {"signal"};
     cxpr_register_builtins(reg);
-    cxpr_registry_add(reg, "macd.signal", test_macd_signal, 3, 3, NULL, NULL);
+    cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer,
+                                      3, 3, fields, 1, NULL, NULL);
     ASSERT_DOUBLE_EQ(eval_ok("macd(12, 26, 9).signal", ctx, reg), -5.0);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -301,11 +316,11 @@ static void test_full_expression(void) {
     cxpr_context_set(ctx, "ema_slow", 100.0);
     cxpr_context_set_param(ctx, "oversold", 30.0);
 
-    assert(eval_bool_ok("rsi < $oversold and cross_above(ema_fast, ema_slow)", ctx, reg));
+    assert(eval_bool_ok("rsi < $oversold and cross_above(ema_fast, ema_slow) == 1", ctx, reg));
 
     /* Change to non-entry condition */
     cxpr_context_set(ctx, "rsi", 35.0);
-    assert(!eval_bool_ok("rsi < $oversold and cross_above(ema_fast, ema_slow)", ctx, reg));
+    assert(!eval_bool_ok("rsi < $oversold and cross_above(ema_fast, ema_slow) == 1", ctx, reg));
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -335,17 +350,82 @@ static void test_registry_userdata_cleanup(void) {
     printf("  ✓ test_registry_userdata_cleanup\n");
 }
 
+static double test_scale2(const double* args, size_t argc, void* ud) {
+    (void)ud;
+    assert(argc == 1);
+    return args[0] * 2.0;
+}
+
+static double test_scale3(const double* args, size_t argc, void* ud) {
+    (void)ud;
+    assert(argc == 1);
+    return args[0] * 3.0;
+}
+
+static void test_ast_function_cache_invalidates_on_registry_change(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add(reg, "scale", test_scale2, 1, 1, NULL, NULL);
+    ast = cxpr_parse(p, "scale(5)", &err);
+    assert(ast);
+
+    ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err), 10.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_registry_add(reg, "scale", test_scale3, 1, 1, NULL, NULL);
+    ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err), 15.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ast_function_cache_invalidates_on_registry_change\n");
+}
+
 static void test_boolean_literals(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
-    ASSERT_DOUBLE_EQ(eval_ok("true", ctx, reg), 1.0);
-    ASSERT_DOUBLE_EQ(eval_ok("false", ctx, reg), 0.0);
-    ASSERT_DOUBLE_EQ(eval_ok("true and false", ctx, reg), 0.0);
-    ASSERT_DOUBLE_EQ(eval_ok("true or false", ctx, reg), 1.0);
+    assert(eval_bool_ok("true", ctx, reg) == true);
+    assert(eval_bool_ok("false", ctx, reg) == false);
+    assert(eval_bool_ok("true and false", ctx, reg) == false);
+    assert(eval_bool_ok("true or false", ctx, reg) == true);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_boolean_literals\n");
+}
+
+static void test_defined_function_scalar_ir_path(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_func_entry* sq_entry;
+    cxpr_func_entry* hyp_entry;
+    cxpr_register_builtins(reg);
+
+    assert(cxpr_registry_define_fn(reg, "sq(x) => x * x").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "hyp(a, b) => sqrt(sq(a) + sq(b))").code == CXPR_OK);
+
+    sq_entry = cxpr_registry_find(reg, "sq");
+    hyp_entry = cxpr_registry_find(reg, "hyp");
+    assert(sq_entry != NULL);
+    assert(hyp_entry != NULL);
+    assert(sq_entry->defined_program == NULL);
+    assert(hyp_entry->defined_program == NULL);
+
+    ASSERT_DOUBLE_EQ(eval_ok("hyp(3, 4) + sq(5)", ctx, reg), 30.0);
+
+    assert(sq_entry->defined_program != NULL);
+    assert(hyp_entry->defined_program != NULL);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_defined_function_scalar_ir_path\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -418,12 +498,14 @@ int main(void) {
     test_field_access();
     test_function_call_field_access();
     test_boolean_literals();
+    test_defined_function_scalar_ir_path();
     test_unknown_identifier_error();
     test_division_by_zero();
     test_unknown_function();
     test_wrong_arity();
     test_full_expression();
     test_registry_userdata_cleanup();
+    test_ast_function_cache_invalidates_on_registry_change();
 
     /* Prefixed fields tests */
     test_set_fields();

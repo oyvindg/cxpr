@@ -74,6 +74,22 @@ static void mutate_values(cxpr_context* ctx, size_t i) {
     cxpr_context_set(ctx, "z", 13.5 - t * 0.25);
 }
 
+typedef struct {
+    cxpr_context_slot a, b, c, d, e, x, y, z;
+} churn_slots;
+
+static void mutate_values_slots(churn_slots* s, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_slot_set(&s->a, 1.5 + t);
+    cxpr_context_slot_set(&s->b, 2.5 + t * 2.0);
+    cxpr_context_slot_set(&s->c, 3.5 + t * 3.0);
+    cxpr_context_slot_set(&s->d, 4.5 + t * 4.0);
+    cxpr_context_slot_set(&s->e, 5.5 + t * 5.0);
+    cxpr_context_slot_set(&s->x, 11.5 - t);
+    cxpr_context_slot_set(&s->y, 12.5 + t * 0.5);
+    cxpr_context_slot_set(&s->z, 13.5 - t * 0.25);
+}
+
 static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
                        size_t iterations, int mutate_context) {
     size_t i;
@@ -82,7 +98,7 @@ static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_regist
 
     for (i = 0; i < iterations; ++i) {
         if (mutate_context) mutate_values(ctx, i);
-        total += cxpr_ast_eval(ast, ctx, reg, &err);
+        total += cxpr_ast_eval_double(ast, ctx, reg, &err);
         if (err.code != CXPR_OK) {
             fprintf(stderr, "AST benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
@@ -100,7 +116,7 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
 
     for (i = 0; i < iterations; ++i) {
         if (mutate_context) mutate_values(ctx, i);
-        total += cxpr_ir_eval(program, ctx, reg, &err);
+        total += cxpr_ir_eval_double(program, ctx, reg, &err);
         if (err.code != CXPR_OK) {
             fprintf(stderr, "IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
@@ -126,8 +142,8 @@ static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
 
         ast_err = (cxpr_error){0};
         ir_err = (cxpr_error){0};
-        ast_value = cxpr_ast_eval(ast, ctx, reg, &ast_err);
-        ir_value = cxpr_ir_eval(program, ctx, reg, &ir_err);
+        ast_value = cxpr_ast_eval_double(ast, ctx, reg, &ast_err);
+        ir_value = cxpr_ir_eval_double(program, ctx, reg, &ir_err);
 
         if (ast_err.code != ir_err.code) {
             fprintf(stderr,
@@ -194,6 +210,54 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
            ast_ns,
            ir_ns,
            ast_ns / ir_ns);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+}
+
+static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
+    const char* expr = "a + b * c - d / e + x * y - z";
+    const size_t iterations = 200000;
+    long long churn_start, churn_end;
+    double churn_total, churn_ns;
+    churn_slots s;
+    size_t i;
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(parser, expr, &err);
+    cxpr_program* program;
+
+    if (!ast) { fprintf(stderr, "Parse failed: %s\n", err.message); exit(1); }
+    program = cxpr_compile(ast, reg, &err);
+    if (!program) { fprintf(stderr, "Compile failed: %s\n", err.message); exit(1); }
+
+    set_base_values(ctx);
+    if (!cxpr_context_slot_bind(ctx, "a", &s.a) ||
+        !cxpr_context_slot_bind(ctx, "b", &s.b) ||
+        !cxpr_context_slot_bind(ctx, "c", &s.c) ||
+        !cxpr_context_slot_bind(ctx, "d", &s.d) ||
+        !cxpr_context_slot_bind(ctx, "e", &s.e) ||
+        !cxpr_context_slot_bind(ctx, "x", &s.x) ||
+        !cxpr_context_slot_bind(ctx, "y", &s.y) ||
+        !cxpr_context_slot_bind(ctx, "z", &s.z)) {
+        fprintf(stderr, "Slot bind failed\n"); exit(1);
+    }
+
+    churn_start = now_ns();
+    churn_total = 0.0;
+    for (i = 0; i < iterations; ++i) {
+        mutate_values_slots(&s, i);
+        churn_total += cxpr_ir_eval_double(program, ctx, reg, &err);
+        if (err.code != CXPR_OK) {
+            fprintf(stderr, "Slot benchmark eval failed: %s\n", err.message); exit(1);
+        }
+    }
+    churn_end = now_ns();
+
+    churn_ns = (double)(churn_end - churn_start) / (double)iterations;
+    g_sink += churn_total;
+
+    printf("%-18s  %10zu  %12s  %12.2f  %8s\n",
+           "context_slot", iterations, "-", churn_ns, "-");
 
     cxpr_program_free(program);
     cxpr_ast_free(ast);
@@ -273,6 +337,7 @@ int main(void) {
     for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
         bench_one(parser, ctx, reg, &cases[i]);
     }
+    bench_slot_churn(parser, ctx, reg);
 
     printf("sink=%.6f\n", g_sink);
 

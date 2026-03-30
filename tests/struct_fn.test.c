@@ -1,6 +1,6 @@
 /**
  * @file struct_fn.test.c
- * @brief Tests for cxpr_registry_add_struct_fn — struct-aware function calls.
+ * @brief Tests for cxpr_registry_add_fn — struct-aware function calls.
  *
  * Tests covered:
  * - distance3(goal, pose)  instead of  distance3(goal.x, goal.y, goal.z, pose.x, ...)
@@ -35,7 +35,24 @@ static double eval_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
         cxpr_parser_free(p);
         return NAN;
     }
-    double result = cxpr_ast_eval(ast, ctx, reg, &err);
+    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
+    if (out_err) *out_err = err;
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    return result;
+}
+
+static bool eval_bool_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
+                           cxpr_error* out_err) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    if (!ast) {
+        if (out_err) *out_err = err;
+        cxpr_parser_free(p);
+        return false;
+    }
+    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
@@ -64,6 +81,47 @@ static double fn_dot3(const double* args, size_t argc, void* ud) {
     return args[0]*args[3] + args[1]*args[4] + args[2]*args[5];
 }
 
+static void set_vec3_struct(cxpr_context* ctx, const char* name,
+                            double x, double y, double z) {
+    const char* fields[] = {"x", "y", "z"};
+    cxpr_field_value values[] = {
+        cxpr_fv_double(x),
+        cxpr_fv_double(y),
+        cxpr_fv_double(z),
+    };
+    cxpr_struct_value* s = cxpr_struct_value_new(fields, values, 3);
+    assert(s != NULL);
+    cxpr_context_set_struct(ctx, name, s);
+    cxpr_struct_value_free(s);
+}
+
+static void set_vec2_struct(cxpr_context* ctx, const char* name,
+                            double x, double y) {
+    const char* fields[] = {"x", "y"};
+    cxpr_field_value values[] = {
+        cxpr_fv_double(x),
+        cxpr_fv_double(y),
+    };
+    cxpr_struct_value* s = cxpr_struct_value_new(fields, values, 2);
+    assert(s != NULL);
+    cxpr_context_set_struct(ctx, name, s);
+    cxpr_struct_value_free(s);
+}
+
+static void set_vec3_with_bool_y(cxpr_context* ctx, const char* name,
+                                 double x, bool y, double z) {
+    const char* fields[] = {"x", "y", "z"};
+    cxpr_field_value values[] = {
+        cxpr_fv_double(x),
+        cxpr_fv_bool(y),
+        cxpr_fv_double(z),
+    };
+    cxpr_struct_value* s = cxpr_struct_value_new(fields, values, 3);
+    assert(s != NULL);
+    cxpr_context_set_struct(ctx, name, s);
+    cxpr_struct_value_free(s);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Tests
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -73,14 +131,11 @@ static void test_distance3_compact(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
+    cxpr_registry_add_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
 
     /* goal = (1, 2, 3), pose = (4, 6, 3) → distance = sqrt(9+16+0) = 5 */
-    const char* fields[] = {"x", "y", "z"};
-    double goal[] = {1.0, 2.0, 3.0};
-    double pose[] = {4.0, 6.0, 3.0};
-    cxpr_context_set_fields(ctx, "goal", fields, goal, 3);
-    cxpr_context_set_fields(ctx, "pose", fields, pose, 3);
+    set_vec3_struct(ctx, "goal", 1.0, 2.0, 3.0);
+    set_vec3_struct(ctx, "pose", 4.0, 6.0, 3.0);
 
     cxpr_error err = {0};
     double d = eval_expr("distance3(goal, pose)", ctx, reg, &err);
@@ -96,24 +151,21 @@ static void test_distance3_used_in_comparison(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
+    cxpr_registry_add_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
 
-    const char* fields[] = {"x", "y", "z"};
-    double goal[] = {0.0, 0.0, 0.0};
-    double pose[] = {3.0, 4.0, 0.0}; /* distance = 5 */
-    cxpr_context_set_fields(ctx, "goal", fields, goal, 3);
-    cxpr_context_set_fields(ctx, "pose", fields, pose, 3);
+    set_vec3_struct(ctx, "goal", 0.0, 0.0, 0.0);
+    set_vec3_struct(ctx, "pose", 3.0, 4.0, 0.0);
     cxpr_context_set_param(ctx, "capture_radius", 10.0);
 
     cxpr_error err = {0};
-    double result = eval_expr("distance3(goal, pose) < $capture_radius", ctx, reg, &err);
+    bool result = eval_bool_expr("distance3(goal, pose) < $capture_radius", ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    assert(result == 1.0); /* true: 5 < 10 */
+    assert(result == true); /* true: 5 < 10 */
 
     cxpr_context_set_param(ctx, "capture_radius", 3.0);
-    result = eval_expr("distance3(goal, pose) < $capture_radius", ctx, reg, &err);
+    result = eval_bool_expr("distance3(goal, pose) < $capture_radius", ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    assert(result == 0.0); /* false: 5 >= 3 */
+    assert(result == false); /* false: 5 >= 3 */
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -124,11 +176,9 @@ static void test_single_struct_arg(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
+    cxpr_registry_add_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
 
-    const char* fields[] = {"x", "y", "z"};
-    double v[] = {0.0, 3.0, 4.0}; /* length = 5 */
-    cxpr_context_set_fields(ctx, "v", fields, v, 3);
+    set_vec3_struct(ctx, "v", 0.0, 3.0, 4.0);
 
     cxpr_error err = {0};
     double len = eval_expr("vec3_length(v)", ctx, reg, &err);
@@ -144,11 +194,9 @@ static void test_struct_fn_in_arithmetic(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
+    cxpr_registry_add_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
 
-    const char* fields[] = {"x", "y", "z"};
-    double v[] = {0.0, 3.0, 4.0}; /* length = 5 */
-    cxpr_context_set_fields(ctx, "v", fields, v, 3);
+    set_vec3_struct(ctx, "v", 0.0, 3.0, 4.0);
 
     cxpr_error err = {0};
     double result = eval_expr("vec3_length(v) * 2 + 1", ctx, reg, &err);
@@ -164,13 +212,10 @@ static void test_dot3_two_structs(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "dot3", fn_dot3, xyz, 3, 2, NULL, NULL);
+    cxpr_registry_add_fn(reg, "dot3", fn_dot3, xyz, 3, 2, NULL, NULL);
 
-    const char* fields[] = {"x", "y", "z"};
-    double a[] = {1.0, 0.0, 0.0};
-    double b[] = {1.0, 0.0, 0.0}; /* dot = 1 */
-    cxpr_context_set_fields(ctx, "a", fields, a, 3);
-    cxpr_context_set_fields(ctx, "b", fields, b, 3);
+    set_vec3_struct(ctx, "a", 1.0, 0.0, 0.0);
+    set_vec3_struct(ctx, "b", 1.0, 0.0, 0.0);
 
     cxpr_error err = {0};
     double d = eval_expr("dot3(a, b)", ctx, reg, &err);
@@ -178,8 +223,7 @@ static void test_dot3_two_structs(void) {
     ASSERT_DOUBLE_EQ(d, 1.0);
 
     /* Perpendicular vectors → dot = 0 */
-    double c[] = {0.0, 1.0, 0.0};
-    cxpr_context_set_fields(ctx, "b", fields, c, 3);
+    set_vec3_struct(ctx, "b", 0.0, 1.0, 0.0);
     d = eval_expr("dot3(a, b)", ctx, reg, &err);
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(d, 0.0);
@@ -193,11 +237,9 @@ static void test_error_wrong_struct_argc(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
+    cxpr_registry_add_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
 
-    const char* fields[] = {"x", "y", "z"};
-    double v[] = {1.0, 2.0, 3.0};
-    cxpr_context_set_fields(ctx, "a", fields, v, 3);
+    set_vec3_struct(ctx, "a", 1.0, 2.0, 3.0);
 
     /* Pass only 1 struct argument instead of 2 */
     cxpr_error err = {0};
@@ -214,7 +256,7 @@ static void test_error_non_identifier_struct_arg(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
+    cxpr_registry_add_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
 
     /* Passing a numeric literal — not an identifier */
     cxpr_error err = {0};
@@ -231,11 +273,10 @@ static void test_error_missing_field_in_context(void) {
     cxpr_context* ctx  = cxpr_context_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
+    cxpr_registry_add_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
 
     /* Only set x and y — z is missing */
-    cxpr_context_set(ctx, "v.x", 1.0);
-    cxpr_context_set(ctx, "v.y", 2.0);
+    set_vec2_struct(ctx, "v", 1.0, 2.0);
 
     cxpr_error err = {0};
     double result = eval_expr("vec3_length(v)", ctx, reg, &err);
@@ -255,13 +296,10 @@ static void test_overwrite_with_struct_fn(void) {
 
     /* Now overwrite with struct-aware version */
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
+    cxpr_registry_add_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
 
-    const char* fields[] = {"x", "y", "z"};
-    double goal[] = {0.0, 0.0, 0.0};
-    double pose[] = {0.0, 0.0, 5.0};
-    cxpr_context_set_fields(ctx, "goal", fields, goal, 3);
-    cxpr_context_set_fields(ctx, "pose", fields, pose, 3);
+    set_vec3_struct(ctx, "goal", 0.0, 0.0, 0.0);
+    set_vec3_struct(ctx, "pose", 0.0, 0.0, 5.0);
 
     cxpr_error err = {0};
     double d = eval_expr("distance3(goal, pose)", ctx, reg, &err);
@@ -276,7 +314,7 @@ static void test_registry_lookup_reports_struct_argc(void) {
     cxpr_registry* reg = cxpr_registry_new();
 
     const char* xyz[] = {"x", "y", "z"};
-    cxpr_registry_add_struct_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
+    cxpr_registry_add_fn(reg, "distance3", fn_distance3, xyz, 3, 2, NULL, NULL);
 
     size_t min_args, max_args;
     bool found = cxpr_registry_lookup(reg, "distance3", &min_args, &max_args);
@@ -285,6 +323,23 @@ static void test_registry_lookup_reports_struct_argc(void) {
     assert(max_args == 2);
 
     cxpr_registry_free(reg);
+}
+
+static void test_error_bool_struct_field_type_mismatch(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_context* ctx  = cxpr_context_new();
+
+    const char* xyz[] = {"x", "y", "z"};
+    cxpr_registry_add_fn(reg, "vec3_length", fn_vec3_length, xyz, 3, 1, NULL, NULL);
+    set_vec3_with_bool_y(ctx, "v", 1.0, true, 3.0);
+
+    cxpr_error err = {0};
+    double result = eval_expr("vec3_length(v)", ctx, reg, &err);
+    assert(isnan(result));
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -300,6 +355,7 @@ int main(void) {
     test_error_wrong_struct_argc();
     test_error_non_identifier_struct_arg();
     test_error_missing_field_in_context();
+    test_error_bool_struct_field_type_mismatch();
     test_overwrite_with_struct_fn();
     test_registry_lookup_reports_struct_argc();
 

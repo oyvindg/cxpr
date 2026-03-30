@@ -22,6 +22,8 @@ typedef enum {
     CXPR_TOK_NUMBER,            /**< Numeric literal */
     CXPR_TOK_IDENTIFIER,        /**< Identifier (e.g. "rsi", "ema_fast") */
     CXPR_TOK_VARIABLE,          /**< Parameter variable ($name) */
+    CXPR_TOK_TRUE,              /**< true */
+    CXPR_TOK_FALSE,             /**< false */
     CXPR_TOK_STRING,            /**< String literal (reserved for future) */
 
     /* Arithmetic operators */
@@ -116,6 +118,11 @@ struct cxpr_ast {
             double value;
         } number;
 
+        /* CXPR_NODE_BOOL */
+        struct {
+            bool value;
+        } boolean;
+
         /* CXPR_NODE_IDENTIFIER */
         struct {
             char* name;               /**< Owned, free with free() */
@@ -132,6 +139,22 @@ struct cxpr_ast {
             char* field;              /**< e.g. "histogram" */
             char* full_key;           /**< e.g. "macd.histogram" (for context lookup) */
         } field_access;
+
+        /* CXPR_NODE_CHAIN_ACCESS */
+        struct {
+            char** path;
+            size_t depth;
+            char* full_key;
+        } chain_access;
+
+        /* CXPR_NODE_PRODUCER_ACCESS */
+        struct {
+            char* name;
+            struct cxpr_ast** args;
+            size_t argc;
+            char* field;
+            char* full_key;
+        } producer_access;
 
         /* CXPR_NODE_BINARY_OP */
         struct {
@@ -151,6 +174,11 @@ struct cxpr_ast {
             char* name;               /**< Function name, owned */
             struct cxpr_ast** args;     /**< Array of argument ASTs, owned */
             size_t argc;              /**< Number of arguments */
+            const struct cxpr_registry* cached_registry; /**< Registry used for cached entry */
+            unsigned long cached_registry_version;       /**< Registry version of cached entry */
+            size_t cached_entry_index;                   /**< Cached entry index inside registry */
+            bool cached_entry_found;                     /**< Whether cached index resolved to a function */
+            bool cached_lookup_valid;                    /**< True when cache fields are initialized */
         } function_call;
 
         /* CXPR_NODE_TERNARY */
@@ -166,12 +194,18 @@ struct cxpr_ast {
  * @{ */
 /** @brief Create a NUMBER literal node. */
 cxpr_ast* cxpr_ast_new_number(double value);
+cxpr_ast* cxpr_ast_new_bool(bool value);
 /** @brief Create an IDENTIFIER node (strdup's name). */
 cxpr_ast* cxpr_ast_new_identifier(const char* name);
 /** @brief Create a VARIABLE ($param) node (strdup's name). */
 cxpr_ast* cxpr_ast_new_variable(const char* name);
 /** @brief Create a FIELD_ACCESS node (e.g. macd.histogram). */
 cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field);
+/** @brief Create a CHAIN_ACCESS node (e.g. outer.inner.value). */
+cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth);
+/** @brief Create a PRODUCER_ACCESS node (e.g. macd(12, 3).line). */
+cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t argc,
+                                       const char* field);
 /** @brief Create a BINARY_OP node (op + left/right children). */
 cxpr_ast* cxpr_ast_new_binary_op(int op, cxpr_ast* left, cxpr_ast* right);
 /** @brief Create a UNARY_OP node (op + operand child). */
@@ -188,6 +222,7 @@ cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch, cxpr_
 
 #define CXPR_HASHMAP_INITIAL_CAPACITY 32
 #define CXPR_HASHMAP_LOAD_FACTOR 0.75
+#define CXPR_CONTEXT_ENTRY_CACHE_SIZE 16
 
 /**
  * @brief Hash map entry for string → double.
@@ -206,12 +241,17 @@ typedef struct {
     size_t count;
 } cxpr_hashmap;
 
+/** @brief Find the backing hash-map slot for a prehashed key, or NULL if absent. */
+const cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_entry(const cxpr_hashmap* map,
+                                                            const char* key,
+                                                            unsigned long hash);
+
 /** @brief Initialize a hash map with default capacity. */
 void cxpr_hashmap_init(cxpr_hashmap* map);
 /** @brief Free all entries and the map's storage. */
 void cxpr_hashmap_destroy(cxpr_hashmap* map);
-/** @brief Insert or update a key-value pair. */
-void cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
+/** @brief Insert or update a key-value pair; returns true when key layout changed. */
+bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
 /** @brief Look up a value by key. */
 double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found);
 /** @brief Precompute the internal string hash used by cxpr hash maps. */
@@ -223,8 +263,29 @@ double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
 void cxpr_hashmap_clear(cxpr_hashmap* map);
 /** @brief Deep copy a hash map. */
 cxpr_hashmap* cxpr_hashmap_clone(const cxpr_hashmap* map);
-/** @brief Create a new overlay context that falls back to a parent context. */
-cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
+
+typedef struct {
+    char* name;
+    cxpr_struct_value* value;
+} cxpr_struct_map_entry;
+
+typedef struct {
+    cxpr_struct_map_entry* entries;
+    size_t capacity;
+    size_t count;
+} cxpr_struct_map;
+
+void cxpr_struct_map_init(cxpr_struct_map* map);
+void cxpr_struct_map_destroy(cxpr_struct_map* map);
+void cxpr_struct_map_clear(cxpr_struct_map* map);
+bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src);
+
+typedef struct {
+    const char*         key_ref;
+    unsigned long       hash;
+    size_t              slot;
+    cxpr_hashmap_entry* entries_base;
+} cxpr_context_entry_cache;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Context structure
@@ -233,6 +294,13 @@ cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
 struct cxpr_context {
     cxpr_hashmap variables;     /**< Runtime variables */
     cxpr_hashmap params;        /**< Compile-time parameters ($name) */
+    cxpr_struct_map structs;    /**< Native typed structs */
+    cxpr_context_entry_cache variable_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    cxpr_context_entry_cache param_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    cxpr_context_entry_cache variable_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    cxpr_context_entry_cache param_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    unsigned long variables_version; /**< Bumped on variable-map structural changes */
+    unsigned long params_version;    /**< Bumped on param-map structural changes */
     const struct cxpr_context* parent; /**< Optional parent context for local overlays */
 };
 
@@ -246,6 +314,7 @@ struct cxpr_context {
 typedef struct {
     char* name;               /**< Function name, owned */
     cxpr_func_ptr sync_func;    /**< Sync function pointer (or NULL for defined functions) */
+    cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
     enum {
         CXPR_NATIVE_KIND_NONE = 0,
         CXPR_NATIVE_KIND_NULLARY,
@@ -283,6 +352,7 @@ struct cxpr_registry {
     cxpr_func_entry* entries;   /**< Array of function entries */
     size_t capacity;
     size_t count;
+    unsigned long version;      /**< Bumped whenever entries mutate or move */
 };
 
 /** @brief Find a function entry by name in the registry. */
@@ -312,6 +382,7 @@ struct cxpr_parser {
  */
 typedef enum {
     CXPR_OP_PUSH_CONST,
+    CXPR_OP_PUSH_BOOL,
     CXPR_OP_LOAD_LOCAL,
     CXPR_OP_LOAD_LOCAL_SQUARE,
     CXPR_OP_LOAD_VAR,
@@ -320,6 +391,7 @@ typedef enum {
     CXPR_OP_LOAD_PARAM_SQUARE,
     CXPR_OP_LOAD_FIELD,
     CXPR_OP_LOAD_FIELD_SQUARE,
+    CXPR_OP_LOAD_CHAIN,
     CXPR_OP_ADD,
     CXPR_OP_SUB,
     CXPR_OP_MUL,
@@ -342,6 +414,10 @@ typedef enum {
     CXPR_OP_ROUND,
     CXPR_OP_POW,
     CXPR_OP_CLAMP,
+    CXPR_OP_CALL_PRODUCER,
+    CXPR_OP_CALL_UNARY,
+    CXPR_OP_CALL_BINARY,
+    CXPR_OP_CALL_TERNARY,
     CXPR_OP_CALL_FUNC,
     CXPR_OP_CALL_DEFINED,
     CXPR_OP_CALL_AST,
@@ -363,13 +439,29 @@ typedef enum {
  */
 typedef struct {
     cxpr_opcode op;
-    double value;
+    /* 4 bytes implicit padding */
     const char* name;
-    const cxpr_ast* ast;
     const cxpr_func_entry* func;
-    unsigned long hash;
-    size_t index;
+    union {
+        double value;        /* PUSH_CONST, PUSH_BOOL */
+        unsigned long hash;  /* LOAD_VAR, LOAD_PARAM, LOAD_FIELD, LOAD_CHAIN */
+        size_t index;        /* LOAD_LOCAL, CALL_*, CALL_DEFINED, CALL_PRODUCER, JUMP* */
+        const cxpr_ast* ast; /* CALL_AST */
+    };
 } cxpr_ir_instr;
+
+_Static_assert(sizeof(cxpr_ir_instr) <= 32, "cxpr_ir_instr for stor");
+
+/**
+ * @brief Cached LOAD_VAR / LOAD_PARAM resolution for one IR instruction.
+ */
+typedef struct {
+    const cxpr_context* request_ctx;        /**< Context chain root used for the cached lookup */
+    const cxpr_context* owner_ctx;          /**< Context owning the cached entry */
+    cxpr_hashmap_entry* entries_base;       /**< Owner map base when the entry was cached */
+    size_t              slot;               /**< Index into entries_base for the cached entry */
+    unsigned long       shadow_version;     /**< Structural version summary below the owner */
+} cxpr_ir_lookup_cache;
 
 /**
  * @brief Internal compiled program representation.
@@ -380,10 +472,14 @@ typedef struct {
     cxpr_ir_instr* code;        /**< Owned instruction array */
     size_t count;               /**< Number of instructions */
     size_t capacity;            /**< Allocated instruction capacity */
+    const cxpr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
+    cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
+    unsigned char fast_result_kind; /**< 0=unknown, 1=double, 2=bool for scalar fast-path */
 } cxpr_ir_program;
 
 struct cxpr_program {
     cxpr_ir_program ir;
+    const cxpr_ast* ast;
 };
 
 /** @brief Reset and free the storage owned by an IR program. */
@@ -395,6 +491,9 @@ bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
 bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
                                  const char* const* local_names, size_t local_count,
                                  cxpr_ir_program* program, cxpr_error* err);
+/** @brief Lazily compile a scalar-only defined function body to IR locals. */
+bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry* reg,
+                                     cxpr_error* err);
 /** @brief Evaluate an internal IR program against a context and registry. */
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err);
