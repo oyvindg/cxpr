@@ -281,9 +281,9 @@ void cxpr_struct_map_clear(cxpr_struct_map* map);
 bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src);
 
 typedef struct {
-    const char* key_ref;
-    unsigned long hash;
-    cxpr_hashmap_entry* entry;
+    const char*         key_ref;
+    unsigned long       hash;
+    size_t              slot;
     cxpr_hashmap_entry* entries_base;
 } cxpr_context_entry_cache;
 
@@ -297,6 +297,8 @@ struct cxpr_context {
     cxpr_struct_map structs;    /**< Native typed structs */
     cxpr_context_entry_cache variable_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     cxpr_context_entry_cache param_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    cxpr_context_entry_cache variable_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
+    cxpr_context_entry_cache param_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     unsigned long variables_version; /**< Bumped on variable-map structural changes */
     unsigned long params_version;    /**< Bumped on param-map structural changes */
     const struct cxpr_context* parent; /**< Optional parent context for local overlays */
@@ -454,11 +456,11 @@ _Static_assert(sizeof(cxpr_ir_instr) <= 32, "cxpr_ir_instr for stor");
  * @brief Cached LOAD_VAR / LOAD_PARAM resolution for one IR instruction.
  */
 typedef struct {
-    const cxpr_context* request_ctx;         /**< Context chain root used for the cached lookup */
-    const cxpr_context* owner_ctx;           /**< Context owning the cached entry */
-    const cxpr_hashmap_entry* entry;         /**< Cached hash-map entry */
-    unsigned long shadow_version;            /**< Structural version summary below the owner */
-    unsigned long version;                   /**< Owner version when cache was populated */
+    const cxpr_context* request_ctx;        /**< Context chain root used for the cached lookup */
+    const cxpr_context* owner_ctx;          /**< Context owning the cached entry */
+    cxpr_hashmap_entry* entries_base;       /**< Owner map base when the entry was cached */
+    size_t              slot;               /**< Index into entries_base for the cached entry */
+    unsigned long       shadow_version;     /**< Structural version summary below the owner */
 } cxpr_ir_lookup_cache;
 
 /**

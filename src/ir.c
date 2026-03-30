@@ -517,6 +517,12 @@ static unsigned long cxpr_ir_lookup_shadow_version(const cxpr_context* request_c
 /**
  * @brief Resolve one scalar identifier lookup and refresh the per-instruction cache.
  *
+ * Fast path for the common case where the request context directly owns the entry:
+ * three pointer/base comparisons then one indexed array read, with no version counter load.
+ *
+ * Overlay contexts fall back to the shadow-version path; entries_base still replaces the
+ * old per-entry pointer so the dereference is a single indexed access in both branches.
+ *
  * @param ctx Context chain to search.
  * @param instr IR load instruction carrying key name/hash.
  * @param cache Mutable cache entry associated with the instruction.
@@ -527,27 +533,43 @@ static unsigned long cxpr_ir_lookup_shadow_version(const cxpr_context* request_c
 static double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                            cxpr_ir_lookup_cache* cache, bool param_lookup,
                                            bool* found) {
-    const cxpr_context* current = ctx;
+    cxpr_hashmap_entry* map_entries =
+        param_lookup ? ctx->params.entries : ctx->variables.entries;
+    const cxpr_context* current;
 
-    if (cache && cache->request_ctx == ctx && cache->owner_ctx && cache->entry &&
-        cache->shadow_version == cxpr_ir_lookup_shadow_version(ctx, cache->owner_ctx,
-                                                               param_lookup) &&
-        cache->version == cxpr_ir_lookup_version(cache->owner_ctx, param_lookup)) {
+    /* Direct-owner hot path: three comparisons, no version load, one indexed read. */
+    if (cache && cache->request_ctx == ctx && cache->owner_ctx == ctx &&
+        cache->entries_base == map_entries) {
         if (found) *found = true;
-        return cache->entry->value;
+        return cache->entries_base[cache->slot].value;
     }
 
+    /* Overlay path: owner is an ancestor; verify the chain below it is unchanged. */
+    if (cache && cache->request_ctx == ctx && cache->owner_ctx && cache->entries_base &&
+        cache->entries_base ==
+            (cxpr_hashmap_entry*)(param_lookup ? cache->owner_ctx->params.entries
+                                               : cache->owner_ctx->variables.entries) &&
+        cache->shadow_version ==
+            cxpr_ir_lookup_shadow_version(ctx, cache->owner_ctx, param_lookup)) {
+        if (found) *found = true;
+        return cache->entries_base[cache->slot].value;
+    }
+
+    current = ctx;
     while (current) {
+        const cxpr_hashmap* cur_map =
+            param_lookup ? &current->params : &current->variables;
         const cxpr_hashmap_entry* entry =
-            cxpr_hashmap_find_prehashed_entry(param_lookup ? &current->params : &current->variables,
-                                              instr->name, instr->hash);
+            cxpr_hashmap_find_prehashed_entry(cur_map, instr->name, instr->hash);
         if (entry) {
             if (cache) {
                 cache->request_ctx = ctx;
                 cache->owner_ctx = current;
-                cache->entry = entry;
-                cache->shadow_version = cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
-                cache->version = cxpr_ir_lookup_version(current, param_lookup);
+                cache->entries_base = cur_map->entries;
+                cache->slot = (size_t)(entry - cur_map->entries);
+                cache->shadow_version =
+                    (current == ctx) ? 0UL
+                                     : cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
             }
             if (found) *found = true;
             return entry->value;
@@ -558,9 +580,9 @@ static double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_i
     if (cache) {
         cache->request_ctx = NULL;
         cache->owner_ctx = NULL;
-        cache->entry = NULL;
+        cache->entries_base = NULL;
+        cache->slot = 0;
         cache->shadow_version = 0;
-        cache->version = 0;
     }
     if (found) *found = false;
     return 0.0;
@@ -693,22 +715,6 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
     }
 }
 
-static cxpr_field_value cxpr_ir_load_var_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
-                                               cxpr_error* err) {
-    bool found = false;
-    double value = cxpr_ir_lookup_cached_scalar(ctx, instr, NULL, false, &found);
-    if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
-    return cxpr_fv_double(value);
-}
-
-static cxpr_field_value cxpr_ir_load_param_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
-                                                 cxpr_error* err) {
-    bool found = false;
-    double value = cxpr_ir_lookup_cached_scalar(ctx, instr, NULL, true, &found);
-    if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
-    return cxpr_fv_double(value);
-}
-
 static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry* reg,
                                                  const cxpr_ir_instr* instr, cxpr_error* err) {
     const char* dot;
@@ -749,9 +755,7 @@ static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const 
         }
     }
 
-    if (!found) {
-        value = cxpr_fv_double(cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found));
-    }
+    value = cxpr_fv_double(cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found));
     if (!found) {
         return cxpr_ir_make_not_found(err, "Unknown field access");
     }
@@ -1618,15 +1622,15 @@ static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program
 
 static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
                                             unsigned long hash, bool* found) {
+    const double value;
+
     if (!ctx) {
         if (found) *found = false;
         return 0.0;
     }
 
-    {
-        const double value = cxpr_hashmap_get_prehashed(&ctx->variables, name, hash, found);
-        if (found && *found) return value;
-    }
+    value = cxpr_hashmap_get_prehashed(&ctx->variables, name, hash, found);
+    if (found && *found) return value;
     if (ctx->parent) return cxpr_ir_context_get_prehashed(ctx->parent, name, hash, found);
     if (found) *found = false;
     return 0.0;
@@ -1634,15 +1638,15 @@ static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char*
 
 static double cxpr_ir_context_get_param_prehashed(const cxpr_context* ctx, const char* name,
                                                   unsigned long hash, bool* found) {
+    const double value;
+
     if (!ctx) {
         if (found) *found = false;
         return 0.0;
     }
 
-    {
-        const double value = cxpr_hashmap_get_prehashed(&ctx->params, name, hash, found);
-        if (found && *found) return value;
-    }
+    value = cxpr_hashmap_get_prehashed(&ctx->params, name, hash, found);
+    if (found && *found) return value;
     if (ctx->parent) {
         return cxpr_ir_context_get_param_prehashed(ctx->parent, name, hash, found);
     }

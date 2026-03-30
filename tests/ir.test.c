@@ -1095,6 +1095,48 @@ static void test_ir_eval_invalidates_parent_lookup_when_child_shadows(void) {
     printf("  ✓ test_ir_eval_invalidates_parent_lookup_when_child_shadows\n");
 }
 
+static void test_ir_eval_invalidates_parent_lookup_when_owner_map_grows(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* parent = cxpr_context_new();
+    cxpr_context* child = cxpr_context_overlay_new(parent);
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "x + 1", &err);
+    cxpr_ir_program program = {0};
+    size_t fill_count = (size_t)(CXPR_HASHMAP_INITIAL_CAPACITY * CXPR_HASHMAP_LOAD_FACTOR);
+    char key[32];
+
+    assert(p);
+    assert(parent);
+    assert(child);
+    assert(reg);
+    assert(ast);
+
+    cxpr_context_set(parent, "x", 2.0);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, child, reg, &err), 3.0);
+    assert(err.code == CXPR_OK);
+
+    for (size_t i = 0; i < fill_count; ++i) {
+        snprintf(key, sizeof(key), "grow_%zu", i);
+        cxpr_context_set(parent, key, (double)i);
+    }
+    assert(parent->variables.capacity > CXPR_HASHMAP_INITIAL_CAPACITY);
+
+    cxpr_context_set(parent, "x", 7.0);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, child, reg, &err), 8.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(child);
+    cxpr_context_free(parent);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_invalidates_parent_lookup_when_owner_map_grows\n");
+}
+
 static void test_ir_constant_folding_reduces_program(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -1212,6 +1254,7 @@ int main(void) {
     test_ir_compile_repeated_multiplication_to_square();
     test_ir_eval_reuses_lookup_cache_across_value_updates();
     test_ir_eval_invalidates_parent_lookup_when_child_shadows();
+    test_ir_eval_invalidates_parent_lookup_when_owner_map_grows();
     test_ir_constant_folding_reduces_program();
     test_ir_constant_folding_keeps_div_zero_runtime_error();
     test_ir_exec_rejects_bool_result();

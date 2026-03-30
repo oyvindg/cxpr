@@ -480,6 +480,90 @@ double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found);
  */
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value);
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Slot API — pre-bound variable handles for hot-loop writes
+ *
+ * When the same set of variables is updated on every evaluation tick, the
+ * normal cxpr_context_set() path recomputes the djb2 hash and probes the
+ * hashmap on every call.  Binding a slot once and using cxpr_context_slot_set()
+ * in the loop reduces each update to a single pointer dereference.
+ *
+ * Usage:
+ *   // one-time setup, after all variables have been inserted:
+ *   cxpr_context_slot slot_a;
+ *   cxpr_context_slot_bind(ctx, "a", &slot_a);
+ *
+ *   // hot loop:
+ *   while (ticking) {
+ *       cxpr_context_slot_set(&slot_a, new_a);
+ *       result = cxpr_ir_eval_double(program, ctx, reg, &err);
+ *   }
+ *
+ * A slot becomes stale when new variables are added to the context after
+ * binding (the underlying hashmap may grow and relocate).  Test with
+ * cxpr_context_slot_valid() before entering a loop that runs for a long time,
+ * and rebind if it returns false.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Pre-bound handle to one variable slot in a context.
+ *
+ * Treat both fields as opaque.  They are public only to allow stack allocation
+ * without a heap round-trip.
+ */
+typedef struct {
+    double* _ptr;  /**< direct pointer to value field; NULL when unbound */
+    void*   _base; /**< ctx->variables.entries snapshot for validity check */
+} cxpr_context_slot;
+
+/**
+ * @brief Bind a slot to a named variable.
+ *
+ * The variable must already exist in ctx (insert it with cxpr_context_set()
+ * first).  Slots bound to an overlay context only resolve variables owned by
+ * that context's own map, not by its parents.
+ *
+ * @param ctx  Target context.
+ * @param name Variable name.
+ * @param slot Output handle.  Set to an unbound state on failure.
+ * @return true when the variable was found and the slot is ready to use.
+ */
+bool cxpr_context_slot_bind(cxpr_context* ctx, const char* name, cxpr_context_slot* slot);
+
+/**
+ * @brief Test whether a slot is still valid.
+ *
+ * A slot becomes invalid when new variables are added to ctx after binding
+ * (the internal hashmap may grow and relocate its storage).  Call
+ * cxpr_context_slot_bind() again to refresh.
+ *
+ * @param ctx  The context the slot was bound to.
+ * @param slot Slot to test.
+ * @return true when the slot is safe to use with cxpr_context_slot_set/get.
+ */
+bool cxpr_context_slot_valid(const cxpr_context* ctx, const cxpr_context_slot* slot);
+
+/**
+ * @brief Write a value via a pre-bound slot.
+ *
+ * The slot must be valid (verified with cxpr_context_slot_valid()).
+ * No hash computation or hashmap probe is performed.
+ *
+ * @param slot  Bound slot (must be valid).
+ * @param value New value to store.
+ */
+void cxpr_context_slot_set(cxpr_context_slot* slot, double value);
+
+/**
+ * @brief Read a value via a pre-bound slot.
+ *
+ * The slot must be valid (verified with cxpr_context_slot_valid()).
+ *
+ * @param slot Bound slot (must be valid).
+ * @return The current variable value.
+ */
+double cxpr_context_slot_get(const cxpr_context_slot* slot);
+
 /**
  * @brief Get a compile-time parameter ($variable).
  * @param ctx Context
