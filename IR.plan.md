@@ -311,15 +311,15 @@ Mål: innføre en liten intern IR eller "compiled plan" for raskere evaluering, 
   - `simple_arith`: AST `115.07 ns/eval`, IR `97.63 ns/eval`, speedup `1.18x`
   - `nested_expr`: AST `173.76 ns/eval`, IR `153.09 ns/eval`, speedup `1.14x`
   - `function_call`: AST `362.91 ns/eval`, IR `140.75 ns/eval`, speedup `2.58x`
-  - `defined_fn`: AST `688.41 ns/eval`, IR `114.44 ns/eval`, speedup `6.02x`
-  - `native_fn`: AST `515.52 ns/eval`, IR `146.06 ns/eval`, speedup `3.53x`
-  - `defined_chain`: AST `771.17 ns/eval`, IR `229.70 ns/eval`, speedup `3.36x`
-  - `native_chain`: AST `558.04 ns/eval`, IR `203.39 ns/eval`, speedup `2.74x`
-  - `mixed_chain`: AST `621.15 ns/eval`, IR `212.82 ns/eval`, speedup `2.92x`
-  - `deep_defined`: AST `608.61 ns/eval`, IR `226.01 ns/eval`, speedup `2.69x`
-  - `deep_native`: AST `433.88 ns/eval`, IR `187.65 ns/eval`, speedup `2.31x`
-  - `context_churn`: AST `279.20 ns/eval`, IR `243.96 ns/eval`, speedup `1.14x`
-  Tolkning: IR-pathen gir nå tydelig gevinst også for nested expression-defined functions. I de beste tilfellene kan `defined_fn` bli raskere enn tilsvarende native callback-path, fordi compile-time inlining og mønstergjenkjenning kan fjerne dispatch-kost som fortsatt finnes for generiske native funksjonskall.
+  - `defined_fn`: AST `814.11 ns/eval`, IR `134.82 ns/eval`, speedup `6.04x`
+  - `native_fn`: AST `522.54 ns/eval`, IR `120.84 ns/eval`, speedup `4.32x`
+  - `defined_chain`: AST `873.38 ns/eval`, IR `171.71 ns/eval`, speedup `5.09x`
+  - `native_chain`: AST `594.22 ns/eval`, IR `151.69 ns/eval`, speedup `3.92x`
+  - `mixed_chain`: AST `803.10 ns/eval`, IR `171.12 ns/eval`, speedup `4.69x`
+  - `deep_defined`: AST `711.08 ns/eval`, IR `186.06 ns/eval`, speedup `3.82x`
+  - `deep_native`: AST `503.42 ns/eval`, IR `222.95 ns/eval`, speedup `2.26x`
+  - `context_churn`: AST `333.78 ns/eval`, IR `273.40 ns/eval`, speedup `1.22x`
+  Tolkning: IR-pathen gir nå tydelig gevinst også for nested expression-defined og native scalar callbacks. I de beste tilfellene kan `defined_fn` fortsatt bli raskere enn tilsvarende native callback-path, fordi compile-time inlining og mønstergjenkjenning kan eliminere mer dispatch enn det som er mulig for en generell callback. Samtidig er native fast-pathen nå betydelig forbedret uten nye offentlige API-er.
 
 ## Ikke-mål
 

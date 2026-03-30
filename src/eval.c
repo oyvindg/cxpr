@@ -317,6 +317,31 @@ static double cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
             return NAN;
         }
 
+        if (entry->native_kind == CXPR_NATIVE_KIND_NULLARY && argc == 0) {
+            return entry->native_scalar.nullary();
+        }
+        if (entry->native_kind == CXPR_NATIVE_KIND_UNARY && argc == 1) {
+            const double a = cxpr_eval_node(ast->data.function_call.args[0], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            return entry->native_scalar.unary(a);
+        }
+        if (entry->native_kind == CXPR_NATIVE_KIND_BINARY && argc == 2) {
+            const double a = cxpr_eval_node(ast->data.function_call.args[0], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            const double b = cxpr_eval_node(ast->data.function_call.args[1], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            return entry->native_scalar.binary(a, b);
+        }
+        if (entry->native_kind == CXPR_NATIVE_KIND_TERNARY && argc == 3) {
+            const double a = cxpr_eval_node(ast->data.function_call.args[0], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            const double b = cxpr_eval_node(ast->data.function_call.args[1], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            const double c = cxpr_eval_node(ast->data.function_call.args[2], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NAN;
+            return entry->native_scalar.ternary(a, b, c);
+        }
+
         /* Evaluate arguments */
         double args[32]; /* Max 32 arguments */
         if (argc > 32) argc = 32;

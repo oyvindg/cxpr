@@ -213,6 +213,8 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         free_struct_fields(existing);
         free_defined_fn(existing);
         existing->sync_func = func;
+        existing->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
         existing->min_args = min_args;
         existing->max_args = max_args;
         existing->userdata = userdata;
@@ -226,6 +228,8 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = strdup(name);
     entry->sync_func = func;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = min_args;
     entry->max_args = max_args;
     entry->userdata = userdata;
@@ -296,41 +300,65 @@ static double cxpr_max(const double* args, size_t argc, void* userdata) {
 /** @brief Register a unary scalar function using an internal adapter. */
 void cxpr_registry_add_unary(cxpr_registry* reg, const char* name,
                              double (*func)(double)) {
+    cxpr_func_entry* entry;
     if (!reg || !name || !func) return;
     cxpr_unary_userdata* ud = (cxpr_unary_userdata*)malloc(sizeof(cxpr_unary_userdata));
     if (!ud) return;
     ud->fn = func;
     cxpr_registry_add(reg, name, cxpr_unary_adapter, 1, 1, ud, free);
+    entry = cxpr_registry_find(reg, name);
+    if (entry) {
+        entry->native_kind = CXPR_NATIVE_KIND_UNARY;
+        entry->native_scalar.unary = func;
+    }
 }
 
 /** @brief Register a binary scalar function using an internal adapter. */
 void cxpr_registry_add_binary(cxpr_registry* reg, const char* name,
                               double (*func)(double, double)) {
+    cxpr_func_entry* entry;
     if (!reg || !name || !func) return;
     cxpr_binary_userdata* ud = (cxpr_binary_userdata*)malloc(sizeof(cxpr_binary_userdata));
     if (!ud) return;
     ud->fn = func;
     cxpr_registry_add(reg, name, cxpr_binary_adapter, 2, 2, ud, free);
+    entry = cxpr_registry_find(reg, name);
+    if (entry) {
+        entry->native_kind = CXPR_NATIVE_KIND_BINARY;
+        entry->native_scalar.binary = func;
+    }
 }
 
 /** @brief Register a nullary scalar function using an internal adapter. */
 void cxpr_registry_add_nullary(cxpr_registry* reg, const char* name,
                                double (*func)(void)) {
+    cxpr_func_entry* entry;
     if (!reg || !name || !func) return;
     cxpr_nullary_userdata* ud = (cxpr_nullary_userdata*)malloc(sizeof(cxpr_nullary_userdata));
     if (!ud) return;
     ud->fn = func;
     cxpr_registry_add(reg, name, cxpr_nullary_adapter, 0, 0, ud, free);
+    entry = cxpr_registry_find(reg, name);
+    if (entry) {
+        entry->native_kind = CXPR_NATIVE_KIND_NULLARY;
+        entry->native_scalar.nullary = func;
+    }
 }
 
 /** @brief Register a ternary scalar function using an internal adapter. */
 void cxpr_registry_add_ternary(cxpr_registry* reg, const char* name,
                                double (*func)(double, double, double)) {
+    cxpr_func_entry* entry;
     if (!reg || !name || !func) return;
     cxpr_ternary_userdata* ud = (cxpr_ternary_userdata*)malloc(sizeof(cxpr_ternary_userdata));
     if (!ud) return;
     ud->fn = func;
     cxpr_registry_add(reg, name, cxpr_ternary_adapter, 3, 3, ud, free);
+    entry = cxpr_registry_find(reg, name);
+    if (entry) {
+        entry->native_kind = CXPR_NATIVE_KIND_TERNARY;
+        entry->native_scalar.ternary = func;
+    }
 }
 
 /**
@@ -380,6 +408,8 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
         free_struct_fields(existing);
         free_defined_fn(existing);
         existing->sync_func = func;
+        existing->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
         existing->min_args = struct_argc;
         existing->max_args = struct_argc;
         existing->userdata = userdata;
@@ -394,6 +424,8 @@ void cxpr_registry_add_struct_fn(cxpr_registry* reg, const char* name,
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = strdup(name);
     entry->sync_func = func;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = struct_argc;
     entry->max_args = struct_argc;
     entry->userdata = userdata;
@@ -681,6 +713,8 @@ cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def) {
             free_struct_fields(existing);
             free_defined_fn(existing);
             existing->sync_func                  = NULL;
+            existing->native_kind               = CXPR_NATIVE_KIND_NONE;
+            memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
             existing->min_args                   = param_count;
             existing->max_args                   = param_count;
             existing->userdata                   = NULL;
@@ -699,6 +733,8 @@ cxpr_error cxpr_registry_define(cxpr_registry* reg, const char* def) {
         cxpr_func_entry* entry           = &reg->entries[reg->count++];
         entry->name                      = strdup(fname);
         entry->sync_func                 = NULL;
+        entry->native_kind              = CXPR_NATIVE_KIND_NONE;
+        memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
         entry->min_args                  = param_count;
         entry->max_args                  = param_count;
         entry->userdata                  = NULL;

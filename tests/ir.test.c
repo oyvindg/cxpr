@@ -40,6 +40,14 @@ static double fn_distance3(const double* args, size_t argc, void* ud) {
     return sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+static double native_sq_test(double x) {
+    return x * x;
+}
+
+static double native_hyp2_test(double x, double y) {
+    return sqrt(x * x + y * y);
+}
+
 static void test_ir_compile_number_literal(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
@@ -779,6 +787,41 @@ static void test_ir_eval_nested_defined_function_matches_ast(void) {
     printf("  ✓ test_ir_eval_nested_defined_function_matches_ast\n");
 }
 
+static void test_ir_eval_native_function_fast_path_matches_ast(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_registry_add_unary(reg, "native_sq", native_sq_test);
+    cxpr_registry_add_binary(reg, "native_hyp2", native_hyp2_test);
+    cxpr_ast* ast = cxpr_parse(p, "native_hyp2(a, b) + native_hyp2(c, d) - native_sq(e)", &err);
+    assert(ast);
+    cxpr_context_set(ctx, "a", 1.5);
+    cxpr_context_set(ctx, "b", 2.5);
+    cxpr_context_set(ctx, "c", 3.5);
+    cxpr_context_set(ctx, "d", 4.5);
+    cxpr_context_set(ctx, "e", 5.5);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    double ast_result = cxpr_eval(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    double ir_result = cxpr_ir_eval(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(ast_result, ir_result);
+    ASSERT_DOUBLE_EQ(ir_result, native_hyp2_test(1.5, 2.5) + native_hyp2_test(3.5, 4.5) - native_sq_test(5.5));
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_native_function_fast_path_matches_ast\n");
+}
+
 static void test_ir_compile_repeated_multiplication_to_square(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -898,6 +941,7 @@ int main(void) {
     test_ir_eval_struct_function_matches_ast();
     test_ir_eval_defined_function_matches_ast();
     test_ir_eval_nested_defined_function_matches_ast();
+    test_ir_eval_native_function_fast_path_matches_ast();
     test_ir_compile_repeated_multiplication_to_square();
     test_ir_constant_folding_reduces_program();
     test_ir_constant_folding_keeps_div_zero_runtime_error();

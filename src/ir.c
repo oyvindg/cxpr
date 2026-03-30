@@ -1071,6 +1071,29 @@ double cxpr_ir_eval_with_locals(const cxpr_ir_program* program, const cxpr_conte
                 }
                 return NAN;
             }
+            if (instr->func->native_kind == CXPR_NATIVE_KIND_NULLARY && argc == 0) {
+                if (!cxpr_ir_stack_push(stack, &sp, instr->func->native_scalar.nullary(),
+                                        stack_capacity, err)) {
+                    return NAN;
+                }
+                break;
+            }
+            if (instr->func->native_kind == CXPR_NATIVE_KIND_UNARY && argc == 1) {
+                stack[sp - 1] = instr->func->native_scalar.unary(stack[sp - 1]);
+                break;
+            }
+            if (instr->func->native_kind == CXPR_NATIVE_KIND_BINARY && argc == 2) {
+                stack[sp - 2] =
+                    instr->func->native_scalar.binary(stack[sp - 2], stack[sp - 1]);
+                sp--;
+                break;
+            }
+            if (instr->func->native_kind == CXPR_NATIVE_KIND_TERNARY && argc == 3) {
+                stack[sp - 3] =
+                    instr->func->native_scalar.ternary(stack[sp - 3], stack[sp - 2], stack[sp - 1]);
+                sp -= 2;
+                break;
+            }
             if (argc > 32) return cxpr_ir_runtime_error(err, "IR function argc overflow");
 
             for (i = 0; i < argc; ++i) {

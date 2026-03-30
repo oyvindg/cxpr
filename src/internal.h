@@ -246,6 +246,19 @@ struct cxpr_context {
 typedef struct {
     char* name;               /**< Function name, owned */
     cxpr_func_ptr sync_func;    /**< Sync function pointer (or NULL for defined functions) */
+    enum {
+        CXPR_NATIVE_KIND_NONE = 0,
+        CXPR_NATIVE_KIND_NULLARY,
+        CXPR_NATIVE_KIND_UNARY,
+        CXPR_NATIVE_KIND_BINARY,
+        CXPR_NATIVE_KIND_TERNARY
+    } native_kind;
+    union {
+        double (*nullary)(void);
+        double (*unary)(double);
+        double (*binary)(double, double);
+        double (*ternary)(double, double, double);
+    } native_scalar;
     size_t min_args;
     size_t max_args;
     void* userdata;
