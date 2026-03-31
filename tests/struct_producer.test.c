@@ -16,6 +16,14 @@
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
 
+static cxpr_field_value struct_field(const cxpr_struct_value *s, const char *field) {
+    for (size_t i = 0; i < s->field_count; ++i) {
+        if (strcmp(s->field_names[i], field) == 0) return s->field_values[i];
+    }
+    assert(!"missing struct field");
+    return cxpr_fv_double(NAN);
+}
+
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
 static cxpr_field_value eval_typed(const char *expr,
@@ -171,6 +179,47 @@ static void test_arg_producer_called_once_for_two_fields(void) {
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  \u2713 test_arg_producer_called_once_for_two_fields\n");
+}
+
+static void test_struct_function_call_returns_struct(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_context *ctx = cxpr_context_new();
+
+    const char *fields[] = {"line", "histogram"};
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
+                                      2, 2, fields, 2, NULL, NULL);
+
+    g_arg_call_count = 0;
+    cxpr_field_value r = eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(r.type == CXPR_FIELD_STRUCT);
+    assert(g_arg_call_count == 1);
+    ASSERT_DOUBLE_EQ(struct_field(r.s, "line").d, 1.4);
+    ASSERT_DOUBLE_EQ(struct_field(r.s, "histogram").d, 1.5);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  \u2713 test_struct_function_call_returns_struct\n");
+}
+
+static void test_arg_producer_cache_key_includes_arguments(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_context *ctx = cxpr_context_new();
+
+    const char *fields[] = {"line", "histogram"};
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
+                                      2, 2, fields, 2, NULL, NULL);
+
+    g_arg_call_count = 0;
+    cxpr_field_value r = eval_typed("macd(14.0, 3.0).line + macd(20.0, 5.0).line", ctx, reg);
+    assert(r.type == CXPR_FIELD_DOUBLE);
+    ASSERT_DOUBLE_EQ(r.d, 3.4);
+    assert(g_arg_call_count == 2);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  \u2713 test_arg_producer_cache_key_includes_arguments\n");
 }
 
 /* ── bool output field stays bool ────────────────────────────────────── */
@@ -351,18 +400,41 @@ static void test_ir_parity(void) {
     printf("  \u2713 test_ir_parity\n");
 }
 
+static void test_ir_struct_function_call_returns_struct(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_context *ctx = cxpr_context_new();
+
+    const char *fields[] = {"line", "histogram"};
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
+                                      2, 2, fields, 2, NULL, NULL);
+
+    g_arg_call_count = 0;
+    cxpr_field_value r = ir_eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(r.type == CXPR_FIELD_STRUCT);
+    assert(g_arg_call_count == 1);
+    ASSERT_DOUBLE_EQ(struct_field(r.s, "line").d, 1.4);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  \u2713 test_ir_struct_function_call_returns_struct\n");
+}
+
 int main(void) {
     printf("Running struct_producer tests...\n");
     test_zero_arg_producer_basic();
     test_zero_arg_producer_called_once();
     test_arg_producer();
     test_arg_producer_called_once_for_two_fields();
+    test_struct_function_call_returns_struct();
+    test_arg_producer_cache_key_includes_arguments();
     test_bool_output_field();
     test_host_set_takes_priority();
     test_clear_causes_recall();
     test_wrong_arity();
     test_unknown_field();
     test_ir_parity();
+    test_ir_struct_function_call_returns_struct();
     printf("All struct_producer tests passed!\n");
     return 0;
 }

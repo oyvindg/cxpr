@@ -559,6 +559,12 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
 
 /**
  * @brief Register a struct-producing function.
+ *
+ * Registered producers can be used as `name.field`, `name(args).field`, and
+ * as direct typed calls through `cxpr_ast_eval(...)` / `cxpr_ir_eval(...)`.
+ * The typed call path yields a `CXPR_FIELD_STRUCT` value backed by the
+ * evaluation context cache.
+ *
  * @param reg Registry to add to.
  * @param name Producer name used from expressions.
  * @param func Producer callback that fills `field_count` typed outputs.

@@ -245,6 +245,7 @@ void cxpr_ast_free(cxpr_ast* ast) {
         free(ast->data.producer_access.name);
         free(ast->data.producer_access.field);
         free(ast->data.producer_access.full_key);
+        free(ast->data.producer_access.cached_const_key);
         for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
             cxpr_ast_free(ast->data.producer_access.args[i]);
         }
@@ -259,6 +260,7 @@ void cxpr_ast_free(cxpr_ast* ast) {
         break;
     case CXPR_NODE_FUNCTION_CALL:
         free(ast->data.function_call.name);
+        free(ast->data.function_call.cached_const_key);
         for (size_t i = 0; i < ast->data.function_call.argc; i++) {
             cxpr_ast_free(ast->data.function_call.args[i]);
         }

@@ -39,6 +39,14 @@ static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char
                                               const cxpr_context* ctx,
                                               const cxpr_field_value* stack_args,
                                               size_t argc, cxpr_error* err);
+static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name,
+                                                     const char* cache_key,
+                                                     const cxpr_context* ctx,
+                                                     const cxpr_field_value* stack_args,
+                                                     size_t argc, cxpr_error* err);
+static const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args, size_t argc,
+                                                  char* local_buf, size_t local_cap,
+                                                  char** heap_buf);
 static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry);
 static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program);
 
@@ -47,6 +55,11 @@ static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program)
  */
 void cxpr_ir_program_reset(cxpr_ir_program* program) {
     if (!program) return;
+    for (size_t i = 0; i < program->count; ++i) {
+        if (program->code[i].op == CXPR_OP_CALL_PRODUCER_CONST) {
+            free((char*)program->code[i].name);
+        }
+    }
     free(program->code);
     free(program->lookup_cache);
     program->code = NULL;
@@ -117,6 +130,8 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_POW: return "POW";
     case CXPR_OP_CLAMP: return "CLAMP";
     case CXPR_OP_CALL_PRODUCER: return "CALL_PRODUCER";
+    case CXPR_OP_CALL_PRODUCER_CONST: return "CALL_PRODUCER_CONST";
+    case CXPR_OP_GET_FIELD: return "GET_FIELD";
     case CXPR_OP_CALL_UNARY: return "CALL_UNARY";
     case CXPR_OP_CALL_BINARY: return "CALL_BINARY";
     case CXPR_OP_CALL_TERNARY: return "CALL_TERNARY";
@@ -380,6 +395,7 @@ static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops
     case CXPR_OP_CEIL:
     case CXPR_OP_ROUND:
     case CXPR_OP_CALL_UNARY:
+    case CXPR_OP_GET_FIELD:
         *pops = 1;
         *pushes = 1;
         return true;
@@ -477,6 +493,24 @@ static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program)
     }
 
     return true;
+}
+
+static char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
+                                                 size_t argc) {
+    double values[32];
+    char local_buf[256];
+    char* heap_buf = NULL;
+    const char* key;
+
+    if (!name || argc > 32) return NULL;
+    for (size_t i = 0; i < argc; ++i) {
+        if (!cxpr_ir_constant_value(args[i], &values[i])) return NULL;
+    }
+
+    key = cxpr_ir_build_struct_cache_key(name, values, argc, local_buf, sizeof(local_buf), &heap_buf);
+    if (!key) return NULL;
+    if (heap_buf) return heap_buf;
+    return cxpr_strdup(key);
 }
 
 /**
@@ -762,6 +796,70 @@ static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const 
     return value;
 }
 
+static cxpr_field_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
+                                                 const char* field, bool* found) {
+    if (found) *found = false;
+    if (!value || !field) return cxpr_fv_double(NAN);
+
+    for (size_t i = 0; i < value->field_count; ++i) {
+        if (strcmp(value->field_names[i], field) == 0) {
+            if (found) *found = true;
+            return value->field_values[i];
+        }
+    }
+
+    return cxpr_fv_double(NAN);
+}
+
+static const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args, size_t argc,
+                                                  char* local_buf, size_t local_cap,
+                                                  char** heap_buf) {
+    size_t len;
+    size_t offset;
+    char* key;
+    int written;
+
+    if (heap_buf) *heap_buf = NULL;
+    if (!name) return NULL;
+    if (argc == 0) return name;
+
+    len = strlen(name) + 4 + (argc * 32);
+    if (local_buf && len <= local_cap) {
+        key = local_buf;
+    } else {
+        key = (char*)malloc(len);
+        if (!key) return NULL;
+        if (heap_buf) *heap_buf = key;
+    }
+
+    written = snprintf(key, len, "%s(", name);
+    if (written < 0 || (size_t)written >= len) {
+        if (heap_buf && *heap_buf) free(*heap_buf);
+        if (heap_buf) *heap_buf = NULL;
+        return NULL;
+    }
+    offset = (size_t)written;
+
+    for (size_t i = 0; i < argc; ++i) {
+        written = snprintf(key + offset, len - offset, i == 0 ? "%a" : ",%a", args[i]);
+        if (written < 0 || (size_t)written >= len - offset) {
+            if (heap_buf && *heap_buf) free(*heap_buf);
+            if (heap_buf) *heap_buf = NULL;
+            return NULL;
+        }
+        offset += (size_t)written;
+    }
+
+    written = snprintf(key + offset, len - offset, ")");
+    if (written < 0 || (size_t)written >= len - offset) {
+        if (heap_buf && *heap_buf) free(*heap_buf);
+        if (heap_buf) *heap_buf = NULL;
+        return NULL;
+    }
+
+    return key;
+}
+
 static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                                  cxpr_error* err) {
     char* path;
@@ -828,22 +926,23 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
     return cxpr_ir_runtime_error(err, "Malformed chain access");
 }
 
-static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
-                                              const cxpr_context* ctx,
-                                              const cxpr_field_value* stack_args,
-                                              size_t argc, cxpr_error* err) {
+static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name,
+                                                     const char* cache_key,
+                                                     const cxpr_context* ctx,
+                                                     const cxpr_field_value* stack_args,
+                                                     size_t argc, cxpr_error* err) {
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
     const cxpr_struct_value* existing;
     cxpr_field_value outputs[64];
     cxpr_struct_value* produced;
     double args[32];
+    char cache_key_local[256];
+    char* cache_key_heap = NULL;
+    const char* resolved_cache_key = cache_key;
 
     if (!entry || !entry->struct_producer) {
         return cxpr_ir_runtime_error(err, "Invalid producer opcode");
     }
-
-    existing = cxpr_context_get_struct(ctx, name);
-    if (existing) return cxpr_fv_struct((cxpr_struct_value*)existing);
 
     if (argc < entry->min_args || argc > entry->max_args) {
         if (err) {
@@ -864,20 +963,52 @@ static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char
         args[i] = stack_args[i].d;
     }
 
+    if (!resolved_cache_key) {
+        resolved_cache_key = cxpr_ir_build_struct_cache_key(name, args, argc,
+                                                            cache_key_local,
+                                                            sizeof(cache_key_local),
+                                                            &cache_key_heap);
+        if (!resolved_cache_key) {
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return cxpr_fv_double(NAN);
+        }
+    }
+
+    existing = cxpr_context_get_struct(ctx, resolved_cache_key);
+    if (!existing && argc == 0) {
+        existing = cxpr_context_get_struct(ctx, name);
+    }
+    if (existing) {
+        free(cache_key_heap);
+        return cxpr_fv_struct((cxpr_struct_value*)existing);
+    }
+
     entry->struct_producer(args, argc, outputs, entry->fields_per_arg, entry->userdata);
     produced = cxpr_struct_value_new((const char* const*)entry->struct_fields,
                                      outputs, entry->fields_per_arg);
     if (!produced) {
+        free(cache_key_heap);
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
             err->message = "Out of memory";
         }
         return cxpr_fv_double(NAN);
     }
-    cxpr_context_set_struct(mutable_ctx, name, produced);
+    cxpr_context_set_struct(mutable_ctx, resolved_cache_key, produced);
     cxpr_struct_value_free(produced);
-    existing = cxpr_context_get_struct(ctx, name);
+    existing = cxpr_context_get_struct(ctx, resolved_cache_key);
+    free(cache_key_heap);
     return cxpr_fv_struct((cxpr_struct_value*)existing);
+}
+
+static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
+                                              const cxpr_context* ctx,
+                                              const cxpr_field_value* stack_args,
+                                              size_t argc, cxpr_error* err) {
+    return cxpr_ir_call_producer_cached(entry, name, NULL, ctx, stack_args, argc, err);
 }
 
 static bool cxpr_ir_push_squared(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
@@ -1221,6 +1352,30 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
                                            &stack[sp - instr->index], instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
             sp -= instr->index;
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_CALL_PRODUCER_CONST:
+            if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
+            result = cxpr_ir_call_producer_cached((cxpr_func_entry*)instr->func,
+                                                  instr->func->name, instr->name, ctx,
+                                                  &stack[sp - instr->index], instr->index, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            sp -= instr->index;
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
+        case CXPR_OP_GET_FIELD:
+            {
+                bool found = false;
+    
+                if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
+                if (!cxpr_ir_require_type(a, CXPR_FIELD_STRUCT, err,
+                                          "Field access requires struct operand")) {
+                    return cxpr_fv_double(NAN);
+                }
+                result = cxpr_ir_struct_get_field(a.s, instr->name, &found);
+                if (!found) return cxpr_ir_make_not_found(err, "Unknown field access");
+                if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            }
             break;
         case CXPR_OP_CALL_AST:
             result = cxpr_ast_eval(instr->ast, ctx, reg, err);
@@ -1811,10 +1966,8 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             err);
 
     case CXPR_NODE_PRODUCER_ACCESS: {
-        char* full_key;
-        size_t name_len = strlen(ast->data.producer_access.name);
-        size_t field_len = strlen(ast->data.producer_access.field);
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
+        char* const_key = NULL;
         if (!entry || !entry->struct_producer) {
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
@@ -1829,33 +1982,25 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 return false;
             }
         }
+        const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
+                                                        (const cxpr_ast* const*)ast->data.producer_access.args,
+                                                        ast->data.producer_access.argc);
         if (!cxpr_ir_emit(program,
                           (cxpr_ir_instr){
-                              .op = CXPR_OP_CALL_PRODUCER,
+                              .op = const_key ? CXPR_OP_CALL_PRODUCER_CONST
+                                              : CXPR_OP_CALL_PRODUCER,
                               .func = entry,
-                              .name = ast->data.producer_access.name,
+                              .name = const_key ? const_key : ast->data.producer_access.name,
                               .index = ast->data.producer_access.argc,
                           },
                           err)) {
+            free(const_key);
             return false;
         }
-        full_key = (char*)malloc(name_len + 1 + field_len + 1);
-        if (!full_key) {
-            if (err) {
-                err->code = CXPR_ERR_OUT_OF_MEMORY;
-                err->message = "Out of memory";
-            }
-            return false;
-        }
-        memcpy(full_key, ast->data.producer_access.name, name_len);
-        full_key[name_len] = '.';
-        memcpy(full_key + name_len + 1, ast->data.producer_access.field, field_len);
-        full_key[name_len + 1 + field_len] = '\0';
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
-                                .op = CXPR_OP_LOAD_FIELD,
-                                .name = full_key,
-                                .hash = cxpr_hash_string(full_key),
+                                .op = CXPR_OP_GET_FIELD,
+                                .name = ast->data.producer_access.field,
                             },
                             err);
     }
@@ -2019,6 +2164,32 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                     .index = ast->data.function_call.argc,
                                 },
                                 err);
+        }
+
+        if (entry->struct_producer) {
+            char* const_key = NULL;
+            for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+                if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
+                                          local_names, local_count, subst, inline_depth, err)) {
+                    return false;
+                }
+            }
+            const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
+                                                            (const cxpr_ast* const*)ast->data.function_call.args,
+                                                            ast->data.function_call.argc);
+            if (!cxpr_ir_emit(program,
+                              (cxpr_ir_instr){
+                                  .op = const_key ? CXPR_OP_CALL_PRODUCER_CONST
+                                                  : CXPR_OP_CALL_PRODUCER,
+                                  .func = entry,
+                                  .name = const_key ? const_key : ast->data.function_call.name,
+                                  .index = ast->data.function_call.argc,
+                              },
+                              err)) {
+                free(const_key);
+                return false;
+            }
+            return true;
         }
 
         if (entry->defined_body && cxpr_ir_defined_is_scalar_only(entry)) {

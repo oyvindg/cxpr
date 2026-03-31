@@ -204,6 +204,15 @@ struct cxpr_ast {
             size_t argc;
             char* field;
             char* full_key;
+            const struct cxpr_registry* cached_registry;
+            unsigned long cached_registry_version;
+            size_t cached_entry_index;
+            bool cached_entry_found;
+            bool cached_lookup_valid;
+            char* cached_const_key;
+            bool cached_const_key_ready;
+            size_t cached_field_index;
+            bool cached_field_index_valid;
         } producer_access;
 
         /* CXPR_NODE_BINARY_OP */
@@ -229,6 +238,8 @@ struct cxpr_ast {
             size_t cached_entry_index;                   /**< Cached entry index inside registry */
             bool cached_entry_found;                     /**< Whether cached index resolved to a function */
             bool cached_lookup_valid;                    /**< True when cache fields are initialized */
+            char* cached_const_key;                      /**< Cached constant producer key when applicable */
+            bool cached_const_key_ready;                 /**< True when constant-key analysis has run */
         } function_call;
 
         /* CXPR_NODE_TERNARY */
@@ -465,6 +476,8 @@ typedef enum {
     CXPR_OP_POW,
     CXPR_OP_CLAMP,
     CXPR_OP_CALL_PRODUCER,
+    CXPR_OP_CALL_PRODUCER_CONST,
+    CXPR_OP_GET_FIELD,
     CXPR_OP_CALL_UNARY,
     CXPR_OP_CALL_BINARY,
     CXPR_OP_CALL_TERNARY,
@@ -482,7 +495,7 @@ typedef enum {
  *
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
- * - LOAD_VAR / LOAD_PARAM: borrowed symbol name in name
+ * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
  * - arithmetic / comparisons / return: no extra operand
