@@ -423,13 +423,14 @@ static cxpr_hashmap_entry* cxpr_context_lookup_pointer_cached_entry(cxpr_hashmap
                                                                     cxpr_context_entry_cache* cache,
                                                                     const char* key) {
     cxpr_context_entry_cache* bucket;
+    cxpr_hashmap_entry* entry;
 
     if (!map || !cache || !key) return NULL;
 
     bucket = cxpr_context_pointer_cache_bucket(cache, key);
     if (bucket->entries_base == map->entries && bucket->key_ref == key) {
-        cxpr_hashmap_entry* e = &map->entries[bucket->slot];
-        if (e->key && strcmp(e->key, key) == 0) return e;
+        entry = &map->entries[bucket->slot];
+        if (entry->key && strcmp(entry->key, key) == 0) return entry;
     }
 
     return NULL;
@@ -461,7 +462,7 @@ static cxpr_hashmap_entry* cxpr_context_lookup_cached_entry(cxpr_hashmap* map,
 
     entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
     if (entry) {
-        bucket->key_ref = key;
+        bucket->key_ref = entry->key;
         bucket->hash = hash;
         bucket->slot = (size_t)(entry - map->entries);
         bucket->entries_base = map->entries;
@@ -492,7 +493,7 @@ static void cxpr_context_refresh_cache(cxpr_hashmap* map, cxpr_context_entry_cac
 
     entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
     bucket = cxpr_context_cache_bucket(cache, hash);
-    bucket->key_ref = key;
+    bucket->key_ref = entry ? entry->key : NULL;
     bucket->hash = hash;
     bucket->slot = entry ? (size_t)(entry - map->entries) : 0;
     bucket->entries_base = entry ? map->entries : NULL;

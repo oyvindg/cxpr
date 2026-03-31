@@ -4,6 +4,7 @@ set(CXPR_C_TEST_INTERNAL_INCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/lexer.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/eval.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ir.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ir_ownership.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/formula_ir.test.c"
 )
 

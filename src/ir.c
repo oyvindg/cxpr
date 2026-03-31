@@ -481,7 +481,6 @@ static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops
     case CXPR_OP_CEIL:
     case CXPR_OP_ROUND:
     case CXPR_OP_CALL_UNARY:
-    case CXPR_OP_GET_FIELD:
         *pops = 1;
         *pushes = 1;
         return true;
@@ -2014,8 +2013,30 @@ static size_t cxpr_ir_defined_scalar_param_count(const cxpr_func_entry* entry) {
     return count;
 }
 
+static const char* cxpr_ir_resolve_struct_arg_name(const cxpr_ast* arg,
+                                                   const cxpr_ir_subst_frame* subst,
+                                                   cxpr_error* err) {
+    const cxpr_ir_subst_frame* owner = NULL;
+    size_t owner_index = 0;
+    const cxpr_ast* mapped;
+
+    if (!arg) return NULL;
+    if (arg->type == CXPR_NODE_IDENTIFIER) {
+        mapped = cxpr_ir_subst_lookup(subst, arg->data.identifier.name, &owner, &owner_index);
+        if (mapped) return cxpr_ir_resolve_struct_arg_name(mapped, owner ? owner->parent : NULL, err);
+        return arg->data.identifier.name;
+    }
+
+    if (err) {
+        err->code = CXPR_ERR_SYNTAX;
+        err->message = "Struct argument must be an identifier";
+    }
+    return NULL;
+}
+
 static char* cxpr_ir_build_defined_struct_arg_names(const cxpr_func_entry* entry,
                                                     const cxpr_ast* const* args, size_t argc,
+                                                    const cxpr_ir_subst_frame* subst,
                                                     cxpr_error* err) {
     size_t total_len = 1;
     char* names;
@@ -2032,15 +2053,9 @@ static char* cxpr_ir_build_defined_struct_arg_names(const cxpr_func_entry* entry
 
     for (size_t i = 0; i < entry->defined_param_count; ++i) {
         if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
-            const cxpr_ast* arg = args[i];
-            if (!arg || arg->type != CXPR_NODE_IDENTIFIER) {
-                if (err) {
-                    err->code = CXPR_ERR_SYNTAX;
-                    err->message = "Struct argument must be an identifier";
-                }
-                return NULL;
-            }
-            total_len += strlen(arg->data.identifier.name) + 1;
+            const char* arg_name = cxpr_ir_resolve_struct_arg_name(args[i], subst, err);
+            if (!arg_name) return NULL;
+            total_len += strlen(arg_name) + 1;
         }
     }
 
@@ -2056,7 +2071,7 @@ static char* cxpr_ir_build_defined_struct_arg_names(const cxpr_func_entry* entry
     out = names;
     for (size_t i = 0; i < entry->defined_param_count; ++i) {
         if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
-            const char* arg_name = args[i]->data.identifier.name;
+            const char* arg_name = cxpr_ir_resolve_struct_arg_name(args[i], subst, err);
             size_t len = strlen(arg_name) + 1;
             memcpy(out, arg_name, len);
             out += len;
@@ -2364,14 +2379,6 @@ static cxpr_field_value cxpr_ir_call_defined_struct(cxpr_func_entry* entry, cons
             cxpr_context_set(tmp, pname, locals[i]);
             ++scalar_index;
         }
-    }
-
-    if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
-        cxpr_field_value result =
-            cxpr_fv_double(cxpr_ir_exec_with_locals(&entry->defined_program->ir, tmp, reg, locals,
-                                                    entry->defined_param_count, err));
-        cxpr_context_free(tmp);
-        return result;
     }
 
     {
@@ -2835,7 +2842,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 struct_arg_names =
                     cxpr_ir_build_defined_struct_arg_names(entry,
                                                           (const cxpr_ast* const*)ast->data.function_call.args,
-                                                          ast->data.function_call.argc, err);
+                                                          ast->data.function_call.argc, subst, err);
                 if (!struct_arg_names) return false;
                 if (!cxpr_ir_emit(program,
                                   (cxpr_ir_instr){
