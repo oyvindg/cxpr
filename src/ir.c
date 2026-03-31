@@ -52,6 +52,8 @@ static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program)
 
 /**
  * @brief Free the storage owned by an internal IR program.
+ *
+ * @param program Program to clear. May be NULL.
  */
 void cxpr_ir_program_reset(cxpr_ir_program* program) {
     if (!program) return;
@@ -72,6 +74,11 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
 
 /**
  * @brief Append one instruction to an IR program.
+ *
+ * @param program Program receiving the instruction.
+ * @param instr Instruction to append.
+ * @param err Optional error sink updated on allocation failure.
+ * @return true when the instruction was appended.
  */
 static bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr,
                          cxpr_error* err) {
@@ -94,6 +101,12 @@ static bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr,
     return true;
 }
 
+/**
+ * @brief Return the display name for one IR opcode.
+ *
+ * @param op Opcode to stringify.
+ * @return Static opcode name string.
+ */
 const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
@@ -146,18 +159,35 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     }
 }
 
-/** @brief Reserve one instruction slot and return its index. */
+/**
+ * @brief Reserve one instruction slot and return its index.
+ *
+ * @param program Program whose next instruction index is requested.
+ * @return Current instruction count.
+ */
 static size_t cxpr_ir_next_index(const cxpr_ir_program* program) {
     return program->count;
 }
 
-/** @brief Patch the jump target of an already-emitted instruction. */
+/**
+ * @brief Patch the jump target of an already-emitted instruction.
+ *
+ * @param program Program that owns the instruction.
+ * @param at Instruction index to patch.
+ * @param target Destination instruction index.
+ */
 static void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target) {
     if (!program || at >= program->count) return;
     program->code[at].index = target;
 }
 
-/** @brief Try to evaluate an AST subtree as a pure constant expression. */
+/**
+ * @brief Try to evaluate an AST subtree as a pure constant expression.
+ *
+ * @param ast AST subtree to inspect.
+ * @param out Output location for the folded value.
+ * @return true when the subtree was reduced to a constant.
+ */
 static bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out) {
     double left, right;
 
@@ -205,7 +235,13 @@ static bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out) {
     }
 }
 
-/** @brief Check whether two AST subtrees are structurally identical. */
+/**
+ * @brief Check whether two AST subtrees are structurally identical.
+ *
+ * @param left First subtree to compare.
+ * @param right Second subtree to compare.
+ * @return true when both subtrees have the same shape and payload.
+ */
 static bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
     size_t i;
 
@@ -286,7 +322,13 @@ static bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
     }
 }
 
-/** @brief Report an IR runtime error and return a NaN sentinel value. */
+/**
+ * @brief Report an IR runtime error and return a NaN sentinel value.
+ *
+ * @param err Optional error sink to populate.
+ * @param message Static error message to store.
+ * @return Double field value containing NaN.
+ */
 static cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
     if (err) {
         err->code = CXPR_ERR_SYNTAX;
@@ -295,7 +337,16 @@ static cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* messa
     return cxpr_fv_double(NAN);
 }
 
-/** @brief Push one value onto the IR evaluation stack. */
+/**
+ * @brief Push one value onto the IR evaluation stack.
+ *
+ * @param stack Evaluation stack storage.
+ * @param sp In-out stack pointer.
+ * @param value Value to push.
+ * @param capacity Maximum stack capacity.
+ * @param err Optional error sink updated on overflow.
+ * @return true when the push succeeded.
+ */
 static bool cxpr_ir_stack_push(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
                                size_t capacity, cxpr_error* err) {
     if (*sp >= capacity) {
@@ -309,7 +360,14 @@ static bool cxpr_ir_stack_push(cxpr_field_value* stack, size_t* sp, cxpr_field_v
     return true;
 }
 
-/** @brief Ensure the IR stack contains at least the requested number of values. */
+/**
+ * @brief Ensure the IR stack contains at least the requested number of values.
+ *
+ * @param sp Current stack depth.
+ * @param need Minimum number of values required.
+ * @param err Optional error sink updated on underflow.
+ * @return true when the stack depth is sufficient.
+ */
 static bool cxpr_ir_require_stack(size_t sp, size_t need, cxpr_error* err) {
     if (sp < need) {
         if (err) {
@@ -321,6 +379,15 @@ static bool cxpr_ir_require_stack(size_t sp, size_t need, cxpr_error* err) {
     return true;
 }
 
+/**
+ * @brief Validate that one field value has the expected type.
+ *
+ * @param value Value to inspect.
+ * @param type Required field type.
+ * @param err Optional error sink updated on mismatch.
+ * @param message Static error message to store on mismatch.
+ * @return true when the value type matches.
+ */
 static bool cxpr_ir_require_type(cxpr_field_value value, cxpr_field_type type,
                                  cxpr_error* err, const char* message) {
     if (value.type != type) {
@@ -333,6 +400,13 @@ static bool cxpr_ir_require_type(cxpr_field_value value, cxpr_field_type type,
     return true;
 }
 
+/**
+ * @brief Report a missing identifier-like lookup and return a NaN sentinel.
+ *
+ * @param err Optional error sink to populate.
+ * @param message Static error message to store.
+ * @return Double field value containing NaN.
+ */
 static cxpr_field_value cxpr_ir_make_not_found(cxpr_error* err, const char* message) {
     if (err) {
         err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
@@ -495,6 +569,14 @@ static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program)
     return true;
 }
 
+/**
+ * @brief Build a cache key for producer calls with constant arguments.
+ *
+ * @param name Producer name.
+ * @param args AST arguments to fold.
+ * @param argc Number of arguments in @p args.
+ * @return Newly allocated cache key string, or NULL when folding fails.
+ */
 static char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
                                                  size_t argc) {
     double values[32];
@@ -622,6 +704,14 @@ static double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_i
     return 0.0;
 }
 
+/**
+ * @brief Infer whether a subtree can use the scalar fast-path and which type it returns.
+ *
+ * @param ast AST subtree to inspect.
+ * @param reg Registry used for function metadata lookups.
+ * @param depth Current recursion depth guard.
+ * @return One of the `CXPR_IR_RESULT_*` result-kind constants.
+ */
 static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
                                                     size_t depth) {
     unsigned char left_kind;
@@ -749,6 +839,15 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
     }
 }
 
+/**
+ * @brief Load one field access expression from the current context.
+ *
+ * @param ctx Evaluation context.
+ * @param reg Registry used for zero-argument producer fallback.
+ * @param instr IR instruction carrying the field name/hash.
+ * @param err Optional error sink updated on failure.
+ * @return Loaded field value, or NaN-wrapped scalar on failure.
+ */
 static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry* reg,
                                                  const cxpr_ir_instr* instr, cxpr_error* err) {
     const char* dot;
@@ -796,6 +895,14 @@ static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const 
     return value;
 }
 
+/**
+ * @brief Read one field from a struct value by name.
+ *
+ * @param value Struct value to query.
+ * @param field Field name to look up.
+ * @param found Optional output set to true when the field exists.
+ * @return Field value, or NaN-wrapped scalar when missing.
+ */
 static cxpr_field_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
                                                  const char* field, bool* found) {
     if (found) *found = false;
@@ -811,6 +918,17 @@ static cxpr_field_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
     return cxpr_fv_double(NAN);
 }
 
+/**
+ * @brief Build a cache key for a struct producer invocation.
+ *
+ * @param name Producer name.
+ * @param args Scalar arguments included in the key.
+ * @param argc Number of arguments in @p args.
+ * @param local_buf Optional caller-owned fallback buffer.
+ * @param local_cap Capacity of @p local_buf.
+ * @param heap_buf Optional output receiving heap allocation ownership.
+ * @return Pointer to the constructed key, or NULL on allocation/format failure.
+ */
 static const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args, size_t argc,
                                                   char* local_buf, size_t local_cap,
                                                   char** heap_buf) {
@@ -860,6 +978,14 @@ static const char* cxpr_ir_build_struct_cache_key(const char* name, const double
     return key;
 }
 
+/**
+ * @brief Resolve a chained struct-field access from the current context.
+ *
+ * @param ctx Evaluation context.
+ * @param instr IR instruction carrying the dotted access path.
+ * @param err Optional error sink updated on failure.
+ * @return Resolved field value, or NaN-wrapped scalar on failure.
+ */
 static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                                  cxpr_error* err) {
     char* path;
@@ -926,6 +1052,18 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
     return cxpr_ir_runtime_error(err, "Malformed chain access");
 }
 
+/**
+ * @brief Invoke a struct producer with optional result caching in the context.
+ *
+ * @param entry Producer function metadata.
+ * @param name Producer name.
+ * @param cache_key Optional precomputed cache key.
+ * @param ctx Evaluation context receiving cached structs.
+ * @param stack_args Scalar arguments from the IR stack.
+ * @param argc Number of arguments in @p stack_args.
+ * @param err Optional error sink updated on failure.
+ * @return Produced struct value, or NaN-wrapped scalar on failure.
+ */
 static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name,
                                                      const char* cache_key,
                                                      const cxpr_context* ctx,
@@ -1004,6 +1142,17 @@ static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, con
     return cxpr_fv_struct((cxpr_struct_value*)existing);
 }
 
+/**
+ * @brief Invoke a struct producer without a precomputed cache key.
+ *
+ * @param entry Producer function metadata.
+ * @param name Producer name.
+ * @param ctx Evaluation context receiving cached structs.
+ * @param stack_args Scalar arguments from the IR stack.
+ * @param argc Number of arguments in @p stack_args.
+ * @param err Optional error sink updated on failure.
+ * @return Produced struct value, or NaN-wrapped scalar on failure.
+ */
 static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
                                               const cxpr_context* ctx,
                                               const cxpr_field_value* stack_args,
@@ -1011,6 +1160,15 @@ static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char
     return cxpr_ir_call_producer_cached(entry, name, NULL, ctx, stack_args, argc, err);
 }
 
+/**
+ * @brief Square a scalar value and push the result onto the evaluation stack.
+ *
+ * @param stack Evaluation stack storage.
+ * @param sp In-out stack pointer.
+ * @param value Value to square and push.
+ * @param err Optional error sink updated on type mismatch or overflow.
+ * @return true when the squared value was pushed.
+ */
 static bool cxpr_ir_push_squared(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
                                  cxpr_error* err) {
     if (!cxpr_ir_require_type(value, CXPR_FIELD_DOUBLE, err,
@@ -1021,6 +1179,15 @@ static bool cxpr_ir_push_squared(cxpr_field_value* stack, size_t* sp, cxpr_field
     return cxpr_ir_stack_push(stack, sp, value, 64, err);
 }
 
+/**
+ * @brief Pop one value from the evaluation stack.
+ *
+ * @param stack Evaluation stack storage.
+ * @param sp In-out stack pointer.
+ * @param out Output location for the popped value.
+ * @param err Optional error sink updated on underflow.
+ * @return true when one value was popped.
+ */
 static bool cxpr_ir_pop1(cxpr_field_value* stack, size_t* sp, cxpr_field_value* out,
                          cxpr_error* err) {
     if (!cxpr_ir_require_stack(*sp, 1, err)) return false;
@@ -1028,6 +1195,16 @@ static bool cxpr_ir_pop1(cxpr_field_value* stack, size_t* sp, cxpr_field_value* 
     return true;
 }
 
+/**
+ * @brief Pop two values from the evaluation stack in left-to-right order.
+ *
+ * @param stack Evaluation stack storage.
+ * @param sp In-out stack pointer.
+ * @param left Output location for the older stack value.
+ * @param right Output location for the newer stack value.
+ * @param err Optional error sink updated on underflow.
+ * @return true when two values were popped.
+ */
 static bool cxpr_ir_pop2(cxpr_field_value* stack, size_t* sp, cxpr_field_value* left,
                          cxpr_field_value* right, cxpr_error* err) {
     if (!cxpr_ir_require_stack(*sp, 2, err)) return false;
@@ -1036,6 +1213,17 @@ static bool cxpr_ir_pop2(cxpr_field_value* stack, size_t* sp, cxpr_field_value* 
     return true;
 }
 
+/**
+ * @brief Execute an IR program with full runtime type tracking.
+ *
+ * @param program Program to execute.
+ * @param ctx Evaluation context.
+ * @param reg Registry used for function dispatch.
+ * @param locals Optional array of local scalar values.
+ * @param local_count Number of entries in @p locals.
+ * @param err Optional error sink updated on failure.
+ * @return Resulting typed field value.
+ */
 static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                                            const cxpr_registry* reg, const double* locals,
                                            size_t local_count, cxpr_error* err) {
@@ -1414,6 +1602,17 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
     return cxpr_ir_runtime_error(err, "IR program fell off end without return");
 }
 
+/**
+ * @brief Execute a scalar-only IR program using the unchecked fast-path.
+ *
+ * @param program Program to execute.
+ * @param ctx Evaluation context.
+ * @param reg Registry used for defined-function fallback.
+ * @param locals Optional array of local scalar values.
+ * @param local_count Number of entries in @p locals.
+ * @param err Optional error sink updated on failure.
+ * @return Scalar result, or NaN on failure.
+ */
 static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                                        const cxpr_registry* reg, const double* locals,
                                        size_t local_count, cxpr_error* err) {
@@ -1648,6 +1847,12 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
     return cxpr_ir_runtime_error(err, "IR program fell off end without return").d;
 }
 
+/**
+ * @brief Check whether a defined function uses only scalar parameters and results.
+ *
+ * @param entry Function metadata to inspect.
+ * @return true when the defined body is scalar-only.
+ */
 static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
     if (!entry || !entry->defined_body) return false;
     for (size_t i = 0; i < entry->defined_param_count; ++i) {
@@ -1691,6 +1896,14 @@ bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry
     return true;
 }
 
+/**
+ * @brief Map one local name to its positional index.
+ *
+ * @param name Local name to resolve.
+ * @param local_names Array of local names.
+ * @param local_count Number of entries in @p local_names.
+ * @return Matching local index, or `(size_t)-1` when missing.
+ */
 static size_t cxpr_ir_local_index(const char* name, const char* const* local_names,
                                   size_t local_count) {
     size_t i;
@@ -1701,6 +1914,14 @@ static size_t cxpr_ir_local_index(const char* name, const char* const* local_nam
     return (size_t)-1;
 }
 
+/**
+ * @brief Resolve one substitution binding from the inline-substitution stack.
+ *
+ * @param frame Current substitution frame chain.
+ * @param name Parameter name to resolve.
+ * @param owner Optional output receiving the owning frame.
+ * @return Substituted AST node, or NULL when no binding exists.
+ */
 static const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const char* name,
                                             const cxpr_ir_subst_frame** owner) {
     size_t i;
@@ -1716,7 +1937,18 @@ static const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, co
     return NULL;
 }
 
-/** @brief Emit a leaf load for an AST subtree, optionally squared in-place. */
+/**
+ * @brief Emit a leaf load for an AST subtree, optionally squared in-place.
+ *
+ * @param ast AST subtree to lower.
+ * @param program Program receiving the emitted instruction.
+ * @param local_names Array of in-scope local names.
+ * @param local_count Number of entries in @p local_names.
+ * @param subst Inline substitution bindings for defined functions.
+ * @param square Whether the loaded scalar should be squared in-place.
+ * @param err Optional error sink updated on failure.
+ * @return true when the subtree was emitted as a leaf load.
+ */
 static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
                                    const char* const* local_names, size_t local_count,
                                    const cxpr_ir_subst_frame* subst, bool square,
@@ -1775,6 +2007,15 @@ static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program
     }
 }
 
+/**
+ * @brief Resolve one variable lookup using a precomputed hash.
+ *
+ * @param ctx Context chain to search.
+ * @param name Variable name to resolve.
+ * @param hash Precomputed hash for @p name.
+ * @param found Optional output set to true on success.
+ * @return Resolved scalar value, or `0.0` when missing.
+ */
 static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
                                             unsigned long hash, bool* found) {
     double value;
@@ -1791,6 +2032,15 @@ static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char*
     return 0.0;
 }
 
+/**
+ * @brief Resolve one parameter lookup using a precomputed hash.
+ *
+ * @param ctx Context chain to search.
+ * @param name Parameter name to resolve.
+ * @param hash Precomputed hash for @p name.
+ * @param found Optional output set to true on success.
+ * @return Resolved scalar value, or `0.0` when missing.
+ */
 static double cxpr_ir_context_get_param_prehashed(const cxpr_context* ctx, const char* name,
                                                   unsigned long hash, bool* found) {
     double value;
@@ -1809,6 +2059,17 @@ static double cxpr_ir_context_get_param_prehashed(const cxpr_context* ctx, const
     return 0.0;
 }
 
+/**
+ * @brief Evaluate a scalar-only defined function call.
+ *
+ * @param entry Defined function metadata.
+ * @param ctx Caller evaluation context.
+ * @param reg Registry used for nested lookups and compilation.
+ * @param args Scalar arguments as typed field values.
+ * @param argc Number of arguments in @p args.
+ * @param err Optional error sink updated on failure.
+ * @return Resulting field value from the defined body.
+ */
 static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                                     const cxpr_context* ctx,
                                                     const cxpr_registry* reg,
@@ -1864,6 +2125,16 @@ static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
 
 /**
  * @brief Recursively compile a supported AST subtree into IR instructions.
+ *
+ * @param ast AST subtree to compile.
+ * @param program Program receiving emitted instructions.
+ * @param reg Registry used for function metadata lookups.
+ * @param local_names Array of in-scope local names.
+ * @param local_count Number of entries in @p local_names.
+ * @param subst Inline substitution bindings for defined functions.
+ * @param inline_depth Current defined-function inlining depth.
+ * @param err Optional error sink updated on failure.
+ * @return true when compilation succeeded.
  */
 static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                  const cxpr_registry* reg,
