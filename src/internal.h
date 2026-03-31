@@ -452,6 +452,8 @@ typedef enum {
     CXPR_OP_LOAD_PARAM_SQUARE,
     CXPR_OP_LOAD_FIELD,
     CXPR_OP_LOAD_FIELD_SQUARE,
+    CXPR_OP_LOAD_FIELD_OWNED,
+    CXPR_OP_LOAD_FIELD_OWNED_SQUARE,
     CXPR_OP_LOAD_CHAIN,
     CXPR_OP_ADD,
     CXPR_OP_SUB,
@@ -483,7 +485,7 @@ typedef enum {
     CXPR_OP_CALL_TERNARY,
     CXPR_OP_CALL_FUNC,
     CXPR_OP_CALL_DEFINED,
-    CXPR_OP_CALL_AST,
+    CXPR_OP_CALL_DEFINED_STRUCT,
     CXPR_OP_JUMP,
     CXPR_OP_JUMP_IF_FALSE,
     CXPR_OP_JUMP_IF_TRUE,
@@ -495,8 +497,7 @@ typedef enum {
  *
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
- * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
- * - CALL_AST: borrowed AST pointer in ast
+ * - LOAD_VAR / LOAD_PARAM / GET_FIELD: symbol name in name
  * - JUMP / conditional jumps: target index in index
  * - arithmetic / comparisons / return: no extra operand
  */
@@ -509,7 +510,6 @@ typedef struct {
         double value;        /* PUSH_CONST, PUSH_BOOL */
         unsigned long hash;  /* LOAD_VAR, LOAD_PARAM, LOAD_FIELD, LOAD_CHAIN */
         size_t index;        /* LOAD_LOCAL, CALL_*, CALL_DEFINED, CALL_PRODUCER, JUMP* */
-        const cxpr_ast* ast; /* CALL_AST */
     };
 } cxpr_ir_instr;
 
@@ -554,7 +554,7 @@ bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
 bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
                                  const char* const* local_names, size_t local_count,
                                  cxpr_ir_program* program, cxpr_error* err);
-/** @brief Lazily compile a scalar-only defined function body to IR locals. */
+/** @brief Lazily compile a defined function body to IR locals. */
 bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry* reg,
                                      cxpr_error* err);
 /** @brief Evaluate an internal IR program against a context and registry. */

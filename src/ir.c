@@ -22,6 +22,8 @@
 typedef struct cxpr_ir_subst_frame {
     const char* const* names;
     const cxpr_ast* const* args;
+    char* const* const* field_lists;
+    const size_t* field_counts;
     size_t count;
     const struct cxpr_ir_subst_frame* parent;
 } cxpr_ir_subst_frame;
@@ -35,6 +37,11 @@ static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                                     const cxpr_registry* reg,
                                                     const cxpr_field_value* args,
                                                     size_t argc, cxpr_error* err);
+static cxpr_field_value cxpr_ir_call_defined_struct(cxpr_func_entry* entry, const char* arg_names,
+                                                    const cxpr_context* ctx,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_field_value* scalar_args,
+                                                    size_t scalar_argc, cxpr_error* err);
 static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
                                               const cxpr_context* ctx,
                                               const cxpr_field_value* stack_args,
@@ -58,7 +65,10 @@ static bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program)
 void cxpr_ir_program_reset(cxpr_ir_program* program) {
     if (!program) return;
     for (size_t i = 0; i < program->count; ++i) {
-        if (program->code[i].op == CXPR_OP_CALL_PRODUCER_CONST) {
+        if (program->code[i].op == CXPR_OP_CALL_PRODUCER_CONST ||
+            program->code[i].op == CXPR_OP_LOAD_FIELD_OWNED ||
+            program->code[i].op == CXPR_OP_LOAD_FIELD_OWNED_SQUARE ||
+            program->code[i].op == CXPR_OP_CALL_DEFINED_STRUCT) {
             free((char*)program->code[i].name);
         }
     }
@@ -119,6 +129,8 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_LOAD_PARAM_SQUARE: return "LOAD_PARAM_SQUARE";
     case CXPR_OP_LOAD_FIELD: return "LOAD_FIELD";
     case CXPR_OP_LOAD_FIELD_SQUARE: return "LOAD_FIELD_SQUARE";
+    case CXPR_OP_LOAD_FIELD_OWNED: return "LOAD_FIELD_OWNED";
+    case CXPR_OP_LOAD_FIELD_OWNED_SQUARE: return "LOAD_FIELD_OWNED_SQUARE";
     case CXPR_OP_LOAD_CHAIN: return "LOAD_CHAIN";
     case CXPR_OP_ADD: return "ADD";
     case CXPR_OP_SUB: return "SUB";
@@ -150,7 +162,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_CALL_TERNARY: return "CALL_TERNARY";
     case CXPR_OP_CALL_FUNC: return "CALL_FUNC";
     case CXPR_OP_CALL_DEFINED: return "CALL_DEFINED";
-    case CXPR_OP_CALL_AST: return "CALL_AST";
+    case CXPR_OP_CALL_DEFINED_STRUCT: return "CALL_DEFINED_STRUCT";
     case CXPR_OP_JUMP: return "JUMP";
     case CXPR_OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
     case CXPR_OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
@@ -1309,11 +1321,13 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_LOAD_FIELD:
+        case CXPR_OP_LOAD_FIELD_OWNED:
             result = cxpr_ir_load_field_value(ctx, reg, instr, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_LOAD_FIELD_SQUARE:
+        case CXPR_OP_LOAD_FIELD_OWNED_SQUARE:
             result = cxpr_ir_load_field_value(ctx, reg, instr, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);
@@ -1534,6 +1548,15 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             sp -= instr->index;
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             break;
+        case CXPR_OP_CALL_DEFINED_STRUCT:
+            if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
+            result = cxpr_ir_call_defined_struct((cxpr_func_entry*)instr->func, instr->name, ctx,
+                                                 reg, &stack[sp - instr->index], instr->index,
+                                                 err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            sp -= instr->index;
+            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
+            break;
         case CXPR_OP_CALL_PRODUCER:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
             result = cxpr_ir_call_producer((cxpr_func_entry*)instr->func, instr->name, ctx,
@@ -1564,11 +1587,6 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown field access");
                 if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             }
-            break;
-        case CXPR_OP_CALL_AST:
-            result = cxpr_ast_eval(instr->ast, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             break;
         case CXPR_OP_JUMP:
             ip = instr->index;
@@ -1865,7 +1883,7 @@ static bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
 
 bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry* reg,
                                      cxpr_error* err) {
-    if (!entry || !entry->defined_body || !cxpr_ir_defined_is_scalar_only(entry)) {
+    if (!entry || !entry->defined_body) {
         return false;
     }
     if (entry->defined_program || entry->defined_program_failed) {
@@ -1923,18 +1941,129 @@ static size_t cxpr_ir_local_index(const char* name, const char* const* local_nam
  * @return Substituted AST node, or NULL when no binding exists.
  */
 static const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const char* name,
-                                            const cxpr_ir_subst_frame** owner) {
+                                            const cxpr_ir_subst_frame** owner,
+                                            size_t* owner_index) {
     size_t i;
     for (; frame; frame = frame->parent) {
         for (i = 0; i < frame->count; ++i) {
             if (frame->names[i] && strcmp(frame->names[i], name) == 0) {
                 if (owner) *owner = frame;
+                if (owner_index) *owner_index = i;
                 return frame->args[i];
             }
         }
     }
     if (owner) *owner = NULL;
+    if (owner_index) *owner_index = 0;
     return NULL;
+}
+
+static bool cxpr_ir_subst_binding_is_struct(const cxpr_ir_subst_frame* owner, size_t owner_index) {
+    return owner && owner->field_lists && owner->field_counts &&
+           owner_index < owner->count && owner->field_lists[owner_index] &&
+           owner->field_counts[owner_index] > 0;
+}
+
+static bool cxpr_ir_emit_owned_field_load(cxpr_ir_program* program, const char* object,
+                                          const char* field, bool square, cxpr_error* err) {
+    size_t object_len;
+    size_t field_len;
+    char* full_key;
+
+    if (!object || !field) return false;
+
+    object_len = strlen(object);
+    field_len = strlen(field);
+    full_key = (char*)malloc(object_len + field_len + 2);
+    if (!full_key) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return false;
+    }
+
+    memcpy(full_key, object, object_len);
+    full_key[object_len] = '.';
+    memcpy(full_key + object_len + 1, field, field_len + 1);
+
+    if (!cxpr_ir_emit(program,
+                      (cxpr_ir_instr){
+                          .op = square ? CXPR_OP_LOAD_FIELD_OWNED_SQUARE
+                                       : CXPR_OP_LOAD_FIELD_OWNED,
+                          .name = full_key,
+                          .hash = cxpr_hash_string(full_key),
+                      },
+                      err)) {
+        free(full_key);
+        return false;
+    }
+
+    return true;
+}
+
+static size_t cxpr_ir_defined_scalar_param_count(const cxpr_func_entry* entry) {
+    size_t count = 0;
+
+    if (!entry) return 0;
+    for (size_t i = 0; i < entry->defined_param_count; ++i) {
+        if (!entry->defined_param_fields[i] || entry->defined_param_field_counts[i] == 0) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+static char* cxpr_ir_build_defined_struct_arg_names(const cxpr_func_entry* entry,
+                                                    const cxpr_ast* const* args, size_t argc,
+                                                    cxpr_error* err) {
+    size_t total_len = 1;
+    char* names;
+    char* out;
+
+    if (!entry) return NULL;
+    if (argc != entry->defined_param_count) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Wrong number of arguments";
+        }
+        return NULL;
+    }
+
+    for (size_t i = 0; i < entry->defined_param_count; ++i) {
+        if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
+            const cxpr_ast* arg = args[i];
+            if (!arg || arg->type != CXPR_NODE_IDENTIFIER) {
+                if (err) {
+                    err->code = CXPR_ERR_SYNTAX;
+                    err->message = "Struct argument must be an identifier";
+                }
+                return NULL;
+            }
+            total_len += strlen(arg->data.identifier.name) + 1;
+        }
+    }
+
+    names = (char*)malloc(total_len);
+    if (!names) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return NULL;
+    }
+
+    out = names;
+    for (size_t i = 0; i < entry->defined_param_count; ++i) {
+        if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
+            const char* arg_name = args[i]->data.identifier.name;
+            size_t len = strlen(arg_name) + 1;
+            memcpy(out, arg_name, len);
+            out += len;
+        }
+    }
+    *out = '\0';
+    return names;
 }
 
 /**
@@ -1958,7 +2087,9 @@ static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program
     switch (ast->type) {
     case CXPR_NODE_IDENTIFIER: {
         const cxpr_ir_subst_frame* owner = NULL;
-        const cxpr_ast* mapped = cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner);
+        size_t owner_index = 0;
+        const cxpr_ast* mapped =
+            cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner, &owner_index);
         if (mapped) {
             return cxpr_ir_emit_leaf_load(mapped, program, local_names, local_count,
                                           owner ? owner->parent : NULL, square, err);
@@ -1994,6 +2125,24 @@ static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program
                             err);
 
     case CXPR_NODE_FIELD_ACCESS:
+        {
+            const cxpr_ir_subst_frame* owner = NULL;
+            size_t owner_index = 0;
+            const cxpr_ast* mapped =
+                cxpr_ir_subst_lookup(subst, ast->data.field_access.object, &owner, &owner_index);
+
+            if (mapped && cxpr_ir_subst_binding_is_struct(owner, owner_index)) {
+                if (mapped->type != CXPR_NODE_IDENTIFIER) {
+                    if (err) {
+                        err->code = CXPR_ERR_SYNTAX;
+                        err->message = "Struct argument must be an identifier";
+                    }
+                    return false;
+                }
+                return cxpr_ir_emit_owned_field_load(program, mapped->data.identifier.name,
+                                                     ast->data.field_access.field, square, err);
+            }
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = square ? CXPR_OP_LOAD_FIELD_SQUARE : CXPR_OP_LOAD_FIELD,
@@ -2123,6 +2272,115 @@ static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
     }
 }
 
+static cxpr_field_value cxpr_ir_call_defined_struct(cxpr_func_entry* entry, const char* arg_names,
+                                                    const cxpr_context* ctx,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_field_value* scalar_args,
+                                                    size_t scalar_argc, cxpr_error* err) {
+    const char* next_struct_name = arg_names ? arg_names : "";
+    double locals[32] = {0};
+    size_t scalar_index = 0;
+    cxpr_context* tmp;
+
+    if (!entry || !entry->defined_body) {
+        return cxpr_ir_runtime_error(err, "NULL IR defined function entry");
+    }
+    if (scalar_argc != cxpr_ir_defined_scalar_param_count(entry)) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Wrong number of arguments";
+        }
+        return cxpr_fv_double(NAN);
+    }
+
+    tmp = cxpr_context_overlay_new(ctx);
+    if (!tmp) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return cxpr_fv_double(NAN);
+    }
+
+    for (size_t i = 0; i < entry->defined_param_count; ++i) {
+        const char* pname = entry->defined_param_names[i];
+
+        if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
+            const char* arg_name = next_struct_name;
+
+            if (!arg_name || *arg_name == '\0') {
+                cxpr_context_free(tmp);
+                return cxpr_ir_runtime_error(err, "Missing struct argument name");
+            }
+
+            for (size_t f = 0; f < entry->defined_param_field_counts[i]; ++f) {
+                bool found = false;
+                cxpr_field_value value =
+                    cxpr_context_get_field(ctx, arg_name, entry->defined_param_fields[i][f], &found);
+                char dst_key[256];
+                char src_key[256];
+
+                if (!found) {
+                    double fallback;
+                    snprintf(src_key, sizeof(src_key), "%s.%s", arg_name,
+                             entry->defined_param_fields[i][f]);
+                    fallback = cxpr_context_get(ctx, src_key, &found);
+                    if (!found) {
+                        cxpr_context_free(tmp);
+                        if (err) {
+                            err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
+                            err->message = "Unknown struct field";
+                        }
+                        return cxpr_fv_double(NAN);
+                    }
+                    value = cxpr_fv_double(fallback);
+                }
+                if (!cxpr_ir_require_type(value, CXPR_FIELD_DOUBLE, err,
+                                          "Struct function arguments must be scalar doubles")) {
+                    cxpr_context_free(tmp);
+                    return cxpr_fv_double(NAN);
+                }
+
+                snprintf(dst_key, sizeof(dst_key), "%s.%s", pname,
+                         entry->defined_param_fields[i][f]);
+                cxpr_context_set(tmp, dst_key, value.d);
+            }
+
+            next_struct_name += strlen(next_struct_name) + 1;
+        } else {
+            if (scalar_index >= scalar_argc) {
+                cxpr_context_free(tmp);
+                return cxpr_ir_runtime_error(err, "Missing scalar defined argument");
+            }
+            if (scalar_args[scalar_index].type != CXPR_FIELD_DOUBLE) {
+                cxpr_context_free(tmp);
+                if (err) {
+                    err->code = CXPR_ERR_TYPE_MISMATCH;
+                    err->message = "Defined function arguments must be doubles";
+                }
+                return cxpr_fv_double(NAN);
+            }
+            locals[i] = scalar_args[scalar_index].d;
+            cxpr_context_set(tmp, pname, locals[i]);
+            ++scalar_index;
+        }
+    }
+
+    if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
+        cxpr_field_value result =
+            cxpr_fv_double(cxpr_ir_exec_with_locals(&entry->defined_program->ir, tmp, reg, locals,
+                                                    entry->defined_param_count, err));
+        cxpr_context_free(tmp);
+        return result;
+    }
+
+    {
+        cxpr_field_value result = cxpr_ast_eval(entry->defined_body, tmp, reg, err);
+        cxpr_context_free(tmp);
+        return result;
+    }
+}
+
 /**
  * @brief Recursively compile a supported AST subtree into IR instructions.
  *
@@ -2183,7 +2441,9 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_IDENTIFIER:
         {
             const cxpr_ir_subst_frame* owner = NULL;
-            const cxpr_ast* mapped = cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner);
+            size_t owner_index = 0;
+            const cxpr_ast* mapped =
+                cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner, &owner_index);
             if (mapped) {
                 return cxpr_ir_compile_node(mapped, program, reg,
                                             local_names, local_count,
@@ -2219,13 +2479,32 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             err);
 
     case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_ir_emit(program,
-                            (cxpr_ir_instr){
-                                .op = CXPR_OP_LOAD_FIELD,
-                                .name = ast->data.field_access.full_key,
-                                .hash = cxpr_hash_string(ast->data.field_access.full_key),
-                            },
-                            err);
+        {
+            const cxpr_ir_subst_frame* owner = NULL;
+            size_t owner_index = 0;
+            const cxpr_ast* mapped =
+                cxpr_ir_subst_lookup(subst, ast->data.field_access.object, &owner, &owner_index);
+
+            if (mapped && cxpr_ir_subst_binding_is_struct(owner, owner_index)) {
+                if (mapped->type != CXPR_NODE_IDENTIFIER) {
+                    if (err) {
+                        err->code = CXPR_ERR_SYNTAX;
+                        err->message = "Struct argument must be an identifier";
+                    }
+                    return false;
+                }
+                return cxpr_ir_emit_owned_field_load(program, mapped->data.identifier.name,
+                                                     ast->data.field_access.field, false, err);
+            }
+
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_LOAD_FIELD,
+                                    .name = ast->data.field_access.full_key,
+                                    .hash = cxpr_hash_string(ast->data.field_access.full_key),
+                                },
+                                err);
+        }
 
     case CXPR_NODE_CHAIN_ACCESS:
         return cxpr_ir_emit(program,
@@ -2240,12 +2519,11 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
         char* const_key = NULL;
         if (!entry || !entry->struct_producer) {
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){
-                                    .op = CXPR_OP_CALL_AST,
-                                    .ast = ast,
-                                },
-                                err);
+            if (err) {
+                err->code = CXPR_ERR_UNKNOWN_FUNCTION;
+                err->message = "Unknown function";
+            }
+            return false;
         }
         for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
             if (!cxpr_ir_compile_node(ast->data.producer_access.args[i], program, reg,
@@ -2280,12 +2558,11 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
         const char* fname = ast->data.function_call.name;
         if (!entry) {
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){
-                                    .op = CXPR_OP_CALL_AST,
-                                    .ast = ast,
-                                },
-                                err);
+            if (err) {
+                err->code = CXPR_ERR_UNKNOWN_FUNCTION;
+                err->message = "Unknown function";
+            }
+            return false;
         }
 
         if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
@@ -2390,6 +2667,44 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
+        if (entry->sync_func && entry->struct_fields && !entry->defined_body) {
+            size_t emitted_argc = 0;
+
+            if (ast->data.function_call.argc != entry->struct_argc) {
+                if (err) {
+                    err->code = CXPR_ERR_WRONG_ARITY;
+                    err->message = "Wrong number of struct arguments";
+                }
+                return false;
+            }
+
+            for (size_t i = 0; i < entry->struct_argc; ++i) {
+                const cxpr_ast* arg = ast->data.function_call.args[i];
+                if (arg->type != CXPR_NODE_IDENTIFIER) {
+                    if (err) {
+                        err->code = CXPR_ERR_SYNTAX;
+                        err->message = "Struct argument must be an identifier";
+                    }
+                    return false;
+                }
+                for (size_t f = 0; f < entry->fields_per_arg; ++f) {
+                    if (!cxpr_ir_emit_owned_field_load(program, arg->data.identifier.name,
+                                                       entry->struct_fields[f], false, err)) {
+                        return false;
+                    }
+                    ++emitted_argc;
+                }
+            }
+
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_FUNC,
+                                    .func = entry,
+                                    .index = emitted_argc,
+                                },
+                                err);
+        }
+
         if (entry->sync_func && !entry->struct_fields && !entry->defined_body) {
             size_t i;
             for (i = 0; i < ast->data.function_call.argc; ++i) {
@@ -2463,11 +2778,20 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return true;
         }
 
-        if (entry->defined_body && cxpr_ir_defined_is_scalar_only(entry)) {
+        if (entry->defined_body) {
+            if (ast->data.function_call.argc != entry->defined_param_count) {
+                if (err) {
+                    err->code = CXPR_ERR_WRONG_ARITY;
+                    err->message = "Wrong number of arguments";
+                }
+                return false;
+            }
             if (inline_depth < CXPR_IR_INLINE_DEPTH_LIMIT) {
                 cxpr_ir_subst_frame frame = {
                     .names = (const char* const*)entry->defined_param_names,
                     .args = (const cxpr_ast* const*)ast->data.function_call.args,
+                    .field_lists = (char* const* const*)entry->defined_param_fields,
+                    .field_counts = entry->defined_param_field_counts,
                     .count = ast->data.function_call.argc,
                     .parent = subst,
                 };
@@ -2478,29 +2802,61 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
 
             {
                 size_t i;
+                size_t scalar_argc = 0;
+                char* struct_arg_names;
                 for (i = 0; i < ast->data.function_call.argc; ++i) {
+                    if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
+                        if (ast->data.function_call.args[i]->type != CXPR_NODE_IDENTIFIER) {
+                            if (err) {
+                                err->code = CXPR_ERR_SYNTAX;
+                                err->message = "Struct argument must be an identifier";
+                            }
+                            return false;
+                        }
+                        continue;
+                    }
                     if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
-                                              local_names, local_count, subst, inline_depth,
-                                              err)) {
+                                              local_names, local_count, subst, inline_depth, err)) {
                         return false;
                     }
+                    ++scalar_argc;
                 }
-                return cxpr_ir_emit(program,
-                                    (cxpr_ir_instr){
-                                        .op = CXPR_OP_CALL_DEFINED,
-                                        .func = entry,
-                                        .index = ast->data.function_call.argc,
-                                    },
-                                    err);
+
+                if (cxpr_ir_defined_is_scalar_only(entry)) {
+                    return cxpr_ir_emit(program,
+                                        (cxpr_ir_instr){
+                                            .op = CXPR_OP_CALL_DEFINED,
+                                            .func = entry,
+                                            .index = ast->data.function_call.argc,
+                                        },
+                                        err);
+                }
+
+                struct_arg_names =
+                    cxpr_ir_build_defined_struct_arg_names(entry,
+                                                          (const cxpr_ast* const*)ast->data.function_call.args,
+                                                          ast->data.function_call.argc, err);
+                if (!struct_arg_names) return false;
+                if (!cxpr_ir_emit(program,
+                                  (cxpr_ir_instr){
+                                      .op = CXPR_OP_CALL_DEFINED_STRUCT,
+                                      .func = entry,
+                                      .name = struct_arg_names,
+                                      .index = scalar_argc,
+                                  },
+                                  err)) {
+                    free(struct_arg_names);
+                    return false;
+                }
+                return true;
             }
         }
 
-        return cxpr_ir_emit(program,
-                            (cxpr_ir_instr){
-                                .op = CXPR_OP_CALL_AST,
-                                .ast = ast,
-                            },
-                            err);
+        if (err) {
+            err->code = CXPR_ERR_UNKNOWN_FUNCTION;
+            err->message = "Unknown function";
+        }
+        return false;
     }
 
     case CXPR_NODE_BINARY_OP:

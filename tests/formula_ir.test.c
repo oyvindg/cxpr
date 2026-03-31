@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
@@ -39,9 +40,27 @@ static void test_formula_compile_creates_programs(void) {
     printf("  ✓ test_formula_compile_creates_programs\n");
 }
 
+static void test_formula_compile_unknown_function_fails(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_error err = {0};
+
+    assert(cxpr_formula_add(engine, "signal", "missing_fn(x) + 1", &err) == true);
+    assert(cxpr_formula_compile(engine, &err) == false);
+    assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
+    assert(strcmp(err.message, "Unknown function") == 0);
+    assert(engine->compiled == false);
+    assert(engine->formulas[0].program == NULL);
+
+    cxpr_formula_engine_free(engine);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_formula_compile_unknown_function_fails\n");
+}
+
 int main(void) {
     printf("Running formula IR tests...\n");
     test_formula_compile_creates_programs();
+    test_formula_compile_unknown_function_fails();
     printf("All formula IR tests passed!\n");
     return 0;
 }

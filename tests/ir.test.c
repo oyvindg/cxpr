@@ -874,6 +874,46 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     printf("  ✓ test_ir_eval_defined_function_matches_ast\n");
 }
 
+static void test_ir_compile_unknown_function_fails(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "missing_fn(1)", &err);
+    cxpr_ir_program program = {0};
+
+    assert(ast);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == false);
+    assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
+    assert(strcmp(err.message, "Unknown function") == 0);
+    assert(program.code == NULL);
+    assert(program.count == 0);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_compile_unknown_function_fails\n");
+}
+
+static void test_ir_compile_unknown_producer_fails(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "missing_prod(12, 26).line", &err);
+    cxpr_ir_program program = {0};
+
+    assert(ast);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == false);
+    assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
+    assert(strcmp(err.message, "Unknown function") == 0);
+    assert(program.code == NULL);
+    assert(program.count == 0);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_compile_unknown_producer_fails\n");
+}
+
 static void test_ir_eval_nested_defined_function_matches_ast(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -907,6 +947,138 @@ static void test_ir_eval_nested_defined_function_matches_ast(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
     printf("  ✓ test_ir_eval_nested_defined_function_matches_ast\n");
+}
+
+static void test_ir_eval_struct_param_defined_function_matches_ast(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    const char* fields[] = {"x", "y"};
+    double p_vals[] = {3.0, 4.0};
+    double q_vals[] = {0.0, 0.0};
+    cxpr_ast* ast;
+
+    cxpr_register_builtins(reg);
+    err = cxpr_registry_define_fn(reg, "dist2(p, q) => sqrt((p.x - q.x)^2 + (p.y - q.y)^2)");
+    assert(err.code == CXPR_OK);
+
+    cxpr_context_set_fields(ctx, "foo", fields, p_vals, 2);
+    cxpr_context_set_fields(ctx, "bar", fields, q_vals, 2);
+
+    ast = cxpr_parse(p, "dist2(foo, bar)", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err), 5.0);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, ctx, reg, &err), 5.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_struct_param_defined_function_matches_ast\n");
+}
+
+static void test_ir_eval_struct_param_field_substitution(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    const char* fields[] = {"x", "y"};
+    double lhs_vals[] = {2.0, 7.0};
+    double rhs_vals[] = {11.0, 5.0};
+    cxpr_ast* ast;
+
+    cxpr_register_builtins(reg);
+    err = cxpr_registry_define_fn(reg, "pick(p, q) => p.x * 100 + q.y");
+    assert(err.code == CXPR_OK);
+
+    cxpr_context_set_fields(ctx, "left", fields, lhs_vals, 2);
+    cxpr_context_set_fields(ctx, "right", fields, rhs_vals, 2);
+
+    ast = cxpr_parse(p, "pick(left, right)", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.code[0].op == CXPR_OP_LOAD_FIELD_OWNED);
+    assert(strcmp(program.code[0].name, "left.x") == 0);
+    assert(program.code[1].op == CXPR_OP_PUSH_CONST);
+    assert(program.code[2].op == CXPR_OP_MUL);
+    assert(program.code[3].op == CXPR_OP_LOAD_FIELD_OWNED);
+    assert(strcmp(program.code[3].name, "right.y") == 0);
+
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, ctx, reg, &err), 205.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_struct_param_field_substitution\n");
+}
+
+static void test_ir_eval_struct_param_defined_function_nested_with_inline_limit(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    const char* fields[] = {"x", "y"};
+    double p_vals[] = {3.0, 4.0};
+    double q_vals[] = {0.0, 0.0};
+    cxpr_ast* ast;
+
+    cxpr_register_builtins(reg);
+    assert(cxpr_registry_define_fn(reg, "d0(a, b) => sqrt((a.x - b.x)^2 + (a.y - b.y)^2)").code ==
+           CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d1(a, b) => d0(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d2(a, b) => d1(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d3(a, b) => d2(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d4(a, b) => d3(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d5(a, b) => d4(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d6(a, b) => d5(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d7(a, b) => d6(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d8(a, b) => d7(a, b)").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "d9(a, b) => d8(a, b)").code == CXPR_OK);
+
+    cxpr_context_set_fields(ctx, "p0", fields, p_vals, 2);
+    cxpr_context_set_fields(ctx, "p1", fields, q_vals, 2);
+
+    ast = cxpr_parse(p, "d9(p0, p1)", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(cxpr_ast_eval_double(ast, ctx, reg, &err), 5.0);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, ctx, reg, &err), 5.0);
+    assert(err.code == CXPR_OK);
+
+    for (size_t i = 0; i < 8; ++i) {
+        cxpr_ir_program_reset(&program);
+        assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+        assert(err.code == CXPR_OK);
+        ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, ctx, reg, &err), 5.0);
+        assert(err.code == CXPR_OK);
+    }
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_struct_param_defined_function_nested_with_inline_limit\n");
 }
 
 static void test_ir_eval_native_function_fast_path_matches_ast(void) {
@@ -1248,7 +1420,12 @@ int main(void) {
     test_ir_eval_intrinsics_match_ast();
     test_ir_eval_struct_function_matches_ast();
     test_ir_eval_defined_function_matches_ast();
+    test_ir_compile_unknown_function_fails();
+    test_ir_compile_unknown_producer_fails();
     test_ir_eval_nested_defined_function_matches_ast();
+    test_ir_eval_struct_param_defined_function_matches_ast();
+    test_ir_eval_struct_param_field_substitution();
+    test_ir_eval_struct_param_defined_function_nested_with_inline_limit();
     test_ir_eval_native_function_fast_path_matches_ast();
     test_ir_compile_native_function_uses_specialized_call_ops();
     test_ir_compile_repeated_multiplication_to_square();
