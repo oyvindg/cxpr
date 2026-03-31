@@ -10,6 +10,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Default single-config local builds to Release so benchmark runs are meaningful
+# unless the caller explicitly requested another build type.
+if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 # ═══════════════════════════════════════════════════════════════════════════
 # C core library
 # ═══════════════════════════════════════════════════════════════════════════

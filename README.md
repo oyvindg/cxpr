@@ -347,6 +347,8 @@ cmake --build build
 ctest --test-dir build --verbose
 ```
 
+Single-config generators default to `Release` when no build type is specified.
+
 To build and run the local benchmark:
 
 ```bash
