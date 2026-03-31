@@ -78,6 +78,35 @@ typedef struct {
     cxpr_context_slot a, b, c, d, e, x, y, z;
 } churn_slots;
 
+typedef struct {
+    unsigned long a, b, c, d, e, x, y, z;
+} churn_hashes;
+
+static churn_hashes make_churn_hashes(void) {
+    churn_hashes h;
+    h.a = cxpr_hash_string("a");
+    h.b = cxpr_hash_string("b");
+    h.c = cxpr_hash_string("c");
+    h.d = cxpr_hash_string("d");
+    h.e = cxpr_hash_string("e");
+    h.x = cxpr_hash_string("x");
+    h.y = cxpr_hash_string("y");
+    h.z = cxpr_hash_string("z");
+    return h;
+}
+
+static void mutate_values_prehashed(cxpr_context* ctx, const churn_hashes* h, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_set_prehashed(ctx, "a", h->a, 1.5 + t);
+    cxpr_context_set_prehashed(ctx, "b", h->b, 2.5 + t * 2.0);
+    cxpr_context_set_prehashed(ctx, "c", h->c, 3.5 + t * 3.0);
+    cxpr_context_set_prehashed(ctx, "d", h->d, 4.5 + t * 4.0);
+    cxpr_context_set_prehashed(ctx, "e", h->e, 5.5 + t * 5.0);
+    cxpr_context_set_prehashed(ctx, "x", h->x, 11.5 - t);
+    cxpr_context_set_prehashed(ctx, "y", h->y, 12.5 + t * 0.5);
+    cxpr_context_set_prehashed(ctx, "z", h->z, 13.5 - t * 0.25);
+}
+
 static void mutate_values_slots(churn_slots* s, size_t i) {
     const double t = (double)(i % 1000) * 0.001;
     cxpr_context_slot_set(&s->a, 1.5 + t);
@@ -95,9 +124,10 @@ static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_regist
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
+    churn_hashes hashes = make_churn_hashes();
 
     for (i = 0; i < iterations; ++i) {
-        if (mutate_context) mutate_values(ctx, i);
+        if (mutate_context) mutate_values_prehashed(ctx, &hashes, i);
         total += cxpr_ast_eval_double(ast, ctx, reg, &err);
         if (err.code != CXPR_OK) {
             fprintf(stderr, "AST benchmark eval failed at iter %zu: %s\n", i, err.message);
@@ -113,9 +143,10 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
+    churn_hashes hashes = make_churn_hashes();
 
     for (i = 0; i < iterations; ++i) {
-        if (mutate_context) mutate_values(ctx, i);
+        if (mutate_context) mutate_values_prehashed(ctx, &hashes, i);
         total += cxpr_ir_eval_double(program, ctx, reg, &err);
         if (err.code != CXPR_OK) {
             fprintf(stderr, "IR benchmark eval failed at iter %zu: %s\n", i, err.message);
@@ -132,13 +163,14 @@ static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
     size_t i;
     cxpr_error ast_err = {0};
     cxpr_error ir_err = {0};
+    churn_hashes hashes = make_churn_hashes();
 
     set_base_values(ctx);
 
     for (i = 0; i < c->iterations; ++i) {
         double ast_value, ir_value;
 
-        if (c->mutate_context) mutate_values(ctx, i);
+        if (c->mutate_context) mutate_values_prehashed(ctx, &hashes, i);
 
         ast_err = (cxpr_error){0};
         ir_err = (cxpr_error){0};

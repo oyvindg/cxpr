@@ -13,6 +13,56 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @brief Duplicate a NUL-terminated string using cxpr's internal allocator path.
+ * @param s Source string to copy.
+ * @return Newly allocated copy of `s`, or NULL if `s` is NULL or allocation fails.
+ */
+static inline char* cxpr_strdup(const char* s) {
+    size_t len;
+    char* copy;
+
+    if (!s) return NULL;
+    len = strlen(s) + 1;
+    copy = (char*)malloc(len);
+    if (!copy) return NULL;
+    memcpy(copy, s, len);
+    return copy;
+}
+
+/**
+ * @brief Reentrant tokenization helper compatible with cxpr's ISO C build.
+ * @param str String to tokenize on the first call, or NULL to continue tokenizing.
+ * @param delim Set of delimiter characters.
+ * @param saveptr In/out cursor storing tokenizer state between calls.
+ * @return Pointer to the next token within `str`, or NULL when no tokens remain
+ *         or input arguments are invalid.
+ */
+static inline char* cxpr_strtok_r(char* str, const char* delim, char** saveptr) {
+    char* start;
+    char* end;
+
+    if (!delim || !saveptr) return NULL;
+
+    start = str ? str : *saveptr;
+    if (!start) return NULL;
+
+    start += strspn(start, delim);
+    if (*start == '\0') {
+        *saveptr = start;
+        return NULL;
+    }
+
+    end = start + strcspn(start, delim);
+    if (*end == '\0') {
+        *saveptr = end;
+    } else {
+        *end = '\0';
+        *saveptr = end + 1;
+    }
+    return start;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Token types (used by lexer and parser)
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -222,7 +272,7 @@ cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch, cxpr_
 
 #define CXPR_HASHMAP_INITIAL_CAPACITY 32
 #define CXPR_HASHMAP_LOAD_FACTOR 0.75
-#define CXPR_CONTEXT_ENTRY_CACHE_SIZE 16
+#define CXPR_CONTEXT_ENTRY_CACHE_SIZE 64
 
 /**
  * @brief Hash map entry for string → double.

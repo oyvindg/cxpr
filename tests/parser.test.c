@@ -61,6 +61,21 @@ static void test_number(void) {
     printf("  ✓ test_number\n");
 }
 
+static void test_bool(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast = parse_ok(p, "true");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_BOOL);
+    assert(cxpr_ast_bool_value(ast) == true);
+    cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "false");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_BOOL);
+    assert(cxpr_ast_bool_value(ast) == false);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  ✓ test_bool\n");
+}
+
 static void test_identifier(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast = parse_ok(p, "rsi");
@@ -442,6 +457,7 @@ int main(void) {
 
     /* Simple */
     test_number();
+    test_bool();
     test_identifier();
     test_variable();
 

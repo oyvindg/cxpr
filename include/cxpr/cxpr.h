@@ -150,6 +150,17 @@ typedef struct cxpr_error {
  */
 const char* cxpr_error_string(cxpr_error_code code);
 
+/**
+ * @brief Compute the internal string hash used by cxpr context lookups.
+ *
+ * This is primarily useful with the prehashed context write APIs in hot loops.
+ *
+ * @param str NUL-terminated key string
+ * @return Hash value suitable for cxpr_context_set_prehashed() and
+ *         cxpr_context_set_param_prehashed()
+ */
+unsigned long cxpr_hash_string(const char* str);
+
 #include <cxpr/ast.h>
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -191,6 +202,21 @@ cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
 void cxpr_context_set(cxpr_context* ctx, const char* name, double value);
 
 /**
+ * @brief Set a runtime variable using a caller-precomputed key hash.
+ *
+ * This is intended for hot loops that update the same named variables many
+ * times. Precompute the hash once with cxpr_hash_string() and reuse it across
+ * iterations to avoid re-hashing the key on every write.
+ *
+ * @param ctx Context
+ * @param name Variable name
+ * @param hash Hash previously returned by cxpr_hash_string(name)
+ * @param value Variable value
+ */
+void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
+                                unsigned long hash, double value);
+
+/**
  * @brief Get a runtime variable.
  * @param ctx Context
  * @param name Variable name
@@ -206,6 +232,20 @@ double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found);
  * @param value Parameter value
  */
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value);
+
+/**
+ * @brief Set a compile-time parameter using a caller-precomputed key hash.
+ *
+ * This mirrors cxpr_context_set_prehashed() for workloads that repeatedly
+ * update the same parameter names.
+ *
+ * @param ctx Context
+ * @param name Parameter name (without $ prefix)
+ * @param hash Hash previously returned by cxpr_hash_string(name)
+ * @param value Parameter value
+ */
+void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
+                                      unsigned long hash, double value);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Slot API — pre-bound variable handles for hot-loop writes

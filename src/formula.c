@@ -275,8 +275,8 @@ bool cxpr_formula_add(cxpr_formula_engine* engine, const char* name,
     }
 
     cxpr_formula_entry* entry = &engine->formulas[engine->count++];
-    entry->name = strdup(name);
-    entry->expression = strdup(expression);
+    entry->name = cxpr_strdup(name);
+    entry->expression = cxpr_strdup(expression);
     entry->ast = ast;
     entry->program = NULL;
     entry->result = 0.0;

@@ -229,7 +229,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         cxpr_registry_grow(reg);
     }
     cxpr_func_entry* entry = &reg->entries[reg->count++];
-    entry->name = strdup(name);
+    entry->name = cxpr_strdup(name);
     entry->sync_func = func;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
@@ -398,7 +398,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
     char** owned_fields = (char**)calloc(fields_per_arg, sizeof(char*));
     if (!owned_fields) return;
     for (size_t f = 0; f < fields_per_arg; f++) {
-        owned_fields[f] = strdup(fields[f]);
+        owned_fields[f] = cxpr_strdup(fields[f]);
         if (!owned_fields[f]) {
             for (size_t k = 0; k < f; k++) free(owned_fields[k]);
             free(owned_fields);
@@ -429,7 +429,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
 
     if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
     cxpr_func_entry* entry = &reg->entries[reg->count++];
-    entry->name = strdup(name);
+    entry->name = cxpr_strdup(name);
     entry->sync_func = func;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
@@ -458,7 +458,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     owned_fields = (char**)calloc(field_count, sizeof(char*));
     if (!owned_fields) return;
     for (size_t i = 0; i < field_count; i++) {
-        owned_fields[i] = strdup(fields[i]);
+        owned_fields[i] = cxpr_strdup(fields[i]);
         if (!owned_fields[i]) {
             for (size_t j = 0; j < i; j++) free(owned_fields[j]);
             free(owned_fields);
@@ -488,7 +488,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
 
     if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
     entry = &reg->entries[reg->count++];
-    entry->name = strdup(name);
+    entry->name = cxpr_strdup(name);
     entry->sync_func = NULL;
     entry->struct_producer = func;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
@@ -759,7 +759,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
     if (!owned_names || !owned_fields || !owned_counts) goto oom;
 
     for (size_t i = 0; i < param_count; i++) {
-        owned_names[i] = strdup(param_buf[i]);
+        owned_names[i] = cxpr_strdup(param_buf[i]);
         if (!owned_names[i]) goto oom;
 
         owned_counts[i] = sets[i].count;
@@ -767,7 +767,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
             owned_fields[i] = (char**)calloc(sets[i].count, sizeof(char*));
             if (!owned_fields[i]) goto oom;
             for (size_t f = 0; f < sets[i].count; f++) {
-                owned_fields[i][f] = strdup(sets[i].fields[f]);
+                owned_fields[i][f] = cxpr_strdup(sets[i].fields[f]);
                 if (!owned_fields[i][f]) goto oom;
             }
         }
@@ -800,7 +800,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
 
         if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
         cxpr_func_entry* entry           = &reg->entries[reg->count++];
-        entry->name                      = strdup(fname);
+        entry->name                      = cxpr_strdup(fname);
         entry->sync_func                 = NULL;
         entry->native_kind              = CXPR_NATIVE_KIND_NONE;
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));

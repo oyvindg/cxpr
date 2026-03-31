@@ -33,7 +33,7 @@ cxpr_ast* cxpr_ast_new_identifier(const char* name) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_IDENTIFIER;
-    node->data.identifier.name = strdup(name);
+    node->data.identifier.name = cxpr_strdup(name);
     if (!node->data.identifier.name) { free(node); return NULL; }
     return node;
 }
@@ -42,7 +42,7 @@ cxpr_ast* cxpr_ast_new_variable(const char* name) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_VARIABLE;
-    node->data.variable.name = strdup(name);
+    node->data.variable.name = cxpr_strdup(name);
     if (!node->data.variable.name) { free(node); return NULL; }
     return node;
 }
@@ -51,8 +51,8 @@ cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_FIELD_ACCESS;
-    node->data.field_access.object = strdup(object);
-    node->data.field_access.field = strdup(field);
+    node->data.field_access.object = cxpr_strdup(object);
+    node->data.field_access.field = cxpr_strdup(field);
 
     /* Build full key "object.field" */
     size_t obj_len = strlen(object);
@@ -90,7 +90,7 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
     node->data.chain_access.depth = depth;
 
     for (size_t i = 0; i < depth; i++) {
-        node->data.chain_access.path[i] = strdup(path[i]);
+        node->data.chain_access.path[i] = cxpr_strdup(path[i]);
         if (!node->data.chain_access.path[i]) {
             cxpr_ast_free(node);
             return NULL;
@@ -119,10 +119,10 @@ cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t
     size_t field_len;
     if (!node) return NULL;
     node->type = CXPR_NODE_PRODUCER_ACCESS;
-    node->data.producer_access.name = strdup(name);
+    node->data.producer_access.name = cxpr_strdup(name);
     node->data.producer_access.args = args;
     node->data.producer_access.argc = argc;
-    node->data.producer_access.field = strdup(field);
+    node->data.producer_access.field = cxpr_strdup(field);
     name_len = strlen(name);
     field_len = strlen(field);
     node->data.producer_access.full_key = (char*)malloc(name_len + 1 + field_len + 1);
@@ -183,7 +183,7 @@ cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t a
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_FUNCTION_CALL;
-    node->data.function_call.name = strdup(name);
+    node->data.function_call.name = cxpr_strdup(name);
     node->data.function_call.args = args;
     node->data.function_call.argc = argc;
     if (!node->data.function_call.name) { free(node); return NULL; }
@@ -293,6 +293,15 @@ cxpr_node_type cxpr_ast_type(const cxpr_ast* ast) {
  */
 double cxpr_ast_number_value(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_NUMBER) ? ast->data.number.value : 0.0;
+}
+
+/**
+ * @brief Get boolean value of a BOOL node.
+ * @param ast AST node (must be CXPR_NODE_BOOL).
+ * @return Value, or false if ast is NULL or wrong type.
+ */
+bool cxpr_ast_bool_value(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_BOOL) ? ast->data.boolean.value : false;
 }
 
 /**

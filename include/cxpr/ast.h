@@ -68,6 +68,7 @@ typedef enum {
 
 cxpr_node_type cxpr_ast_type(const cxpr_ast* ast);
 double cxpr_ast_number_value(const cxpr_ast* ast);
+bool cxpr_ast_bool_value(const cxpr_ast* ast);
 const char* cxpr_ast_identifier_name(const cxpr_ast* ast);
 const char* cxpr_ast_variable_name(const cxpr_ast* ast);
 const char* cxpr_ast_field_object(const cxpr_ast* ast);

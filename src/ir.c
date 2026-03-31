@@ -775,7 +775,7 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
         return cxpr_ir_runtime_error(err, "Invalid chain access");
     }
 
-    path = strdup(instr->name);
+    path = cxpr_strdup(instr->name);
     if (!path) {
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
@@ -784,7 +784,7 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
         return cxpr_fv_double(NAN);
     }
 
-    segment = strtok_r(path, ".", &saveptr);
+    segment = cxpr_strtok_r(path, ".", &saveptr);
     if (!segment) {
         free(path);
         return cxpr_ir_runtime_error(err, "Malformed chain access");
@@ -796,9 +796,9 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
         return cxpr_ir_make_not_found(err, "Unknown identifier");
     }
 
-    segment = strtok_r(NULL, ".", &saveptr);
+    segment = cxpr_strtok_r(NULL, ".", &saveptr);
     while (segment) {
-        char* next = strtok_r(NULL, ".", &saveptr);
+        char* next = cxpr_strtok_r(NULL, ".", &saveptr);
         found = false;
         for (size_t i = 0; i < current->field_count; ++i) {
             if (strcmp(current->field_names[i], segment) == 0) {

@@ -105,8 +105,36 @@ bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value) {
         hash = (hash + 1) % map->capacity;
     }
 
-    map->entries[hash].key = strdup(key);
+    map->entries[hash].key = cxpr_strdup(key);
     map->entries[hash].value = value;
+    map->count++;
+    return true;
+}
+
+static bool cxpr_hashmap_set_prehashed(cxpr_hashmap* map, const char* key,
+                                       unsigned long hash, double value) {
+    cxpr_hashmap_entry* entry;
+    unsigned long slot;
+
+    if (!map || !key) return false;
+
+    entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
+    if (entry) {
+        entry->value = value;
+        return false;
+    }
+
+    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
+        cxpr_hashmap_grow(map);
+    }
+
+    slot = hash % map->capacity;
+    while (map->entries[slot].key) {
+        slot = (slot + 1) % map->capacity;
+    }
+
+    map->entries[slot].key = cxpr_strdup(key);
+    map->entries[slot].value = value;
     map->count++;
     return true;
 }
@@ -174,7 +202,7 @@ cxpr_hashmap* cxpr_hashmap_clone(const cxpr_hashmap* map) {
 
     for (size_t i = 0; i < map->capacity; i++) {
         if (!map->entries[i].key) continue;
-        clone->entries[i].key = strdup(map->entries[i].key);
+        clone->entries[i].key = cxpr_strdup(map->entries[i].key);
         clone->entries[i].value = map->entries[i].value;
     }
     return clone;
@@ -234,7 +262,7 @@ cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
     }
 
     for (size_t i = 0; i < field_count; i++) {
-        s->field_names[i] = strdup(field_names[i]);
+        s->field_names[i] = cxpr_strdup(field_names[i]);
         if (!s->field_names[i]) {
             cxpr_struct_value_free(s);
             return NULL;
@@ -344,7 +372,7 @@ bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src) {
             cxpr_struct_map_grow(dst);
         }
         slot = cxpr_struct_map_find_slot(dst, src->entries[i].name);
-        slot->name = strdup(src->entries[i].name);
+        slot->name = cxpr_strdup(src->entries[i].name);
         slot->value = copy;
         if (!slot->name) return false;
         dst->count++;
@@ -553,32 +581,47 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
     return clone;
 }
 
-void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
-    unsigned long hash;
+static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
+                                    cxpr_context_entry_cache* cache,
+                                    cxpr_context_entry_cache* ptr_cache,
+                                    unsigned long* version, const char* name,
+                                    unsigned long hash, double value) {
     cxpr_hashmap_entry* entry;
 
-    if (ctx) {
-        entry = cxpr_context_lookup_pointer_cached_entry(&ctx->variables,
-                                                         ctx->variable_ptr_cache, name);
-        if (entry) {
-            entry->value = value;
-            return;
-        }
-        hash = cxpr_hash_string(name);
-        entry = cxpr_context_lookup_cached_entry(&ctx->variables, ctx->variable_cache, name, hash);
-        if (entry) {
-            cxpr_context_refresh_pointer_cache(&ctx->variables, ctx->variable_ptr_cache, name,
-                                               entry);
-            entry->value = value;
-            return;
-        }
-        if (cxpr_hashmap_set(&ctx->variables, name, value)) {
-            ctx->variables_version++;
-        }
-        cxpr_context_refresh_cache(&ctx->variables, ctx->variable_cache, name, hash);
-        entry = cxpr_hashmap_find_prehashed_slot(&ctx->variables, name, hash);
-        cxpr_context_refresh_pointer_cache(&ctx->variables, ctx->variable_ptr_cache, name, entry);
+    if (!ctx || !map || !cache || !ptr_cache || !version || !name) return;
+
+    entry = cxpr_context_lookup_pointer_cached_entry(map, ptr_cache, name);
+    if (entry) {
+        entry->value = value;
+        return;
     }
+
+    entry = cxpr_context_lookup_cached_entry(map, cache, name, hash);
+    if (entry) {
+        cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
+        entry->value = value;
+        return;
+    }
+
+    if (cxpr_hashmap_set_prehashed(map, name, hash, value)) {
+        (*version)++;
+    }
+
+    cxpr_context_refresh_cache(map, cache, name, hash);
+    entry = cxpr_hashmap_find_prehashed_slot(map, name, hash);
+    cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
+}
+
+void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
+                                unsigned long hash, double value) {
+    cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
+                            ctx->variable_ptr_cache, &ctx->variables_version,
+                            name, hash, value);
+}
+
+void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
+    if (!ctx || !name) return;
+    cxpr_context_set_prehashed(ctx, name, cxpr_hash_string(name), value);
 }
 
 double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) {
@@ -611,30 +654,16 @@ double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) 
     return 0.0;
 }
 
-void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
-    unsigned long hash;
-    cxpr_hashmap_entry* entry;
+void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
+                                      unsigned long hash, double value) {
+    cxpr_context_set_hashed(ctx, &ctx->params, ctx->param_cache,
+                            ctx->param_ptr_cache, &ctx->params_version,
+                            name, hash, value);
+}
 
-    if (ctx) {
-        entry = cxpr_context_lookup_pointer_cached_entry(&ctx->params, ctx->param_ptr_cache, name);
-        if (entry) {
-            entry->value = value;
-            return;
-        }
-        hash = cxpr_hash_string(name);
-        entry = cxpr_context_lookup_cached_entry(&ctx->params, ctx->param_cache, name, hash);
-        if (entry) {
-            cxpr_context_refresh_pointer_cache(&ctx->params, ctx->param_ptr_cache, name, entry);
-            entry->value = value;
-            return;
-        }
-        if (cxpr_hashmap_set(&ctx->params, name, value)) {
-            ctx->params_version++;
-        }
-        cxpr_context_refresh_cache(&ctx->params, ctx->param_cache, name, hash);
-        entry = cxpr_hashmap_find_prehashed_slot(&ctx->params, name, hash);
-        cxpr_context_refresh_pointer_cache(&ctx->params, ctx->param_ptr_cache, name, entry);
-    }
+void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
+    if (!ctx || !name) return;
+    cxpr_context_set_param_prehashed(ctx, name, cxpr_hash_string(name), value);
 }
 
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found) {
@@ -708,7 +737,7 @@ void cxpr_context_set_struct(cxpr_context* ctx, const char* name,
         return;
     }
 
-    slot->name = strdup(name);
+    slot->name = cxpr_strdup(name);
     if (!slot->name) {
         cxpr_struct_value_free(copy);
         return;

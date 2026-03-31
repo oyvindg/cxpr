@@ -20,7 +20,7 @@ Generic expression parser, evaluator, and formula engine written in C11. No exte
 ### As a git submodule
 
 ```bash
-git submodule add https://github.com/oyvindg/cxpr.git extern/cxpr
+git submodule add https://github.com/oyvindg/cxpr.git libs/cxpr
 git submodule update --init
 ```
 
