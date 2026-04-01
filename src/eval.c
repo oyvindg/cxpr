@@ -281,10 +281,7 @@ static const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
         return NULL;
     }
 
-    existing = cxpr_context_get_struct(ctx, cache_key);
-    if (!existing && argc == 0) {
-        existing = cxpr_context_get_struct(ctx, name);
-    }
+    existing = cxpr_context_get_cached_struct(ctx, cache_key);
     if (existing) {
         free(cache_key_heap);
         return existing;
@@ -302,9 +299,9 @@ static const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
         return NULL;
     }
 
-    cxpr_context_set_struct(mutable_ctx, cache_key, produced);
+    cxpr_context_set_cached_struct(mutable_ctx, cache_key, produced);
     cxpr_struct_value_free(produced);
-    existing = cxpr_context_get_struct(ctx, cache_key);
+    existing = cxpr_context_get_cached_struct(ctx, cache_key);
     free(cache_key_heap);
     return existing;
 }
@@ -718,7 +715,7 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
 
         if (!entry) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
         if (entry->defined_body) return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
-        if (entry->struct_producer) {
+        if (entry->struct_producer && !entry->sync_func) {
             const cxpr_struct_value* produced =
                 cxpr_eval_struct_result(entry, name,
                                         (const cxpr_ast* const*)ast->data.function_call.args,
@@ -727,7 +724,7 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
             return cxpr_fv_struct((cxpr_struct_value*)produced);
         }
 
-        if (entry->struct_fields) {
+        if (entry->struct_fields && !entry->struct_producer) {
             double args[32];
             size_t out = 0;
 

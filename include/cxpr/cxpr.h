@@ -347,6 +347,12 @@ double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* f
 void cxpr_context_clear(cxpr_context* ctx);
 
 /**
+ * @brief Clear cached producer structs while keeping explicit struct bindings.
+ * @param ctx Context
+ */
+void cxpr_context_clear_cached_structs(cxpr_context* ctx);
+
+/**
  * @brief Store a named native struct in the context.
  * @param ctx Destination context.
  * @param name Struct binding name.

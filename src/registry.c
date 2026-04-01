@@ -471,7 +471,8 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
         if (entry->userdata_free) entry->userdata_free(entry->userdata);
         free_struct_fields(entry);
         free_defined_fn(entry);
-        entry->sync_func = NULL;
+        /* Preserve any existing scalar callback so one entry can serve both
+         * plain `name(...)` and `name(...).field`. */
         entry->struct_producer = func;
         entry->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
@@ -577,7 +578,6 @@ typedef struct {
 /** @brief Walk body AST collecting param.field accesses for each parameter. */
 static void collect_fields_in_ast(
     const cxpr_ast* node,
-    const cxpr_registry* reg,
     const char* const* param_names, size_t param_count,
     cxpr_def_field_set* sets
 ) {
@@ -602,55 +602,21 @@ static void collect_fields_in_ast(
 
     switch (node->type) {
     case CXPR_NODE_BINARY_OP:
-        collect_fields_in_ast(node->data.binary_op.left, reg, param_names, param_count, sets);
-        collect_fields_in_ast(node->data.binary_op.right, reg, param_names, param_count, sets);
+        collect_fields_in_ast(node->data.binary_op.left,  param_names, param_count, sets);
+        collect_fields_in_ast(node->data.binary_op.right, param_names, param_count, sets);
         break;
     case CXPR_NODE_UNARY_OP:
-        collect_fields_in_ast(node->data.unary_op.operand, reg, param_names, param_count, sets);
+        collect_fields_in_ast(node->data.unary_op.operand, param_names, param_count, sets);
         break;
-    case CXPR_NODE_FUNCTION_CALL: {
-        cxpr_func_entry* callee = reg ? cxpr_registry_find(reg, node->data.function_call.name) : NULL;
+    case CXPR_NODE_FUNCTION_CALL:
         for (size_t i = 0; i < node->data.function_call.argc; i++) {
-            collect_fields_in_ast(node->data.function_call.args[i], reg, param_names, param_count, sets);
-        }
-        if (callee && callee->defined_body) {
-            for (size_t i = 0; i < node->data.function_call.argc && i < callee->defined_param_count; ++i) {
-                const cxpr_ast* arg = node->data.function_call.args[i];
-                size_t param_index;
-
-                if (!arg || arg->type != CXPR_NODE_IDENTIFIER ||
-                    !callee->defined_param_fields[i] ||
-                    callee->defined_param_field_counts[i] == 0) {
-                    continue;
-                }
-
-                for (param_index = 0; param_index < param_count; ++param_index) {
-                    if (strcmp(arg->data.identifier.name, param_names[param_index]) == 0) break;
-                }
-                if (param_index == param_count) continue;
-
-                for (size_t f = 0; f < callee->defined_param_field_counts[i]; ++f) {
-                    bool dup = false;
-                    for (size_t existing = 0; existing < sets[param_index].count; ++existing) {
-                        if (strcmp(sets[param_index].fields[existing],
-                                   callee->defined_param_fields[i][f]) == 0) {
-                            dup = true;
-                            break;
-                        }
-                    }
-                    if (!dup && sets[param_index].count < CXPR_DEF_MAX_FIELDS) {
-                        sets[param_index].fields[sets[param_index].count++] =
-                            callee->defined_param_fields[i][f];
-                    }
-                }
-            }
+            collect_fields_in_ast(node->data.function_call.args[i], param_names, param_count, sets);
         }
         break;
-    }
     case CXPR_NODE_TERNARY:
-        collect_fields_in_ast(node->data.ternary.condition, reg, param_names, param_count, sets);
-        collect_fields_in_ast(node->data.ternary.true_branch, reg, param_names, param_count, sets);
-        collect_fields_in_ast(node->data.ternary.false_branch, reg, param_names, param_count, sets);
+        collect_fields_in_ast(node->data.ternary.condition,    param_names, param_count, sets);
+        collect_fields_in_ast(node->data.ternary.true_branch,  param_names, param_count, sets);
+        collect_fields_in_ast(node->data.ternary.false_branch, param_names, param_count, sets);
         break;
     default:
         break;
@@ -785,7 +751,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
 
     cxpr_def_field_set sets[CXPR_DEF_MAX_PARAMS];
     memset(sets, 0, sizeof(sets));
-    collect_fields_in_ast(body_ast, reg, pnames, param_count, sets);
+    collect_fields_in_ast(body_ast, pnames, param_count, sets);
 
     /* --- Allocate owned structures --- */
     char** owned_names   = (char**)calloc(param_count ? param_count : 1, sizeof(char*));
