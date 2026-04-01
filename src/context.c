@@ -140,6 +140,11 @@ static void cxpr_context_refresh_pointer_cache(cxpr_hashmap* map,
     bucket->entries_base = map->entries;
 }
 
+static void cxpr_context_clear_entry_cache(cxpr_context_entry_cache* cache) {
+    if (!cache) return;
+    memset(cache, 0, sizeof(cxpr_context_entry_cache) * CXPR_CONTEXT_ENTRY_CACHE_SIZE);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Context API
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -326,6 +331,10 @@ void cxpr_context_clear(cxpr_context* ctx) {
     cxpr_hashmap_clear(&ctx->params);
     cxpr_struct_map_clear(&ctx->structs);
     cxpr_struct_map_clear(&ctx->cached_structs);
+    cxpr_context_clear_entry_cache(ctx->variable_cache);
+    cxpr_context_clear_entry_cache(ctx->param_cache);
+    cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
+    cxpr_context_clear_entry_cache(ctx->param_ptr_cache);
     ctx->variables_version++;
     ctx->params_version++;
 }
