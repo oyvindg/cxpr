@@ -25,6 +25,8 @@ add_library(cxpr STATIC
     src/ast.c
     src/eval.c
     src/ir.c
+    src/hashmap.c
+    src/struct.c
     src/context.c
     src/registry.c
     src/formula.c

@@ -306,6 +306,9 @@ typedef struct {
 const cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_entry(const cxpr_hashmap* map,
                                                             const char* key,
                                                             unsigned long hash);
+/** @brief Find the mutable backing slot for a prehashed key, or NULL if absent. */
+cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_slot(cxpr_hashmap* map, const char* key,
+                                                     unsigned long hash);
 
 /** @brief Initialize a hash map with default capacity. */
 void cxpr_hashmap_init(cxpr_hashmap* map);
@@ -313,6 +316,9 @@ void cxpr_hashmap_init(cxpr_hashmap* map);
 void cxpr_hashmap_destroy(cxpr_hashmap* map);
 /** @brief Insert or update a key-value pair; returns true when key layout changed. */
 bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
+/** @brief Insert or update a key-value pair using a caller-precomputed hash. */
+bool cxpr_hashmap_set_prehashed(cxpr_hashmap* map, const char* key,
+                                unsigned long hash, double value);
 /** @brief Look up a value by key. */
 double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found);
 /** @brief Precompute the internal string hash used by cxpr hash maps. */
@@ -340,6 +346,10 @@ void cxpr_struct_map_init(cxpr_struct_map* map);
 void cxpr_struct_map_destroy(cxpr_struct_map* map);
 void cxpr_struct_map_clear(cxpr_struct_map* map);
 bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src);
+void cxpr_context_store_struct(cxpr_struct_map* map, const char* name,
+                               const cxpr_struct_value* value);
+const cxpr_struct_value* cxpr_context_lookup_struct_map(const cxpr_struct_map* map,
+                                                        const char* name);
 void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
                                     const cxpr_struct_value* value);
 const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
