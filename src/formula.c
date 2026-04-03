@@ -246,6 +246,23 @@ void cxpr_formula_engine_free(cxpr_formula_engine* engine) {
     free(engine);
 }
 
+static void cxpr_formula_entry_reset(cxpr_formula_entry* entry) {
+    free(entry->name);
+    free(entry->expression);
+    cxpr_ast_free(entry->ast);
+    cxpr_program_free(entry->program);
+    memset(entry, 0, sizeof(*entry));
+}
+
+static void cxpr_formula_engine_truncate(cxpr_formula_engine* engine, size_t count) {
+    if (!engine || count >= engine->count) return;
+    for (size_t i = count; i < engine->count; i++) {
+        cxpr_formula_entry_reset(&engine->formulas[i]);
+    }
+    engine->count = count;
+    engine->compiled = false;
+}
+
 /**
  * @brief Add a named formula to the engine.
  * @param[in] engine   Formula engine
@@ -284,6 +301,25 @@ bool cxpr_formula_add(cxpr_formula_engine* engine, const char* name,
 
     /* Invalidate compilation */
     engine->compiled = false;
+
+    if (err) err->code = CXPR_OK;
+    return true;
+}
+
+bool cxpr_formulas_add(cxpr_formula_engine* engine, const cxpr_formula_def* defs,
+                       size_t count, cxpr_error* err) {
+    if (!engine || (!defs && count > 0)) {
+        if (err) { err->code = CXPR_ERR_SYNTAX; err->message = "NULL argument"; }
+        return false;
+    }
+
+    const size_t start_count = engine->count;
+    for (size_t i = 0; i < count; i++) {
+        if (!cxpr_formula_add(engine, defs[i].name, defs[i].expression, err)) {
+            cxpr_formula_engine_truncate(engine, start_count);
+            return false;
+        }
+    }
 
     if (err) err->code = CXPR_OK;
     return true;
@@ -348,13 +384,26 @@ void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_
         cxpr_formula_entry* f = &engine->formulas[idx];
 
         cxpr_error eval_err = {0};
+        cxpr_field_value value = {0};
         if (f->program) {
-            f->result = cxpr_ir_eval_double(f->program, ctx, engine->registry, &eval_err);
+            value = cxpr_ir_eval(f->program, ctx, engine->registry, &eval_err);
         } else {
-            f->result = cxpr_ast_eval_double(f->ast, ctx, engine->registry, &eval_err);
+            value = cxpr_ast_eval(f->ast, ctx, engine->registry, &eval_err);
         }
         if (eval_err.code != CXPR_OK) {
             if (err) *err = eval_err;
+            return;
+        }
+
+        if (value.type == CXPR_FIELD_DOUBLE) {
+            f->result = value.d;
+        } else if (value.type == CXPR_FIELD_BOOL) {
+            f->result = value.b ? 1.0 : 0.0;
+        } else {
+            if (err) {
+                err->code = CXPR_ERR_TYPE_MISMATCH;
+                err->message = "Formula result must be scalar or bool";
+            }
             return;
         }
         f->evaluated = true;

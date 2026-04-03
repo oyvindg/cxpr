@@ -141,6 +141,12 @@ static void arg_producer(const double *args, size_t argc,
     out[1] = cxpr_fv_double(args[1] * 0.5);  /* histogram */
 }
 
+static double combo_scalar(const double *args, size_t argc, void *userdata) {
+    (void)userdata;
+    assert(argc == 2);
+    return args[0] + args[1];
+}
+
 static void test_arg_producer(void) {
     cxpr_registry *reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
@@ -220,6 +226,33 @@ static void test_arg_producer_cache_key_includes_arguments(void) {
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  \u2713 test_arg_producer_cache_key_includes_arguments\n");
+}
+
+static void test_combo_entry_keeps_scalar_call_and_field_producer(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_context *ctx = cxpr_context_new();
+
+    const char *fields[] = {"line", "histogram"};
+    cxpr_registry_add(reg, "macd", combo_scalar, 2, 2, NULL, NULL);
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
+                                      2, 2, fields, 2, NULL, NULL);
+
+    g_arg_call_count = 0;
+
+    cxpr_field_value scalar = eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(scalar.type == CXPR_FIELD_DOUBLE);
+    ASSERT_DOUBLE_EQ(scalar.d, 17.0);
+    assert(g_arg_call_count == 0);
+
+    cxpr_field_value field = eval_typed("macd(14.0, 3.0).line", ctx, reg);
+    assert(field.type == CXPR_FIELD_DOUBLE);
+    ASSERT_DOUBLE_EQ(field.d, 1.4);
+    assert(g_arg_call_count == 1);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  \u2713 test_combo_entry_keeps_scalar_call_and_field_producer\n");
 }
 
 /* ── bool output field stays bool ────────────────────────────────────── */
@@ -420,6 +453,33 @@ static void test_ir_struct_function_call_returns_struct(void) {
     printf("  \u2713 test_ir_struct_function_call_returns_struct\n");
 }
 
+static void test_ir_combo_entry_keeps_scalar_call_and_field_producer(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_context *ctx = cxpr_context_new();
+
+    const char *fields[] = {"line", "histogram"};
+    cxpr_registry_add(reg, "macd", combo_scalar, 2, 2, NULL, NULL);
+    cxpr_registry_add_struct(reg, "macd", arg_producer,
+                                      2, 2, fields, 2, NULL, NULL);
+
+    g_arg_call_count = 0;
+
+    cxpr_field_value scalar = ir_eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(scalar.type == CXPR_FIELD_DOUBLE);
+    ASSERT_DOUBLE_EQ(scalar.d, 17.0);
+    assert(g_arg_call_count == 0);
+
+    cxpr_field_value field = ir_eval_typed("macd(14.0, 3.0).line", ctx, reg);
+    assert(field.type == CXPR_FIELD_DOUBLE);
+    ASSERT_DOUBLE_EQ(field.d, 1.4);
+    assert(g_arg_call_count == 1);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  \u2713 test_ir_combo_entry_keeps_scalar_call_and_field_producer\n");
+}
+
 int main(void) {
     printf("Running struct_producer tests...\n");
     test_zero_arg_producer_basic();
@@ -428,6 +488,7 @@ int main(void) {
     test_arg_producer_called_once_for_two_fields();
     test_struct_function_call_returns_struct();
     test_arg_producer_cache_key_includes_arguments();
+    test_combo_entry_keeps_scalar_call_and_field_producer();
     test_bool_output_field();
     test_host_set_takes_priority();
     test_clear_causes_recall();
@@ -435,6 +496,7 @@ int main(void) {
     test_unknown_field();
     test_ir_parity();
     test_ir_struct_function_call_returns_struct();
+    test_ir_combo_entry_keeps_scalar_call_and_field_producer();
     printf("All struct_producer tests passed!\n");
     return 0;
 }

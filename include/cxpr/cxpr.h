@@ -347,6 +347,12 @@ double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* f
 void cxpr_context_clear(cxpr_context* ctx);
 
 /**
+ * @brief Clear cached producer structs while keeping explicit struct bindings.
+ * @param ctx Context
+ */
+void cxpr_context_clear_cached_structs(cxpr_context* ctx);
+
+/**
  * @brief Store a named native struct in the context.
  * @param ctx Destination context.
  * @param name Struct binding name.
@@ -634,6 +640,14 @@ cxpr_formula_engine* cxpr_formula_engine_new(const cxpr_registry* reg);
 void cxpr_formula_engine_free(cxpr_formula_engine* engine);
 
 /**
+ * @brief A formula definition used for batch registration.
+ */
+typedef struct {
+    const char* name;
+    const char* expression;
+} cxpr_formula_def;
+
+/**
  * @brief Add a named formula to the engine.
  * @param engine Formula engine
  * @param name Formula name (used as variable name for dependencies)
@@ -643,6 +657,20 @@ void cxpr_formula_engine_free(cxpr_formula_engine* engine);
  */
 bool cxpr_formula_add(cxpr_formula_engine* engine, const char* name,
                     const char* expression, cxpr_error* err);
+
+/**
+ * @brief Add multiple named formulas to the engine.
+ *
+ * Stops at the first failure and rolls back formulas added by this call.
+ *
+ * @param engine Formula engine
+ * @param defs Array of formula definitions
+ * @param count Number of definitions in `defs`
+ * @param[out] err Error output (can be NULL)
+ * @return true on success, false on invalid input or parse error
+ */
+bool cxpr_formulas_add(cxpr_formula_engine* engine, const cxpr_formula_def* defs,
+                       size_t count, cxpr_error* err);
 
 /**
  * @brief Compile the formula engine (resolve dependencies).

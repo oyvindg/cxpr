@@ -38,11 +38,6 @@ static void cxpr_lexer_advance(cxpr_lexer* lexer) {
     lexer->position++;
 }
 
-/** @brief Peek at current character without consuming. */
-static char cxpr_lexer_peek_char(const cxpr_lexer* lexer) {
-    return *lexer->current;
-}
-
 /** @brief Peek at next character (one ahead of current). */
 static char cxpr_lexer_peek_next(const cxpr_lexer* lexer) {
     if (*lexer->current == '\0') return '\0';

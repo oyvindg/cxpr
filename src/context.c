@@ -1,391 +1,11 @@
 /**
  * @file context.c
- * @brief Variable, parameter, and native struct bindings for cxpr.
+ * @brief Context API and lookup caches for cxpr.
  */
 
 #include "internal.h"
 #include <stdio.h>
 #include <stdint.h>
-
-static cxpr_field_value cxpr_field_value_clone(const cxpr_field_value* value);
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Hash map implementation
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-unsigned long cxpr_hash_string(const char* str) {
-    unsigned long hash = 5381;
-    int c;
-    while ((c = (unsigned char)*str++)) {
-        hash = ((hash << 5) + hash) + c;
-    }
-    return hash;
-}
-
-void cxpr_hashmap_init(cxpr_hashmap* map) {
-    map->capacity = CXPR_HASHMAP_INITIAL_CAPACITY;
-    map->count = 0;
-    map->entries = (cxpr_hashmap_entry*)calloc(map->capacity, sizeof(cxpr_hashmap_entry));
-}
-
-void cxpr_hashmap_destroy(cxpr_hashmap* map) {
-    if (!map->entries) return;
-    for (size_t i = 0; i < map->capacity; i++) {
-        free(map->entries[i].key);
-    }
-    free(map->entries);
-    map->entries = NULL;
-    map->capacity = 0;
-    map->count = 0;
-}
-
-static bool cxpr_hashmap_grow(cxpr_hashmap* map) {
-    size_t new_capacity = map->capacity * 2;
-    cxpr_hashmap_entry* new_entries =
-        (cxpr_hashmap_entry*)calloc(new_capacity, sizeof(cxpr_hashmap_entry));
-    if (!new_entries) return false;
-
-    for (size_t i = 0; i < map->capacity; i++) {
-        if (!map->entries[i].key) continue;
-        unsigned long hash = cxpr_hash_string(map->entries[i].key) % new_capacity;
-        while (new_entries[hash].key) {
-            hash = (hash + 1) % new_capacity;
-        }
-        new_entries[hash] = map->entries[i];
-    }
-
-    free(map->entries);
-    map->entries = new_entries;
-    map->capacity = new_capacity;
-    return true;
-}
-
-/**
- * @brief Find the mutable backing slot for a prehashed key, or NULL if absent.
- *
- * @param map Hash map to probe.
- * @param key Lookup key.
- * @param hash Precomputed hash for the key.
- * @return Mutable entry pointer, or NULL when the key is missing.
- */
-static cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_slot(cxpr_hashmap* map, const char* key,
-                                                            unsigned long hash) {
-    if (!map || !map->entries || map->count == 0) return NULL;
-
-    hash %= map->capacity;
-    while (map->entries[hash].key) {
-        if (strcmp(map->entries[hash].key, key) == 0) {
-            return &map->entries[hash];
-        }
-        hash = (hash + 1) % map->capacity;
-    }
-
-    return NULL;
-}
-
-bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value) {
-    cxpr_hashmap_entry* entry;
-    unsigned long hash;
-
-    if (!map || !key) return false;
-
-    hash = cxpr_hash_string(key);
-    entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
-    if (entry) {
-        entry->value = value;
-        return false;
-    }
-
-    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-        cxpr_hashmap_grow(map);
-    }
-    hash %= map->capacity;
-
-    while (map->entries[hash].key) {
-        hash = (hash + 1) % map->capacity;
-    }
-
-    map->entries[hash].key = cxpr_strdup(key);
-    map->entries[hash].value = value;
-    map->count++;
-    return true;
-}
-
-static bool cxpr_hashmap_set_prehashed(cxpr_hashmap* map, const char* key,
-                                       unsigned long hash, double value) {
-    cxpr_hashmap_entry* entry;
-    unsigned long slot;
-
-    if (!map || !key) return false;
-
-    entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
-    if (entry) {
-        entry->value = value;
-        return false;
-    }
-
-    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-        cxpr_hashmap_grow(map);
-    }
-
-    slot = hash % map->capacity;
-    while (map->entries[slot].key) {
-        slot = (slot + 1) % map->capacity;
-    }
-
-    map->entries[slot].key = cxpr_strdup(key);
-    map->entries[slot].value = value;
-    map->count++;
-    return true;
-}
-
-double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
-                                  unsigned long hash, bool* found) {
-    if (!map->entries || map->count == 0) {
-        if (found) *found = false;
-        return 0.0;
-    }
-
-    hash %= map->capacity;
-    while (map->entries[hash].key) {
-        if (strcmp(map->entries[hash].key, key) == 0) {
-            if (found) *found = true;
-            return map->entries[hash].value;
-        }
-        hash = (hash + 1) % map->capacity;
-    }
-
-    if (found) *found = false;
-    return 0.0;
-}
-
-const cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_entry(const cxpr_hashmap* map,
-                                                            const char* key,
-                                                            unsigned long hash) {
-    if (!map || !map->entries || map->count == 0) return NULL;
-
-    hash %= map->capacity;
-    while (map->entries[hash].key) {
-        if (strcmp(map->entries[hash].key, key) == 0) {
-            return &map->entries[hash];
-        }
-        hash = (hash + 1) % map->capacity;
-    }
-
-    return NULL;
-}
-
-double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found) {
-    return cxpr_hashmap_get_prehashed(map, key, cxpr_hash_string(key), found);
-}
-
-void cxpr_hashmap_clear(cxpr_hashmap* map) {
-    for (size_t i = 0; i < map->capacity; i++) {
-        free(map->entries[i].key);
-        map->entries[i].key = NULL;
-        map->entries[i].value = 0.0;
-    }
-    map->count = 0;
-}
-
-cxpr_hashmap* cxpr_hashmap_clone(const cxpr_hashmap* map) {
-    cxpr_hashmap* clone = (cxpr_hashmap*)malloc(sizeof(cxpr_hashmap));
-    if (!clone) return NULL;
-
-    clone->capacity = map->capacity;
-    clone->count = map->count;
-    clone->entries = (cxpr_hashmap_entry*)calloc(clone->capacity, sizeof(cxpr_hashmap_entry));
-    if (!clone->entries) {
-        free(clone);
-        return NULL;
-    }
-
-    for (size_t i = 0; i < map->capacity; i++) {
-        if (!map->entries[i].key) continue;
-        clone->entries[i].key = cxpr_strdup(map->entries[i].key);
-        clone->entries[i].value = map->entries[i].value;
-    }
-    return clone;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Typed struct values
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-static void cxpr_struct_value_reset(cxpr_struct_value* s) {
-    if (!s) return;
-    for (size_t i = 0; i < s->field_count; i++) {
-        free((char*)s->field_names[i]);
-        if (s->field_values[i].type == CXPR_FIELD_STRUCT) {
-            cxpr_struct_value_free(s->field_values[i].s);
-        }
-    }
-    free(s->field_names);
-    free(s->field_values);
-    s->field_names = NULL;
-    s->field_values = NULL;
-    s->field_count = 0;
-}
-
-static cxpr_field_value cxpr_field_value_clone(const cxpr_field_value* value) {
-    if (!value) return cxpr_fv_double(0.0);
-
-    switch (value->type) {
-    case CXPR_FIELD_DOUBLE:
-        return cxpr_fv_double(value->d);
-    case CXPR_FIELD_BOOL:
-        return cxpr_fv_bool(value->b);
-    case CXPR_FIELD_STRUCT:
-        return cxpr_fv_struct(cxpr_struct_value_new(
-            value->s ? (const char* const*)value->s->field_names : NULL,
-            value->s ? value->s->field_values : NULL,
-            value->s ? value->s->field_count : 0));
-    default:
-        return cxpr_fv_double(0.0);
-    }
-}
-
-cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
-                                         const cxpr_field_value* field_values,
-                                         size_t field_count) {
-    cxpr_struct_value* s = (cxpr_struct_value*)calloc(1, sizeof(cxpr_struct_value));
-    if (!s) return NULL;
-
-    s->field_count = field_count;
-    if (field_count == 0) return s;
-
-    s->field_names = (const char**)calloc(field_count, sizeof(char*));
-    s->field_values = (cxpr_field_value*)calloc(field_count, sizeof(cxpr_field_value));
-    if (!s->field_names || !s->field_values) {
-        cxpr_struct_value_free(s);
-        return NULL;
-    }
-
-    for (size_t i = 0; i < field_count; i++) {
-        s->field_names[i] = cxpr_strdup(field_names[i]);
-        if (!s->field_names[i]) {
-            cxpr_struct_value_free(s);
-            return NULL;
-        }
-        s->field_values[i] = cxpr_field_value_clone(&field_values[i]);
-        if (field_values[i].type == CXPR_FIELD_STRUCT && field_values[i].s &&
-            !s->field_values[i].s) {
-            cxpr_struct_value_free(s);
-            return NULL;
-        }
-    }
-
-    return s;
-}
-
-void cxpr_struct_value_free(cxpr_struct_value* s) {
-    if (!s) return;
-    cxpr_struct_value_reset(s);
-    free(s);
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Struct map
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-static cxpr_struct_map_entry* cxpr_struct_map_find_slot(const cxpr_struct_map* map,
-                                                        const char* name) {
-    unsigned long hash;
-
-    if (!map->entries || map->capacity == 0) return NULL;
-
-    hash = cxpr_hash_string(name) % map->capacity;
-    while (map->entries[hash].name) {
-        if (strcmp(map->entries[hash].name, name) == 0) {
-            return &((cxpr_struct_map*)map)->entries[hash];
-        }
-        hash = (hash + 1) % map->capacity;
-    }
-    return &((cxpr_struct_map*)map)->entries[hash];
-}
-
-static void cxpr_struct_map_grow(cxpr_struct_map* map) {
-    size_t new_capacity = map->capacity * 2;
-    cxpr_struct_map_entry* new_entries =
-        (cxpr_struct_map_entry*)calloc(new_capacity, sizeof(cxpr_struct_map_entry));
-    if (!new_entries) return;
-
-    for (size_t i = 0; i < map->capacity; i++) {
-        if (!map->entries[i].name) continue;
-        unsigned long hash = cxpr_hash_string(map->entries[i].name) % new_capacity;
-        while (new_entries[hash].name) {
-            hash = (hash + 1) % new_capacity;
-        }
-        new_entries[hash] = map->entries[i];
-    }
-
-    free(map->entries);
-    map->entries = new_entries;
-    map->capacity = new_capacity;
-}
-
-void cxpr_struct_map_init(cxpr_struct_map* map) {
-    map->capacity = 0;
-    map->count = 0;
-    map->entries = NULL;
-}
-
-void cxpr_struct_map_destroy(cxpr_struct_map* map) {
-    if (!map->entries) return;
-    for (size_t i = 0; i < map->capacity; i++) {
-        free(map->entries[i].name);
-        cxpr_struct_value_free(map->entries[i].value);
-    }
-    free(map->entries);
-    map->entries = NULL;
-    map->capacity = 0;
-    map->count = 0;
-}
-
-void cxpr_struct_map_clear(cxpr_struct_map* map) {
-    for (size_t i = 0; i < map->capacity; i++) {
-        free(map->entries[i].name);
-        map->entries[i].name = NULL;
-        cxpr_struct_value_free(map->entries[i].value);
-        map->entries[i].value = NULL;
-    }
-    map->count = 0;
-}
-
-bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src) {
-    cxpr_struct_map_init(dst);
-    if (!src || !src->entries || src->count == 0) return true;
-
-    dst->capacity = CXPR_HASHMAP_INITIAL_CAPACITY;
-    dst->entries = (cxpr_struct_map_entry*)calloc(dst->capacity, sizeof(cxpr_struct_map_entry));
-    if (!dst->entries) return false;
-
-    for (size_t i = 0; i < src->capacity; i++) {
-        cxpr_struct_value* copy;
-        cxpr_struct_map_entry* slot;
-        if (!src->entries[i].name) continue;
-        copy = cxpr_struct_value_new((const char* const*)src->entries[i].value->field_names,
-                                     src->entries[i].value->field_values,
-                                     src->entries[i].value->field_count);
-        if (!copy) return false;
-        if ((double)(dst->count + 1) / dst->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-            cxpr_struct_map_grow(dst);
-        }
-        slot = cxpr_struct_map_find_slot(dst, src->entries[i].name);
-        slot->name = cxpr_strdup(src->entries[i].name);
-        slot->value = copy;
-        if (!slot->name) return false;
-        dst->count++;
-    }
-    return true;
-}
-
-static const cxpr_struct_map_entry* cxpr_struct_map_get(const cxpr_struct_map* map,
-                                                        const char* name) {
-    cxpr_struct_map_entry* slot = cxpr_struct_map_find_slot(map, name);
-    if (!slot || !slot->name) return NULL;
-    return slot;
-}
 
 /**
  * @brief Return the direct-mapped cache bucket for one context key hash.
@@ -461,7 +81,7 @@ static cxpr_hashmap_entry* cxpr_context_lookup_cached_entry(cxpr_hashmap* map,
 
     entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
     if (entry) {
-        bucket->key_ref = key;
+        bucket->key_ref = entry->key;
         bucket->hash = hash;
         bucket->slot = (size_t)(entry - map->entries);
         bucket->entries_base = map->entries;
@@ -492,7 +112,7 @@ static void cxpr_context_refresh_cache(cxpr_hashmap* map, cxpr_context_entry_cac
 
     entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
     bucket = cxpr_context_cache_bucket(cache, hash);
-    bucket->key_ref = key;
+    bucket->key_ref = entry ? entry->key : NULL;
     bucket->hash = hash;
     bucket->slot = entry ? (size_t)(entry - map->entries) : 0;
     bucket->entries_base = entry ? map->entries : NULL;
@@ -520,6 +140,11 @@ static void cxpr_context_refresh_pointer_cache(cxpr_hashmap* map,
     bucket->entries_base = map->entries;
 }
 
+static void cxpr_context_clear_entry_cache(cxpr_context_entry_cache* cache) {
+    if (!cache) return;
+    memset(cache, 0, sizeof(cxpr_context_entry_cache) * CXPR_CONTEXT_ENTRY_CACHE_SIZE);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Context API
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -530,6 +155,7 @@ cxpr_context* cxpr_context_new(void) {
     cxpr_hashmap_init(&ctx->variables);
     cxpr_hashmap_init(&ctx->params);
     cxpr_struct_map_init(&ctx->structs);
+    cxpr_struct_map_init(&ctx->cached_structs);
     ctx->variables_version = 1;
     ctx->params_version = 1;
     ctx->parent = NULL;
@@ -548,6 +174,7 @@ void cxpr_context_free(cxpr_context* ctx) {
     cxpr_hashmap_destroy(&ctx->variables);
     cxpr_hashmap_destroy(&ctx->params);
     cxpr_struct_map_destroy(&ctx->structs);
+    cxpr_struct_map_destroy(&ctx->cached_structs);
     free(ctx);
 }
 
@@ -563,10 +190,13 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
 
     var_clone = cxpr_hashmap_clone(&ctx->variables);
     param_clone = cxpr_hashmap_clone(&ctx->params);
-    if (!var_clone || !param_clone || !cxpr_struct_map_clone(&clone->structs, &ctx->structs)) {
+    if (!var_clone || !param_clone ||
+        !cxpr_struct_map_clone(&clone->structs, &ctx->structs) ||
+        !cxpr_struct_map_clone(&clone->cached_structs, &ctx->cached_structs)) {
         free(var_clone);
         free(param_clone);
         cxpr_struct_map_destroy(&clone->structs);
+        cxpr_struct_map_destroy(&clone->cached_structs);
         free(clone);
         return NULL;
     }
@@ -700,61 +330,50 @@ void cxpr_context_clear(cxpr_context* ctx) {
     cxpr_hashmap_clear(&ctx->variables);
     cxpr_hashmap_clear(&ctx->params);
     cxpr_struct_map_clear(&ctx->structs);
+    cxpr_struct_map_clear(&ctx->cached_structs);
+    cxpr_context_clear_entry_cache(ctx->variable_cache);
+    cxpr_context_clear_entry_cache(ctx->param_cache);
+    cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
+    cxpr_context_clear_entry_cache(ctx->param_ptr_cache);
     ctx->variables_version++;
     ctx->params_version++;
 }
 
+void cxpr_context_clear_cached_structs(cxpr_context* ctx) {
+    if (!ctx) return;
+    cxpr_struct_map_clear(&ctx->cached_structs);
+}
+
 void cxpr_context_set_struct(cxpr_context* ctx, const char* name,
                              const cxpr_struct_value* value) {
-    cxpr_struct_map_entry* slot;
-    cxpr_struct_value* copy;
+    if (!ctx) return;
+    cxpr_context_store_struct(&ctx->structs, name, value);
+}
 
-    if (!ctx || !name || !value) return;
-
-    copy = cxpr_struct_value_new((const char* const*)value->field_names,
-                                 value->field_values, value->field_count);
-    if (!copy) return;
-
-    if (!ctx->structs.entries) {
-        ctx->structs.capacity = CXPR_HASHMAP_INITIAL_CAPACITY;
-        ctx->structs.entries =
-            (cxpr_struct_map_entry*)calloc(ctx->structs.capacity, sizeof(cxpr_struct_map_entry));
-        if (!ctx->structs.entries) {
-            ctx->structs.capacity = 0;
-            cxpr_struct_value_free(copy);
-            return;
-        }
-    }
-
-    if ((double)(ctx->structs.count + 1) / ctx->structs.capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-        cxpr_struct_map_grow(&ctx->structs);
-    }
-
-    slot = cxpr_struct_map_find_slot(&ctx->structs, name);
-    if (slot->name) {
-        cxpr_struct_value_free(slot->value);
-        slot->value = copy;
-        return;
-    }
-
-    slot->name = cxpr_strdup(name);
-    if (!slot->name) {
-        cxpr_struct_value_free(copy);
-        return;
-    }
-    slot->value = copy;
-    ctx->structs.count++;
+void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
+                                    const cxpr_struct_value* value) {
+    if (!ctx) return;
+    cxpr_context_store_struct(&ctx->cached_structs, name, value);
 }
 
 const cxpr_struct_value* cxpr_context_get_struct(const cxpr_context* ctx,
                                                  const char* name) {
-    const cxpr_struct_map_entry* entry;
+    const cxpr_struct_value* value;
 
     if (!ctx) return NULL;
-
-    entry = cxpr_struct_map_get(&ctx->structs, name);
-    if (entry) return entry->value;
+    value = cxpr_context_lookup_struct_map(&ctx->structs, name);
+    if (value) return value;
     return ctx->parent ? cxpr_context_get_struct(ctx->parent, name) : NULL;
+}
+
+const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
+                                                        const char* name) {
+    const cxpr_struct_value* value;
+
+    if (!ctx) return NULL;
+    value = cxpr_context_lookup_struct_map(&ctx->cached_structs, name);
+    if (value) return value;
+    return ctx->parent ? cxpr_context_get_cached_struct(ctx->parent, name) : NULL;
 }
 
 cxpr_field_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,

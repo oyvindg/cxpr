@@ -238,8 +238,6 @@ struct cxpr_ast {
             size_t cached_entry_index;                   /**< Cached entry index inside registry */
             bool cached_entry_found;                     /**< Whether cached index resolved to a function */
             bool cached_lookup_valid;                    /**< True when cache fields are initialized */
-            char* cached_const_key;                      /**< Cached constant producer key when applicable */
-            bool cached_const_key_ready;                 /**< True when constant-key analysis has run */
         } function_call;
 
         /* CXPR_NODE_TERNARY */
@@ -306,6 +304,9 @@ typedef struct {
 const cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_entry(const cxpr_hashmap* map,
                                                             const char* key,
                                                             unsigned long hash);
+/** @brief Find the mutable backing slot for a prehashed key, or NULL if absent. */
+cxpr_hashmap_entry* cxpr_hashmap_find_prehashed_slot(cxpr_hashmap* map, const char* key,
+                                                     unsigned long hash);
 
 /** @brief Initialize a hash map with default capacity. */
 void cxpr_hashmap_init(cxpr_hashmap* map);
@@ -313,6 +314,9 @@ void cxpr_hashmap_init(cxpr_hashmap* map);
 void cxpr_hashmap_destroy(cxpr_hashmap* map);
 /** @brief Insert or update a key-value pair; returns true when key layout changed. */
 bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
+/** @brief Insert or update a key-value pair using a caller-precomputed hash. */
+bool cxpr_hashmap_set_prehashed(cxpr_hashmap* map, const char* key,
+                                unsigned long hash, double value);
 /** @brief Look up a value by key. */
 double cxpr_hashmap_get(const cxpr_hashmap* map, const char* key, bool* found);
 /** @brief Precompute the internal string hash used by cxpr hash maps. */
@@ -340,6 +344,14 @@ void cxpr_struct_map_init(cxpr_struct_map* map);
 void cxpr_struct_map_destroy(cxpr_struct_map* map);
 void cxpr_struct_map_clear(cxpr_struct_map* map);
 bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src);
+void cxpr_context_store_struct(cxpr_struct_map* map, const char* name,
+                               const cxpr_struct_value* value);
+const cxpr_struct_value* cxpr_context_lookup_struct_map(const cxpr_struct_map* map,
+                                                        const char* name);
+void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
+                                    const cxpr_struct_value* value);
+const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
+                                                        const char* name);
 
 typedef struct {
     const char*         key_ref;
@@ -356,6 +368,7 @@ struct cxpr_context {
     cxpr_hashmap variables;     /**< Runtime variables */
     cxpr_hashmap params;        /**< Compile-time parameters ($name) */
     cxpr_struct_map structs;    /**< Native typed structs */
+    cxpr_struct_map cached_structs; /**< Cached producer outputs */
     cxpr_context_entry_cache variable_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     cxpr_context_entry_cache param_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     cxpr_context_entry_cache variable_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
@@ -477,6 +490,7 @@ typedef enum {
     CXPR_OP_CLAMP,
     CXPR_OP_CALL_PRODUCER,
     CXPR_OP_CALL_PRODUCER_CONST,
+    CXPR_OP_CALL_PRODUCER_CONST_FIELD,
     CXPR_OP_GET_FIELD,
     CXPR_OP_CALL_UNARY,
     CXPR_OP_CALL_BINARY,
@@ -496,6 +510,8 @@ typedef enum {
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
  * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
+ * - CALL_PRODUCER_CONST_FIELD: cache key in name, field name in aux_name
+ * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
  * - arithmetic / comparisons / return: no extra operand
@@ -504,6 +520,8 @@ typedef struct {
     cxpr_opcode op;
     /* 4 bytes implicit padding */
     const char* name;
+    const char* aux_name;
+    const void* payload;
     const cxpr_func_entry* func;
     union {
         double value;        /* PUSH_CONST, PUSH_BOOL */
@@ -513,7 +531,7 @@ typedef struct {
     };
 } cxpr_ir_instr;
 
-_Static_assert(sizeof(cxpr_ir_instr) <= 32, "cxpr_ir_instr for stor");
+_Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr for stor");
 
 /**
  * @brief Cached LOAD_VAR / LOAD_PARAM resolution for one IR instruction.
@@ -547,6 +565,9 @@ struct cxpr_program {
 
 /** @brief Reset and free the storage owned by an IR program. */
 void cxpr_ir_program_reset(cxpr_ir_program* program);
+bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out);
+char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
+                                          size_t argc);
 /** @brief Compile a supported AST into an internal IR program. */
 bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);

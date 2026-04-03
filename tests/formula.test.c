@@ -14,7 +14,6 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
-#include <math.h>
 #include <string.h>
 
 #define EPSILON 1e-10
@@ -84,6 +83,72 @@ static void test_multi_formula_dependencies(void) {
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_multi_formula_dependencies\n");
+}
+
+static void test_formula_batch_add(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    bool found = false;
+
+    const cxpr_formula_def defs[] = {
+        { "a", "x + 1" },
+        { "b", "a * 2" },
+        { "c", "a + b" }
+    };
+
+    cxpr_context_set(ctx, "x", 10.0);
+
+    assert(cxpr_formulas_add(engine, defs, 3, &err));
+    assert(cxpr_formula_compile(engine, &err));
+    cxpr_formula_eval_all(engine, ctx, &err);
+    assert(err.code == CXPR_OK);
+
+    ASSERT_DOUBLE_EQ(cxpr_formula_get(engine, "a", &found), 11.0);
+    assert(found);
+    ASSERT_DOUBLE_EQ(cxpr_formula_get(engine, "b", &found), 22.0);
+    assert(found);
+    ASSERT_DOUBLE_EQ(cxpr_formula_get(engine, "c", &found), 33.0);
+    assert(found);
+
+    cxpr_formula_engine_free(engine);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_formula_batch_add\n");
+}
+
+static void test_formula_batch_add_rolls_back_on_error(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    bool found = false;
+
+    const cxpr_formula_def defs[] = {
+        { "good", "x + 1" },
+        { "bad", "3 +" }
+    };
+
+    cxpr_context_set(ctx, "x", 10.0);
+
+    assert(cxpr_formula_add(engine, "baseline", "x * 3", &err));
+    assert(!cxpr_formulas_add(engine, defs, 2, &err));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(cxpr_formula_compile(engine, &err));
+    cxpr_formula_eval_all(engine, ctx, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_formula_get(engine, "baseline", &found), 30.0);
+    assert(found);
+    assert(cxpr_formula_get(engine, "good", &found) == 0.0);
+    assert(!found);
+
+    cxpr_formula_engine_free(engine);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_formula_batch_add_rolls_back_on_error\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -231,24 +296,27 @@ static void test_formula_with_functions(void) {
     printf("  ✓ test_formula_with_functions\n");
 }
 
-static void test_formula_bool_result_type_mismatch(void) {
+static void test_formula_bool_result_is_normalized_to_double(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
     cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
+    bool found = false;
 
     cxpr_context_set(ctx, "x", 2.0);
     assert(cxpr_formula_add(engine, "flag", "x > 0", &err));
     assert(cxpr_formula_compile(engine, &err));
 
     cxpr_formula_eval_all(engine, ctx, &err);
-    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_formula_get(engine, "flag", &found), 1.0);
+    assert(found == true);
 
     cxpr_formula_engine_free(engine);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    printf("  ✓ test_formula_bool_result_type_mismatch\n");
+    printf("  ✓ test_formula_bool_result_is_normalized_to_double\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -281,12 +349,14 @@ int main(void) {
     printf("Running formula tests...\n");
     test_single_formula();
     test_multi_formula_dependencies();
+    test_formula_batch_add();
+    test_formula_batch_add_rolls_back_on_error();
     test_evaluation_order();
     test_circular_dependency();
     test_self_reference();
     test_independent_formulas();
     test_formula_with_functions();
-    test_formula_bool_result_type_mismatch();
+    test_formula_bool_result_is_normalized_to_double();
     test_get_nonexistent();
     printf("All formula tests passed!\n");
     return 0;

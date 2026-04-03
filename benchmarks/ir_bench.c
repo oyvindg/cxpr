@@ -1,5 +1,4 @@
 #include <cxpr/cxpr.h>
-
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -462,7 +461,6 @@ int main(void) {
         fprintf(stderr, "Failed to initialize benchmark state\n");
         return 1;
     }
-
     cxpr_register_builtins(reg);
     cxpr_registry_add_unary(reg, "native_sq", native_sq);
     cxpr_registry_add_binary(reg, "native_hyp2", native_hyp2);
