@@ -101,7 +101,7 @@ static void test_formula_engine_damped_oscillator(void) {
                             "0.5 * $mass * next_v * next_v + 0.5 * $stiffness * next_x * next_x",
                             &err));
     assert(cxpr_formula_add(engine, "stable",
-                            "if(abs(next_x) <= $max_abs_x and abs(next_v) <= $max_abs_v, 1, 0)", &err));
+                            "abs(next_x) <= $max_abs_x and abs(next_v) <= $max_abs_v", &err));
 
     {
         const bool ok = cxpr_formula_compile(engine, &err);

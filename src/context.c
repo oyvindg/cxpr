@@ -450,6 +450,8 @@ void cxpr_context_set_fields(cxpr_context* ctx, const char* prefix,
                              const char* const* fields, const double* values,
                              size_t count) {
     char key[256];
+    cxpr_field_value* typed_values;
+    cxpr_struct_value* struct_value;
 
     if (!ctx || !prefix || !fields || !values) return;
 
@@ -458,6 +460,20 @@ void cxpr_context_set_fields(cxpr_context* ctx, const char* prefix,
         snprintf(key, sizeof(key), "%s.%s", prefix, fields[i]);
         cxpr_context_set(ctx, key, values[i]);
     }
+
+    typed_values = (cxpr_field_value*)calloc(count, sizeof(cxpr_field_value));
+    if (!typed_values) return;
+
+    for (size_t i = 0; i < count; i++) {
+        typed_values[i] = cxpr_fv_double(values[i]);
+    }
+
+    struct_value = cxpr_struct_value_new(fields, typed_values, count);
+    free(typed_values);
+    if (!struct_value) return;
+
+    cxpr_context_set_struct(ctx, prefix, struct_value);
+    cxpr_struct_value_free(struct_value);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

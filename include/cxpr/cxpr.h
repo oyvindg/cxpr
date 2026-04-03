@@ -391,7 +391,8 @@ cxpr_field_value cxpr_context_get_field(const cxpr_context* ctx, const char* nam
 /**
  * @brief Set multiple fields with a common prefix.
  *
- * Each field is stored as "prefix.field" in the context.
+ * Each field is stored as "prefix.field" in the context, and the prefix is
+ * also materialized as a struct value for struct-aware access patterns.
  *
  * @param ctx Context
  * @param prefix Common prefix (e.g., "macd")

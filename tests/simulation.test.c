@@ -721,21 +721,21 @@ static void test_formula_engine_indicators(void) {
         cxpr_formula_eval_all(engine, ctx, &err);
         assert(err.code == CXPR_OK);
 
-        /* Read computed values back from context */
+        /* Read computed values back from formula results */
         bool found = false;
-        double atr_norm = cxpr_context_get(ctx, "atr_norm", &found);
+        double atr_norm = cxpr_formula_get_double(engine, "atr_norm", &found);
         assert(found);
         assert(atr_norm >= 0.0); /* normalized ATR should be positive */
 
-        double risk = cxpr_context_get(ctx, "risk_score", &found);
+        double risk = cxpr_formula_get_double(engine, "risk_score", &found);
         assert(found);
         assert(risk >= 0.0 && risk <= 100.0); /* clamped */
 
-        double pos = cxpr_context_get(ctx, "position_size", &found);
+        double pos = cxpr_formula_get_double(engine, "position_size", &found);
         assert(found);
         assert(pos >= 1.0 && pos <= 100.0);
 
-        double sig = cxpr_context_get(ctx, "signal", &found);
+        double sig = cxpr_formula_get_double(engine, "signal", &found);
         assert(found);
         if (sig != 0.0) signal_count++;
     }
