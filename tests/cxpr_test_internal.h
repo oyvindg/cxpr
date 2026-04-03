@@ -201,7 +201,7 @@ typedef struct {
     char* expression;
     cxpr_ast* ast;
     cxpr_program* program;
-    double result;
+    cxpr_field_value result;
     bool evaluated;
 } cxpr_formula_entry;
 

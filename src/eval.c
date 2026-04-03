@@ -720,6 +720,13 @@ static cxpr_field_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_c
                                                cxpr_error* err) {
     const cxpr_struct_value* current = cxpr_context_get_struct(ctx, ast->data.chain_access.path[0]);
     if (!current) {
+        bool found = false;
+        cxpr_field_value root = cxpr_context_get_typed(ctx, ast->data.chain_access.path[0], &found);
+        if (found && root.type == CXPR_FIELD_STRUCT) {
+            current = root.s;
+        }
+    }
+    if (!current) {
         return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown identifier");
     }
 
@@ -764,11 +771,11 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
 
     case CXPR_NODE_IDENTIFIER: {
         bool found = false;
-        double value = cxpr_context_get(ctx, ast->data.identifier.name, &found);
+        cxpr_field_value value = cxpr_context_get_typed(ctx, ast->data.identifier.name, &found);
         if (!found) {
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown identifier");
         }
-        return cxpr_fv_double(value);
+        return value;
     }
 
     case CXPR_NODE_VARIABLE: {

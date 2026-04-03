@@ -50,6 +50,61 @@ static size_t cxpr_formula_find(const cxpr_formula_engine* engine, const char* n
     return (size_t)-1;
 }
 
+static void cxpr_formula_result_dispose(cxpr_field_value* value) {
+    if (!value) return;
+    if (value->type == CXPR_FIELD_STRUCT) {
+        cxpr_struct_value_free(value->s);
+    }
+    *value = cxpr_fv_double(0.0);
+}
+
+static cxpr_field_value cxpr_formula_result_clone(const cxpr_field_value* value,
+                                                  cxpr_error* err) {
+    cxpr_struct_value* copy;
+
+    if (!value) return cxpr_fv_double(0.0);
+
+    switch (value->type) {
+    case CXPR_FIELD_DOUBLE:
+        return cxpr_fv_double(value->d);
+    case CXPR_FIELD_BOOL:
+        return cxpr_fv_bool(value->b);
+    case CXPR_FIELD_STRUCT:
+        copy = cxpr_struct_value_new(
+            value->s ? (const char* const*)value->s->field_names : NULL,
+            value->s ? value->s->field_values : NULL,
+            value->s ? value->s->field_count : 0);
+        if (!copy && value->s) {
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+        }
+        return cxpr_fv_struct(copy);
+    default:
+        return cxpr_fv_double(0.0);
+    }
+}
+
+cxpr_field_value cxpr_formula_lookup_typed_result(const cxpr_formula_engine* engine,
+                                                  const char* name, bool* found) {
+    size_t idx;
+
+    if (!engine || !name) {
+        if (found) *found = false;
+        return cxpr_fv_double(0.0);
+    }
+
+    idx = cxpr_formula_find(engine, name);
+    if (idx == (size_t)-1 || !engine->formulas[idx].evaluated) {
+        if (found) *found = false;
+        return cxpr_fv_double(0.0);
+    }
+
+    if (found) *found = true;
+    return engine->formulas[idx].result;
+}
+
 /** @brief Double the formula engine's capacity. */
 static void cxpr_formula_engine_grow(cxpr_formula_engine* engine) {
     size_t new_cap = engine->capacity * 2;
@@ -235,6 +290,7 @@ cxpr_formula_engine* cxpr_formula_engine_new(const cxpr_registry* reg) {
 void cxpr_formula_engine_free(cxpr_formula_engine* engine) {
     if (!engine) return;
     for (size_t i = 0; i < engine->count; i++) {
+        cxpr_formula_result_dispose(&engine->formulas[i].result);
         free(engine->formulas[i].name);
         free(engine->formulas[i].expression);
         cxpr_ast_free(engine->formulas[i].ast);
@@ -247,6 +303,7 @@ void cxpr_formula_engine_free(cxpr_formula_engine* engine) {
 }
 
 static void cxpr_formula_entry_reset(cxpr_formula_entry* entry) {
+    cxpr_formula_result_dispose(&entry->result);
     free(entry->name);
     free(entry->expression);
     cxpr_ast_free(entry->ast);
@@ -296,7 +353,7 @@ bool cxpr_formula_add(cxpr_formula_engine* engine, const char* name,
     entry->expression = cxpr_strdup(expression);
     entry->ast = ast;
     entry->program = NULL;
-    entry->result = 0.0;
+    entry->result = cxpr_fv_double(0.0);
     entry->evaluated = false;
 
     /* Invalidate compilation */
@@ -362,6 +419,8 @@ bool cxpr_formula_compile(cxpr_formula_engine* engine, cxpr_error* err) {
  * @param[out] err     Error output (can be NULL)
  */
 void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_error* err) {
+    const cxpr_formula_engine* previous_scope;
+
     if (!engine || !ctx) {
         if (err) { err->code = CXPR_ERR_SYNTAX; err->message = "NULL argument"; }
         return;
@@ -372,10 +431,13 @@ void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_
         return;
     }
 
+    previous_scope = ctx->formula_scope;
+    cxpr_context_set_formula_scope(ctx, engine);
+
     /* Reset evaluation state */
     for (size_t i = 0; i < engine->count; i++) {
         engine->formulas[i].evaluated = false;
-        engine->formulas[i].result = 0.0;
+        cxpr_formula_result_dispose(&engine->formulas[i].result);
     }
 
     /* Evaluate in topological order */
@@ -391,27 +453,31 @@ void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_
             value = cxpr_ast_eval(f->ast, ctx, engine->registry, &eval_err);
         }
         if (eval_err.code != CXPR_OK) {
+            cxpr_context_set_formula_scope(ctx, previous_scope);
             if (err) *err = eval_err;
             return;
         }
 
-        if (value.type == CXPR_FIELD_DOUBLE) {
-            f->result = value.d;
-        } else if (value.type == CXPR_FIELD_BOOL) {
-            f->result = value.b ? 1.0 : 0.0;
-        } else {
+        if (value.type != CXPR_FIELD_DOUBLE &&
+            value.type != CXPR_FIELD_BOOL &&
+            value.type != CXPR_FIELD_STRUCT) {
+            cxpr_context_set_formula_scope(ctx, previous_scope);
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
-                err->message = "Formula result must be scalar or bool";
+                err->message = "Formula result must be double, bool, or struct";
             }
             return;
         }
+        f->result = cxpr_formula_result_clone(&value, &eval_err);
+        if (eval_err.code != CXPR_OK) {
+            cxpr_context_set_formula_scope(ctx, previous_scope);
+            if (err) *err = eval_err;
+            return;
+        }
         f->evaluated = true;
-
-        /* Set result in context so dependent formulas can use it */
-        cxpr_context_set(ctx, f->name, f->result);
     }
 
+    cxpr_context_set_formula_scope(ctx, previous_scope);
     if (err) err->code = CXPR_OK;
 }
 
@@ -420,20 +486,30 @@ void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_
  * @param[in] engine  Formula engine
  * @param[in] name    Formula name
  * @param[out] found  Set to true if found (can be NULL)
- * @return Formula result, or 0.0 if not found/evaluated
+ * @return Formula result, or cxpr_fv_double(0.0) if not found/evaluated
  */
-double cxpr_formula_get(const cxpr_formula_engine* engine, const char* name, bool* found) {
-    if (!engine || !name) {
+cxpr_field_value cxpr_formula_get(const cxpr_formula_engine* engine, const char* name, bool* found) {
+    return cxpr_formula_lookup_typed_result(engine, name, found);
+}
+
+double cxpr_formula_get_double(const cxpr_formula_engine* engine, const char* name, bool* found) {
+    cxpr_field_value value = cxpr_formula_get(engine, name, found);
+    if (found && !*found) return 0.0;
+    if (value.type != CXPR_FIELD_DOUBLE) {
         if (found) *found = false;
         return 0.0;
     }
-    size_t idx = cxpr_formula_find(engine, name);
-    if (idx == (size_t)-1 || !engine->formulas[idx].evaluated) {
+    return value.d;
+}
+
+bool cxpr_formula_get_bool(const cxpr_formula_engine* engine, const char* name, bool* found) {
+    cxpr_field_value value = cxpr_formula_get(engine, name, found);
+    if (found && !*found) return false;
+    if (value.type != CXPR_FIELD_BOOL) {
         if (found) *found = false;
-        return 0.0;
+        return false;
     }
-    if (found) *found = true;
-    return engine->formulas[idx].result;
+    return value.b;
 }
 
 /**

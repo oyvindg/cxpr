@@ -132,25 +132,25 @@ static void test_formula_engine_damped_oscillator(void) {
                                   drive_amplitude, drive_frequency, dt);
 
         ASSERT_APPROX(state.t, expected_time, 1e-12);
-        ASSERT_APPROX(cxpr_formula_get(engine, "restoring_force", &found),
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "restoring_force", &found),
                       expected.restoring_force, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "damping_force", &found),
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "damping_force", &found),
                       expected.damping_force, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "drive_force", &found),
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "drive_force", &found),
                       expected.drive_force, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "acceleration", &found),
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "acceleration", &found),
                       expected.acceleration, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "next_v", &found), expected.next_v, EPSILON);
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "next_v", &found), expected.next_v, EPSILON);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "next_x", &found), expected.next_x, EPSILON);
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "next_x", &found), expected.next_x, EPSILON);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "energy", &found), expected.energy, EPSILON);
+        ASSERT_APPROX(cxpr_formula_get_double(engine, "energy", &found), expected.energy, EPSILON);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get(engine, "stable", &found), 1.0, 1e-12);
+        assert(cxpr_formula_get_bool(engine, "stable", &found) == true);
         assert(found);
 
         assert(isfinite(expected.energy));

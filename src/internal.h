@@ -352,6 +352,9 @@ void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
                                     const cxpr_struct_value* value);
 const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
                                                         const char* name);
+void cxpr_context_set_formula_scope(cxpr_context* ctx, const struct cxpr_formula_engine* engine);
+void cxpr_context_clear_formula_scope(cxpr_context* ctx);
+cxpr_field_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found);
 
 typedef struct {
     const char*         key_ref;
@@ -376,6 +379,7 @@ struct cxpr_context {
     unsigned long variables_version; /**< Bumped on variable-map structural changes */
     unsigned long params_version;    /**< Bumped on param-map structural changes */
     const struct cxpr_context* parent; /**< Optional parent context for local overlays */
+    const struct cxpr_formula_engine* formula_scope; /**< Optional typed formula lookup scope */
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -599,7 +603,7 @@ typedef struct {
     char* expression;         /**< Original expression string, owned */
     cxpr_ast* ast;              /**< Parsed AST (NULL until compiled) */
     cxpr_program* program;      /**< Compiled program cache (NULL until compiled) */
-    double result;            /**< Evaluation result */
+    cxpr_field_value result;  /**< Evaluation result */
     bool evaluated;
 } cxpr_formula_entry;
 
@@ -615,5 +619,8 @@ struct cxpr_formula_engine {
     const cxpr_registry* registry; /**< Borrowed reference */
     cxpr_parser* parser;        /**< Internal parser for formula expressions */
 };
+
+cxpr_field_value cxpr_formula_lookup_typed_result(const cxpr_formula_engine* engine,
+                                                  const char* name, bool* found);
 
 #endif /* CXPR_INTERNAL_H */

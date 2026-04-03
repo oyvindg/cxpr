@@ -242,6 +242,8 @@ If a function name is redefined, the latest definition replaces the previous one
 
 ## Domain Examples
 
+These examples are illustrative. They show how expressions and formula composition can map onto different domains, but they are not presented as validated real-world models, control laws, safety logic, or trading advice.
+
 ### Trading — signal composition
 
 ```c
@@ -249,13 +251,13 @@ If a function name is redefined, the latest definition replaces the previous one
 const cxpr_formula_def defs[] = {
     { "trend",    "close > ema_fast and ema_fast > ema_slow" },
     { "pullback", "close < ema_fast * 0.995" },
-    { "entry",    "trend > 0.5 and pullback > 0.5 and rsi > 50" }
+    { "entry",    "trend and pullback and rsi > 50" }
 };
 
 cxpr_formulas_add(engine, defs, 3, &err);
 cxpr_formula_compile(engine, &err);
 cxpr_formula_eval_all(engine, ctx, &err);
-double entry = cxpr_formula_get(engine, "entry", NULL);
+cxpr_field_value entry = cxpr_formula_get(engine, "entry", NULL);
 ```
 
 ```text
@@ -282,14 +284,22 @@ slip_ratio > $max_slip or abs(heading_error) > $max_heading_error
 Register scalar helpers that collapse vec3/quat components into scalar outputs:
 
 ```c
+static double fn_distance2(const double* args, size_t argc, void* ud) {
+    double dx = args[0]-args[2], dy = args[1]-args[3];
+    return sqrt(dx*dx + dy*dy);
+}
 static double fn_distance3(const double* args, size_t argc, void* ud) {
     double dx = args[0]-args[3], dy = args[1]-args[4], dz = args[2]-args[5];
     return sqrt(dx*dx + dy*dy + dz*dz);
 }
+const char* xy[]  = {"x", "y"};
+
+cxpr_registry_add_fn(reg, "distance2", fn_distance2, xy,  2, 2, NULL, NULL);
 cxpr_registry_add(reg, "distance3", fn_distance3, 6, 6, NULL, NULL);
 ```
 
 ```text
+distance2(goal, pose) < $capture_radius
 distance3(goal.x, goal.y, goal.z, pose.x, pose.y, pose.z) < $capture_radius
 ```
 
@@ -308,17 +318,82 @@ sqrt(body.vx^2 + body.vy^2)
 abs(acceleration) > $max_acceleration or temperature >= $meltdown_limit
 ```
 
+### Gaming — combat, AI, and encounter scripting
+
+```c
+cxpr_context_set(ctx, "health",              18.0);
+cxpr_context_set(ctx, "stamina",             42.0);
+cxpr_context_set(ctx, "target_distance",      3.5);
+cxpr_context_set(ctx, "incoming_dps",        11.0);
+cxpr_context_set(ctx, "cooldown_dash",        0.0);
+cxpr_context_set_param(ctx, "panic_health",  25.0);
+cxpr_context_set_param(ctx, "melee_range",    2.2);
+```
+
+```text
+health < $panic_health and cooldown_dash == 0
+target_distance < $melee_range and stamina > 20 and not is_stunned
+incoming_dps * time_to_cover > health ? retreat_weight : engage_weight
+loot_rarity >= $legendary_floor and player_level >= area_level - 2
+```
+
+### Industrial monitoring — alarms and operating envelopes
+
+```c
+cxpr_context_set(ctx, "pressure",         118.0);
+cxpr_context_set(ctx, "temperature",       82.0);
+cxpr_context_set(ctx, "temperature_rate",   1.7);
+cxpr_context_set(ctx, "vibration_rms",      0.42);
+cxpr_context_set_param(ctx, "max_pressure", 120.0);
+cxpr_context_set_param(ctx, "max_temp_rate", 1.2);
+```
+
+```text
+pressure > $max_pressure or temperature_rate > $max_temp_rate
+vibration_rms > $bearing_limit and rpm > $inspection_rpm
+temperature > $warn_temp ? warn_level : 0
+```
+
+### Drone navigation — waypoints, altitude windows, and return-home rules
+
+```c
+const char* xyz[] = {"x", "y", "z"};
+double pose_xyz[]     = {128.0, 96.0, 42.0};
+double waypoint_xyz[] = {160.0, 120.0, 45.0};
+double home_xyz[]     = {100.0, 80.0, 20.0};
+
+cxpr_context_set_fields(ctx, "pose",     xyz, pose_xyz,     3);
+cxpr_context_set_fields(ctx, "waypoint", xyz, waypoint_xyz, 3);
+cxpr_context_set_fields(ctx, "home",     xyz, home_xyz,     3);
+cxpr_context_set(ctx, "battery",        31.0);
+cxpr_context_set(ctx, "ground_speed",    8.5);
+cxpr_context_set(ctx, "wind_speed",      6.0);
+cxpr_context_set(ctx, "heading_error",   4.0);
+cxpr_context_set_param(ctx, "capture_radius",  6.0);
+cxpr_context_set_param(ctx, "min_altitude",   20.0);
+cxpr_context_set_param(ctx, "max_altitude",  120.0);
+cxpr_context_set_param(ctx, "rth_battery",    18.0);
+```
+
+```text
+distance3(waypoint.x, waypoint.y, waypoint.z, pose.x, pose.y, pose.z) < $capture_radius
+pose.z >= $min_altitude and pose.z <= $max_altitude
+battery < $rth_battery or wind_speed > $max_wind_speed
+abs(heading_error) > $max_heading_error ? reduced_speed : cruise_speed
+ground_speed > 0 ? distance3(home.x, home.y, home.z, pose.x, pose.y, pose.z) / ground_speed : 1e9
+```
+
 ### Other fits
 
 ```text
-# Industrial monitoring
-pressure > $max_pressure or temperature_rate > $max_temp_rate
-
-# Game logic
-health < 20 and cooldown == 0 ? 1 : 0
-
 # Pricing / risk
 exposure > $limit and sqrt(var_1d) > $risk_budget
+
+# Feature flags / rollout
+country == $target_country and app_version >= $min_version and not is_internal
+
+# Fraud / abuse heuristics
+failed_logins > $max_failures and device_age_hours < $new_device_window
 ```
 
 ## Formula Engine
@@ -327,14 +402,19 @@ exposure > $limit and sqrt(var_1d) > $risk_budget
 
 ```c
 cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+const char* quote_fields[] = {"mid", "spread"};
+
+cxpr_registry_add_struct(reg, "quote2", quote2_producer,
+                         2, 2, quote_fields, 2, NULL, NULL);
 
 const cxpr_formula_def defs[] = {
-    { "spread", "ask - bid" },
-    { "mid",    "(ask + bid) / 2" },
-    { "signal", "spread / mid > $threshold" }
+    { "quote", "quote2(bid, ask)" },
+    { "wide",  "quote.spread > $threshold" },
+    { "entry", "wide and quote.mid > $min_mid" },
+    { "score", "quote.mid + quote.spread * 10" }
 };
 
-if (!cxpr_formulas_add(engine, defs, 3, &err)) {
+if (!cxpr_formulas_add(engine, defs, 4, &err)) {
     fprintf(stderr, "add error: %s\n", err.message);
 }
 
@@ -343,7 +423,9 @@ if (!cxpr_formula_compile(engine, &err)) {
 }
 
 cxpr_formula_eval_all(engine, ctx, &err);
-double signal = cxpr_formula_get(engine, "signal", NULL);
+cxpr_field_value quote = cxpr_formula_get(engine, "quote", NULL);  // struct
+cxpr_field_value entry = cxpr_formula_get(engine, "entry", NULL);  // bool
+double score = cxpr_formula_get_double(engine, "score", NULL);     // double
 
 cxpr_formula_engine_free(engine);
 ```

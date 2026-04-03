@@ -169,6 +169,16 @@ cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent) {
     return ctx;
 }
 
+void cxpr_context_set_formula_scope(cxpr_context* ctx, const cxpr_formula_engine* engine) {
+    if (!ctx) return;
+    ctx->formula_scope = engine;
+}
+
+void cxpr_context_clear_formula_scope(cxpr_context* ctx) {
+    if (!ctx) return;
+    ctx->formula_scope = NULL;
+}
+
 void cxpr_context_free(cxpr_context* ctx) {
     if (!ctx) return;
     cxpr_hashmap_destroy(&ctx->variables);
@@ -255,31 +265,20 @@ void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
 }
 
 double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) {
-    unsigned long hash;
-    cxpr_hashmap_entry* entry;
+    cxpr_field_value typed;
 
     if (!ctx) {
         if (found) *found = false;
         return 0.0;
     }
 
-    entry = cxpr_context_lookup_pointer_cached_entry((cxpr_hashmap*)&ctx->variables,
-                                                     ((cxpr_context*)ctx)->variable_ptr_cache,
-                                                     name);
-    if (entry) {
-        if (found) *found = true;
-        return entry->value;
+    typed = cxpr_context_get_typed(ctx, name, found);
+    if (found && *found) {
+        if (typed.type == CXPR_FIELD_DOUBLE) return typed.d;
+        if (typed.type == CXPR_FIELD_BOOL) return typed.b ? 1.0 : 0.0;
+        *found = false;
+        return 0.0;
     }
-    hash = cxpr_hash_string(name);
-    entry = cxpr_context_lookup_cached_entry((cxpr_hashmap*)&ctx->variables,
-                                             ((cxpr_context*)ctx)->variable_cache, name, hash);
-    if (entry) {
-        cxpr_context_refresh_pointer_cache((cxpr_hashmap*)&ctx->variables,
-                                           ((cxpr_context*)ctx)->variable_ptr_cache, name, entry);
-        if (found) *found = true;
-        return entry->value;
-    }
-    if (ctx->parent) return cxpr_context_get(ctx->parent, name, found);
     if (found) *found = false;
     return 0.0;
 }
@@ -376,9 +375,60 @@ const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
     return ctx->parent ? cxpr_context_get_cached_struct(ctx->parent, name) : NULL;
 }
 
+cxpr_field_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found) {
+    unsigned long hash;
+    cxpr_hashmap_entry* entry;
+    cxpr_field_value value;
+    bool local_found = false;
+
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return cxpr_fv_double(0.0);
+    }
+
+    if (ctx->formula_scope) {
+        value = cxpr_formula_lookup_typed_result(ctx->formula_scope, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return value;
+        }
+    }
+
+    entry = cxpr_context_lookup_pointer_cached_entry((cxpr_hashmap*)&ctx->variables,
+                                                     ((cxpr_context*)ctx)->variable_ptr_cache,
+                                                     name);
+    if (entry) {
+        if (found) *found = true;
+        return cxpr_fv_double(entry->value);
+    }
+
+    hash = cxpr_hash_string(name);
+    entry = cxpr_context_lookup_cached_entry((cxpr_hashmap*)&ctx->variables,
+                                             ((cxpr_context*)ctx)->variable_cache, name, hash);
+    if (entry) {
+        cxpr_context_refresh_pointer_cache((cxpr_hashmap*)&ctx->variables,
+                                           ((cxpr_context*)ctx)->variable_ptr_cache, name, entry);
+        if (found) *found = true;
+        return cxpr_fv_double(entry->value);
+    }
+
+    if (ctx->parent) return cxpr_context_get_typed(ctx->parent, name, found);
+    if (found) *found = false;
+    return cxpr_fv_double(0.0);
+}
+
 cxpr_field_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
                                         const char* field, bool* found) {
     const cxpr_struct_value* s = cxpr_context_get_struct(ctx, name);
+    cxpr_field_value root;
+    bool root_found = false;
+
+    if (!s) {
+        root = cxpr_context_get_typed(ctx, name, &root_found);
+        if (root_found && root.type == CXPR_FIELD_STRUCT) {
+            s = root.s;
+        }
+    }
 
     if (!s) {
         if (found) *found = false;

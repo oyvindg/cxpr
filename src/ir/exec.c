@@ -288,8 +288,13 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
 
     current = cxpr_context_get_struct(ctx, segment);
     if (!current) {
-        free(path);
-        return cxpr_ir_make_not_found(err, "Unknown identifier");
+        cxpr_field_value root = cxpr_context_get_typed(ctx, segment, &found);
+        if (found && root.type == CXPR_FIELD_STRUCT) {
+            current = root.s;
+        } else {
+            free(path);
+            return cxpr_ir_make_not_found(err, "Unknown identifier");
+        }
     }
 
     segment = cxpr_strtok_r(NULL, ".", &saveptr);
@@ -453,9 +458,12 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
         case CXPR_OP_LOAD_VAR:
             {
                 bool found = false;
-                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
-                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
-                    &found));
+                result = cxpr_context_get_typed(ctx, instr->name, &found);
+                if (!found) {
+                    result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
+                        false, &found));
+                }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
             }
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
@@ -463,9 +471,12 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
         case CXPR_OP_LOAD_VAR_SQUARE:
             {
                 bool found = false;
-                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
-                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
-                    &found));
+                result = cxpr_context_get_typed(ctx, instr->name, &found);
+                if (!found) {
+                    result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
+                        false, &found));
+                }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
             }
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);

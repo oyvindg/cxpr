@@ -31,7 +31,7 @@ static void test_formula_compile_creates_programs(void) {
     assert(err.code == CXPR_OK);
 
     bool found = false;
-    ASSERT_DOUBLE_EQ(cxpr_formula_get(engine, "signal", &found), 8.0);
+    ASSERT_DOUBLE_EQ(cxpr_formula_get_double(engine, "signal", &found), 8.0);
     assert(found == true);
 
     cxpr_context_free(ctx);

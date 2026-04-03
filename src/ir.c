@@ -539,6 +539,17 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
     cxpr_hashmap_entry* map_entries =
         param_lookup ? ctx->params.entries : ctx->variables.entries;
     const cxpr_context* current;
+    cxpr_field_value typed;
+
+    if (!param_lookup) {
+        typed = cxpr_context_get_typed(ctx, instr->name, found);
+        if (found && *found) {
+            if (typed.type == CXPR_FIELD_DOUBLE) return typed.d;
+            if (typed.type == CXPR_FIELD_BOOL) return typed.b ? 1.0 : 0.0;
+            *found = false;
+            return 0.0;
+        }
+    }
 
     if (cache && cache->request_ctx == ctx && cache->owner_ctx == ctx &&
         cache->entries_base == map_entries) {
