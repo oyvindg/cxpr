@@ -1,6 +1,7 @@
 # cxpr
 
 [![CI](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml/badge.svg)](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Generic expression parser, evaluator, and formula engine written in C11. No external dependencies.
 
@@ -413,7 +414,3 @@ cxpr/
 ```
 
 The public API is fully documented in `include/cxpr/cxpr.h`.
-
-## License
-
-MIT
