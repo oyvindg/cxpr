@@ -11,14 +11,32 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
                                        const cxpr_registry* reg, cxpr_error* err);
 static double cxpr_eval_scalar_arg(const cxpr_ast* ast, const cxpr_context* ctx,
                                    const cxpr_registry* reg, cxpr_error* err);
+static cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
+                                                        const cxpr_registry* reg);
 static bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out);
+static const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast);
+static const char* cxpr_build_struct_cache_key(const char* name, const double* args, size_t argc,
+                                               char* local_buf, size_t local_cap,
+                                               char** heap_buf);
 static const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
                                                         const char* name,
                                                         const cxpr_ast* const* arg_nodes,
                                                         size_t argc,
+                                                        const char* cache_key_hint,
                                                         const cxpr_context* ctx,
                                                         const cxpr_registry* reg,
                                                         cxpr_error* err);
+static bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* src,
+                                               const char* src_prefix, const char* dst_prefix);
+static cxpr_field_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
+                                                       const cxpr_ast* call_ast,
+                                                       const cxpr_context* ctx,
+                                                       const cxpr_registry* reg,
+                                                       cxpr_error* err);
+static cxpr_field_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
+                                                         const cxpr_context* ctx,
+                                                         const cxpr_registry* reg,
+                                                         cxpr_error* err);
 
 static cxpr_field_value cxpr_eval_error(cxpr_error* err, cxpr_error_code code,
                                         const char* message) {
@@ -38,44 +56,6 @@ static bool cxpr_require_type(cxpr_field_value value, cxpr_field_type type,
     return true;
 }
 
-static bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out) {
-    double left;
-    double right;
-
-    if (!ast || !out) return false;
-
-    switch (ast->type) {
-    case CXPR_NODE_NUMBER:
-        *out = ast->data.number.value;
-        return true;
-    case CXPR_NODE_UNARY_OP:
-        if (ast->data.unary_op.op != CXPR_TOK_MINUS ||
-            !cxpr_eval_constant_double(ast->data.unary_op.operand, out)) {
-            return false;
-        }
-        *out = -*out;
-        return true;
-    case CXPR_NODE_BINARY_OP:
-        if (!cxpr_eval_constant_double(ast->data.binary_op.left, &left) ||
-            !cxpr_eval_constant_double(ast->data.binary_op.right, &right)) {
-            return false;
-        }
-        switch (ast->data.binary_op.op) {
-        case CXPR_TOK_PLUS: *out = left + right; return true;
-        case CXPR_TOK_MINUS: *out = left - right; return true;
-        case CXPR_TOK_STAR: *out = left * right; return true;
-        case CXPR_TOK_SLASH:
-            if (right == 0.0) return false;
-            *out = left / right;
-            return true;
-        default:
-            return false;
-        }
-    default:
-        return false;
-    }
-}
-
 static cxpr_field_value cxpr_struct_get_field(const cxpr_struct_value* value,
                                               const char* field, bool* found) {
     if (found) *found = false;
@@ -89,6 +69,99 @@ static cxpr_field_value cxpr_struct_get_field(const cxpr_struct_value* value,
     }
 
     return cxpr_fv_double(NAN);
+}
+
+static cxpr_field_value cxpr_struct_get_field_by_index(const cxpr_struct_value* value, size_t index,
+                                                       bool* found) {
+    if (found) *found = false;
+    if (!value || index >= value->field_count) return cxpr_fv_double(NAN);
+    if (found) *found = true;
+    return value->field_values[index];
+}
+
+static bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out) {
+    double left;
+    double right;
+
+    if (!ast || !out) return false;
+
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+        *out = ast->data.number.value;
+        return true;
+
+    case CXPR_NODE_UNARY_OP:
+        if (ast->data.unary_op.op != CXPR_TOK_MINUS ||
+            !cxpr_eval_constant_double(ast->data.unary_op.operand, out)) {
+            return false;
+        }
+        *out = -*out;
+        return true;
+
+    case CXPR_NODE_BINARY_OP:
+        if (!cxpr_eval_constant_double(ast->data.binary_op.left, &left) ||
+            !cxpr_eval_constant_double(ast->data.binary_op.right, &right)) {
+            return false;
+        }
+        switch (ast->data.binary_op.op) {
+        case CXPR_TOK_PLUS: *out = left + right; return true;
+        case CXPR_TOK_MINUS: *out = left - right; return true;
+        case CXPR_TOK_STAR: *out = left * right; return true;
+        case CXPR_TOK_SLASH:
+            if (right == 0.0) return false;
+            *out = left / right;
+            return true;
+        case CXPR_TOK_PERCENT:
+            if (right == 0.0) return false;
+            *out = fmod(left, right);
+            return true;
+        case CXPR_TOK_POWER:
+            *out = pow(left, right);
+            return true;
+        default:
+            return false;
+        }
+
+    case CXPR_NODE_TERNARY:
+        if (!cxpr_eval_constant_double(ast->data.ternary.condition, &left)) return false;
+        if (left != 0.0) return cxpr_eval_constant_double(ast->data.ternary.true_branch, out);
+        return cxpr_eval_constant_double(ast->data.ternary.false_branch, out);
+
+    default:
+        return false;
+    }
+}
+
+static const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast) {
+    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    char local_buf[256];
+    char* heap_buf = NULL;
+    const char* key;
+    double values[32];
+
+    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS ||
+        ast->data.producer_access.argc > 32) {
+        return NULL;
+    }
+    if (ast->data.producer_access.cached_const_key_ready) {
+        return ast->data.producer_access.cached_const_key;
+    }
+
+    mutable_ast->data.producer_access.cached_const_key_ready = true;
+    for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+        if (!cxpr_eval_constant_double(ast->data.producer_access.args[i], &values[i])) {
+            return NULL;
+        }
+    }
+
+    key = cxpr_build_struct_cache_key(ast->data.producer_access.name, values,
+                                      ast->data.producer_access.argc,
+                                      local_buf, sizeof(local_buf), &heap_buf);
+    if (!key) return NULL;
+
+    mutable_ast->data.producer_access.cached_const_key =
+        heap_buf ? heap_buf : cxpr_strdup(key);
+    return mutable_ast->data.producer_access.cached_const_key;
 }
 
 static const char* cxpr_build_struct_cache_key(const char* name, const double* args, size_t argc,
@@ -140,96 +213,11 @@ static const char* cxpr_build_struct_cache_key(const char* name, const double* a
     return key;
 }
 
-static cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
-                                                        const cxpr_registry* reg) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
-
-    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS || !reg) return NULL;
-    if (ast->data.producer_access.cached_lookup_valid &&
-        ast->data.producer_access.cached_registry == reg &&
-        ast->data.producer_access.cached_registry_version == reg->version) {
-        if (!ast->data.producer_access.cached_entry_found ||
-            ast->data.producer_access.cached_entry_index >= reg->count) {
-            return NULL;
-        }
-        return &((cxpr_registry*)reg)->entries[ast->data.producer_access.cached_entry_index];
-    }
-
-    mutable_ast->data.producer_access.cached_entry_found = false;
-    mutable_ast->data.producer_access.cached_entry_index = 0;
-    for (size_t i = 0; i < reg->count; ++i) {
-        if (reg->entries[i].name &&
-            strcmp(reg->entries[i].name, ast->data.producer_access.name) == 0) {
-            mutable_ast->data.producer_access.cached_entry_index = i;
-            mutable_ast->data.producer_access.cached_entry_found = true;
-            break;
-        }
-    }
-    mutable_ast->data.producer_access.cached_registry = reg;
-    mutable_ast->data.producer_access.cached_registry_version = reg->version;
-    mutable_ast->data.producer_access.cached_lookup_valid = true;
-    if (!mutable_ast->data.producer_access.cached_entry_found) return NULL;
-    return &((cxpr_registry*)reg)->entries[mutable_ast->data.producer_access.cached_entry_index];
-}
-
-static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_ast* ast, const char* name,
-                                                        const cxpr_ast* const* args, size_t argc) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
-    char local_buf[256];
-    char* heap_buf = NULL;
-    const char* key;
-    double values[32];
-
-    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || argc > 32) return NULL;
-    if (ast->data.function_call.cached_const_key_ready) {
-        return ast->data.function_call.cached_const_key;
-    }
-    mutable_ast->data.function_call.cached_const_key_ready = true;
-
-    for (size_t i = 0; i < argc; ++i) {
-        if (!cxpr_eval_constant_double(args[i], &values[i])) return NULL;
-    }
-
-    key = cxpr_build_struct_cache_key(name, values, argc, local_buf, sizeof(local_buf), &heap_buf);
-    if (!key) return NULL;
-    mutable_ast->data.function_call.cached_const_key =
-        heap_buf ? heap_buf : cxpr_strdup(key);
-    return mutable_ast->data.function_call.cached_const_key;
-}
-
-static const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
-    char local_buf[256];
-    char* heap_buf = NULL;
-    const char* key;
-    double values[32];
-
-    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS ||
-        ast->data.producer_access.argc > 32) {
-        return NULL;
-    }
-    if (ast->data.producer_access.cached_const_key_ready) {
-        return ast->data.producer_access.cached_const_key;
-    }
-    mutable_ast->data.producer_access.cached_const_key_ready = true;
-
-    for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-        if (!cxpr_eval_constant_double(ast->data.producer_access.args[i], &values[i])) return NULL;
-    }
-
-    key = cxpr_build_struct_cache_key(ast->data.producer_access.name, values,
-                                      ast->data.producer_access.argc,
-                                      local_buf, sizeof(local_buf), &heap_buf);
-    if (!key) return NULL;
-    mutable_ast->data.producer_access.cached_const_key =
-        heap_buf ? heap_buf : cxpr_strdup(key);
-    return mutable_ast->data.producer_access.cached_const_key;
-}
-
 static const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
                                                         const char* name,
                                                         const cxpr_ast* const* arg_nodes,
                                                         size_t argc,
+                                                        const char* cache_key_hint,
                                                         const cxpr_context* ctx,
                                                         const cxpr_registry* reg,
                                                         cxpr_error* err) {
@@ -237,7 +225,7 @@ static const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     const cxpr_struct_value* existing;
     cxpr_struct_value* produced;
     cxpr_field_value outputs[64];
-    double args[32];
+    double args[32] = {0.0};
     char cache_key_local[256];
     char* cache_key_heap = NULL;
     const char* cache_key;
@@ -270,9 +258,12 @@ static const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
         if (err && err->code != CXPR_OK) return NULL;
     }
 
-    cache_key = cxpr_build_struct_cache_key(name, args, argc,
-                                            cache_key_local, sizeof(cache_key_local),
-                                            &cache_key_heap);
+    cache_key = cache_key_hint;
+    if (!cache_key) {
+        cache_key = cxpr_build_struct_cache_key(name, args, argc,
+                                                cache_key_local, sizeof(cache_key_local),
+                                                &cache_key_heap);
+    }
     if (!cache_key) {
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
@@ -346,6 +337,42 @@ static cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_ast* ast,
     return &((cxpr_registry*)reg)->entries[mutable_ast->data.function_call.cached_entry_index];
 }
 
+static cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
+                                                        const cxpr_registry* reg) {
+    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+
+    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS || !reg) return NULL;
+
+    if (ast->data.producer_access.cached_lookup_valid &&
+        ast->data.producer_access.cached_registry == reg &&
+        ast->data.producer_access.cached_registry_version == reg->version) {
+        if (!ast->data.producer_access.cached_entry_found ||
+            ast->data.producer_access.cached_entry_index >= reg->count) {
+            return NULL;
+        }
+        return &((cxpr_registry*)reg)->entries[ast->data.producer_access.cached_entry_index];
+    }
+
+    mutable_ast->data.producer_access.cached_entry_found = false;
+    mutable_ast->data.producer_access.cached_entry_index = 0;
+    mutable_ast->data.producer_access.cached_field_index_valid = false;
+
+    for (size_t i = 0; i < reg->count; ++i) {
+        if (reg->entries[i].name &&
+            strcmp(reg->entries[i].name, ast->data.producer_access.name) == 0) {
+            mutable_ast->data.producer_access.cached_entry_index = i;
+            mutable_ast->data.producer_access.cached_entry_found = true;
+            break;
+        }
+    }
+
+    mutable_ast->data.producer_access.cached_registry = reg;
+    mutable_ast->data.producer_access.cached_registry_version = reg->version;
+    mutable_ast->data.producer_access.cached_lookup_valid = true;
+    if (!mutable_ast->data.producer_access.cached_entry_found) return NULL;
+    return &((cxpr_registry*)reg)->entries[mutable_ast->data.producer_access.cached_entry_index];
+}
+
 static cxpr_field_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
                                                   const char* field,
                                                   const cxpr_ast* const* arg_nodes,
@@ -361,7 +388,7 @@ static cxpr_field_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const 
         return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
     }
 
-    produced = cxpr_eval_struct_result(entry, name, arg_nodes, argc, ctx, reg, err);
+    produced = cxpr_eval_struct_result(entry, name, arg_nodes, argc, NULL, ctx, reg, err);
     if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
 
     result = cxpr_struct_get_field(produced, field, &found);
@@ -390,6 +417,7 @@ static cxpr_field_value cxpr_eval_defined_function(cxpr_func_entry* entry,
     cxpr_context* tmp = NULL;
     double scalar_locals[32];
     bool scalar_only = (argc <= 32);
+    bool needs_overlay_passthrough = false;
 
     if (argc != entry->defined_param_count) {
         return cxpr_eval_error(err, CXPR_ERR_WRONG_ARITY, "Wrong number of arguments");
@@ -404,6 +432,20 @@ static cxpr_field_value cxpr_eval_defined_function(cxpr_func_entry* entry,
 
     if (scalar_only) {
         for (size_t i = 0; i < entry->defined_param_count; i++) {
+            const cxpr_ast* arg = call_ast->data.function_call.args[i];
+            if (arg->type == CXPR_NODE_IDENTIFIER) {
+                bool found = false;
+                (void)cxpr_context_get(ctx, arg->data.identifier.name, &found);
+                if (!found) {
+                    needs_overlay_passthrough = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (scalar_only && !needs_overlay_passthrough) {
+        for (size_t i = 0; i < entry->defined_param_count; i++) {
             cxpr_field_value v = cxpr_eval_node(call_ast->data.function_call.args[i], ctx, reg, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
             if (!cxpr_require_type(v, CXPR_FIELD_DOUBLE, err,
@@ -412,7 +454,7 @@ static cxpr_field_value cxpr_eval_defined_function(cxpr_func_entry* entry,
             }
             scalar_locals[i] = v.d;
         }
-    } else {
+    } else if (!scalar_only) {
         tmp = cxpr_context_overlay_new(ctx);
         if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
 
@@ -474,6 +516,10 @@ static cxpr_field_value cxpr_eval_defined_function(cxpr_func_entry* entry,
         }
     }
 
+    if (needs_overlay_passthrough) {
+        return cxpr_eval_defined_with_overlay(entry, call_ast, ctx, reg, err);
+    }
+
     if (scalar_only) {
         if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
             return cxpr_fv_double(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
@@ -493,6 +539,150 @@ static cxpr_field_value cxpr_eval_defined_function(cxpr_func_entry* entry,
         if (tmp) cxpr_context_free(tmp);
         return result;
     }
+}
+
+static bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* src,
+                                               const char* src_prefix, const char* dst_prefix) {
+    bool copied = false;
+    size_t src_prefix_len;
+    size_t dst_prefix_len;
+
+    if (!dst || !src || !src_prefix || !dst_prefix) return false;
+
+    src_prefix_len = strlen(src_prefix);
+    dst_prefix_len = strlen(dst_prefix);
+
+    for (size_t i = 0; i < src->variables.capacity; i++) {
+        const char* key = src->variables.entries[i].key;
+        char dst_key[256];
+
+        if (!key) continue;
+        if (strncmp(key, src_prefix, src_prefix_len) != 0 || key[src_prefix_len] != '.') continue;
+        if (dst_prefix_len + strlen(key + src_prefix_len) >= sizeof(dst_key)) continue;
+
+        snprintf(dst_key, sizeof(dst_key), "%s%s", dst_prefix, key + src_prefix_len);
+        cxpr_context_set(dst, dst_key, src->variables.entries[i].value);
+        copied = true;
+    }
+
+    if (src->parent) copied = cxpr_context_copy_prefixed_scalars(dst, src->parent,
+                                                                 src_prefix, dst_prefix) || copied;
+    return copied;
+}
+
+static cxpr_field_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
+                                                       const cxpr_ast* call_ast,
+                                                       const cxpr_context* ctx,
+                                                       const cxpr_registry* reg,
+                                                       cxpr_error* err) {
+    cxpr_context* tmp = cxpr_context_overlay_new(ctx);
+
+    if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+
+    for (size_t i = 0; i < entry->defined_param_count; i++) {
+        const char* pname = entry->defined_param_names[i];
+        const cxpr_ast* arg = call_ast->data.function_call.args[i];
+
+        if (arg->type == CXPR_NODE_IDENTIFIER) {
+            const char* arg_name = arg->data.identifier.name;
+            const cxpr_struct_value* s = cxpr_context_get_struct(ctx, arg_name);
+            bool found = false;
+            double value;
+
+            if (!s) s = cxpr_context_get_cached_struct(ctx, arg_name);
+            if (s) {
+                cxpr_context_set_struct(tmp, pname, s);
+                continue;
+            }
+
+            value = cxpr_context_get(ctx, arg_name, &found);
+            if (found) {
+                cxpr_context_set(tmp, pname, value);
+                continue;
+            }
+
+            if (cxpr_context_copy_prefixed_scalars(tmp, ctx, arg_name, pname)) {
+                continue;
+            }
+        }
+
+        {
+            cxpr_field_value value = cxpr_eval_node(arg, ctx, reg, err);
+            if (err && err->code != CXPR_OK) {
+                cxpr_context_free(tmp);
+                return cxpr_fv_double(NAN);
+            }
+            if (!cxpr_require_type(value, CXPR_FIELD_DOUBLE, err,
+                                   "Defined function locals must be doubles")) {
+                cxpr_context_free(tmp);
+                return cxpr_fv_double(NAN);
+            }
+            cxpr_context_set(tmp, pname, value.d);
+        }
+    }
+
+    {
+        cxpr_field_value result = cxpr_eval_node(entry->defined_body, tmp, reg, err);
+        cxpr_context_free(tmp);
+        return result;
+    }
+}
+
+static cxpr_field_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
+                                                         const cxpr_context* ctx,
+                                                         const cxpr_registry* reg,
+                                                         cxpr_error* err) {
+    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_func_entry* entry = cxpr_eval_cached_producer_entry(ast, reg);
+    const cxpr_struct_value* produced;
+    const char* const_key;
+    bool found = false;
+
+    if (!entry || !entry->struct_producer) {
+        return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+    }
+
+    const_key = cxpr_eval_prepare_const_key_for_producer(ast);
+    if (const_key) {
+        produced = cxpr_context_get_cached_struct(ctx, const_key);
+        if (!produced) {
+            produced = cxpr_eval_struct_result(entry, ast->data.producer_access.name,
+                                               (const cxpr_ast* const*)ast->data.producer_access.args,
+                                               ast->data.producer_access.argc,
+                                               const_key,
+                                               ctx, reg, err);
+        }
+    } else {
+        produced = cxpr_eval_struct_result(entry, ast->data.producer_access.name,
+                                           (const cxpr_ast* const*)ast->data.producer_access.args,
+                                           ast->data.producer_access.argc,
+                                           NULL,
+                                           ctx, reg, err);
+    }
+    if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+
+    if (ast->data.producer_access.cached_field_index_valid) {
+        cxpr_field_value cached =
+            cxpr_struct_get_field_by_index(produced,
+                                           ast->data.producer_access.cached_field_index,
+                                           &found);
+        if (found &&
+            strcmp(produced->field_names[ast->data.producer_access.cached_field_index],
+                   ast->data.producer_access.field) == 0) {
+            return cached;
+        }
+        mutable_ast->data.producer_access.cached_field_index_valid = false;
+    }
+
+    for (size_t i = 0; i < produced->field_count; ++i) {
+        if (strcmp(produced->field_names[i], ast->data.producer_access.field) == 0) {
+            mutable_ast->data.producer_access.cached_field_index = i;
+            mutable_ast->data.producer_access.cached_field_index_valid = true;
+            return cxpr_struct_get_field_by_index(produced, i, &found);
+        }
+    }
+
+    return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
 }
 
 static cxpr_field_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
@@ -719,7 +909,7 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
             const cxpr_struct_value* produced =
                 cxpr_eval_struct_result(entry, name,
                                         (const cxpr_ast* const*)ast->data.function_call.args,
-                                        argc, ctx, reg, err);
+                                        argc, NULL, ctx, reg, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
             return cxpr_fv_struct((cxpr_struct_value*)produced);
         }
@@ -824,16 +1014,7 @@ static cxpr_field_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* 
     }
 
     case CXPR_NODE_PRODUCER_ACCESS: {
-        cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
-        cxpr_field_value value;
-        if (!entry || !entry->struct_producer) {
-            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
-        }
-        value = cxpr_eval_struct_producer(entry, ast->data.producer_access.name,
-                                          ast->data.producer_access.field,
-                                          (const cxpr_ast* const*)ast->data.producer_access.args,
-                                          ast->data.producer_access.argc,
-                                          ctx, reg, err);
+        cxpr_field_value value = cxpr_eval_cached_producer_access(ast, ctx, reg, err);
         if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
         return value;
     }

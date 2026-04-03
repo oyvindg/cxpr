@@ -3,9 +3,8 @@
  * @brief Focused IR ownership/reset test for sanitizer runs.
  */
 
-#include "internal.h"
+#include "cxpr_test_internal.h"
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 
 #define EPSILON 1e-10

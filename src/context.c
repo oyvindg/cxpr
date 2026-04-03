@@ -81,7 +81,7 @@ static cxpr_hashmap_entry* cxpr_context_lookup_cached_entry(cxpr_hashmap* map,
 
     entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
     if (entry) {
-        bucket->key_ref = key;
+        bucket->key_ref = entry->key;
         bucket->hash = hash;
         bucket->slot = (size_t)(entry - map->entries);
         bucket->entries_base = map->entries;
@@ -112,7 +112,7 @@ static void cxpr_context_refresh_cache(cxpr_hashmap* map, cxpr_context_entry_cac
 
     entry = cxpr_hashmap_find_prehashed_slot(map, key, hash);
     bucket = cxpr_context_cache_bucket(cache, hash);
-    bucket->key_ref = key;
+    bucket->key_ref = entry ? entry->key : NULL;
     bucket->hash = hash;
     bucket->slot = entry ? (size_t)(entry - map->entries) : 0;
     bucket->entries_base = entry ? map->entries : NULL;

@@ -14,7 +14,7 @@
  * - Error cases (invalid characters)
  */
 
-#include "internal.h"
+#include "cxpr_test_internal.h"
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>

@@ -3,7 +3,7 @@
  * @brief Internal tests for FormulaEngine compiled-program integration.
  */
 
-#include "internal.h"
+#include "cxpr_test_internal.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>

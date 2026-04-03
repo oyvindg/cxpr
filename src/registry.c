@@ -575,6 +575,23 @@ typedef struct {
     size_t count;
 } cxpr_def_field_set;
 
+static void cxpr_def_field_set_add(cxpr_def_field_set* set, const char* field) {
+    bool dup = false;
+
+    if (!set || !field) return;
+
+    for (size_t i = 0; i < set->count; i++) {
+        if (strcmp(set->fields[i], field) == 0) {
+            dup = true;
+            break;
+        }
+    }
+
+    if (!dup && set->count < CXPR_DEF_MAX_FIELDS) {
+        set->fields[set->count++] = field;
+    }
+}
+
 /** @brief Walk body AST collecting param.field accesses for each parameter. */
 static void collect_fields_in_ast(
     const cxpr_ast* node,
@@ -588,13 +605,7 @@ static void collect_fields_in_ast(
         const char* fld = node->data.field_access.field;
         for (size_t i = 0; i < param_count; i++) {
             if (strcmp(obj, param_names[i]) != 0) continue;
-            bool dup = false;
-            for (size_t f = 0; f < sets[i].count; f++) {
-                if (strcmp(sets[i].fields[f], fld) == 0) { dup = true; break; }
-            }
-            if (!dup && sets[i].count < CXPR_DEF_MAX_FIELDS) {
-                sets[i].fields[sets[i].count++] = fld;
-            }
+            cxpr_def_field_set_add(&sets[i], fld);
             break;
         }
         return;
@@ -617,6 +628,64 @@ static void collect_fields_in_ast(
         collect_fields_in_ast(node->data.ternary.condition,    param_names, param_count, sets);
         collect_fields_in_ast(node->data.ternary.true_branch,  param_names, param_count, sets);
         collect_fields_in_ast(node->data.ternary.false_branch, param_names, param_count, sets);
+        break;
+    default:
+        break;
+    }
+}
+
+static void collect_transitive_fields_in_ast(const cxpr_ast* node, const cxpr_registry* reg,
+                                             const char* const* param_names, size_t param_count,
+                                             cxpr_def_field_set* sets) {
+    if (!node || !reg) return;
+
+    switch (node->type) {
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_func_entry* entry = cxpr_registry_find(reg, node->data.function_call.name);
+        if (entry && entry->defined_param_fields &&
+            entry->defined_param_count == node->data.function_call.argc) {
+            for (size_t arg_index = 0; arg_index < node->data.function_call.argc; arg_index++) {
+                const cxpr_ast* arg = node->data.function_call.args[arg_index];
+
+                if (arg->type != CXPR_NODE_IDENTIFIER) continue;
+
+                for (size_t param_index = 0; param_index < param_count; param_index++) {
+                    if (strcmp(arg->data.identifier.name, param_names[param_index]) != 0) continue;
+
+                    for (size_t field_index = 0;
+                         field_index < entry->defined_param_field_counts[arg_index];
+                         field_index++) {
+                        cxpr_def_field_set_add(&sets[param_index],
+                                               entry->defined_param_fields[arg_index][field_index]);
+                    }
+                    break;
+                }
+            }
+        }
+
+        for (size_t i = 0; i < node->data.function_call.argc; i++) {
+            collect_transitive_fields_in_ast(node->data.function_call.args[i], reg,
+                                             param_names, param_count, sets);
+        }
+        break;
+    }
+    case CXPR_NODE_BINARY_OP:
+        collect_transitive_fields_in_ast(node->data.binary_op.left, reg,
+                                         param_names, param_count, sets);
+        collect_transitive_fields_in_ast(node->data.binary_op.right, reg,
+                                         param_names, param_count, sets);
+        break;
+    case CXPR_NODE_UNARY_OP:
+        collect_transitive_fields_in_ast(node->data.unary_op.operand, reg,
+                                         param_names, param_count, sets);
+        break;
+    case CXPR_NODE_TERNARY:
+        collect_transitive_fields_in_ast(node->data.ternary.condition, reg,
+                                         param_names, param_count, sets);
+        collect_transitive_fields_in_ast(node->data.ternary.true_branch, reg,
+                                         param_names, param_count, sets);
+        collect_transitive_fields_in_ast(node->data.ternary.false_branch, reg,
+                                         param_names, param_count, sets);
         break;
     default:
         break;
@@ -752,6 +821,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
     cxpr_def_field_set sets[CXPR_DEF_MAX_PARAMS];
     memset(sets, 0, sizeof(sets));
     collect_fields_in_ast(body_ast, pnames, param_count, sets);
+    collect_transitive_fields_in_ast(body_ast, reg, pnames, param_count, sets);
 
     /* --- Allocate owned structures --- */
     char** owned_names   = (char**)calloc(param_count ? param_count : 1, sizeof(char*));

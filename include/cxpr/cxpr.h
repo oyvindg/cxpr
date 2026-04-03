@@ -640,6 +640,14 @@ cxpr_formula_engine* cxpr_formula_engine_new(const cxpr_registry* reg);
 void cxpr_formula_engine_free(cxpr_formula_engine* engine);
 
 /**
+ * @brief A formula definition used for batch registration.
+ */
+typedef struct {
+    const char* name;
+    const char* expression;
+} cxpr_formula_def;
+
+/**
  * @brief Add a named formula to the engine.
  * @param engine Formula engine
  * @param name Formula name (used as variable name for dependencies)
@@ -649,6 +657,20 @@ void cxpr_formula_engine_free(cxpr_formula_engine* engine);
  */
 bool cxpr_formula_add(cxpr_formula_engine* engine, const char* name,
                     const char* expression, cxpr_error* err);
+
+/**
+ * @brief Add multiple named formulas to the engine.
+ *
+ * Stops at the first failure and rolls back formulas added by this call.
+ *
+ * @param engine Formula engine
+ * @param defs Array of formula definitions
+ * @param count Number of definitions in `defs`
+ * @param[out] err Error output (can be NULL)
+ * @return true on success, false on invalid input or parse error
+ */
+bool cxpr_formulas_add(cxpr_formula_engine* engine, const cxpr_formula_def* defs,
+                       size_t count, cxpr_error* err);
 
 /**
  * @brief Compile the formula engine (resolve dependencies).

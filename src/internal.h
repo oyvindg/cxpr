@@ -238,8 +238,6 @@ struct cxpr_ast {
             size_t cached_entry_index;                   /**< Cached entry index inside registry */
             bool cached_entry_found;                     /**< Whether cached index resolved to a function */
             bool cached_lookup_valid;                    /**< True when cache fields are initialized */
-            char* cached_const_key;                      /**< Cached constant producer key when applicable */
-            bool cached_const_key_ready;                 /**< True when constant-key analysis has run */
         } function_call;
 
         /* CXPR_NODE_TERNARY */
@@ -492,6 +490,7 @@ typedef enum {
     CXPR_OP_CLAMP,
     CXPR_OP_CALL_PRODUCER,
     CXPR_OP_CALL_PRODUCER_CONST,
+    CXPR_OP_CALL_PRODUCER_CONST_FIELD,
     CXPR_OP_GET_FIELD,
     CXPR_OP_CALL_UNARY,
     CXPR_OP_CALL_BINARY,
@@ -511,6 +510,8 @@ typedef enum {
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
  * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
+ * - CALL_PRODUCER_CONST_FIELD: cache key in name, field name in aux_name
+ * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
  * - arithmetic / comparisons / return: no extra operand
@@ -519,6 +520,8 @@ typedef struct {
     cxpr_opcode op;
     /* 4 bytes implicit padding */
     const char* name;
+    const char* aux_name;
+    const void* payload;
     const cxpr_func_entry* func;
     union {
         double value;        /* PUSH_CONST, PUSH_BOOL */
@@ -528,7 +531,7 @@ typedef struct {
     };
 } cxpr_ir_instr;
 
-_Static_assert(sizeof(cxpr_ir_instr) <= 32, "cxpr_ir_instr for stor");
+_Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr for stor");
 
 /**
  * @brief Cached LOAD_VAR / LOAD_PARAM resolution for one IR instruction.
@@ -562,6 +565,9 @@ struct cxpr_program {
 
 /** @brief Reset and free the storage owned by an IR program. */
 void cxpr_ir_program_reset(cxpr_ir_program* program);
+bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out);
+char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
+                                          size_t argc);
 /** @brief Compile a supported AST into an internal IR program. */
 bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);

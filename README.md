@@ -246,10 +246,14 @@ If a function name is redefined, the latest definition replaces the previous one
 
 ```c
 // Intermediate values resolved in dependency order by FormulaEngine
-cxpr_formula_add(engine, "trend",   "close > ema_fast and ema_fast > ema_slow", &err);
-cxpr_formula_add(engine, "pullback","close < ema_fast * 0.995", &err);
-cxpr_formula_add(engine, "entry",   "trend and pullback and rsi > 50", &err);
+const cxpr_formula_def defs[] = {
+    { "trend",    "close > ema_fast and ema_fast > ema_slow" },
+    { "pullback", "close < ema_fast * 0.995" },
+    { "entry",    "trend > 0.5 and pullback > 0.5 and rsi > 50" }
+};
 
+cxpr_formulas_add(engine, defs, 3, &err);
+cxpr_formula_compile(engine, &err);
 cxpr_formula_eval_all(engine, ctx, &err);
 double entry = cxpr_formula_get(engine, "entry", NULL);
 ```
@@ -271,7 +275,7 @@ cxpr_context_set_param(ctx, "max_slip",      0.10);
 ```
 
 ```text
-distance_front < $stop_distance ? 0.0 : max_speed * (battery > 20)
+distance_front < $stop_distance ? 0.0 : (battery > 20 ? max_speed : 0.0)
 slip_ratio > $max_slip or abs(heading_error) > $max_heading_error
 ```
 
@@ -319,14 +323,20 @@ exposure > $limit and sqrt(var_1d) > $risk_budget
 
 ## Formula Engine
 
-`FormulaEngine` allows formulas to reference each other. It performs a topological sort at compile time so evaluation always runs in correct dependency order. The engine still uses ASTs for dependency analysis and formula structure, but it now compiles each formula to a reusable internal program during `cxpr_formula_compile(...)` and uses that compiled path during evaluation.
+`FormulaEngine` allows formulas to reference each other. It performs a topological sort at compile time so evaluation always runs in correct dependency order. The engine still uses ASTs for dependency analysis and formula structure, but it now compiles each formula to a reusable internal program during `cxpr_formula_compile(...)` and uses that compiled path during evaluation. Use `cxpr_formula_add(...)` for incremental registration or `cxpr_formulas_add(...)` when you already have an array of definitions and want atomic rollback on parse failure.
 
 ```c
 cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
 
-cxpr_formula_add(engine, "spread", "ask - bid",               &err);
-cxpr_formula_add(engine, "mid",    "(ask + bid) / 2",         &err);
-cxpr_formula_add(engine, "signal", "spread / mid > $threshold", &err);
+const cxpr_formula_def defs[] = {
+    { "spread", "ask - bid" },
+    { "mid",    "(ask + bid) / 2" },
+    { "signal", "spread / mid > $threshold" }
+};
+
+if (!cxpr_formulas_add(engine, defs, 3, &err)) {
+    fprintf(stderr, "add error: %s\n", err.message);
+}
 
 if (!cxpr_formula_compile(engine, &err)) {
     fprintf(stderr, "compile error: %s\n", err.message);  // circular dep, etc.
@@ -343,12 +353,37 @@ cxpr_formula_engine_free(engine);
 **Requirements:** CMake 3.20+, C11 compiler (GCC or Clang)
 
 ```bash
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --verbose
+cmake --preset default
+cmake --build --preset default
+cmake --build build --target test
 ```
 
 Single-config generators default to `Release` when no build type is specified.
+Use `cmake --build <build-dir> --target test` as the authoritative test command for this repo.
+It goes through the generator-native test target and avoids environment-specific `ctest`
+launcher issues.
+
+For a strict local build with warnings-as-errors:
+
+```bash
+cmake --preset strict
+cmake --build --preset strict
+cmake --build build-strict --target test
+```
+
+For sanitizer runs:
+
+```bash
+cmake --preset asan
+cmake --build --preset asan
+cmake --build build-asan --target test
+```
+
+```bash
+cmake --preset ubsan
+cmake --build --preset ubsan
+cmake --build build-ubsan --target test
+```
 
 To build and run the local benchmark:
 
@@ -361,6 +396,23 @@ cmake --build build
 The benchmark checks AST vs IR equivalence per iteration and aborts on the first mismatch before reporting timing results.
 
 ## Tests
+
+The recommended way to run tests in this repository is:
+
+```bash
+cmake --build build --target test
+```
+
+For strict and sanitizer builds, use the matching build directory:
+
+```bash
+cmake --build build-strict --target test
+cmake --build build-asan --target test
+cmake --build build-ubsan --target test
+```
+
+If `ctest` works in your environment, it should report the same test results, but it is not
+the canonical command documented or used by CI.
 
 134 test cases across 8 suites using `assert()` — no external test framework.
 
@@ -381,35 +433,50 @@ The benchmark checks AST vs IR equivalence per iteration and aborts on the first
 cxpr/
 ├── include/
 │   └── cxpr/
-│       └── cxpr.h        # Public C11 API
+│       ├── ast.h             # Public AST inspection helpers
+│       └── cxpr.h            # Public C11 API
 ├── src/
-│   ├── internal.h        # Internal data structures and IR types
-│   ├── lexer.c           # Tokenizer
-│   ├── parser.c          # Recursive descent parser -> AST
-│   ├── ast.c             # AST construction, inspection, reference extraction
-│   ├── eval.c            # Recursive tree-walk evaluator
-│   ├── ir.c              # Internal compiled IR / program evaluator
-│   ├── context.c         # Variable/parameter storage
-│   ├── registry.c        # Function registry, built-ins, defined functions
-│   └── formula.c         # FormulaEngine with dependency ordering + program caching
+│   ├── internal.h            # Shared internal types and declarations
+│   ├── hashmap.c             # Internal string-keyed storage
+│   ├── lexer.c               # Tokenizer
+│   ├── parser.c              # Recursive descent parser -> AST
+│   ├── ast.c                 # AST construction and reference extraction
+│   ├── eval.c                # Tree-walk evaluator
+│   ├── context.c             # Variables, params, typed field values
+│   ├── registry.c            # Function registry, built-ins, defined functions
+│   ├── struct.c              # Struct field expansion and producers
+│   ├── formula.c             # Formula engine and dependency ordering
+│   └── ir/
+│       ├── compile.c         # AST -> internal program lowering
+│       ├── exec.c            # Internal program execution
+│       └── internal.h        # IR-local internals
 ├── benchmarks/
 │   ├── CMakeLists.txt
-│   └── ir_bench.c        # AST vs IR benchmark with per-iteration validation
+│   └── ir_bench.c            # AST vs IR benchmark with validation
 ├── tests/
 │   ├── CMakeLists.txt
-│   ├── define.test.c     # cxpr_registry_define_fn and nested defined functions
-│   ├── errors.test.c     # Error codes, parse/eval failures
-│   ├── eval.test.c       # Tree-walk evaluator coverage
-│   ├── formula.test.c    # FormulaEngine behavior
-│   ├── formula_ir.test.c # Compiled FormulaEngine path
-│   ├── ir.test.c         # Internal IR compile/eval parity
-│   ├── lexer.test.c
-│   ├── math.test.c
-│   ├── parser.test.c
-│   ├── precedence.test.c
-│   ├── program.test.c    # Public compiled-program API tests
-│   ├── simulation.test.c
-│   └── struct_fn.test.c  # Struct-aware function expansion
+│   ├── chain_access.test.c   # Nested field access and chaining
+│   ├── define.test.c         # Defined functions and replacement
+│   ├── errors.test.c         # Error codes, parse/eval failures
+│   ├── eval.test.c           # Evaluator coverage and runtime behavior
+│   ├── field_value.test.c    # Typed field value helpers
+│   ├── formula.test.c        # Formula engine behavior
+│   ├── formula_ir.test.c     # Compiled formula path
+│   ├── ir.test.c             # Public compile/program execution coverage
+│   ├── ir_ownership.test.c   # IR ownership and cleanup
+│   ├── lexer.test.c          # Tokenization and lexing edge cases
+│   ├── math.test.c           # Built-in math and custom functions
+│   ├── parser.test.c         # Parse tree construction
+│   ├── physics_simulation.test.c
+│   ├── precedence.test.c     # Operator precedence and associativity
+│   ├── program.test.c        # Public compiled-program API tests
+│   ├── readme.test.c         # README examples kept executable
+│   ├── simulation.test.c     # End-to-end indicator/signal simulation
+│   ├── struct_ctx.test.c     # Struct values stored in context
+│   ├── struct_fn.test.c      # Struct-aware function expansion
+│   └── struct_producer.test.c# Struct-producing functions and access
+├── cmake/
+│   └── cxprConfig.cmake.in
 └── CMakeLists.txt
 ```
 
