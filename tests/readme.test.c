@@ -318,13 +318,24 @@ static void test_readme_define_struct(void) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Formula Engine
  *
- *   cxpr_formula_add(engine, "spread", "ask - bid",                  &err);
- *   cxpr_formula_add(engine, "mid",    "(ask + bid) / 2",            &err);
- *   cxpr_formula_add(engine, "signal", "spread / mid > $threshold",  &err);
+ *   cxpr_registry_add_struct(reg, "quote2", quote2_producer, 2, 2, fields, 2, NULL, NULL);
+ *   cxpr_formulas_add(engine, defs, 4, &err);
  *   cxpr_formula_compile(engine, &err);
  *   cxpr_formula_eval_all(engine, ctx, &err);
- *   double signal = cxpr_formula_get(engine, "signal", NULL);  // 0.0 or 1.0
+ *   cxpr_field_value quote = cxpr_formula_get(engine, "quote", NULL);    // struct
+ *   cxpr_field_value entry = cxpr_formula_get(engine, "entry", NULL);    // bool
+ *   double score = cxpr_formula_get_double(engine, "score", NULL);       // double
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void readme_quote2_producer(const double* args, size_t argc,
+                                   cxpr_field_value* out, size_t field_count,
+                                   void* userdata) {
+    (void)argc;
+    (void)field_count;
+    (void)userdata;
+    out[0] = cxpr_fv_double((args[0] + args[1]) / 2.0);  /* mid */
+    out[1] = cxpr_fv_double(args[1] - args[0]);          /* spread */
+}
 
 static void test_readme_formula_engine(void) {
     cxpr_registry*      reg    = cxpr_registry_new();
@@ -333,14 +344,23 @@ static void test_readme_formula_engine(void) {
     cxpr_context*        ctx    = cxpr_context_new();
     cxpr_error err = {0};
 
-    /* ask=100.5, bid=99.5 → spread=1.0, mid=100.0, spread/mid=0.01 */
+    /* ask=100.5, bid=99.5 → mid=100.0, spread=1.0 */
     cxpr_context_set(ctx, "ask", 100.5);
     cxpr_context_set(ctx, "bid",  99.5);
     cxpr_context_set_param(ctx, "threshold", 0.005);  /* 0.5% spread threshold */
+    cxpr_context_set_param(ctx, "min_mid",   99.0);
 
-    assert(cxpr_formula_add(engine, "spread", "ask - bid",                 &err));
-    assert(cxpr_formula_add(engine, "mid",    "(ask + bid) / 2",           &err));
-    assert(cxpr_formula_add(engine, "signal", "spread / mid > $threshold", &err));
+    const char* fields[] = {"mid", "spread"};
+    const cxpr_formula_def defs[] = {
+        { "quote", "quote2(bid, ask)" },
+        { "wide",  "quote.spread > $threshold" },
+        { "entry", "wide and quote.mid > $min_mid" },
+        { "score", "quote.mid + quote.spread * 10" }
+    };
+
+    cxpr_registry_add_struct(reg, "quote2", readme_quote2_producer,
+                             2, 2, fields, 2, NULL, NULL);
+    assert(cxpr_formulas_add(engine, defs, 4, &err));
 
     assert(cxpr_formula_compile(engine, &err));
     assert(err.code == CXPR_OK);
@@ -349,9 +369,15 @@ static void test_readme_formula_engine(void) {
     assert(err.code == CXPR_OK);
 
     bool found;
-    ASSERT_APPROX(cxpr_formula_get(engine, "spread", &found),  1.0);   assert(found);
-    ASSERT_APPROX(cxpr_formula_get(engine, "mid",    &found), 100.0);  assert(found);
-    ASSERT_APPROX(cxpr_formula_get(engine, "signal", &found),   1.0);  assert(found);
+    cxpr_field_value quote = cxpr_formula_get(engine, "quote", &found);
+    assert(found);
+    assert(quote.type == CXPR_FIELD_STRUCT);
+    assert(quote.s != NULL);
+    ASSERT_APPROX(quote.s->field_values[0].d, 100.0);
+    ASSERT_APPROX(quote.s->field_values[1].d,   1.0);
+    assert(cxpr_formula_get_bool(engine, "wide",  &found) == true);   assert(found);
+    assert(cxpr_formula_get_bool(engine, "entry", &found) == true);   assert(found);
+    ASSERT_APPROX(cxpr_formula_get_double(engine, "score", &found), 110.0); assert(found);
 
     cxpr_formula_engine_free(engine);
     cxpr_context_free(ctx);
@@ -364,10 +390,7 @@ static void test_readme_formula_engine(void) {
  *
  *   cxpr_formula_add(engine, "trend",   "close > ema_fast and ema_fast > ema_slow", ...);
  *   cxpr_formula_add(engine, "pullback","close < ema_fast * 0.995", ...);
- *   cxpr_formula_add(engine, "entry",   "trend > 0.5 and pullback > 0.5 and rsi > 50", ...);
- *
- * NOTE: FormulaEngine stores doubles; boolean subformulas must be
- * composed only through their numeric 1.0/0.0 representation.
+ *   cxpr_formula_add(engine, "entry",   "trend and pullback and rsi > 50", ...);
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_domain_trading(void) {
@@ -383,11 +406,11 @@ static void test_readme_domain_trading(void) {
     cxpr_context_set(ctx, "ema_slow", 98.0);
     cxpr_context_set(ctx, "rsi",      55.0);
 
-    /* These three formulas each produce 1.0 (true) or 0.0 (false) */
+    /* These three formulas each produce typed boolean results */
     assert(cxpr_formula_add(engine, "trend",    "close > ema_fast and ema_fast > ema_slow", &err));
     assert(cxpr_formula_add(engine, "pullback", "close < ema_fast * 0.995", &err));
     assert(cxpr_formula_add(engine, "entry",
-                            "trend > 0.5 and pullback > 0.5 and rsi > 50", &err));
+                            "trend and pullback and rsi > 50", &err));
 
     assert(cxpr_formula_compile(engine, &err));
     assert(err.code == CXPR_OK);
@@ -396,14 +419,14 @@ static void test_readme_domain_trading(void) {
     assert(err.code == CXPR_OK);
 
     bool found;
-    ASSERT_APPROX(cxpr_formula_get(engine, "trend",    &found), 1.0); assert(found);
-    ASSERT_APPROX(cxpr_formula_get(engine, "pullback", &found), 0.0); assert(found);
-    ASSERT_APPROX(cxpr_formula_get(engine, "entry",    &found), 0.0); assert(found);
+    assert(cxpr_formula_get_bool(engine, "trend",    &found) == true);  assert(found);
+    assert(cxpr_formula_get_bool(engine, "pullback", &found) == false); assert(found);
+    assert(cxpr_formula_get_bool(engine, "entry",    &found) == false); assert(found);
 
     /* No signal when RSI is too low */
     cxpr_context_set(ctx, "rsi", 40.0);
     cxpr_formula_eval_all(engine, ctx, &err);
-    ASSERT_APPROX(cxpr_formula_get(engine, "entry", NULL), 0.0);
+    assert(cxpr_formula_get_bool(engine, "entry", NULL) == false);
 
     cxpr_formula_engine_free(engine);
     cxpr_context_free(ctx);
@@ -464,14 +487,18 @@ static void test_readme_domain_robotics(void) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Domain — Struct-aware distance helper
  *
+ *   cxpr_registry_add_fn(reg, "distance2", fn_distance2, xy, 2, 2, NULL, NULL);
+ *   // "distance2(goal, pose) < $capture_radius"
+ *
  *   cxpr_registry_add(reg, "distance3", fn_distance3, 6, 6, NULL, NULL);
  *   // "distance3(goal.x, goal.y, goal.z, pose.x, pose.y, pose.z) < $capture_radius"
- *
- *   — and the struct-param version with define_fn: —
- *
- *   cxpr_registry_define_fn(reg, "dist2(a, b) => sqrt((a.x-b.x)^2 + (a.y-b.y)^2)");
- *   // "dist2(goal, pose) < $capture_radius"
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+static double fn_distance2(const double* args, size_t argc, void* ud) {
+    (void)argc; (void)ud;
+    double dx = args[0]-args[2], dy = args[1]-args[3];
+    return sqrt(dx*dx + dy*dy);
+}
 
 static double fn_distance3(const double* args, size_t argc, void* ud) {
     (void)argc; (void)ud;
@@ -485,9 +512,9 @@ static void test_readme_domain_distance(void) {
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_builtins(reg);
 
+    const char* xy[]  = {"x", "y"};
+    cxpr_registry_add_fn(reg, "distance2", fn_distance2, xy, 2, 2, NULL, NULL);
     cxpr_registry_add(reg, "distance3", fn_distance3, 6, 6, NULL, NULL);
-    assert(cxpr_registry_define_fn(reg,
-        "dist2(a, b) => sqrt((a.x-b.x)^2 + (a.y-b.y)^2)").code == CXPR_OK);
 
     /* 3-D version via flat args */
     cxpr_context_set(ctx, "goal.x",  4.0);
@@ -504,14 +531,13 @@ static void test_readme_domain_distance(void) {
     assert(ast3);
     assert(cxpr_ast_eval_bool(ast3, ctx, reg, &err) == true);   /* dist=4 < 5 */
 
-    /* 2-D version via struct params */
-    const char* xy[] = {"x", "y"};
-    double a_vals[] = {3.0, 0.0};
-    double b_vals[] = {0.0, 4.0};
-    cxpr_context_set_fields(ctx, "a", xy, a_vals, 2);
-    cxpr_context_set_fields(ctx, "b", xy, b_vals, 2);
+    /* 2-D version via struct-aware C callback */
+    double goal_vals[] = {3.0, 0.0};
+    double pose_vals[] = {0.0, 4.0};
+    cxpr_context_set_fields(ctx, "goal", xy, goal_vals, 2);
+    cxpr_context_set_fields(ctx, "pose", xy, pose_vals, 2);
 
-    cxpr_ast* ast2 = cxpr_parse(parser, "dist2(a, b) < $capture_radius", &err);
+    cxpr_ast* ast2 = cxpr_parse(parser, "distance2(goal, pose) < $capture_radius", &err);
     assert(ast2);
     assert(cxpr_ast_eval_bool(ast2, ctx, reg, &err) == false);  /* dist=5 < 5 is false */
 

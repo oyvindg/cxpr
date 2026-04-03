@@ -249,13 +249,13 @@ If a function name is redefined, the latest definition replaces the previous one
 const cxpr_formula_def defs[] = {
     { "trend",    "close > ema_fast and ema_fast > ema_slow" },
     { "pullback", "close < ema_fast * 0.995" },
-    { "entry",    "trend > 0.5 and pullback > 0.5 and rsi > 50" }
+    { "entry",    "trend and pullback and rsi > 50" }
 };
 
 cxpr_formulas_add(engine, defs, 3, &err);
 cxpr_formula_compile(engine, &err);
 cxpr_formula_eval_all(engine, ctx, &err);
-double entry = cxpr_formula_get(engine, "entry", NULL);
+cxpr_field_value entry = cxpr_formula_get(engine, "entry", NULL);
 ```
 
 ```text
@@ -282,14 +282,22 @@ slip_ratio > $max_slip or abs(heading_error) > $max_heading_error
 Register scalar helpers that collapse vec3/quat components into scalar outputs:
 
 ```c
+static double fn_distance2(const double* args, size_t argc, void* ud) {
+    double dx = args[0]-args[2], dy = args[1]-args[3];
+    return sqrt(dx*dx + dy*dy);
+}
 static double fn_distance3(const double* args, size_t argc, void* ud) {
     double dx = args[0]-args[3], dy = args[1]-args[4], dz = args[2]-args[5];
     return sqrt(dx*dx + dy*dy + dz*dz);
 }
+const char* xy[]  = {"x", "y"};
+
+cxpr_registry_add_fn(reg, "distance2", fn_distance2, xy,  2, 2, NULL, NULL);
 cxpr_registry_add(reg, "distance3", fn_distance3, 6, 6, NULL, NULL);
 ```
 
 ```text
+distance2(goal, pose) < $capture_radius
 distance3(goal.x, goal.y, goal.z, pose.x, pose.y, pose.z) < $capture_radius
 ```
 
@@ -327,14 +335,19 @@ exposure > $limit and sqrt(var_1d) > $risk_budget
 
 ```c
 cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+const char* quote_fields[] = {"mid", "spread"};
+
+cxpr_registry_add_struct(reg, "quote2", quote2_producer,
+                         2, 2, quote_fields, 2, NULL, NULL);
 
 const cxpr_formula_def defs[] = {
-    { "spread", "ask - bid" },
-    { "mid",    "(ask + bid) / 2" },
-    { "signal", "spread / mid > $threshold" }
+    { "quote", "quote2(bid, ask)" },
+    { "wide",  "quote.spread > $threshold" },
+    { "entry", "wide and quote.mid > $min_mid" },
+    { "score", "quote.mid + quote.spread * 10" }
 };
 
-if (!cxpr_formulas_add(engine, defs, 3, &err)) {
+if (!cxpr_formulas_add(engine, defs, 4, &err)) {
     fprintf(stderr, "add error: %s\n", err.message);
 }
 
@@ -343,7 +356,9 @@ if (!cxpr_formula_compile(engine, &err)) {
 }
 
 cxpr_formula_eval_all(engine, ctx, &err);
-double signal = cxpr_formula_get(engine, "signal", NULL);
+cxpr_field_value quote = cxpr_formula_get(engine, "quote", NULL);  // struct
+cxpr_field_value entry = cxpr_formula_get(engine, "entry", NULL);  // bool
+double score = cxpr_formula_get_double(engine, "score", NULL);     // double
 
 cxpr_formula_engine_free(engine);
 ```

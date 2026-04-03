@@ -692,13 +692,31 @@ bool cxpr_formula_compile(cxpr_formula_engine* engine, cxpr_error* err);
 void cxpr_formula_eval_all(cxpr_formula_engine* engine, cxpr_context* ctx, cxpr_error* err);
 
 /**
- * @brief Get the result of a named formula after evaluation.
+ * @brief Get the typed result of a named formula after evaluation.
  * @param engine Formula engine
  * @param name Formula name
  * @param[out] found Set to true if found (can be NULL)
- * @return Formula result, or 0.0 if not found
+ * @return Formula result, or `cxpr_fv_double(0.0)` if not found
  */
-double cxpr_formula_get(const cxpr_formula_engine* engine, const char* name, bool* found);
+cxpr_field_value cxpr_formula_get(const cxpr_formula_engine* engine, const char* name, bool* found);
+
+/**
+ * @brief Get a named formula result as double after evaluation.
+ * @param engine Formula engine
+ * @param name Formula name
+ * @param[out] found Set to true if found and type matched (can be NULL)
+ * @return Formula result as double, or 0.0 if not found or wrong type
+ */
+double cxpr_formula_get_double(const cxpr_formula_engine* engine, const char* name, bool* found);
+
+/**
+ * @brief Get a named formula result as bool after evaluation.
+ * @param engine Formula engine
+ * @param name Formula name
+ * @param[out] found Set to true if found and type matched (can be NULL)
+ * @return Formula result as bool, or false if not found or wrong type
+ */
+bool cxpr_formula_get_bool(const cxpr_formula_engine* engine, const char* name, bool* found);
 
 /**
  * @brief Get evaluation order after compilation.
