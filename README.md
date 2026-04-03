@@ -242,6 +242,8 @@ If a function name is redefined, the latest definition replaces the previous one
 
 ## Domain Examples
 
+These examples are illustrative. They show how expressions and formula composition can map onto different domains, but they are not presented as validated real-world models, control laws, safety logic, or trading advice.
+
 ### Trading — signal composition
 
 ```c
@@ -316,17 +318,82 @@ sqrt(body.vx^2 + body.vy^2)
 abs(acceleration) > $max_acceleration or temperature >= $meltdown_limit
 ```
 
+### Gaming — combat, AI, and encounter scripting
+
+```c
+cxpr_context_set(ctx, "health",              18.0);
+cxpr_context_set(ctx, "stamina",             42.0);
+cxpr_context_set(ctx, "target_distance",      3.5);
+cxpr_context_set(ctx, "incoming_dps",        11.0);
+cxpr_context_set(ctx, "cooldown_dash",        0.0);
+cxpr_context_set_param(ctx, "panic_health",  25.0);
+cxpr_context_set_param(ctx, "melee_range",    2.2);
+```
+
+```text
+health < $panic_health and cooldown_dash == 0
+target_distance < $melee_range and stamina > 20 and not is_stunned
+incoming_dps * time_to_cover > health ? retreat_weight : engage_weight
+loot_rarity >= $legendary_floor and player_level >= area_level - 2
+```
+
+### Industrial monitoring — alarms and operating envelopes
+
+```c
+cxpr_context_set(ctx, "pressure",         118.0);
+cxpr_context_set(ctx, "temperature",       82.0);
+cxpr_context_set(ctx, "temperature_rate",   1.7);
+cxpr_context_set(ctx, "vibration_rms",      0.42);
+cxpr_context_set_param(ctx, "max_pressure", 120.0);
+cxpr_context_set_param(ctx, "max_temp_rate", 1.2);
+```
+
+```text
+pressure > $max_pressure or temperature_rate > $max_temp_rate
+vibration_rms > $bearing_limit and rpm > $inspection_rpm
+temperature > $warn_temp ? warn_level : 0
+```
+
+### Drone navigation — waypoints, altitude windows, and return-home rules
+
+```c
+const char* xyz[] = {"x", "y", "z"};
+double pose_xyz[]     = {128.0, 96.0, 42.0};
+double waypoint_xyz[] = {160.0, 120.0, 45.0};
+double home_xyz[]     = {100.0, 80.0, 20.0};
+
+cxpr_context_set_fields(ctx, "pose",     xyz, pose_xyz,     3);
+cxpr_context_set_fields(ctx, "waypoint", xyz, waypoint_xyz, 3);
+cxpr_context_set_fields(ctx, "home",     xyz, home_xyz,     3);
+cxpr_context_set(ctx, "battery",        31.0);
+cxpr_context_set(ctx, "ground_speed",    8.5);
+cxpr_context_set(ctx, "wind_speed",      6.0);
+cxpr_context_set(ctx, "heading_error",   4.0);
+cxpr_context_set_param(ctx, "capture_radius",  6.0);
+cxpr_context_set_param(ctx, "min_altitude",   20.0);
+cxpr_context_set_param(ctx, "max_altitude",  120.0);
+cxpr_context_set_param(ctx, "rth_battery",    18.0);
+```
+
+```text
+distance3(waypoint.x, waypoint.y, waypoint.z, pose.x, pose.y, pose.z) < $capture_radius
+pose.z >= $min_altitude and pose.z <= $max_altitude
+battery < $rth_battery or wind_speed > $max_wind_speed
+abs(heading_error) > $max_heading_error ? reduced_speed : cruise_speed
+ground_speed > 0 ? distance3(home.x, home.y, home.z, pose.x, pose.y, pose.z) / ground_speed : 1e9
+```
+
 ### Other fits
 
 ```text
-# Industrial monitoring
-pressure > $max_pressure or temperature_rate > $max_temp_rate
-
-# Game logic
-health < 20 and cooldown == 0 ? 1 : 0
-
 # Pricing / risk
 exposure > $limit and sqrt(var_1d) > $risk_budget
+
+# Feature flags / rollout
+country == $target_country and app_version >= $min_version and not is_internal
+
+# Fraud / abuse heuristics
+failed_logins > $max_failures and device_age_hours < $new_device_window
 ```
 
 ## Formula Engine
