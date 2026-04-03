@@ -10,11 +10,11 @@ Generic expression parser, evaluator, and formula engine written in C11. No exte
 - Full expression grammar — arithmetic, comparison, logical, ternary, function calls
 - Runtime variables (`context`) and compile-time parameters (`$param`)
 - Custom function registry with arity validation and optional userdata
-- 30+ built-in math functions (`sin`, `cos`, `sqrt`, `pow`, `min`, `max`, `log`, ...)
-- `FormulaEngine` — multi-formula dependency resolution with topological sort and cycle detection
+- Built-in math and utility functions (`sin`, `cos`, `sqrt`, `pow`, `min`, `max`, `log`, ...)
+- Formula engine support via `cxpr_formula_engine` with dependency resolution and cycle detection
 - AST inspection API — extract variable, parameter, and function references
 - Structured error handling — error codes, messages, and source position
-- C11 ABI — suitable for FFI (Python, Rust, Go, ...) and embedding
+- C11-oriented API surface that is practical to embed from C and other native-language bindings
 
 ## Installation
 
@@ -59,7 +59,7 @@ target_link_libraries(my_target PRIVATE cxpr::cxpr)
 
 ## Quick Start
 
-Start with the AST path. It is the simplest way to parse and evaluate an expression, and it matches the core mental model of the library.
+Start with the AST path. It is the most direct way to parse and evaluate an expression, and it matches the core mental model of the library.
 
 ```c
 #include <cxpr/cxpr.h>
@@ -79,7 +79,7 @@ int main(void) {
     cxpr_ast* ast = cxpr_parse(parser, "rsi < 30 and volume > $min_volume", &err);
     if (!ast) { fprintf(stderr, "parse error: %s\n", err.message); return 1; }
 
-    double result = cxpr_ast_eval(ast, ctx, reg, &err);  // → 1.0
+    cxpr_field_value result = cxpr_ast_eval(ast, ctx, reg, &err);  // -> bool(true)
 
     cxpr_ast_free(ast);
     cxpr_parser_free(parser);
@@ -92,7 +92,7 @@ When the same parsed expression will be evaluated repeatedly with changing conte
 
 ```c
 cxpr_program* prog = cxpr_compile(ast, reg, &err);
-double fast_result = cxpr_ir_eval(prog, ctx, reg, &err);
+cxpr_field_value fast_result = cxpr_ir_eval(prog, ctx, reg, &err);
 cxpr_program_free(prog);
 ```
 
@@ -103,11 +103,11 @@ cxpr_program_free(prog);
 - `cxpr_ast_eval(ast, ...)` evaluates the AST directly.
 - `cxpr_compile(ast, ...)` builds a reusable compiled program, and `cxpr_ir_eval(...)` runs that program repeatedly.
 
-The AST is still the primary representation. It is what parsing produces, and it remains the source of truth for reference extraction, dependency analysis, validation, and error reporting. If you need to inspect or understand an expression structurally, you are working with the AST.
+The AST is the primary representation produced by parsing, and it is the main structure used for reference extraction, dependency analysis, validation, and error reporting. If you need to inspect or understand an expression structurally, you are working with the AST.
 
 The IR is a compiled runtime plan built from that AST. Its job is narrower: make repeated evaluation cheaper. It does not define a second language, and it does not replace the AST in the library design. In the current implementation, a compiled program may mix native IR instructions with fallback steps that still delegate to the AST evaluator when that is the simplest way to preserve semantics.
 
-In practice, the intended flow is:
+In typical use, the flow is:
 
 1. Parse text into an AST.
 2. Use the AST for validation, introspection, or dependency work.
@@ -118,8 +118,8 @@ In practice, the intended flow is:
 cxpr_ast* ast = cxpr_parse(parser, "sqrt(x*x + y*y) > $limit", &err);
 cxpr_program* prog = cxpr_compile(ast, reg, &err);
 
-double ast_value = cxpr_ast_eval(ast, ctx, reg, &err);
-double ir_value  = cxpr_ir_eval(prog, ctx, reg, &err);
+cxpr_field_value ast_value = cxpr_ast_eval(ast, ctx, reg, &err);
+cxpr_field_value ir_value  = cxpr_ir_eval(prog, ctx, reg, &err);
 
 cxpr_program_free(prog);
 cxpr_ast_free(ast);
@@ -127,7 +127,7 @@ cxpr_ast_free(ast);
 
 Use the compiled program path when the same parsed expression will be evaluated many times with different context values.
 
-The local benchmark validates AST and compiled-program results on every iteration before reporting timings. On one recent local run, the compiled path improved simple arithmetic to `1.42x`, native function calls to `4.32x`, expression-defined functions to `6.04x`, nested defined chains to `5.09x`, and deeper defined expressions to `3.82x`.
+The local benchmark validates AST and compiled-program results on every iteration before reporting timings. Performance gains depend heavily on expression shape, registry setup, compiler settings, and workload. On one recent local run, the compiled path improved simple arithmetic to `1.42x`, native function calls to `4.32x`, expression-defined functions to `6.04x`, nested defined chains to `5.09x`, and deeper defined expressions to `3.82x`.
 
 ## Expression Syntax
 
@@ -245,7 +245,7 @@ If a function name is redefined, the latest definition replaces the previous one
 ### Trading — signal composition
 
 ```c
-// Intermediate values resolved in dependency order by FormulaEngine
+// Intermediate values resolved in dependency order by the formula engine
 const cxpr_formula_def defs[] = {
     { "trend",    "close > ema_fast and ema_fast > ema_slow" },
     { "pullback", "close < ema_fast * 0.995" },
@@ -323,7 +323,7 @@ exposure > $limit and sqrt(var_1d) > $risk_budget
 
 ## Formula Engine
 
-`FormulaEngine` allows formulas to reference each other. It performs a topological sort at compile time so evaluation always runs in correct dependency order. The engine still uses ASTs for dependency analysis and formula structure, but it now compiles each formula to a reusable internal program during `cxpr_formula_compile(...)` and uses that compiled path during evaluation. Use `cxpr_formula_add(...)` for incremental registration or `cxpr_formulas_add(...)` when you already have an array of definitions and want atomic rollback on parse failure.
+`cxpr_formula_engine` allows formulas to reference each other. It performs a topological sort at compile time so formulas can be evaluated in dependency order. The engine still uses ASTs for dependency analysis and formula structure, but it also compiles each formula to an internal program during `cxpr_formula_compile(...)` and uses that compiled path during evaluation when available. Use `cxpr_formula_add(...)` for incremental registration or `cxpr_formulas_add(...)` when you already have an array of definitions and want atomic rollback on parse failure.
 
 ```c
 cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
@@ -414,18 +414,16 @@ cmake --build build-ubsan --target test
 If `ctest` works in your environment, it should report the same test results, but it is not
 the canonical command documented or used by CI.
 
-134 test cases across 8 suites using `assert()` — no external test framework.
+The repository currently builds 20 standalone C test executables using `assert()` and no external test framework.
 
-| Suite      | Tests | Description                                              |
-| ---------- | ----: | -------------------------------------------------------- |
-| lexer      |    26 | Tokenization, keywords, operators, position tracking     |
-| parser     |    25 | AST construction, reference extraction, error recovery   |
-| eval       |    21 | Evaluation, variables, parameters, functions, errors     |
-| math       |    16 | Built-in math, custom functions, deeply nested exprs     |
-| precedence |    14 | Operator precedence, associativity                       |
-| formula    |     8 | Dependency resolution, topological sort, cycle detection |
-| errors     |    17 | Error codes, messages, source position tracking          |
-| simulation |     7 | 200 OHLC bars with SMA/EMA/RSI/Bollinger/ATR strategies  |
+| Area            | Coverage                                                                 |
+| --------------- | ------------------------------------------------------------------------ |
+| lexer / parser  | Tokenization, precedence, AST construction, reference extraction         |
+| eval            | Runtime evaluation, variables, parameters, field access, errors          |
+| formulas        | Dependency resolution, compile/eval flow, cycle detection                |
+| IR              | Lowering, execution, ownership/reset, cache invalidation, parity checks  |
+| structs         | Context-backed structs, struct-aware functions, producer access          |
+| examples        | Executable README snippets kept in sync with the documented API          |
 
 ## Project Structure
 
@@ -461,8 +459,8 @@ cxpr/
 │   ├── eval.test.c           # Evaluator coverage and runtime behavior
 │   ├── field_value.test.c    # Typed field value helpers
 │   ├── formula.test.c        # Formula engine behavior
-│   ├── formula_ir.test.c     # Compiled formula path
-│   ├── ir.test.c             # Public compile/program execution coverage
+│   ├── formula_ir.test.c     # Formula-engine compiled path
+│   ├── ir.test.c             # IR compile/execution coverage
 │   ├── ir_ownership.test.c   # IR ownership and cleanup
 │   ├── lexer.test.c          # Tokenization and lexing edge cases
 │   ├── math.test.c           # Built-in math and custom functions
@@ -480,4 +478,4 @@ cxpr/
 └── CMakeLists.txt
 ```
 
-The public API is fully documented in `include/cxpr/cxpr.h`.
+The public API is documented in `include/cxpr/cxpr.h`.
