@@ -5,7 +5,7 @@
 
 #include "internal.h"
 
-static cxpr_field_value cxpr_field_value_clone(const cxpr_field_value* value);
+static cxpr_value cxpr_value_clone(const cxpr_value* value);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Typed struct values
@@ -15,7 +15,7 @@ static void cxpr_struct_value_reset(cxpr_struct_value* s) {
     if (!s) return;
     for (size_t i = 0; i < s->field_count; i++) {
         free((char*)s->field_names[i]);
-        if (s->field_values[i].type == CXPR_FIELD_STRUCT) {
+        if (s->field_values[i].type == CXPR_VALUE_STRUCT) {
             cxpr_struct_value_free(s->field_values[i].s);
         }
     }
@@ -26,15 +26,15 @@ static void cxpr_struct_value_reset(cxpr_struct_value* s) {
     s->field_count = 0;
 }
 
-static cxpr_field_value cxpr_field_value_clone(const cxpr_field_value* value) {
+static cxpr_value cxpr_value_clone(const cxpr_value* value) {
     if (!value) return cxpr_fv_double(0.0);
 
     switch (value->type) {
-    case CXPR_FIELD_DOUBLE:
+    case CXPR_VALUE_NUMBER:
         return cxpr_fv_double(value->d);
-    case CXPR_FIELD_BOOL:
+    case CXPR_VALUE_BOOL:
         return cxpr_fv_bool(value->b);
-    case CXPR_FIELD_STRUCT:
+    case CXPR_VALUE_STRUCT:
         return cxpr_fv_struct(cxpr_struct_value_new(
             value->s ? (const char* const*)value->s->field_names : NULL,
             value->s ? value->s->field_values : NULL,
@@ -45,7 +45,7 @@ static cxpr_field_value cxpr_field_value_clone(const cxpr_field_value* value) {
 }
 
 cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
-                                         const cxpr_field_value* field_values,
+                                         const cxpr_value* field_values,
                                          size_t field_count) {
     cxpr_struct_value* s = (cxpr_struct_value*)calloc(1, sizeof(cxpr_struct_value));
     if (!s) return NULL;
@@ -54,7 +54,7 @@ cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
     if (field_count == 0) return s;
 
     s->field_names = (const char**)calloc(field_count, sizeof(char*));
-    s->field_values = (cxpr_field_value*)calloc(field_count, sizeof(cxpr_field_value));
+    s->field_values = (cxpr_value*)calloc(field_count, sizeof(cxpr_value));
     if (!s->field_names || !s->field_values) {
         cxpr_struct_value_free(s);
         return NULL;
@@ -66,8 +66,8 @@ cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
             cxpr_struct_value_free(s);
             return NULL;
         }
-        s->field_values[i] = cxpr_field_value_clone(&field_values[i]);
-        if (field_values[i].type == CXPR_FIELD_STRUCT && field_values[i].s &&
+        s->field_values[i] = cxpr_value_clone(&field_values[i]);
+        if (field_values[i].type == CXPR_VALUE_STRUCT && field_values[i].s &&
             !s->field_values[i].s) {
             cxpr_struct_value_free(s);
             return NULL;

@@ -5,9 +5,9 @@
 
 #include <cxpr/cxpr.h>
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
@@ -26,7 +26,7 @@ static void test_program_compile_and_eval(void) {
     assert(prog);
     assert(err.code == CXPR_OK);
 
-    double result = cxpr_ir_eval_double(prog, ctx, reg, &err);
+    double result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(result, 11.0);
 
@@ -52,7 +52,7 @@ static void test_program_eval_bool(void) {
     assert(prog);
     assert(err.code == CXPR_OK);
 
-    bool result = cxpr_ir_eval_bool(prog, ctx, reg, &err);
+    bool result = cxpr_test_eval_program_bool(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     assert(result == true);
 
@@ -62,6 +62,33 @@ static void test_program_eval_bool(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
     printf("  ✓ test_program_eval_bool\n");
+}
+
+static void test_program_eval_out_api(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "a + b * 2", &err);
+    cxpr_program* prog;
+    double result = 0.0;
+
+    assert(ast);
+    cxpr_context_set(ctx, "a", 3.0);
+    cxpr_context_set(ctx, "b", 4.0);
+
+    prog = cxpr_compile(ast, reg, &err);
+    assert(prog);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &result, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(result, 11.0);
+
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_program_eval_out_api\n");
 }
 
 static void test_program_eval_double_rejects_bool_intermediate_arithmetic(void) {
@@ -81,7 +108,7 @@ static void test_program_eval_double_rejects_bool_intermediate_arithmetic(void) 
     assert(prog);
     assert(err.code == CXPR_OK);
 
-    result = cxpr_ir_eval_double(prog, ctx, reg, &err);
+    result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
@@ -130,6 +157,7 @@ int main(void) {
     printf("Running program tests...\n");
     test_program_compile_and_eval();
     test_program_eval_bool();
+    test_program_eval_out_api();
     test_program_eval_double_rejects_bool_intermediate_arithmetic();
     test_program_dump();
     printf("All program tests passed!\n");

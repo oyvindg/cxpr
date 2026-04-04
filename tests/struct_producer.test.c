@@ -12,11 +12,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
 
-static cxpr_field_value struct_field(const cxpr_struct_value *s, const char *field) {
+static cxpr_value struct_field(const cxpr_struct_value *s, const char *field) {
     for (size_t i = 0; i < s->field_count; ++i) {
         if (strcmp(s->field_names[i], field) == 0) return s->field_values[i];
     }
@@ -26,34 +27,34 @@ static cxpr_field_value struct_field(const cxpr_struct_value *s, const char *fie
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-static cxpr_field_value eval_typed(const char *expr,
+static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast *ast = cxpr_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    cxpr_field_value result = cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     return result;
 }
 
-static cxpr_field_value eval_typed_fails(const char *expr,
+static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_context *ctx, cxpr_registry *reg,
                                          cxpr_error_code expected) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast *ast = cxpr_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    cxpr_field_value result = cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     return result;
 }
 
-static cxpr_field_value ir_eval_typed(const char *expr,
+static cxpr_value ir_eval_typed(const char *expr,
                                       cxpr_context *ctx, cxpr_registry *reg) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
@@ -61,7 +62,7 @@ static cxpr_field_value ir_eval_typed(const char *expr,
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_program *prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL && err.code == CXPR_OK);
-    cxpr_field_value result = cxpr_ir_eval(prog, ctx, reg, &err);
+    cxpr_value result = cxpr_test_eval_program(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_ast_free(ast);
     cxpr_program_free(prog);
@@ -74,7 +75,7 @@ static cxpr_field_value ir_eval_typed(const char *expr,
 static int g_zero_call_count = 0;
 
 static void zero_arg_producer(const double *args, size_t argc,
-                               cxpr_field_value *out, size_t field_count,
+                               cxpr_value *out, size_t field_count,
                                void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     g_zero_call_count++;
@@ -92,8 +93,8 @@ static void test_zero_arg_producer_basic(void) {
                                       0, 0, fields, 2, NULL, NULL);
 
     g_zero_call_count = 0;
-    cxpr_field_value r = eval_typed("macd.line", ctx, reg);
-    assert(r.type == CXPR_FIELD_DOUBLE);
+    cxpr_value r = eval_typed("macd.line", ctx, reg);
+    assert(r.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(r.d, 10.0);
     assert(g_zero_call_count == 1);
 
@@ -113,8 +114,8 @@ static void test_zero_arg_producer_called_once(void) {
 
     /* two field accesses on the same producer within one eval → one call */
     g_zero_call_count = 0;
-    cxpr_field_value r = eval_typed("macd.line > 0.0 && macd.histogram > 0.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    cxpr_value r = eval_typed("macd.line > 0.0 && macd.histogram > 0.0", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
     assert(g_zero_call_count == 1);
 
@@ -130,7 +131,7 @@ static double g_last_period    = 0.0;
 static double g_last_signal    = 0.0;
 
 static void arg_producer(const double *args, size_t argc,
-                          cxpr_field_value *out, size_t field_count,
+                          cxpr_value *out, size_t field_count,
                           void *userdata) {
     (void)userdata; (void)field_count;
     assert(argc == 2);
@@ -157,8 +158,8 @@ static void test_arg_producer(void) {
                                       2, 2, fields, 2, NULL, NULL);
 
     g_arg_call_count = 0;
-    cxpr_field_value r = eval_typed("macd(14.0, 3.0).line > 0.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    cxpr_value r = eval_typed("macd(14.0, 3.0).line > 0.0", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
     assert(g_arg_call_count == 1);
     ASSERT_DOUBLE_EQ(g_last_period, 14.0);
@@ -197,8 +198,8 @@ static void test_struct_function_call_returns_struct(void) {
                                       2, 2, fields, 2, NULL, NULL);
 
     g_arg_call_count = 0;
-    cxpr_field_value r = eval_typed("macd(14.0, 3.0)", ctx, reg);
-    assert(r.type == CXPR_FIELD_STRUCT);
+    cxpr_value r = eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(r.type == CXPR_VALUE_STRUCT);
     assert(g_arg_call_count == 1);
     ASSERT_DOUBLE_EQ(struct_field(r.s, "line").d, 1.4);
     ASSERT_DOUBLE_EQ(struct_field(r.s, "histogram").d, 1.5);
@@ -218,8 +219,8 @@ static void test_arg_producer_cache_key_includes_arguments(void) {
                                       2, 2, fields, 2, NULL, NULL);
 
     g_arg_call_count = 0;
-    cxpr_field_value r = eval_typed("macd(14.0, 3.0).line + macd(20.0, 5.0).line", ctx, reg);
-    assert(r.type == CXPR_FIELD_DOUBLE);
+    cxpr_value r = eval_typed("macd(14.0, 3.0).line + macd(20.0, 5.0).line", ctx, reg);
+    assert(r.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(r.d, 3.4);
     assert(g_arg_call_count == 2);
 
@@ -240,13 +241,13 @@ static void test_combo_entry_keeps_scalar_call_and_field_producer(void) {
 
     g_arg_call_count = 0;
 
-    cxpr_field_value scalar = eval_typed("macd(14.0, 3.0)", ctx, reg);
-    assert(scalar.type == CXPR_FIELD_DOUBLE);
+    cxpr_value scalar = eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(scalar.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(scalar.d, 17.0);
     assert(g_arg_call_count == 0);
 
-    cxpr_field_value field = eval_typed("macd(14.0, 3.0).line", ctx, reg);
-    assert(field.type == CXPR_FIELD_DOUBLE);
+    cxpr_value field = eval_typed("macd(14.0, 3.0).line", ctx, reg);
+    assert(field.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(field.d, 1.4);
     assert(g_arg_call_count == 1);
 
@@ -258,7 +259,7 @@ static void test_combo_entry_keeps_scalar_call_and_field_producer(void) {
 /* ── bool output field stays bool ────────────────────────────────────── */
 
 static void bool_output_producer(const double *args, size_t argc,
-                                  cxpr_field_value *out, size_t field_count,
+                                  cxpr_value *out, size_t field_count,
                                   void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     out[0] = cxpr_fv_double(5.0);
@@ -274,13 +275,13 @@ static void test_bool_output_field(void) {
     cxpr_registry_add_struct(reg, "sensor", bool_output_producer,
                                       0, 0, fields, 2, NULL, NULL);
 
-    cxpr_field_value r = eval_typed("sensor.active", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    cxpr_value r = eval_typed("sensor.active", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
 
     /* can be used in logical expression */
     r = eval_typed("sensor.active && sensor.value > 0.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
 
     cxpr_context_free(ctx);
@@ -293,7 +294,7 @@ static void test_bool_output_field(void) {
 static int g_priority_call_count = 0;
 
 static void priority_producer(const double *args, size_t argc,
-                               cxpr_field_value *out, size_t field_count,
+                               cxpr_value *out, size_t field_count,
                                void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     g_priority_call_count++;
@@ -309,14 +310,14 @@ static void test_host_set_takes_priority(void) {
     cxpr_registry_add_struct(reg, "obj", priority_producer,
                                       0, 0, fields, 1, NULL, NULL);
 
-    cxpr_field_value vals[] = {cxpr_fv_double(42.0)};
+    cxpr_value vals[] = {cxpr_fv_double(42.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(fields, vals, 1);
     cxpr_context_set_struct(ctx, "obj", s);
     cxpr_struct_value_free(s);
 
     g_priority_call_count = 0;
-    cxpr_field_value r = eval_typed("obj.v", ctx, reg);
-    assert(r.type == CXPR_FIELD_DOUBLE);
+    cxpr_value r = eval_typed("obj.v", ctx, reg);
+    assert(r.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(r.d, 42.0);
     assert(g_priority_call_count == 0);
 
@@ -330,7 +331,7 @@ static void test_host_set_takes_priority(void) {
 static int g_recall_count = 0;
 
 static void recallable_producer(const double *args, size_t argc,
-                                 cxpr_field_value *out, size_t field_count,
+                                 cxpr_value *out, size_t field_count,
                                  void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     g_recall_count++;
@@ -409,8 +410,8 @@ static void test_ir_parity(void) {
 
     /* zero-arg producer */
     g_zero_call_count = 0;
-    cxpr_field_value r = ir_eval_typed("macd.line > 0.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    cxpr_value r = ir_eval_typed("macd.line > 0.0", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
 
     cxpr_context_free(ctx);
@@ -424,7 +425,7 @@ static void test_ir_parity(void) {
                                       2, 2, fields, 2, NULL, NULL);
     g_arg_call_count = 0;
     r = ir_eval_typed("macd(14.0, 3.0).line > 0.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
     assert(g_arg_call_count == 1);
 
@@ -443,8 +444,8 @@ static void test_ir_struct_function_call_returns_struct(void) {
                                       2, 2, fields, 2, NULL, NULL);
 
     g_arg_call_count = 0;
-    cxpr_field_value r = ir_eval_typed("macd(14.0, 3.0)", ctx, reg);
-    assert(r.type == CXPR_FIELD_STRUCT);
+    cxpr_value r = ir_eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(r.type == CXPR_VALUE_STRUCT);
     assert(g_arg_call_count == 1);
     ASSERT_DOUBLE_EQ(struct_field(r.s, "line").d, 1.4);
 
@@ -465,13 +466,13 @@ static void test_ir_combo_entry_keeps_scalar_call_and_field_producer(void) {
 
     g_arg_call_count = 0;
 
-    cxpr_field_value scalar = ir_eval_typed("macd(14.0, 3.0)", ctx, reg);
-    assert(scalar.type == CXPR_FIELD_DOUBLE);
+    cxpr_value scalar = ir_eval_typed("macd(14.0, 3.0)", ctx, reg);
+    assert(scalar.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(scalar.d, 17.0);
     assert(g_arg_call_count == 0);
 
-    cxpr_field_value field = ir_eval_typed("macd(14.0, 3.0).line", ctx, reg);
-    assert(field.type == CXPR_FIELD_DOUBLE);
+    cxpr_value field = ir_eval_typed("macd(14.0, 3.0).line", ctx, reg);
+    assert(field.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(field.d, 1.4);
     assert(g_arg_call_count == 1);
 

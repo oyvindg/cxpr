@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include "cxpr_test_internal.h"
 
 #define EPSILON 1e-9
 #define ASSERT_APPROX(a, b) assert(fabs((a) - (b)) < EPSILON)
@@ -31,7 +32,7 @@ static double eval_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     if (!ast) { if (out_err) *out_err = err; cxpr_parser_free(p); return NAN; }
-    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
+    double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
@@ -48,7 +49,7 @@ static bool eval_bool_expr(const char* expr, cxpr_context* ctx, cxpr_registry* r
         cxpr_parser_free(p);
         return false;
     }
-    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
+    bool result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_ast_free(ast);
     cxpr_parser_free(p);

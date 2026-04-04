@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "cxpr_test_internal.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: cxpr_error_string
@@ -151,7 +152,7 @@ static void test_eval_error_unknown_identifier(void) {
     cxpr_ast* ast = cxpr_parse(p, "unknown_var + 1", &err);
     assert(ast != NULL);
 
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
 
     cxpr_ast_free(ast);
@@ -175,7 +176,7 @@ static void test_eval_error_unknown_param(void) {
     cxpr_ast* ast = cxpr_parse(p, "$missing_param", &err);
     assert(ast != NULL);
 
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
 
     cxpr_ast_free(ast);
@@ -199,7 +200,7 @@ static void test_eval_error_unknown_function(void) {
     cxpr_ast* ast = cxpr_parse(p, "foobar(1, 2)", &err);
     assert(ast != NULL);
 
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
 
     cxpr_ast_free(ast);
@@ -224,7 +225,7 @@ static void test_eval_error_wrong_arity(void) {
     cxpr_ast* ast = cxpr_parse(p, "sqrt(1, 2, 3)", &err);
     assert(ast != NULL);
 
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_WRONG_ARITY);
 
     cxpr_ast_free(ast);
@@ -234,7 +235,7 @@ static void test_eval_error_wrong_arity(void) {
     assert(ast != NULL);
 
     err = (cxpr_error){0};
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_WRONG_ARITY);
 
     cxpr_ast_free(ast);
@@ -258,7 +259,7 @@ static void test_eval_error_division_by_zero(void) {
     cxpr_ast* ast = cxpr_parse(p, "10 / 0", &err);
     assert(ast != NULL);
 
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
     assert(err.message != NULL);
 
@@ -269,7 +270,7 @@ static void test_eval_error_division_by_zero(void) {
     assert(ast != NULL);
 
     err = (cxpr_error){0};
-    cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
 
     cxpr_ast_free(ast);
@@ -299,21 +300,21 @@ static void test_error_position(void) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Test: formula engine errors
+ * Test: expression evaluator errors
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_formula_parse_error(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
-    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
     /* Invalid expression */
-    bool ok = cxpr_formula_add(engine, "bad", "3 +", &err);
+    bool ok = cxpr_expression_add(evaluator, "bad", "3 +", &err);
     assert(!ok);
     assert(err.code == CXPR_ERR_SYNTAX);
 
-    cxpr_formula_engine_free(engine);
+    cxpr_evaluator_free(evaluator);
     cxpr_registry_free(reg);
     printf("  ✓ test_formula_parse_error\n");
 }
@@ -321,18 +322,18 @@ static void test_formula_parse_error(void) {
 static void test_formula_circular_error(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_builtins(reg);
-    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
-    assert(cxpr_formula_add(engine, "a", "b + 1", &err));
-    assert(cxpr_formula_add(engine, "b", "a + 1", &err));
+    assert(cxpr_expression_add(evaluator, "a", "b + 1", &err));
+    assert(cxpr_expression_add(evaluator, "b", "a + 1", &err));
 
-    bool ok = cxpr_formula_compile(engine, &err);
+    bool ok = cxpr_evaluator_compile(evaluator, &err);
     assert(!ok);
     assert(err.code == CXPR_ERR_CIRCULAR_DEPENDENCY);
     assert(err.message != NULL);
 
-    cxpr_formula_engine_free(engine);
+    cxpr_evaluator_free(evaluator);
     cxpr_registry_free(reg);
     printf("  ✓ test_formula_circular_error\n");
 }
@@ -397,7 +398,7 @@ int main(void) {
     /* Error position tracking */
     test_error_position();
 
-    /* Formula engine errors */
+    /* Expression evaluator errors */
     test_formula_parse_error();
     test_formula_circular_error();
 

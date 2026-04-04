@@ -16,7 +16,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
-#include <math.h>
+#include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
@@ -33,7 +33,7 @@ static double eval_expr(const char* expr) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
+    double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -58,7 +58,7 @@ static bool eval_bool_expr(const char* expr) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
+    bool result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -87,7 +87,7 @@ static bool eval_bool_expr_ctx(const char* expr, const char* names[], const doub
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    bool result = cxpr_ast_eval_bool(ast, ctx, reg, &err);
+    bool result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -123,7 +123,7 @@ static double eval_expr_ctx(const char* expr, const char* names[], const double 
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
     }
-    double result = cxpr_ast_eval_double(ast, ctx, reg, &err);
+    double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Eval failed: %s for '%s'\n", err.message, expr);
         assert(0);

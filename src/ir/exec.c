@@ -23,7 +23,7 @@ static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char*
     return 0.0;
 }
 
-static cxpr_field_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
+static cxpr_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
                                                  const char* field, bool* found) {
     if (found) *found = false;
     if (!value || !field) return cxpr_fv_double(NAN);
@@ -38,14 +38,14 @@ static cxpr_field_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
     return cxpr_fv_double(NAN);
 }
 
-static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name,
+static cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name,
                                                      const char* cache_key,
                                                      const cxpr_context* ctx,
-                                                     const cxpr_field_value* stack_args,
+                                                     const cxpr_value* stack_args,
                                                      size_t argc, cxpr_error* err) {
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
     const cxpr_struct_value* existing;
-    cxpr_field_value outputs[64];
+    cxpr_value outputs[64];
     cxpr_struct_value* produced;
     double args[32];
     char cache_key_local[256];
@@ -75,7 +75,7 @@ static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, con
     }
 
     for (size_t i = 0; i < argc; ++i) {
-        if (!cxpr_ir_require_type(stack_args[i], CXPR_FIELD_DOUBLE, err,
+        if (!cxpr_ir_require_type(stack_args[i], CXPR_VALUE_NUMBER, err,
                                   "Producer arguments must be doubles")) {
             return cxpr_fv_double(NAN);
         }
@@ -120,27 +120,27 @@ static cxpr_field_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, con
     return cxpr_fv_struct((cxpr_struct_value*)existing);
 }
 
-static cxpr_field_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
+static cxpr_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
                                               const cxpr_context* ctx,
-                                              const cxpr_field_value* stack_args,
+                                              const cxpr_value* stack_args,
                                               size_t argc, cxpr_error* err) {
     return cxpr_ir_call_producer_cached(entry, name, NULL, ctx, stack_args, argc, err);
 }
 
-static cxpr_field_value cxpr_ir_call_producer_field_cached(cxpr_func_entry* entry,
+static cxpr_value cxpr_ir_call_producer_field_cached(cxpr_func_entry* entry,
                                                            const char* name,
                                                            const char* cache_key,
                                                            const cxpr_context* ctx,
-                                                           const cxpr_field_value* stack_args,
+                                                           const cxpr_value* stack_args,
                                                            size_t argc,
                                                            const char* field,
                                                            cxpr_error* err) {
-    cxpr_field_value produced;
+    cxpr_value produced;
     bool found = false;
 
     produced = cxpr_ir_call_producer_cached(entry, name, cache_key, ctx, stack_args, argc, err);
     if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-    if (produced.type != CXPR_FIELD_STRUCT) {
+    if (produced.type != CXPR_VALUE_STRUCT) {
         return cxpr_ir_runtime_error(err, "Field access requires struct operand");
     }
 
@@ -149,16 +149,16 @@ static cxpr_field_value cxpr_ir_call_producer_field_cached(cxpr_func_entry* entr
     return produced;
 }
 
-static cxpr_field_value cxpr_ir_call_producer_field(cxpr_func_entry* entry, const char* name,
+static cxpr_value cxpr_ir_call_producer_field(cxpr_func_entry* entry, const char* name,
                                                     const cxpr_context* ctx,
-                                                    const cxpr_field_value* stack_args,
+                                                    const cxpr_value* stack_args,
                                                     size_t argc, const char* field,
                                                     cxpr_error* err) {
     return cxpr_ir_call_producer_field_cached(entry, name, NULL, ctx, stack_args, argc,
                                               field, err);
 }
 
-static cxpr_field_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
+static cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
                                                           const char* cache_key,
                                                           const cxpr_context* ctx,
                                                           const double* const_args,
@@ -167,9 +167,9 @@ static cxpr_field_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry
                                                           cxpr_error* err) {
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
     const cxpr_struct_value* existing;
-    cxpr_field_value outputs[64];
+    cxpr_value outputs[64];
     cxpr_struct_value* produced;
-    cxpr_field_value value;
+    cxpr_value value;
     bool found = false;
 
     if (!entry || !entry->struct_producer) {
@@ -208,11 +208,11 @@ static cxpr_field_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry
     return value;
 }
 
-static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry* reg,
+static cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry* reg,
                                                  const cxpr_ir_instr* instr, cxpr_error* err) {
     const char* dot;
     bool found = false;
-    cxpr_field_value value;
+    cxpr_value value;
     char root[128];
     size_t root_len;
 
@@ -240,9 +240,9 @@ static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const 
         cxpr_func_entry* producer = cxpr_registry_find(reg, root);
         if (producer && producer->struct_producer &&
             producer->min_args == 0 && producer->max_args == 0) {
-            cxpr_field_value produced = cxpr_ir_call_producer(producer, root, ctx, NULL, 0, err);
+            cxpr_value produced = cxpr_ir_call_producer(producer, root, ctx, NULL, 0, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-            if (produced.type == CXPR_FIELD_STRUCT) {
+            if (produced.type == CXPR_VALUE_STRUCT) {
                 value = cxpr_ir_struct_get_field(produced.s, dot + 1, &found);
             } else {
                 value = cxpr_context_get_field(ctx, root, dot + 1, &found);
@@ -258,13 +258,13 @@ static cxpr_field_value cxpr_ir_load_field_value(const cxpr_context* ctx, const 
     return value;
 }
 
-static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
+static cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                                  cxpr_error* err) {
     char* path;
     char* segment;
     char* saveptr = NULL;
     const cxpr_struct_value* current;
-    cxpr_field_value value = cxpr_fv_double(NAN);
+    cxpr_value value = cxpr_fv_double(NAN);
     bool found = false;
 
     if (!ctx || !instr || !instr->name) {
@@ -288,8 +288,8 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
 
     current = cxpr_context_get_struct(ctx, segment);
     if (!current) {
-        cxpr_field_value root = cxpr_context_get_typed(ctx, segment, &found);
-        if (found && root.type == CXPR_FIELD_STRUCT) {
+        cxpr_value root = cxpr_context_get_typed(ctx, segment, &found);
+        if (found && root.type == CXPR_VALUE_STRUCT) {
             current = root.s;
         } else {
             free(path);
@@ -316,7 +316,7 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
             free(path);
             return value;
         }
-        if (!cxpr_ir_require_type(value, CXPR_FIELD_STRUCT, err,
+        if (!cxpr_ir_require_type(value, CXPR_VALUE_STRUCT, err,
                                   "Chained access requires struct intermediate")) {
             free(path);
             return cxpr_fv_double(NAN);
@@ -329,9 +329,9 @@ static cxpr_field_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const 
     return cxpr_ir_runtime_error(err, "Malformed chain access");
 }
 
-static bool cxpr_ir_push_squared(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
+static bool cxpr_ir_push_squared(cxpr_value* stack, size_t* sp, cxpr_value value,
                                  cxpr_error* err) {
-    if (!cxpr_ir_require_type(value, CXPR_FIELD_DOUBLE, err,
+    if (!cxpr_ir_require_type(value, CXPR_VALUE_NUMBER, err,
                               "Square operation requires double operand")) {
         return false;
     }
@@ -339,29 +339,29 @@ static bool cxpr_ir_push_squared(cxpr_field_value* stack, size_t* sp, cxpr_field
     return cxpr_ir_stack_push(stack, sp, value, 64, err);
 }
 
-static bool cxpr_ir_pop1(cxpr_field_value* stack, size_t* sp, cxpr_field_value* out,
+static bool cxpr_ir_pop1(cxpr_value* stack, size_t* sp, cxpr_value* out,
                          cxpr_error* err) {
     if (!cxpr_ir_require_stack(*sp, 1, err)) return false;
     *out = stack[--(*sp)];
     return true;
 }
 
-static bool cxpr_ir_pop2(cxpr_field_value* stack, size_t* sp, cxpr_field_value* left,
-                         cxpr_field_value* right, cxpr_error* err) {
+static bool cxpr_ir_pop2(cxpr_value* stack, size_t* sp, cxpr_value* left,
+                         cxpr_value* right, cxpr_error* err) {
     if (!cxpr_ir_require_stack(*sp, 2, err)) return false;
     *right = stack[--(*sp)];
     *left = stack[--(*sp)];
     return true;
 }
 
-static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
+static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                                            const cxpr_registry* reg, const double* locals,
                                            size_t local_count, cxpr_error* err);
 
-static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+static cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                                     const cxpr_context* ctx,
                                                     const cxpr_registry* reg,
-                                                    const cxpr_field_value* args,
+                                                    const cxpr_value* args,
                                                     size_t argc, cxpr_error* err) {
     double locals[32];
     if (!entry || !entry->defined_body) {
@@ -376,7 +376,7 @@ static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
     }
 
     for (size_t i = 0; i < argc; ++i) {
-        if (args[i].type != CXPR_FIELD_DOUBLE) {
+        if (args[i].type != CXPR_VALUE_NUMBER) {
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
                 err->message = "Defined function arguments must be doubles";
@@ -404,17 +404,18 @@ static cxpr_field_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
             cxpr_context_set(tmp, entry->defined_param_names[i], locals[i]);
         }
         {
-            cxpr_field_value result = cxpr_ast_eval(entry->defined_body, tmp, reg, err);
+            cxpr_value result = {0};
+            (void)cxpr_eval_ast(entry->defined_body, tmp, reg, &result, err);
             cxpr_context_free(tmp);
             return result;
         }
     }
 }
 
-static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
+static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                                            const cxpr_registry* reg, const double* locals,
                                            size_t local_count, cxpr_error* err) {
-    cxpr_field_value stack[64];
+    cxpr_value stack[64];
     size_t sp = 0;
     size_t ip = 0;
 
@@ -425,8 +426,8 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
 
     while (ip < program->count) {
         const cxpr_ir_instr* instr = &program->code[ip];
-        cxpr_field_value a, b, result;
-        double args[32];
+        cxpr_value a, b, result;
+        cxpr_value typed_args[32];
 
         switch (instr->op) {
         case CXPR_OP_PUSH_CONST:
@@ -536,9 +537,9 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             case CXPR_OP_DIV:
             case CXPR_OP_MOD:
             case CXPR_OP_POW:
-                if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                           "Arithmetic requires double operands") ||
-                    !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                    !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
                                           "Arithmetic requires double operands")) {
                     return cxpr_fv_double(NAN);
                 }
@@ -568,23 +569,23 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             case CXPR_OP_CMP_EQ:
             case CXPR_OP_CMP_NEQ:
                 if (a.type != b.type ||
-                    (a.type != CXPR_FIELD_DOUBLE && a.type != CXPR_FIELD_BOOL)) {
+                    (a.type != CXPR_VALUE_NUMBER && a.type != CXPR_VALUE_BOOL)) {
                     if (err) {
                         err->code = CXPR_ERR_TYPE_MISMATCH;
                         err->message = "Equality requires matching double/bool operands";
                     }
                     return cxpr_fv_double(NAN);
                 }
-                if (a.type == CXPR_FIELD_DOUBLE) {
+                if (a.type == CXPR_VALUE_NUMBER) {
                     result = cxpr_fv_bool(instr->op == CXPR_OP_CMP_EQ ? (a.d == b.d) : (a.d != b.d));
                 } else {
                     result = cxpr_fv_bool(instr->op == CXPR_OP_CMP_EQ ? (a.b == b.b) : (a.b != b.b));
                 }
                 break;
             default:
-                if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+                if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                           "Comparison requires double operands") ||
-                    !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                    !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
                                           "Comparison requires double operands")) {
                     return cxpr_fv_double(NAN);
                 }
@@ -600,7 +601,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             break;
         case CXPR_OP_SQUARE:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "Square operation requires double operand")) {
                 return cxpr_fv_double(NAN);
             }
@@ -610,7 +611,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             break;
         case CXPR_OP_NOT:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_BOOL, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
                                       "Logical not requires bool operand")) {
                 return cxpr_fv_double(NAN);
             }
@@ -626,7 +627,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
         case CXPR_OP_CEIL:
         case CXPR_OP_ROUND:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "Numeric intrinsic requires double operand")) {
                 return cxpr_fv_double(NAN);
             }
@@ -644,11 +645,11 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
         case CXPR_OP_CLAMP:
             if (!cxpr_ir_pop2(stack, &sp, &result, &b, err)) return cxpr_fv_double(NAN);
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "clamp() requires double operands") ||
-                !cxpr_ir_require_type(result, CXPR_FIELD_DOUBLE, err,
+                !cxpr_ir_require_type(result, CXPR_VALUE_NUMBER, err,
                                       "clamp() requires double operands") ||
-                !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
                                       "clamp() requires double operands")) {
                 return cxpr_fv_double(NAN);
             }
@@ -658,7 +659,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             break;
         case CXPR_OP_CALL_UNARY:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "Function arguments must be doubles")) {
                 return cxpr_fv_double(NAN);
             }
@@ -670,9 +671,9 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             break;
         case CXPR_OP_CALL_BINARY:
             if (!cxpr_ir_pop2(stack, &sp, &a, &b, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "Function arguments must be doubles") ||
-                !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
                                       "Function arguments must be doubles")) {
                 return cxpr_fv_double(NAN);
             }
@@ -685,11 +686,11 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
         case CXPR_OP_CALL_TERNARY:
             if (!cxpr_ir_pop2(stack, &sp, &b, &result, err)) return cxpr_fv_double(NAN);
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "Function arguments must be doubles") ||
-                !cxpr_ir_require_type(b, CXPR_FIELD_DOUBLE, err,
+                !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
                                       "Function arguments must be doubles") ||
-                !cxpr_ir_require_type(result, CXPR_FIELD_DOUBLE, err,
+                !cxpr_ir_require_type(result, CXPR_VALUE_NUMBER, err,
                                       "Function arguments must be doubles")) {
                 return cxpr_fv_double(NAN);
             }
@@ -704,17 +705,12 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_fv_double(NAN);
             if (instr->index > 32) return cxpr_ir_runtime_error(err, "Too many function arguments");
             for (size_t i = 0; i < instr->index; ++i) {
-                a = stack[sp - instr->index + i];
-                if (!cxpr_ir_require_type(a, CXPR_FIELD_DOUBLE, err,
-                                          "Function arguments must be doubles")) {
-                    return cxpr_fv_double(NAN);
-                }
-                args[i] = a.d;
+                typed_args[i] = stack[sp - instr->index + i];
             }
             sp -= instr->index;
-            if (!cxpr_ir_stack_push(stack, &sp,
-                                    cxpr_fv_double(instr->func->sync_func(args, instr->index,
-                                                                          instr->func->userdata)),
+            result = cxpr_registry_call_typed(reg, instr->func->name, typed_args, instr->index, err);
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (!cxpr_ir_stack_push(stack, &sp, result,
                                     64, err)) {
                 return cxpr_fv_double(NAN);
             }
@@ -778,7 +774,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
                 bool found = false;
 
                 if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-                if (!cxpr_ir_require_type(a, CXPR_FIELD_STRUCT, err,
+                if (!cxpr_ir_require_type(a, CXPR_VALUE_STRUCT, err,
                                           "Field access requires struct operand")) {
                     return cxpr_fv_double(NAN);
                 }
@@ -788,7 +784,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
             }
             break;
         case CXPR_OP_CALL_AST:
-            result = cxpr_ast_eval(instr->ast, ctx, reg, err);
+            (void)cxpr_eval_ast(instr->ast, ctx, reg, &result, err);
             if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
             break;
@@ -798,7 +794,7 @@ static cxpr_field_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const
         case CXPR_OP_JUMP_IF_FALSE:
         case CXPR_OP_JUMP_IF_TRUE:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_fv_double(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_FIELD_BOOL, err,
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
                                       "Conditional jump requires bool operand")) {
                 return cxpr_fv_double(NAN);
             }
@@ -1001,15 +997,25 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
             stack[sp++] = instr->func->native_scalar.ternary(a, b, value);
             break;
         case CXPR_OP_CALL_FUNC:
+            if (instr->func->typed_func) {
+                return cxpr_ir_runtime_error(err, "Typed function requires typed execution path").d;
+            }
             for (size_t i = 0; i < instr->index; ++i) {
                 args[i] = stack[sp - instr->index + i];
             }
             sp -= instr->index;
-            stack[sp++] = instr->func->sync_func(args, instr->index, instr->func->userdata);
+            if (instr->func->value_func) {
+                cxpr_value value_result = instr->func->value_func(args, instr->index, instr->func->userdata);
+                if (value_result.type == CXPR_VALUE_NUMBER) stack[sp++] = value_result.d;
+                else if (value_result.type == CXPR_VALUE_BOOL) stack[sp++] = value_result.b ? 1.0 : 0.0;
+                else return cxpr_ir_runtime_error(err, "Function did not evaluate to scalar").d;
+            } else {
+                stack[sp++] = instr->func->sync_func(args, instr->index, instr->func->userdata);
+            }
             break;
         case CXPR_OP_CALL_DEFINED: {
-            cxpr_field_value result;
-            cxpr_field_value scalar_args[32];
+            cxpr_value result;
+            cxpr_value scalar_args[32];
             for (size_t i = 0; i < instr->index; ++i) {
                 scalar_args[i] = cxpr_fv_double(stack[sp - instr->index + i]);
             }
@@ -1017,8 +1023,8 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
                                                  scalar_args, instr->index, err);
             if (err && err->code != CXPR_OK) return NAN;
             sp -= instr->index;
-            if (result.type == CXPR_FIELD_DOUBLE) value = result.d;
-            else if (result.type == CXPR_FIELD_BOOL) value = result.b ? 1.0 : 0.0;
+            if (result.type == CXPR_VALUE_NUMBER) value = result.d;
+            else if (result.type == CXPR_VALUE_BOOL) value = result.b ? 1.0 : 0.0;
             else {
                 if (err) {
                     err->code = CXPR_ERR_TYPE_MISMATCH;
@@ -1097,9 +1103,9 @@ double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_conte
     if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
         return cxpr_ir_exec_scalar_fast(program, ctx, reg, locals, local_count, err);
     }
-    cxpr_field_value value = cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
+    cxpr_value value = cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
     if (err && err->code != CXPR_OK) return NAN;
-    if (value.type != CXPR_FIELD_DOUBLE) {
+    if (value.type != CXPR_VALUE_NUMBER) {
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to double";
@@ -1114,9 +1120,9 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
     if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
         return cxpr_ir_exec_scalar_fast(program, ctx, reg, NULL, 0, err);
     }
-    cxpr_field_value value = cxpr_ir_exec_typed(program, ctx, reg, NULL, 0, err);
+    cxpr_value value = cxpr_ir_exec_typed(program, ctx, reg, NULL, 0, err);
     if (err && err->code != CXPR_OK) return NAN;
-    if (value.type != CXPR_FIELD_DOUBLE) {
+    if (value.type != CXPR_VALUE_NUMBER) {
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to double";
@@ -1126,8 +1132,8 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
     return value.d;
 }
 
-cxpr_field_value cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
-                              const cxpr_registry* reg, cxpr_error* err) {
+static cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context* ctx,
+                                          const cxpr_registry* reg, cxpr_error* err) {
     if (!prog) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -1138,38 +1144,91 @@ cxpr_field_value cxpr_ir_eval(const cxpr_program* prog, const cxpr_context* ctx,
     return cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, err);
 }
 
-double cxpr_ir_eval_double(const cxpr_program* prog, const cxpr_context* ctx,
-                           const cxpr_registry* reg, cxpr_error* err) {
-    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
-        return cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+bool cxpr_eval_program(const cxpr_program* prog, const cxpr_context* ctx,
+                       const cxpr_registry* reg, cxpr_value* out_value, cxpr_error* err) {
+    cxpr_value value;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
     }
-    cxpr_field_value value = cxpr_ir_eval(prog, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return NAN;
-    if (value.type != CXPR_FIELD_DOUBLE) {
+
+    value = cxpr_eval_program_value(prog, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return false;
+    *out_value = value;
+    return true;
+}
+
+bool cxpr_eval_program_number(const cxpr_program* prog, const cxpr_context* ctx,
+                              const cxpr_registry* reg, double* out_value, cxpr_error* err) {
+    cxpr_value value;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
+    }
+
+    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        if (err && err->code != CXPR_OK) return false;
+        *out_value = fast_value;
+        return true;
+    }
+    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        if (err && err->code != CXPR_OK) return false;
+        *out_value = fast_value;
+        return true;
+    }
+    value = cxpr_eval_program_value(prog, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return false;
+    if (value.type != CXPR_VALUE_NUMBER) {
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to double";
         }
-        return NAN;
+        return false;
     }
-    return value.d;
+    *out_value = value.d;
+    return true;
 }
 
-bool cxpr_ir_eval_bool(const cxpr_program* prog, const cxpr_context* ctx,
-                       const cxpr_registry* reg, cxpr_error* err) {
-    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
-        double value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
-        if (err && err->code != CXPR_OK) return false;
-        return value != 0.0;
+bool cxpr_eval_program_bool(const cxpr_program* prog, const cxpr_context* ctx,
+                            const cxpr_registry* reg, bool* out_value, cxpr_error* err) {
+    cxpr_value value;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
     }
-    cxpr_field_value value = cxpr_ir_eval(prog, ctx, reg, err);
+
+    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        if (err && err->code != CXPR_OK) return false;
+        *out_value = (fast_value != 0.0);
+        return true;
+    }
+    value = cxpr_eval_program_value(prog, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;
-    if (value.type != CXPR_FIELD_BOOL) {
+    if (value.type != CXPR_VALUE_BOOL) {
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to bool";
         }
         return false;
     }
-    return value.b;
+    *out_value = value.b;
+    return true;
 }

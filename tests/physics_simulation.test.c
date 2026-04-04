@@ -3,7 +3,7 @@
  * @brief End-to-end physics simulation tests for cxpr.
  *
  * Simulates a damped driven spring-mass system over many timesteps using the
- * public FormulaEngine API. The formulas are compiled once and then evaluated
+ * public expression evaluator API. The expressions are compiled once and then evaluated
  * repeatedly as the simulation state is updated, which exercises parsing,
  * dependency resolution, compiled IR execution, built-in math functions, and
  * context updates together.
@@ -68,14 +68,14 @@ static void test_formula_engine_damped_oscillator(void) {
     const double max_abs_v = 5.0;
 
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
+    cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     OscillatorState state = {0.75, -0.2, 0.0};
     OscillatorStep expected = {0};
 
     assert(reg);
-    assert(engine);
+    assert(evaluator);
     assert(ctx);
 
     cxpr_register_builtins(reg);
@@ -89,24 +89,24 @@ static void test_formula_engine_damped_oscillator(void) {
     cxpr_context_set_param(ctx, "max_abs_x", max_abs_x);
     cxpr_context_set_param(ctx, "max_abs_v", max_abs_v);
 
-    assert(cxpr_formula_add(engine, "restoring_force", "-$stiffness * x", &err));
-    assert(cxpr_formula_add(engine, "damping_force", "-$damping * v", &err));
-    assert(cxpr_formula_add(engine, "drive_force",
+    assert(cxpr_expression_add(evaluator, "restoring_force", "-$stiffness * x", &err));
+    assert(cxpr_expression_add(evaluator, "damping_force", "-$damping * v", &err));
+    assert(cxpr_expression_add(evaluator, "drive_force",
                             "$drive_amplitude * sin($drive_frequency * t)", &err));
-    assert(cxpr_formula_add(engine, "acceleration",
+    assert(cxpr_expression_add(evaluator, "acceleration",
                             "(restoring_force + damping_force + drive_force) / $mass", &err));
-    assert(cxpr_formula_add(engine, "next_v", "v + acceleration * $dt", &err));
-    assert(cxpr_formula_add(engine, "next_x", "x + next_v * $dt", &err));
-    assert(cxpr_formula_add(engine, "energy",
+    assert(cxpr_expression_add(evaluator, "next_v", "v + acceleration * $dt", &err));
+    assert(cxpr_expression_add(evaluator, "next_x", "x + next_v * $dt", &err));
+    assert(cxpr_expression_add(evaluator, "energy",
                             "0.5 * $mass * next_v * next_v + 0.5 * $stiffness * next_x * next_x",
                             &err));
-    assert(cxpr_formula_add(engine, "stable",
+    assert(cxpr_expression_add(evaluator, "stable",
                             "abs(next_x) <= $max_abs_x and abs(next_v) <= $max_abs_v", &err));
 
     {
-        const bool ok = cxpr_formula_compile(engine, &err);
+        const bool ok = cxpr_evaluator_compile(evaluator, &err);
         if (!ok) {
-            fprintf(stderr, "formula compile failed: code=%d message=%s\n",
+            fprintf(stderr, "expression compile failed: code=%d message=%s\n",
                     (int)err.code, err.message ? err.message : "(null)");
         }
         assert(ok);
@@ -121,9 +121,9 @@ static void test_formula_engine_damped_oscillator(void) {
         cxpr_context_set(ctx, "v", state.v);
         cxpr_context_set(ctx, "t", state.t);
 
-        cxpr_formula_eval_all(engine, ctx, &err);
+        cxpr_evaluator_eval(evaluator, ctx, &err);
         if (err.code != CXPR_OK) {
-            fprintf(stderr, "formula eval failed at step %zu: code=%d message=%s\n",
+            fprintf(stderr, "expression eval failed at step %zu: code=%d message=%s\n",
                     i, (int)err.code, err.message ? err.message : "(null)");
         }
         assert(err.code == CXPR_OK);
@@ -132,26 +132,34 @@ static void test_formula_engine_damped_oscillator(void) {
                                   drive_amplitude, drive_frequency, dt);
 
         ASSERT_APPROX(state.t, expected_time, 1e-12);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "restoring_force", &found),
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "restoring_force", &found),
                       expected.restoring_force, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "damping_force", &found),
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "damping_force", &found),
                       expected.damping_force, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "drive_force", &found),
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "drive_force", &found),
                       expected.drive_force, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "acceleration", &found),
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "acceleration", &found),
                       expected.acceleration, 1e-12);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "next_v", &found), expected.next_v, EPSILON);
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "next_v", &found), expected.next_v, EPSILON);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "next_x", &found), expected.next_x, EPSILON);
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "next_x", &found), expected.next_x, EPSILON);
         assert(found);
-        ASSERT_APPROX(cxpr_formula_get_double(engine, "energy", &found), expected.energy, EPSILON);
+        ASSERT_APPROX(cxpr_expression_get_double(evaluator, "energy", &found), expected.energy, EPSILON);
         assert(found);
-        assert(cxpr_formula_get_bool(engine, "stable", &found) == true);
-        assert(found);
+        {
+            cxpr_value stable = cxpr_expression_get(evaluator, "stable", &found);
+            if (!found || stable.type != CXPR_VALUE_BOOL) {
+                fprintf(stderr, "stable lookup failed at step %zu: found=%d type=%d\n",
+                        i, found ? 1 : 0, found ? (int)stable.type : -1);
+            }
+            assert(found);
+            assert(stable.type == CXPR_VALUE_BOOL);
+            assert(stable.b == true);
+        }
 
         assert(isfinite(expected.energy));
         assert(fabs(expected.next_x) <= max_abs_x);
@@ -166,7 +174,7 @@ static void test_formula_engine_damped_oscillator(void) {
     ASSERT_APPROX(state.v, -0.206717044720150, 1e-12);
     ASSERT_APPROX(state.t, (double)steps * dt, 1e-12);
 
-    cxpr_formula_engine_free(engine);
+    cxpr_evaluator_free(evaluator);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_formula_engine_damped_oscillator\n");

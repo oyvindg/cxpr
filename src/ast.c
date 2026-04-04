@@ -677,3 +677,315 @@ static size_t cxpr_collect_variables(const cxpr_ast* ast, const char** names,
 size_t cxpr_ast_variables_used(const cxpr_ast* ast, const char** names, size_t max_names) {
     return cxpr_collect_variables(ast, names, 0, max_names);
 }
+
+static size_t cxpr_collect_field_paths(const cxpr_ast* ast, const char** names,
+                                       size_t count, size_t max_names) {
+    if (!ast) return count;
+
+    switch (ast->type) {
+    case CXPR_NODE_FIELD_ACCESS:
+        return cxpr_add_unique_name(names, count, max_names, ast->data.field_access.full_key);
+    case CXPR_NODE_CHAIN_ACCESS:
+        return cxpr_add_unique_name(names, count, max_names, ast->data.chain_access.full_key);
+    case CXPR_NODE_PRODUCER_ACCESS:
+        count = cxpr_add_unique_name(names, count, max_names, ast->data.producer_access.full_key);
+        for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+            count = cxpr_collect_field_paths(ast->data.producer_access.args[i], names, count, max_names);
+        }
+        return count;
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+            count = cxpr_collect_field_paths(ast->data.function_call.args[i], names, count, max_names);
+        }
+        return count;
+    case CXPR_NODE_BINARY_OP:
+        count = cxpr_collect_field_paths(ast->data.binary_op.left, names, count, max_names);
+        count = cxpr_collect_field_paths(ast->data.binary_op.right, names, count, max_names);
+        return count;
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_collect_field_paths(ast->data.unary_op.operand, names, count, max_names);
+    case CXPR_NODE_TERNARY:
+        count = cxpr_collect_field_paths(ast->data.ternary.condition, names, count, max_names);
+        count = cxpr_collect_field_paths(ast->data.ternary.true_branch, names, count, max_names);
+        count = cxpr_collect_field_paths(ast->data.ternary.false_branch, names, count, max_names);
+        return count;
+    default:
+        return count;
+    }
+}
+
+static void cxpr_analysis_set_error(cxpr_error* err, cxpr_error_code code, const char* message) {
+    if (!err) return;
+    *err = (cxpr_error){0};
+    err->code = code;
+    err->message = message;
+}
+
+static cxpr_expr_type cxpr_analysis_merge_types(cxpr_expr_type a, cxpr_expr_type b) {
+    if (a == b) return a;
+    if (a == CXPR_EXPR_UNKNOWN) return b;
+    if (b == CXPR_EXPR_UNKNOWN) return a;
+    return CXPR_EXPR_UNKNOWN;
+}
+
+static void cxpr_analysis_merge_into(cxpr_analysis* dst, const cxpr_analysis* src) {
+    if (!dst || !src) return;
+    dst->uses_variables = dst->uses_variables || src->uses_variables;
+    dst->uses_parameters = dst->uses_parameters || src->uses_parameters;
+    dst->uses_functions = dst->uses_functions || src->uses_functions;
+    dst->uses_expressions = dst->uses_expressions || src->uses_expressions;
+    dst->uses_field_access = dst->uses_field_access || src->uses_field_access;
+    dst->can_short_circuit = dst->can_short_circuit || src->can_short_circuit;
+    dst->is_constant = dst->is_constant && src->is_constant;
+    dst->node_count += src->node_count;
+    if (src->max_depth > dst->max_depth) dst->max_depth = src->max_depth;
+}
+
+static bool cxpr_analysis_validate_arity(const cxpr_func_entry* entry, size_t argc, cxpr_error* err) {
+    if (!entry) return false;
+    if (argc < entry->min_args || argc > entry->max_args) {
+        cxpr_analysis_set_error(err, CXPR_ERR_WRONG_ARITY, "Wrong number of arguments");
+        return false;
+    }
+    return true;
+}
+
+static bool cxpr_analyze_node(const cxpr_ast* ast, const cxpr_registry* reg,
+                              cxpr_analysis* out, unsigned depth, cxpr_error* err) {
+    cxpr_func_entry* entry;
+
+    if (!ast) return true;
+
+    out->node_count += 1;
+    if (depth > out->max_depth) out->max_depth = depth;
+
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+        out->result_type = CXPR_EXPR_NUMBER;
+        return true;
+
+    case CXPR_NODE_BOOL:
+        out->result_type = CXPR_EXPR_BOOL;
+        out->is_predicate = true;
+        return true;
+
+    case CXPR_NODE_IDENTIFIER:
+        out->uses_variables = true;
+        out->is_constant = false;
+        out->result_type = CXPR_EXPR_UNKNOWN;
+        return true;
+
+    case CXPR_NODE_VARIABLE:
+        out->uses_parameters = true;
+        out->is_constant = false;
+        out->result_type = CXPR_EXPR_UNKNOWN;
+        return true;
+
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+        out->uses_variables = true;
+        out->uses_field_access = true;
+        out->is_constant = false;
+        out->result_type = CXPR_EXPR_UNKNOWN;
+        return true;
+
+    case CXPR_NODE_UNARY_OP: {
+        if (!cxpr_analyze_node(ast->data.unary_op.operand, reg, out, depth + 1, err)) return false;
+        out->result_type =
+            (ast->data.unary_op.op == CXPR_TOK_NOT) ? CXPR_EXPR_BOOL : CXPR_EXPR_NUMBER;
+        out->is_predicate = (out->result_type == CXPR_EXPR_BOOL);
+        return true;
+    }
+
+    case CXPR_NODE_BINARY_OP: {
+        if (!cxpr_analyze_node(ast->data.binary_op.left, reg, out, depth + 1, err)) return false;
+        if (!cxpr_analyze_node(ast->data.binary_op.right, reg, out, depth + 1, err)) return false;
+
+        switch (ast->data.binary_op.op) {
+        case CXPR_TOK_AND:
+        case CXPR_TOK_OR:
+            out->result_type = CXPR_EXPR_BOOL;
+            out->is_predicate = true;
+            out->can_short_circuit = true;
+            return true;
+        case CXPR_TOK_EQ:
+        case CXPR_TOK_NEQ:
+        case CXPR_TOK_LT:
+        case CXPR_TOK_GT:
+        case CXPR_TOK_LTE:
+        case CXPR_TOK_GTE:
+            out->result_type = CXPR_EXPR_BOOL;
+            out->is_predicate = true;
+            return true;
+        default:
+            out->result_type = CXPR_EXPR_NUMBER;
+            out->is_predicate = false;
+            return true;
+        }
+    }
+
+    case CXPR_NODE_FUNCTION_CALL:
+        out->uses_functions = true;
+        out->is_constant = false;
+        if (strcmp(ast->data.function_call.name, "if") == 0 &&
+            ast->data.function_call.argc == 3) {
+            cxpr_analysis branch_true;
+            cxpr_analysis branch_false;
+            if (!cxpr_analyze_node(ast->data.function_call.args[0], reg, out, depth + 1, err)) {
+                return false;
+            }
+            memset(&branch_true, 0, sizeof(branch_true));
+            memset(&branch_false, 0, sizeof(branch_false));
+            branch_true.is_constant = true;
+            branch_false.is_constant = true;
+            if (!cxpr_analyze_node(ast->data.function_call.args[1], reg, &branch_true, depth + 1, err)) {
+                return false;
+            }
+            if (!cxpr_analyze_node(ast->data.function_call.args[2], reg, &branch_false, depth + 1, err)) {
+                return false;
+            }
+            cxpr_analysis_merge_into(out, &branch_true);
+            cxpr_analysis_merge_into(out, &branch_false);
+            out->can_short_circuit = true;
+            out->result_type = cxpr_analysis_merge_types(branch_true.result_type, branch_false.result_type);
+            out->is_predicate = (out->result_type == CXPR_EXPR_BOOL);
+            return true;
+        }
+        entry = reg ? cxpr_registry_find(reg, ast->data.function_call.name) : NULL;
+        if (reg && !entry) {
+            out->has_unknown_functions = true;
+            out->first_unknown_function = ast->data.function_call.name;
+            cxpr_analysis_set_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+            return false;
+        }
+        if (entry) {
+            if (!cxpr_analysis_validate_arity(entry, ast->data.function_call.argc, err)) return false;
+            if (entry->defined_body) out->uses_expressions = true;
+        }
+        for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+            if (!cxpr_analyze_node(ast->data.function_call.args[i], reg, out, depth + 1, err)) {
+                return false;
+            }
+        }
+        if (entry) {
+            if (entry->struct_producer && !entry->sync_func && !entry->value_func && !entry->typed_func) {
+                out->result_type = CXPR_EXPR_STRUCT;
+            } else if (entry->has_return_type) {
+                switch (entry->return_type) {
+                case CXPR_VALUE_BOOL: out->result_type = CXPR_EXPR_BOOL; break;
+                case CXPR_VALUE_STRUCT: out->result_type = CXPR_EXPR_STRUCT; break;
+                default: out->result_type = CXPR_EXPR_NUMBER; break;
+                }
+            } else if (entry->sync_func && !entry->value_func && !entry->typed_func) {
+                out->result_type = CXPR_EXPR_NUMBER;
+            } else {
+                out->result_type = CXPR_EXPR_UNKNOWN;
+            }
+        } else {
+            out->result_type = CXPR_EXPR_UNKNOWN;
+        }
+        out->is_predicate = (out->result_type == CXPR_EXPR_BOOL);
+        return true;
+
+    case CXPR_NODE_PRODUCER_ACCESS:
+        out->uses_functions = true;
+        out->uses_field_access = true;
+        out->is_constant = false;
+        entry = reg ? cxpr_registry_find(reg, ast->data.producer_access.name) : NULL;
+        if (reg && !entry) {
+            out->has_unknown_functions = true;
+            out->first_unknown_function = ast->data.producer_access.name;
+            cxpr_analysis_set_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+            return false;
+        }
+        if (entry) {
+            if (!cxpr_analysis_validate_arity(entry, ast->data.producer_access.argc, err)) return false;
+        }
+        for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+            if (!cxpr_analyze_node(ast->data.producer_access.args[i], reg, out, depth + 1, err)) {
+                return false;
+            }
+        }
+        out->result_type = CXPR_EXPR_UNKNOWN;
+        out->is_predicate = false;
+        return true;
+
+    case CXPR_NODE_TERNARY: {
+        if (!cxpr_analyze_node(ast->data.ternary.condition, reg, out, depth + 1, err)) return false;
+        cxpr_analysis branch_true;
+        cxpr_analysis branch_false;
+
+        memset(&branch_true, 0, sizeof(branch_true));
+        memset(&branch_false, 0, sizeof(branch_false));
+        branch_true.is_constant = true;
+        branch_false.is_constant = true;
+
+        if (!cxpr_analyze_node(ast->data.ternary.true_branch, reg, &branch_true, depth + 1, err)) {
+            return false;
+        }
+        if (!cxpr_analyze_node(ast->data.ternary.false_branch, reg, &branch_false, depth + 1, err)) {
+            return false;
+        }
+
+        cxpr_analysis_merge_into(out, &branch_true);
+        cxpr_analysis_merge_into(out, &branch_false);
+        out->can_short_circuit = true;
+        out->result_type = cxpr_analysis_merge_types(branch_true.result_type, branch_false.result_type);
+        out->is_predicate = (out->result_type == CXPR_EXPR_BOOL);
+        return true;
+    }
+
+    default:
+        out->result_type = CXPR_EXPR_UNKNOWN;
+        return true;
+    }
+}
+
+bool cxpr_analyze(const cxpr_ast* ast, const cxpr_registry* reg,
+                  cxpr_analysis* out_analysis, cxpr_error* err) {
+    const char* names[256];
+
+    if (err) *err = (cxpr_error){0};
+    if (!ast || !out_analysis) return false;
+
+    memset(out_analysis, 0, sizeof(*out_analysis));
+    out_analysis->is_constant = true;
+
+    if (!cxpr_analyze_node(ast, reg, out_analysis, 1u, err)) return false;
+
+    out_analysis->reference_count = cxpr_ast_references(ast, names, 256);
+    out_analysis->function_count = cxpr_ast_functions_used(ast, names, 256);
+    out_analysis->parameter_count = cxpr_ast_variables_used(ast, names, 256);
+    out_analysis->field_path_count = cxpr_collect_field_paths(ast, names, 0, 256);
+    return true;
+}
+
+bool cxpr_analyze_expr(const char* expression, const cxpr_registry* reg,
+                       cxpr_analysis* out_analysis, cxpr_error* err) {
+    cxpr_parser* parser;
+    cxpr_ast* ast;
+    bool ok;
+
+    if (err) *err = (cxpr_error){0};
+    if (!expression || !out_analysis) {
+        cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "NULL argument");
+        return false;
+    }
+
+    parser = cxpr_parser_new();
+    if (!parser) {
+        cxpr_analysis_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return false;
+    }
+
+    ast = cxpr_parse(parser, expression, err);
+    if (!ast) {
+        cxpr_parser_free(parser);
+        return false;
+    }
+
+    ok = cxpr_analyze(ast, reg, out_analysis, err);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(parser);
+    return ok;
+}

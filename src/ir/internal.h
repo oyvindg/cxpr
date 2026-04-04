@@ -55,9 +55,9 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right);
 /** @brief Populate an IR runtime error and return a NaN field sentinel.
  * @param err Optional error output to populate.
  * @param message Error message to attach.
- * @return A `cxpr_field_value` wrapping `NAN`.
+ * @return A `cxpr_value` wrapping `NAN`.
  */
-cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* message);
+cxpr_value cxpr_ir_runtime_error(cxpr_error* err, const char* message);
 /** @brief Push one value onto an IR operand stack.
  * @param stack Stack storage.
  * @param sp In/out stack pointer.
@@ -66,7 +66,7 @@ cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* message);
  * @param err Optional error output on overflow.
  * @return true on success, false if the push would overflow.
  */
-bool cxpr_ir_stack_push(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
+bool cxpr_ir_stack_push(cxpr_value* stack, size_t* sp, cxpr_value value,
                         size_t capacity, cxpr_error* err);
 /** @brief Ensure that a stack contains at least a given number of values.
  * @param sp Current stack depth.
@@ -82,14 +82,14 @@ bool cxpr_ir_require_stack(size_t sp, size_t need, cxpr_error* err);
  * @param message Error message to attach on mismatch.
  * @return true when `value.type` matches `type`.
  */
-bool cxpr_ir_require_type(cxpr_field_value value, cxpr_field_type type,
+bool cxpr_ir_require_type(cxpr_value value, cxpr_value_type type,
                           cxpr_error* err, const char* message);
 /** @brief Populate an unknown-identifier error and return a NaN field sentinel.
  * @param err Optional error output to populate.
  * @param message Error message to attach.
- * @return A `cxpr_field_value` wrapping `NAN`.
+ * @return A `cxpr_value` wrapping `NAN`.
  */
-cxpr_field_value cxpr_ir_make_not_found(cxpr_error* err, const char* message);
+cxpr_value cxpr_ir_make_not_found(cxpr_error* err, const char* message);
 /** @brief Validate stack safety for the scalar fast-path executor.
  * @param program Compiled IR program to validate.
  * @return true when all reachable paths have consistent, safe stack depth.

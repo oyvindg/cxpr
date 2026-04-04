@@ -46,7 +46,7 @@ static double native_f5_adapter(const double* args, size_t argc, void* userdata)
 }
 
 static void bench_macd(const double* args, size_t argc,
-                       cxpr_field_value* out, size_t field_count,
+                       cxpr_value* out, size_t field_count,
                        void* userdata) {
     (void)userdata;
     (void)field_count;
@@ -151,12 +151,13 @@ static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_regist
     churn_hashes hashes = make_churn_hashes();
 
     for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
         if (mutate_context) mutate_values_prehashed(ctx, &hashes, i);
-        total += cxpr_ast_eval_double(ast, ctx, reg, &err);
-        if (err.code != CXPR_OK) {
+        if (!cxpr_eval_ast_number(ast, ctx, reg, &value, &err)) {
             fprintf(stderr, "AST benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
+        total += value;
     }
 
     return total;
@@ -170,29 +171,30 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
     churn_hashes hashes = make_churn_hashes();
 
     for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
         if (mutate_context) mutate_values_prehashed(ctx, &hashes, i);
-        total += cxpr_ir_eval_double(program, ctx, reg, &err);
-        if (err.code != CXPR_OK) {
+        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
+        total += value;
     }
 
     return total;
 }
 
-static double typed_value_to_double(const cxpr_field_value* value, const char* field) {
+static double typed_value_to_double(const cxpr_value* value, const char* field) {
     bool found = false;
 
-    if (value->type == CXPR_FIELD_DOUBLE) return value->d;
-    if (value->type == CXPR_FIELD_BOOL) return value->b ? 1.0 : 0.0;
-    if (value->type != CXPR_FIELD_STRUCT || !field) return NAN;
+    if (value->type == CXPR_VALUE_NUMBER) return value->d;
+    if (value->type == CXPR_VALUE_BOOL) return value->b ? 1.0 : 0.0;
+    if (value->type != CXPR_VALUE_STRUCT || !field) return NAN;
 
     for (size_t i = 0; i < value->s->field_count; ++i) {
         if (strcmp(value->s->field_names[i], field) == 0) {
             found = true;
-            if (value->s->field_values[i].type == CXPR_FIELD_DOUBLE) return value->s->field_values[i].d;
-            if (value->s->field_values[i].type == CXPR_FIELD_BOOL) {
+            if (value->s->field_values[i].type == CXPR_VALUE_NUMBER) return value->s->field_values[i].d;
+            if (value->s->field_values[i].type == CXPR_VALUE_BOOL) {
                 return value->s->field_values[i].b ? 1.0 : 0.0;
             }
             break;
@@ -209,8 +211,8 @@ static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_
     cxpr_error err = {0};
 
     for (i = 0; i < iterations; ++i) {
-        cxpr_field_value value = cxpr_ast_eval(ast, ctx, reg, &err);
-        if (err.code != CXPR_OK) {
+        cxpr_value value = {0};
+        if (!cxpr_eval_ast(ast, ctx, reg, &value, &err)) {
             fprintf(stderr, "Typed AST benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
@@ -227,8 +229,8 @@ static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, cons
     cxpr_error err = {0};
 
     for (i = 0; i < iterations; ++i) {
-        cxpr_field_value value = cxpr_ir_eval(program, ctx, reg, &err);
-        if (err.code != CXPR_OK) {
+        cxpr_value value = {0};
+        if (!cxpr_eval_program(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Typed IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
@@ -255,8 +257,12 @@ static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
 
         ast_err = (cxpr_error){0};
         ir_err = (cxpr_error){0};
-        ast_value = cxpr_ast_eval_double(ast, ctx, reg, &ast_err);
-        ir_value = cxpr_ir_eval_double(program, ctx, reg, &ir_err);
+        if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) {
+            ast_value = NAN;
+        }
+        if (!cxpr_eval_program_number(program, ctx, reg, &ir_value, &ir_err)) {
+            ir_value = NAN;
+        }
 
         if (ast_err.code != ir_err.code) {
             fprintf(stderr,
@@ -409,11 +415,12 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     churn_start = now_ns();
     churn_total = 0.0;
     for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
         mutate_values_slots(&s, i);
-        churn_total += cxpr_ir_eval_double(program, ctx, reg, &err);
-        if (err.code != CXPR_OK) {
+        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Slot benchmark eval failed: %s\n", err.message); exit(1);
         }
+        churn_total += value;
     }
     churn_end = now_ns();
 
