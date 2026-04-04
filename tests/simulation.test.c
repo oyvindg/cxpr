@@ -14,7 +14,7 @@
  * - Bollinger Bands (upper/middle/lower)
  * - Complex multi-indicator entry/exit signals
  * - Bar-by-bar signal counting and validation
- * - FormulaEngine with indicator dependency chains
+ * - Expression evaluator with indicator dependency chains
  */
 
 #include <cxpr/cxpr.h>
@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include "cxpr_test_internal.h"
 #include <stdint.h>
 
 #define NUM_BARS    200
@@ -152,17 +153,17 @@ static double fn_ema_step(const double* args, size_t n, void* u) {
 }
 
 /** @brief Cross above: cross_above(current_fast, current_slow, prev_fast, prev_slow) */
-static double fn_cross_above(const double* args, size_t n, void* u) {
+static cxpr_value fn_cross_above(const double* args, size_t n, void* u) {
     (void)n; (void)u;
     /* current_fast > current_slow AND prev_fast <= prev_slow */
-    return (args[0] > args[1] && args[2] <= args[3]) ? 1.0 : 0.0;
+    return cxpr_fv_bool(args[0] > args[1] && args[2] <= args[3]);
 }
 
 /** @brief Cross below: cross_below(current_fast, current_slow, prev_fast, prev_slow) */
-static double fn_cross_below(const double* args, size_t n, void* u) {
+static cxpr_value fn_cross_below(const double* args, size_t n, void* u) {
     (void)n; (void)u;
     /* current_fast < current_slow AND prev_fast >= prev_slow */
-    return (args[0] < args[1] && args[2] >= args[3]) ? 1.0 : 0.0;
+    return cxpr_fv_bool(args[0] < args[1] && args[2] >= args[3]);
 }
 
 /** @brief Percentage change: pct_change(current, previous) */
@@ -194,8 +195,8 @@ static double fn_vol_ratio(const double* args, size_t n, void* u) {
 /** @brief Register all custom trading functions in the registry. */
 static void register_trading_functions(cxpr_registry* reg) {
     cxpr_registry_add(reg, "ema_step",    fn_ema_step,    3, 3, NULL, NULL);
-    cxpr_registry_add(reg, "cross_above", fn_cross_above, 4, 4, NULL, NULL);
-    cxpr_registry_add(reg, "cross_below", fn_cross_below, 4, 4, NULL, NULL);
+    cxpr_registry_add_value(reg, "cross_above", fn_cross_above, 4, 4, NULL, NULL);
+    cxpr_registry_add_value(reg, "cross_below", fn_cross_below, 4, 4, NULL, NULL);
     cxpr_registry_add(reg, "pct_change",  fn_pct_change,  2, 2, NULL, NULL);
     cxpr_registry_add(reg, "true_range",  fn_true_range,  3, 3, NULL, NULL);
     cxpr_registry_add(reg, "vol_ratio",   fn_vol_ratio,   2, 2, NULL, NULL);
@@ -220,12 +221,12 @@ static void test_sma_crossover(void) {
 
     /* Pre-parse expressions (like codegen would) */
     cxpr_ast* entry_ast = cxpr_parse(p,
-        "cross_above(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) == 1 and close > sma_slow",
+        "cross_above(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) and close > sma_slow",
         &err);
     assert(entry_ast);
 
     cxpr_ast* exit_ast = cxpr_parse(p,
-        "cross_below(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) == 1 or close < sma_slow * 0.98",
+        "cross_below(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) or close < sma_slow * 0.98",
         &err);
     assert(exit_ast);
 
@@ -252,12 +253,12 @@ static void test_sma_crossover(void) {
         /* Evaluate after warm-up period */
         if ((int)i >= sma_slow_period) {
             err.code = CXPR_OK;
-            bool entry = cxpr_ast_eval_bool(entry_ast, ctx, reg, &err);
+            bool entry = cxpr_test_eval_ast_bool(entry_ast, ctx, reg, &err);
             assert(err.code == CXPR_OK);
             if (entry) entry_signals++;
 
             err.code = CXPR_OK;
-            bool exit = cxpr_ast_eval_bool(exit_ast, ctx, reg, &err);
+            bool exit = cxpr_test_eval_ast_bool(exit_ast, ctx, reg, &err);
             assert(err.code == CXPR_OK);
             if (exit) exit_signals++;
         }
@@ -316,10 +317,10 @@ static void test_ema_convergence(void) {
         cxpr_context_set(ctx, "prev_ema", expr_ema);
         cxpr_context_set(ctx, "close", bars[i].close);
         err.code = CXPR_OK;
-        expr_ema = cxpr_ast_eval_double(ema_expr, ctx, reg, &err);
+        expr_ema = cxpr_test_eval_ast_number(ema_expr, ctx, reg, &err);
         assert(err.code == CXPR_OK);
 
-        /* They should be bit-identical since the formula is the same */
+        /* They should be bit-identical since the expression is the same */
         ASSERT_DOUBLE_EQ(expr_ema, ref_ema);
     }
 
@@ -384,15 +385,15 @@ static void test_rsi_signals(void) {
 
         if ((int)i >= rsi_period) {
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(oversold_ast, ctx, reg, &err))  oversold_count++;
+            if (cxpr_test_eval_ast_bool(oversold_ast, ctx, reg, &err))  oversold_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(overbought_ast, ctx, reg, &err)) overbought_count++;
+            if (cxpr_test_eval_ast_bool(overbought_ast, ctx, reg, &err)) overbought_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(buy_signal_ast, ctx, reg, &err)) buy_signals++;
+            if (cxpr_test_eval_ast_bool(buy_signal_ast, ctx, reg, &err)) buy_signals++;
             assert(err.code == CXPR_OK);
         }
     }
@@ -471,15 +472,15 @@ static void test_bollinger_bands(void) {
             assert(lower <= sma && "Lower band must be <= middle");
 
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(squeeze_ast, ctx, reg, &err)) squeeze_count++;
+            if (cxpr_test_eval_ast_bool(squeeze_ast, ctx, reg, &err)) squeeze_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(near_lower_ast, ctx, reg, &err)) near_lower_count++;
+            if (cxpr_test_eval_ast_bool(near_lower_ast, ctx, reg, &err)) near_lower_count++;
             assert(err.code == CXPR_OK);
 
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(mean_reversion_ast, ctx, reg, &err)) mean_rev_count++;
+            if (cxpr_test_eval_ast_bool(mean_reversion_ast, ctx, reg, &err)) mean_rev_count++;
             assert(err.code == CXPR_OK);
         }
     }
@@ -596,18 +597,18 @@ static void test_full_strategy_simulation(void) {
 
         if (!in_position) {
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(entry_ast, ctx, reg, &err)) {
+            if (cxpr_test_eval_ast_bool(entry_ast, ctx, reg, &err)) {
                 assert(err.code == CXPR_OK);
 
                 /* Compute position size */
                 err.code = CXPR_OK;
-                double size = cxpr_ast_eval_double(size_ast, ctx, reg, &err);
+                double size = cxpr_test_eval_ast_number(size_ast, ctx, reg, &err);
                 assert(err.code == CXPR_OK);
                 assert(size >= 1.0 && size <= 100.0);
 
                 /* Compute stop loss */
                 err.code = CXPR_OK;
-                double sl = cxpr_ast_eval_double(stoploss_ast, ctx, reg, &err);
+                double sl = cxpr_test_eval_ast_number(stoploss_ast, ctx, reg, &err);
                 assert(err.code == CXPR_OK);
                 assert(sl < bars[i].close && "Stop loss must be below entry");
 
@@ -617,7 +618,7 @@ static void test_full_strategy_simulation(void) {
             }
         } else {
             err.code = CXPR_OK;
-            if (cxpr_ast_eval_bool(exit_ast, ctx, reg, &err)) {
+            if (cxpr_test_eval_ast_bool(exit_ast, ctx, reg, &err)) {
                 assert(err.code == CXPR_OK);
                 total_pnl += bars[i].close - entry_price;
                 in_position = false;
@@ -648,7 +649,7 @@ static void test_full_strategy_simulation(void) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Test 6: FormulaEngine — chained indicator dependency resolution
+ * Test 6: Expression evaluator — chained indicator dependency resolution
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_formula_engine_indicators(void) {
@@ -659,29 +660,29 @@ static void test_formula_engine_indicators(void) {
 
     register_trading_functions(reg);
 
-    cxpr_formula_engine* engine = cxpr_formula_engine_new(reg);
-    assert(engine);
+    cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
+    assert(evaluator);
 
-    /* Define a chain of formulas that depend on each other:
+    /* Define a chain of expressions that depend on each other:
        atr_norm depends on atr and close
        risk_score depends on atr_norm and rsi
        position_size depends on risk_score
        signal depends on everything */
-    assert(cxpr_formula_add(engine, "atr_norm", "atr / close * 100", &err));
-    assert(cxpr_formula_add(engine, "risk_score",
+    assert(cxpr_expression_add(evaluator, "atr_norm", "atr / close * 100", &err));
+    assert(cxpr_expression_add(evaluator, "risk_score",
         "clamp(atr_norm * 10 + abs(50 - rsi), 0, 100)", &err));
-    assert(cxpr_formula_add(engine, "position_size",
+    assert(cxpr_expression_add(evaluator, "position_size",
         "floor(max(1, 100 - risk_score))", &err));
-    assert(cxpr_formula_add(engine, "signal",
+    assert(cxpr_expression_add(evaluator, "signal",
         "if(position_size > 50 and rsi < 60 and atr_norm < 3, 1, 0)", &err));
 
     /* Compile (resolves dependencies) */
-    assert(cxpr_formula_compile(engine, &err));
+    assert(cxpr_evaluator_compile(evaluator, &err));
     assert(err.code == CXPR_OK);
 
     /* Verify evaluation order respects dependencies */
     const char* order[16];
-    size_t n = cxpr_formula_eval_order(engine, order, 16);
+    size_t n = cxpr_expression_eval_order(evaluator, order, 16);
     assert(n == 4);
 
     /* atr_norm must come before risk_score, which must come before position_size,
@@ -698,7 +699,7 @@ static void test_formula_engine_indicators(void) {
     assert(idx_risk < idx_pos && "risk_score before position_size");
     assert(idx_pos < idx_sig && "position_size before signal");
 
-    /* Now simulate bar-by-bar evaluation using the formula engine */
+    /* Now simulate bar-by-bar evaluation using the expression evaluator */
     Bar bars[NUM_BARS];
     s_rng_state = 54321;
     generate_bars(bars, NUM_BARS);
@@ -716,34 +717,34 @@ static void test_formula_engine_indicators(void) {
         cxpr_context_set(ctx, "atr",   atr);
         cxpr_context_set(ctx, "rsi",   rsi);
 
-        /* Evaluate formulas in dependency order */
+        /* Evaluate expressions in dependency order */
         err.code = CXPR_OK;
-        cxpr_formula_eval_all(engine, ctx, &err);
+        cxpr_evaluator_eval(evaluator, ctx, &err);
         assert(err.code == CXPR_OK);
 
-        /* Read computed values back from formula results */
+        /* Read computed values back from expression results */
         bool found = false;
-        double atr_norm = cxpr_formula_get_double(engine, "atr_norm", &found);
+        double atr_norm = cxpr_expression_get_double(evaluator, "atr_norm", &found);
         assert(found);
         assert(atr_norm >= 0.0); /* normalized ATR should be positive */
 
-        double risk = cxpr_formula_get_double(engine, "risk_score", &found);
+        double risk = cxpr_expression_get_double(evaluator, "risk_score", &found);
         assert(found);
         assert(risk >= 0.0 && risk <= 100.0); /* clamped */
 
-        double pos = cxpr_formula_get_double(engine, "position_size", &found);
+        double pos = cxpr_expression_get_double(evaluator, "position_size", &found);
         assert(found);
         assert(pos >= 1.0 && pos <= 100.0);
 
-        double sig = cxpr_formula_get_double(engine, "signal", &found);
+        double sig = cxpr_expression_get_double(evaluator, "signal", &found);
         assert(found);
         if (sig != 0.0) signal_count++;
     }
 
-    cxpr_formula_engine_free(engine);
+    cxpr_evaluator_free(evaluator);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    printf("  ✓ test_formula_engine_indicators (%d signals from formula chain)\n",
+    printf("  ✓ test_formula_engine_indicators (%d signals from expression chain)\n",
            signal_count);
 }
 
@@ -820,7 +821,7 @@ static void test_stress_multi_expression(void) {
 
         for (int j = 0; j < n_expr; j++) {
             err.code = CXPR_OK;
-            double result = cxpr_ast_eval_double(asts[j], ctx, reg, &err);
+            double result = cxpr_test_eval_ast_number(asts[j], ctx, reg, &err);
             assert(err.code == CXPR_OK);
             assert(!isnan(result) && "Result must not be NaN");
             eval_count++;

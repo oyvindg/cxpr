@@ -407,6 +407,123 @@ static void test_reference_deduplication(void) {
     printf("  ✓ test_reference_deduplication\n");
 }
 
+static double stub_cross(const double* args, size_t argc, void* userdata) {
+    (void)args;
+    (void)argc;
+    (void)userdata;
+    return 0.0;
+}
+
+static void test_analysis_metadata(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_analysis info;
+    cxpr_error err = {0};
+
+    cxpr_registry_add(reg, "cross_above", stub_cross, 2, 2, NULL, NULL);
+    cxpr_ast* ast = parse_ok(p, "rsi < $oversold and cross_above(ema_fast, ema_slow)");
+
+    assert(cxpr_analyze(ast, reg, &info, &err));
+    assert(err.code == CXPR_OK);
+    assert(info.result_type == CXPR_EXPR_BOOL);
+    assert(info.is_constant == false);
+    assert(info.is_predicate == true);
+    assert(info.uses_variables == true);
+    assert(info.uses_parameters == true);
+    assert(info.uses_functions == true);
+    assert(info.uses_expressions == false);
+    assert(info.uses_field_access == false);
+    assert(info.can_short_circuit == true);
+    assert(info.node_count == 7);
+    assert(info.max_depth == 3);
+    assert(info.reference_count == 3);
+    assert(info.function_count == 1);
+    assert(info.parameter_count == 1);
+    assert(info.field_path_count == 0);
+    assert(info.has_unknown_functions == false);
+    assert(info.first_unknown_function == NULL);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_analysis_metadata\n");
+}
+
+static void test_analysis_field_paths(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_analysis info;
+    cxpr_error err = {0};
+    cxpr_ast* ast = parse_ok(p, "macd.histogram > 0 and adx.adx > 25");
+
+    assert(cxpr_analyze(ast, NULL, &info, &err));
+    assert(info.uses_field_access == true);
+    assert(info.field_path_count == 2);
+    assert(info.reference_count == 2);
+    assert(info.result_type == CXPR_EXPR_BOOL);
+
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  ✓ test_analysis_field_paths\n");
+}
+
+static void test_analysis_unknown_function(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_analysis info;
+    cxpr_error err = {0};
+    cxpr_ast* ast = parse_ok(p, "missing_fn(x)");
+
+    assert(!cxpr_analyze(ast, reg, &info, &err));
+    assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
+    assert(info.has_unknown_functions == true);
+    assert(info.first_unknown_function != NULL);
+    assert(strcmp(info.first_unknown_function, "missing_fn") == 0);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_analysis_unknown_function\n");
+}
+
+static void test_analysis_wrong_arity(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_analysis info;
+    cxpr_error err = {0};
+
+    cxpr_register_builtins(reg);
+    cxpr_ast* ast = parse_ok(p, "sqrt(1, 2)");
+
+    assert(!cxpr_analyze(ast, reg, &info, &err));
+    assert(err.code == CXPR_ERR_WRONG_ARITY);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_analysis_wrong_arity\n");
+}
+
+static void test_analyze_expr_convenience_api(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_analysis info;
+    cxpr_error err = {0};
+
+    cxpr_registry_add(reg, "cross_above", stub_cross, 2, 2, NULL, NULL);
+    assert(cxpr_analyze_expr("rsi < $oversold and cross_above(ema_fast, ema_slow)",
+                             reg, &info, &err));
+    assert(err.code == CXPR_OK);
+    assert(info.result_type == CXPR_EXPR_BOOL);
+    assert(info.uses_variables == true);
+    assert(info.uses_parameters == true);
+    assert(info.uses_functions == true);
+    assert(info.function_count == 1);
+    assert(info.reference_count == 3);
+    assert(info.parameter_count == 1);
+
+    cxpr_registry_free(reg);
+    printf("  ✓ test_analyze_expr_convenience_api\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: syntax errors
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -499,6 +616,11 @@ int main(void) {
     test_reference_extraction();
     test_reference_extraction_field_access();
     test_reference_deduplication();
+    test_analysis_metadata();
+    test_analysis_field_paths();
+    test_analysis_unknown_function();
+    test_analysis_wrong_arity();
+    test_analyze_expr_convenience_api();
 
     /* Errors */
     test_syntax_errors();

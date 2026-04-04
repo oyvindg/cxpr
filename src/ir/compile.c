@@ -185,9 +185,9 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
             right_kind =
                 cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[2], reg, depth + 1);
             if ((cond_kind == CXPR_IR_RESULT_BOOL || cond_kind == CXPR_IR_RESULT_DOUBLE) &&
-                left_kind == CXPR_IR_RESULT_DOUBLE &&
-                right_kind == CXPR_IR_RESULT_DOUBLE) {
-                return CXPR_IR_RESULT_DOUBLE;
+                left_kind == right_kind &&
+                (left_kind == CXPR_IR_RESULT_DOUBLE || left_kind == CXPR_IR_RESULT_BOOL)) {
+                return left_kind;
             }
             return CXPR_IR_RESULT_UNKNOWN;
         }
@@ -198,6 +198,10 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
             return CXPR_IR_RESULT_UNKNOWN;
         }
 
+        if (entry->typed_func) {
+            return CXPR_IR_RESULT_UNKNOWN;
+        }
+
         for (i = 0; i < ast->data.function_call.argc; ++i) {
             if (cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[i], reg, depth + 1) !=
                 CXPR_IR_RESULT_DOUBLE) {
@@ -205,7 +209,12 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
             }
         }
 
-        if (entry->sync_func && !entry->defined_body) return CXPR_IR_RESULT_DOUBLE;
+        if (entry->sync_func && !entry->value_func && !entry->defined_body) return CXPR_IR_RESULT_DOUBLE;
+        if (entry->value_func && entry->has_return_type) {
+            return entry->return_type == CXPR_VALUE_BOOL ? CXPR_IR_RESULT_BOOL :
+                   entry->return_type == CXPR_VALUE_NUMBER ? CXPR_IR_RESULT_DOUBLE :
+                   CXPR_IR_RESULT_UNKNOWN;
+        }
         if (entry->defined_body && cxpr_ir_defined_is_scalar_only(entry)) {
             return cxpr_ir_infer_fast_result_kind(entry->defined_body, reg, depth + 1);
         }
@@ -513,7 +522,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
-        if (entry->sync_func && !entry->struct_fields && !entry->defined_body) {
+        if ((entry->sync_func || entry->value_func) && !entry->struct_fields && !entry->defined_body) {
             size_t i;
             for (i = 0; i < ast->data.function_call.argc; ++i) {
                 if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,

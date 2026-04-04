@@ -352,9 +352,9 @@ void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
                                     const cxpr_struct_value* value);
 const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
                                                         const char* name);
-void cxpr_context_set_formula_scope(cxpr_context* ctx, const struct cxpr_formula_engine* engine);
-void cxpr_context_clear_formula_scope(cxpr_context* ctx);
-cxpr_field_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found);
+void cxpr_context_set_expression_scope(cxpr_context* ctx, const struct cxpr_evaluator* evaluator);
+void cxpr_context_clear_expression_scope(cxpr_context* ctx);
+cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found);
 
 typedef struct {
     const char*         key_ref;
@@ -379,7 +379,7 @@ struct cxpr_context {
     unsigned long variables_version; /**< Bumped on variable-map structural changes */
     unsigned long params_version;    /**< Bumped on param-map structural changes */
     const struct cxpr_context* parent; /**< Optional parent context for local overlays */
-    const struct cxpr_formula_engine* formula_scope; /**< Optional typed formula lookup scope */
+    const struct cxpr_evaluator* expression_scope; /**< Optional typed expression lookup scope */
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -391,7 +391,9 @@ struct cxpr_context {
  */
 typedef struct {
     char* name;               /**< Function name, owned */
-    cxpr_func_ptr sync_func;    /**< Sync function pointer (or NULL for defined functions) */
+    cxpr_func_ptr sync_func;    /**< Scalar function pointer */
+    cxpr_value_func_ptr value_func; /**< Numeric-in, typed-out function pointer */
+    cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
     enum {
         CXPR_NATIVE_KIND_NONE = 0,
@@ -408,6 +410,10 @@ typedef struct {
     } native_scalar;
     size_t min_args;
     size_t max_args;
+    cxpr_value_type* arg_types; /**< Optional declared argument types (length max_args) */
+    size_t arg_type_count;      /**< Number of entries in arg_types */
+    cxpr_value_type return_type; /**< Declared result type when known */
+    bool has_return_type;       /**< Whether return_type is declared */
     void* userdata;
     cxpr_userdata_free_fn userdata_free;
     /* Struct expansion (NULL when not struct-aware) */
@@ -591,36 +597,42 @@ double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_conte
                                 size_t local_count, cxpr_error* err);
 const char* cxpr_ir_opcode_name(cxpr_opcode op);
 
+
 /* ═══════════════════════════════════════════════════════════════════════════
- * Formula engine structure
+ * Expression evaluator structure
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * @brief A single formula entry in the engine.
+ * @brief A single expression entry in the evaluator.
  */
 typedef struct {
-    char* name;               /**< Formula name, owned */
+    char* name;               /**< Expression name, owned */
     char* expression;         /**< Original expression string, owned */
     cxpr_ast* ast;              /**< Parsed AST (NULL until compiled) */
     cxpr_program* program;      /**< Compiled program cache (NULL until compiled) */
-    cxpr_field_value result;  /**< Evaluation result */
+    cxpr_value result;  /**< Evaluation result */
     bool evaluated;
-} cxpr_formula_entry;
+} cxpr_expression_entry;
 
-#define CXPR_FORMULA_INITIAL_CAPACITY 32
+#define CXPR_EXPRESSION_INITIAL_CAPACITY 32
 
-struct cxpr_formula_engine {
-    cxpr_formula_entry* formulas;
+struct cxpr_evaluator {
+    cxpr_expression_entry* expressions;
     size_t capacity;
     size_t count;
     size_t* eval_order;       /**< Indices in topological order */
     size_t eval_order_count;
     bool compiled;
     const cxpr_registry* registry; /**< Borrowed reference */
-    cxpr_parser* parser;        /**< Internal parser for formula expressions */
+    cxpr_parser* parser;        /**< Internal parser for expression expressions */
 };
 
-cxpr_field_value cxpr_formula_lookup_typed_result(const cxpr_formula_engine* engine,
-                                                  const char* name, bool* found);
+bool cxpr_expression_reference_matches_name(const char* reference, const char* name);
+void cxpr_expression_result_dispose(cxpr_value* value);
+cxpr_value cxpr_expression_result_clone(const cxpr_value* value, cxpr_error* err);
+bool cxpr_expression_topo_sort(cxpr_evaluator* evaluator, cxpr_error* err);
+void cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator);
+cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
+                                               const char* name, bool* found);
 
 #endif /* CXPR_INTERNAL_H */

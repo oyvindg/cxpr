@@ -140,6 +140,23 @@ static void free_struct_fields(cxpr_func_entry* entry) {
     entry->struct_argc = 0;
 }
 
+static void free_arg_types(cxpr_func_entry* entry) {
+    free(entry->arg_types);
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
+    entry->has_return_type = false;
+    entry->return_type = CXPR_VALUE_NUMBER;
+}
+
+static cxpr_value_type* clone_arg_types(const cxpr_value_type* arg_types, size_t arg_count) {
+    cxpr_value_type* out;
+    if (!arg_types || arg_count == 0) return NULL;
+    out = (cxpr_value_type*)malloc(sizeof(cxpr_value_type) * arg_count);
+    if (!out) return NULL;
+    memcpy(out, arg_types, sizeof(cxpr_value_type) * arg_count);
+    return out;
+}
+
 /** @brief Free defined-function data from an entry (safe to call on C-function entries). */
 static void free_defined_fn(cxpr_func_entry* entry) {
     if (!entry->defined_body) return;
@@ -184,6 +201,7 @@ void cxpr_registry_free(cxpr_registry* reg) {
         }
         free(reg->entries[i].name);
         free_struct_fields(&reg->entries[i]);
+        free_arg_types(&reg->entries[i]);
         free_defined_fn(&reg->entries[i]);
     }
     free(reg->entries);
@@ -213,7 +231,61 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         }
         free_struct_fields(existing);
         free_defined_fn(existing);
+        free_arg_types(existing);
         existing->sync_func = func;
+        existing->value_func = NULL;
+        existing->typed_func = NULL;
+        existing->struct_producer = NULL;
+        existing->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
+        existing->min_args = min_args;
+        existing->max_args = max_args;
+        existing->return_type = CXPR_VALUE_NUMBER;
+        existing->has_return_type = true;
+        existing->userdata = userdata;
+        existing->userdata_free = free_userdata;
+        reg->version++;
+        return;
+    }
+
+    if (reg->count >= reg->capacity) {
+        cxpr_registry_grow(reg);
+    }
+    cxpr_func_entry* entry = &reg->entries[reg->count++];
+    entry->name = cxpr_strdup(name);
+    entry->sync_func = func;
+    entry->value_func = NULL;
+    entry->typed_func = NULL;
+    entry->struct_producer = NULL;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+    entry->min_args = min_args;
+    entry->max_args = max_args;
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
+    entry->return_type = CXPR_VALUE_NUMBER;
+    entry->has_return_type = true;
+    entry->userdata = userdata;
+    entry->userdata_free = free_userdata;
+    reg->version++;
+}
+
+void cxpr_registry_add_value(cxpr_registry* reg, const char* name,
+                             cxpr_value_func_ptr func, size_t min_args, size_t max_args,
+                             void* userdata, cxpr_userdata_free_fn free_userdata) {
+    if (!reg || !name || !func) return;
+
+    cxpr_func_entry* existing = cxpr_registry_find(reg, name);
+    if (existing) {
+        if (existing->userdata_free) {
+            existing->userdata_free(existing->userdata);
+        }
+        free_struct_fields(existing);
+        free_defined_fn(existing);
+        free_arg_types(existing);
+        existing->sync_func = NULL;
+        existing->value_func = func;
+        existing->typed_func = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
@@ -230,12 +302,75 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     }
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
-    entry->sync_func = func;
+    entry->sync_func = NULL;
+    entry->value_func = func;
+    entry->typed_func = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = min_args;
     entry->max_args = max_args;
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
+    entry->return_type = CXPR_VALUE_NUMBER;
+    entry->has_return_type = false;
+    entry->userdata = userdata;
+    entry->userdata_free = free_userdata;
+    reg->version++;
+}
+
+void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
+                             cxpr_typed_func_ptr func, size_t min_args, size_t max_args,
+                             const cxpr_value_type* arg_types, cxpr_value_type return_type,
+                             void* userdata, cxpr_userdata_free_fn free_userdata) {
+    cxpr_value_type* owned_arg_types;
+    if (!reg || !name || !func) return;
+    owned_arg_types = clone_arg_types(arg_types, max_args);
+    if (arg_types && max_args > 0 && !owned_arg_types) return;
+
+    cxpr_func_entry* existing = cxpr_registry_find(reg, name);
+    if (existing) {
+        if (existing->userdata_free) {
+            existing->userdata_free(existing->userdata);
+        }
+        free_struct_fields(existing);
+        free_arg_types(existing);
+        free_defined_fn(existing);
+        existing->sync_func = NULL;
+        existing->value_func = NULL;
+        existing->typed_func = func;
+        existing->struct_producer = NULL;
+        existing->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
+        existing->min_args = min_args;
+        existing->max_args = max_args;
+        existing->arg_types = owned_arg_types;
+        existing->arg_type_count = max_args;
+        existing->return_type = return_type;
+        existing->has_return_type = true;
+        existing->userdata = userdata;
+        existing->userdata_free = free_userdata;
+        reg->version++;
+        return;
+    }
+
+    if (reg->count >= reg->capacity) {
+        cxpr_registry_grow(reg);
+    }
+    cxpr_func_entry* entry = &reg->entries[reg->count++];
+    entry->name = cxpr_strdup(name);
+    entry->sync_func = NULL;
+    entry->value_func = NULL;
+    entry->typed_func = func;
+    entry->struct_producer = NULL;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+    entry->min_args = min_args;
+    entry->max_args = max_args;
+    entry->arg_types = owned_arg_types;
+    entry->arg_type_count = max_args;
+    entry->return_type = return_type;
+    entry->has_return_type = true;
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
     reg->version++;
@@ -412,12 +547,19 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
         if (existing->userdata_free) existing->userdata_free(existing->userdata);
         free_struct_fields(existing);
         free_defined_fn(existing);
+        free_arg_types(existing);
         existing->sync_func = func;
+        existing->value_func = NULL;
+        existing->typed_func = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
         existing->min_args = struct_argc;
         existing->max_args = struct_argc;
+        existing->arg_types = NULL;
+        existing->arg_type_count = 0;
+        existing->return_type = CXPR_VALUE_NUMBER;
+        existing->has_return_type = true;
         existing->userdata = userdata;
         existing->userdata_free = free_userdata;
         existing->struct_fields = owned_fields;
@@ -431,11 +573,17 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = func;
+    entry->value_func = NULL;
+    entry->typed_func = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = struct_argc;
     entry->max_args = struct_argc;
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
+    entry->return_type = CXPR_VALUE_NUMBER;
+    entry->has_return_type = true;
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
     entry->struct_fields = owned_fields;
@@ -470,6 +618,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     if (entry) {
         if (entry->userdata_free) entry->userdata_free(entry->userdata);
         free_struct_fields(entry);
+        free_arg_types(entry);
         free_defined_fn(entry);
         /* Preserve any existing scalar callback so one entry can serve both
          * plain `name(...)` and `name(...).field`. */
@@ -478,6 +627,10 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
         entry->min_args = min_args;
         entry->max_args = max_args;
+        entry->arg_types = NULL;
+        entry->arg_type_count = 0;
+        entry->return_type = CXPR_VALUE_STRUCT;
+        entry->has_return_type = true;
         entry->userdata = userdata;
         entry->userdata_free = free_userdata;
         entry->struct_fields = owned_fields;
@@ -491,11 +644,17 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = NULL;
+    entry->value_func = NULL;
+    entry->typed_func = NULL;
     entry->struct_producer = func;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = min_args;
     entry->max_args = max_args;
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
+    entry->return_type = CXPR_VALUE_STRUCT;
+    entry->has_return_type = true;
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
     entry->struct_fields = owned_fields;
@@ -851,11 +1010,18 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
             if (existing->userdata_free) existing->userdata_free(existing->userdata);
             free_struct_fields(existing);
             free_defined_fn(existing);
+            free_arg_types(existing);
             existing->sync_func                  = NULL;
+            existing->value_func                 = NULL;
+            existing->typed_func                 = NULL;
             existing->native_kind               = CXPR_NATIVE_KIND_NONE;
             memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
             existing->min_args                   = param_count;
             existing->max_args                   = param_count;
+            existing->arg_types                  = NULL;
+            existing->arg_type_count             = 0;
+            existing->return_type                = CXPR_VALUE_NUMBER;
+            existing->has_return_type            = false;
             existing->userdata                   = NULL;
             existing->userdata_free              = NULL;
             existing->defined_body               = body_ast;
@@ -873,10 +1039,16 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         cxpr_func_entry* entry           = &reg->entries[reg->count++];
         entry->name                      = cxpr_strdup(fname);
         entry->sync_func                 = NULL;
+        entry->value_func                = NULL;
+        entry->typed_func                = NULL;
         entry->native_kind              = CXPR_NATIVE_KIND_NONE;
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
         entry->min_args                  = param_count;
         entry->max_args                  = param_count;
+        entry->arg_types                 = NULL;
+        entry->arg_type_count            = 0;
+        entry->return_type               = CXPR_VALUE_NUMBER;
+        entry->has_return_type           = false;
         entry->userdata                  = NULL;
         entry->userdata_free             = NULL;
         entry->defined_body              = body_ast;
@@ -914,6 +1086,105 @@ oom:
  * Direct function invocation (for allocation-free evaluation)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
+                                    const cxpr_value* args, size_t argc, cxpr_error* err) {
+    cxpr_func_entry* entry = cxpr_registry_find(reg, name);
+    double scalar_args[32];
+
+    if (!entry || (!entry->sync_func && !entry->value_func && !entry->typed_func)) {
+        if (err) {
+            err->code = CXPR_ERR_UNKNOWN_FUNCTION;
+            err->message = "Unknown function";
+            err->position = 0;
+            err->line = 0;
+            err->column = 0;
+        }
+        return cxpr_fv_double(NAN);
+    }
+
+    if (argc < entry->min_args || argc > entry->max_args) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Wrong number of arguments";
+            err->position = 0;
+            err->line = 0;
+            err->column = 0;
+        }
+        return cxpr_fv_double(NAN);
+    }
+
+    if (entry->arg_types) {
+        for (size_t i = 0; i < argc && i < entry->arg_type_count; ++i) {
+            if (args[i].type != entry->arg_types[i]) {
+                if (err) {
+                    err->code = CXPR_ERR_TYPE_MISMATCH;
+                    err->message = "Function argument type mismatch";
+                    err->position = 0;
+                    err->line = 0;
+                    err->column = 0;
+                }
+                return cxpr_fv_double(NAN);
+            }
+        }
+    }
+
+    if (entry->typed_func) {
+        if (err) *err = (cxpr_error){0};
+        return entry->typed_func(args, argc, entry->userdata);
+    }
+
+    if (argc > 32) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Too many function arguments";
+            err->position = 0;
+            err->line = 0;
+            err->column = 0;
+        }
+        return cxpr_fv_double(NAN);
+    }
+
+    for (size_t i = 0; i < argc; ++i) {
+        if (args[i].type != CXPR_VALUE_NUMBER) {
+            if (err) {
+                err->code = CXPR_ERR_TYPE_MISMATCH;
+                err->message = "Function arguments must be doubles";
+                err->position = 0;
+                err->line = 0;
+                err->column = 0;
+            }
+            return cxpr_fv_double(NAN);
+        }
+        scalar_args[i] = args[i].d;
+    }
+
+    if (entry->value_func) {
+        if (err) *err = (cxpr_error){0};
+        return entry->value_func(scalar_args, argc, entry->userdata);
+    }
+    if (err) *err = (cxpr_error){0};
+    return cxpr_fv_double(entry->sync_func(scalar_args, argc, entry->userdata));
+}
+
+cxpr_value cxpr_registry_call_value(const cxpr_registry* reg, const char* name,
+                                    const double* args, size_t argc, cxpr_error* err) {
+    cxpr_value typed_args[32];
+    if (argc > 32) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Too many function arguments";
+            err->position = 0;
+            err->line = 0;
+            err->column = 0;
+        }
+        return cxpr_fv_double(NAN);
+    }
+    for (size_t i = 0; i < argc; ++i) {
+        typed_args[i] = cxpr_fv_double(args[i]);
+    }
+    return cxpr_registry_call_typed(reg, name, typed_args, argc, err);
+}
+
 /**
  * @brief Call a registered synchronous function directly.
  * @param[in] reg Registry containing the function
@@ -925,28 +1196,16 @@ oom:
  */
 double cxpr_registry_call(const cxpr_registry* reg, const char* name,
                           const double* args, size_t argc, cxpr_error* err) {
-    cxpr_func_entry* entry = cxpr_registry_find(reg, name);
-    if (!entry) {
-        if (err) {
-            err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-            err->message = "Unknown function";
-            err->position = 0;
-            err->line = 0;
-            err->column = 0;
-        }
-        return NAN;
+    cxpr_value value = cxpr_registry_call_value(reg, name, args, argc, err);
+    if (err && err->code != CXPR_OK) return NAN;
+    if (value.type == CXPR_VALUE_NUMBER) return value.d;
+    if (value.type == CXPR_VALUE_BOOL) return value.b ? 1.0 : 0.0;
+    if (err) {
+        err->code = CXPR_ERR_TYPE_MISMATCH;
+        err->message = "Function did not evaluate to scalar";
+        err->position = 0;
+        err->line = 0;
+        err->column = 0;
     }
-
-    if (argc < entry->min_args || argc > entry->max_args) {
-        if (err) {
-            err->code = CXPR_ERR_WRONG_ARITY;
-            err->message = "Wrong number of arguments";
-            err->position = 0;
-            err->line = 0;
-            err->column = 0;
-        }
-        return NAN;
-    }
-
-    return entry->sync_func(args, argc, entry->userdata);
+    return NAN;
 }

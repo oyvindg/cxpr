@@ -3,14 +3,15 @@
  * @brief Narrow internal surface used by cxpr's white-box tests.
  *
  * This header exists to keep tests from depending on the entire src/internal.h
- * implementation header. It exposes only the internal lexer, IR, and formula
- * engine details currently exercised by tests.
+ * implementation header. It exposes only the internal lexer, IR, and expression
+ * evaluator details currently exercised by tests.
  */
 
 #ifndef CXPR_TEST_INTERNAL_H
 #define CXPR_TEST_INTERNAL_H
 
 #include <cxpr/cxpr.h>
+#include <math.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -158,6 +159,8 @@ _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr too large");
 typedef struct {
     char* name;
     cxpr_func_ptr sync_func;
+    cxpr_value_func_ptr value_func;
+    cxpr_typed_func_ptr typed_func;
     cxpr_struct_producer_ptr struct_producer;
     enum {
         CXPR_NATIVE_KIND_NONE = 0,
@@ -174,6 +177,10 @@ typedef struct {
     } native_scalar;
     size_t min_args;
     size_t max_args;
+    cxpr_value_type* arg_types; /**< Optional declared argument types (length max_args) */
+    size_t arg_type_count;      /**< Number of entries in arg_types */
+    cxpr_value_type return_type; /**< Declared result type when known */
+    bool has_return_type;       /**< Whether return_type is declared */
     void* userdata;
     cxpr_userdata_free_fn userdata_free;
     char** struct_fields;
@@ -201,12 +208,12 @@ typedef struct {
     char* expression;
     cxpr_ast* ast;
     cxpr_program* program;
-    cxpr_field_value result;
+    cxpr_value result;
     bool evaluated;
-} cxpr_formula_entry;
+} cxpr_expression_entry;
 
-struct cxpr_formula_engine {
-    cxpr_formula_entry* formulas;
+struct cxpr_evaluator {
+    cxpr_expression_entry* expressions;
     size_t capacity;
     size_t count;
     size_t* eval_order;
@@ -215,6 +222,56 @@ struct cxpr_formula_engine {
     const cxpr_registry* registry;
     cxpr_parser* parser;
 };
+
+static inline cxpr_value cxpr_test_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
+                                            const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_value out = {0};
+    if (!cxpr_eval_ast(ast, ctx, reg, &out, err)) {
+        return cxpr_fv_double(NAN);
+    }
+    return out;
+}
+
+static inline double cxpr_test_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
+                                               const cxpr_registry* reg, cxpr_error* err) {
+    double out = NAN;
+    (void)cxpr_eval_ast_number(ast, ctx, reg, &out, err);
+    return out;
+}
+
+static inline bool cxpr_test_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+                                           const cxpr_registry* reg, cxpr_error* err) {
+    bool out = false;
+    (void)cxpr_eval_ast_bool(ast, ctx, reg, &out, err);
+    return out;
+}
+
+static inline cxpr_value cxpr_test_eval_program(const cxpr_program* prog, const cxpr_context* ctx,
+                                                const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_value out = {0};
+    if (!cxpr_eval_program(prog, ctx, reg, &out, err)) {
+        return cxpr_fv_double(NAN);
+    }
+    return out;
+}
+
+static inline double cxpr_test_eval_program_number(const cxpr_program* prog,
+                                                   const cxpr_context* ctx,
+                                                   const cxpr_registry* reg,
+                                                   cxpr_error* err) {
+    double out = NAN;
+    (void)cxpr_eval_program_number(prog, ctx, reg, &out, err);
+    return out;
+}
+
+static inline bool cxpr_test_eval_program_bool(const cxpr_program* prog,
+                                               const cxpr_context* ctx,
+                                               const cxpr_registry* reg,
+                                               cxpr_error* err) {
+    bool out = false;
+    (void)cxpr_eval_program_bool(prog, ctx, reg, &out, err);
+    return out;
+}
 
 #ifdef __cplusplus
 }

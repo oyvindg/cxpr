@@ -250,7 +250,7 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
     }
 }
 
-cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
+cxpr_value cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
     if (err) {
         err->code = CXPR_ERR_SYNTAX;
         err->message = message;
@@ -258,7 +258,7 @@ cxpr_field_value cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
     return cxpr_fv_double(NAN);
 }
 
-bool cxpr_ir_stack_push(cxpr_field_value* stack, size_t* sp, cxpr_field_value value,
+bool cxpr_ir_stack_push(cxpr_value* stack, size_t* sp, cxpr_value value,
                         size_t capacity, cxpr_error* err) {
     if (*sp >= capacity) {
         if (err) {
@@ -282,7 +282,7 @@ bool cxpr_ir_require_stack(size_t sp, size_t need, cxpr_error* err) {
     return true;
 }
 
-bool cxpr_ir_require_type(cxpr_field_value value, cxpr_field_type type,
+bool cxpr_ir_require_type(cxpr_value value, cxpr_value_type type,
                           cxpr_error* err, const char* message) {
     if (value.type != type) {
         if (err) {
@@ -294,7 +294,7 @@ bool cxpr_ir_require_type(cxpr_field_value value, cxpr_field_type type,
     return true;
 }
 
-cxpr_field_value cxpr_ir_make_not_found(cxpr_error* err, const char* message) {
+cxpr_value cxpr_ir_make_not_found(cxpr_error* err, const char* message) {
     if (err) {
         err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
         err->message = message;
@@ -539,13 +539,13 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
     cxpr_hashmap_entry* map_entries =
         param_lookup ? ctx->params.entries : ctx->variables.entries;
     const cxpr_context* current;
-    cxpr_field_value typed;
+    cxpr_value typed;
 
     if (!param_lookup) {
         typed = cxpr_context_get_typed(ctx, instr->name, found);
         if (found && *found) {
-            if (typed.type == CXPR_FIELD_DOUBLE) return typed.d;
-            if (typed.type == CXPR_FIELD_BOOL) return typed.b ? 1.0 : 0.0;
+            if (typed.type == CXPR_VALUE_NUMBER) return typed.d;
+            if (typed.type == CXPR_VALUE_BOOL) return typed.b ? 1.0 : 0.0;
             *found = false;
             return 0.0;
         }

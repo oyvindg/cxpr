@@ -8,37 +8,37 @@
  */
 #include <cxpr/cxpr.h>
 #include <assert.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-static cxpr_field_value eval_typed(const char *expr,
+static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast *ast = cxpr_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    cxpr_field_value result = cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     return result;
 }
 
-static cxpr_field_value eval_typed_fails(const char *expr,
+static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_context *ctx, cxpr_registry *reg,
                                          cxpr_error_code expected) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast *ast = cxpr_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    cxpr_field_value result = cxpr_ast_eval(ast, ctx, reg, &err);
+    cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
@@ -53,19 +53,19 @@ static cxpr_field_value eval_typed_fails(const char *expr,
 static cxpr_context *make_nested_ctx(void) {
     /* deepest: {deep: 99.0} */
     const char *deep_names[] = {"deep"};
-    cxpr_field_value deep_vals[] = {cxpr_fv_double(99.0)};
+    cxpr_value deep_vals[] = {cxpr_fv_double(99.0)};
     cxpr_struct_value *deep = cxpr_struct_value_new(deep_names, deep_vals, 1);
 
     /* inner: {value: 7.0, flag: true, sub: deep} */
     const char *inner_names[] = {"value", "flag", "sub"};
-    cxpr_field_value inner_vals[] = {
+    cxpr_value inner_vals[] = {
         cxpr_fv_double(7.0), cxpr_fv_bool(true), cxpr_fv_struct(deep)};
     cxpr_struct_value *inner = cxpr_struct_value_new(inner_names, inner_vals, 3);
     cxpr_struct_value_free(deep);
 
     /* outer: {inner: inner} */
     const char *outer_names[] = {"inner"};
-    cxpr_field_value outer_vals[] = {cxpr_fv_struct(inner)};
+    cxpr_value outer_vals[] = {cxpr_fv_struct(inner)};
     cxpr_struct_value *outer = cxpr_struct_value_new(outer_names, outer_vals, 1);
     cxpr_struct_value_free(inner);
 
@@ -112,8 +112,8 @@ static void test_chain_double(void) {
     cxpr_register_builtins(reg);
     cxpr_context *ctx = make_nested_ctx();
 
-    cxpr_field_value r = eval_typed("outer.inner.value", ctx, reg);
-    assert(r.type == CXPR_FIELD_DOUBLE);
+    cxpr_value r = eval_typed("outer.inner.value", ctx, reg);
+    assert(r.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(r.d, 7.0);
 
     cxpr_context_free(ctx);
@@ -128,8 +128,8 @@ static void test_chain_bool(void) {
     cxpr_register_builtins(reg);
     cxpr_context *ctx = make_nested_ctx();
 
-    cxpr_field_value r = eval_typed("outer.inner.flag", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    cxpr_value r = eval_typed("outer.inner.flag", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
 
     cxpr_context_free(ctx);
@@ -144,8 +144,8 @@ static void test_chain_four_segments(void) {
     cxpr_register_builtins(reg);
     cxpr_context *ctx = make_nested_ctx();
 
-    cxpr_field_value r = eval_typed("outer.inner.sub.deep", ctx, reg);
-    assert(r.type == CXPR_FIELD_DOUBLE);
+    cxpr_value r = eval_typed("outer.inner.sub.deep", ctx, reg);
+    assert(r.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(r.d, 99.0);
 
     cxpr_context_free(ctx);
@@ -208,13 +208,13 @@ static void test_chain_in_expression(void) {
     cxpr_context *ctx = make_nested_ctx();
 
     /* outer.inner.value (double 7.0) > 5.0 → bool true */
-    cxpr_field_value r = eval_typed("outer.inner.value > 5.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    cxpr_value r = eval_typed("outer.inner.value > 5.0", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
 
     /* outer.inner.flag (bool) && outer.inner.value > 5.0 (bool) → bool */
     r = eval_typed("outer.inner.flag && outer.inner.value > 5.0", ctx, reg);
-    assert(r.type == CXPR_FIELD_BOOL);
+    assert(r.type == CXPR_VALUE_BOOL);
     assert(r.b == true);
 
     cxpr_context_free(ctx);
