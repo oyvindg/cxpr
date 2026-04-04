@@ -579,6 +579,7 @@ static void test_typed_if(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
+    cxpr_register_builtins(reg);
     cxpr_ast* ast = cxpr_parse(p, "if(true, false, true)", &err);
     cxpr_program* prog;
     assert(ast != NULL);
