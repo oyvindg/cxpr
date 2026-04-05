@@ -104,10 +104,15 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
         return NULL;
     }
 
-    node->data.chain_access.full_key[0] = '\0';
-    for (size_t i = 0; i < depth; i++) {
-        if (i > 0) strcat(node->data.chain_access.full_key, ".");
-        strcat(node->data.chain_access.full_key, path[i]);
+    {
+        char* p = node->data.chain_access.full_key;
+        for (size_t i = 0; i < depth; i++) {
+            if (i > 0) *p++ = '.';
+            size_t len = strlen(path[i]);
+            memcpy(p, path[i], len);
+            p += len;
+        }
+        *p = '\0';
     }
     return node;
 }

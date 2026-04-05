@@ -76,16 +76,18 @@ cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
     return evaluator->expressions[idx].result;
 }
 
-static void cxpr_evaluator_grow(cxpr_evaluator* evaluator) {
+static bool cxpr_evaluator_grow(cxpr_evaluator* evaluator) {
+    if (evaluator->capacity > SIZE_MAX / 2) return false;
     size_t new_cap = evaluator->capacity * 2;
     cxpr_expression_entry* new_expressions =
         (cxpr_expression_entry*)calloc(new_cap, sizeof(cxpr_expression_entry));
-    if (!new_expressions) return;
+    if (!new_expressions) return false;
     memcpy(new_expressions, evaluator->expressions,
            evaluator->count * sizeof(cxpr_expression_entry));
     free(evaluator->expressions);
     evaluator->expressions = new_expressions;
     evaluator->capacity = new_cap;
+    return true;
 }
 
 static bool cxpr_expression_depends_on(const cxpr_evaluator* evaluator, size_t expression_idx,
@@ -104,7 +106,9 @@ static bool cxpr_expression_depends_on(const cxpr_evaluator* evaluator, size_t e
 }
 
 static bool cxpr_expression_dfs_cycle(const cxpr_evaluator* evaluator,
-                                      size_t node, int* visited) {
+                                      size_t node, int* visited,
+                                      size_t depth, size_t max_depth) {
+    if (depth > max_depth) return true;
     visited[node] = 1;
 
     if (cxpr_expression_depends_on(evaluator, node, node)) return true;
@@ -114,7 +118,8 @@ static bool cxpr_expression_dfs_cycle(const cxpr_evaluator* evaluator,
         if (!cxpr_expression_depends_on(evaluator, node, i)) continue;
 
         if (visited[i] == 1) return true;
-        if (visited[i] == 0 && cxpr_expression_dfs_cycle(evaluator, i, visited)) {
+        if (visited[i] == 0
+            && cxpr_expression_dfs_cycle(evaluator, i, visited, depth + 1, max_depth)) {
             return true;
         }
     }
@@ -151,7 +156,7 @@ bool cxpr_expression_topo_sort(cxpr_evaluator* evaluator, cxpr_error* err) {
     }
 
     for (size_t i = 0; i < n; i++) {
-        if (visited[i] == 0 && cxpr_expression_dfs_cycle(evaluator, i, visited)) {
+        if (visited[i] == 0 && cxpr_expression_dfs_cycle(evaluator, i, visited, 0, n)) {
             free(in_degree);
             free(visited);
             if (err) {
@@ -249,10 +254,11 @@ void cxpr_evaluator_free(cxpr_evaluator* evaluator) {
     free(evaluator);
 }
 
-void cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator) {
+bool cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator) {
     if (evaluator->count >= evaluator->capacity) {
-        cxpr_evaluator_grow(evaluator);
+        return cxpr_evaluator_grow(evaluator);
     }
+    return true;
 }
 
 bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {

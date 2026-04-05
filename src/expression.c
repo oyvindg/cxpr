@@ -75,7 +75,11 @@ bool cxpr_expression_add(cxpr_evaluator* evaluator, const char* name,
     }
 
     /* Grow if needed */
-    cxpr_evaluator_reserve_for_entry(evaluator);
+    if (!cxpr_evaluator_reserve_for_entry(evaluator)) {
+        cxpr_ast_free(ast);
+        if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+        return false;
+    }
 
     cxpr_expression_entry* entry = &evaluator->expressions[evaluator->count++];
     entry->name = cxpr_strdup(name);
