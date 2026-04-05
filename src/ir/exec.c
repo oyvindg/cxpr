@@ -353,6 +353,39 @@ static bool cxpr_ir_pop2(cxpr_value* stack, size_t* sp, cxpr_value* left,
     return true;
 }
 
+static cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
+                                              const cxpr_ir_program* program,
+                                              size_t ip,
+                                              const cxpr_ir_instr* instr,
+                                              bool* found) {
+    bool scope_found = false;
+    bool scalar_found = false;
+    double scalar = 0.0;
+
+    if (found) *found = false;
+    if (!ctx || !instr || !instr->name) return cxpr_fv_double(0.0);
+
+    /* Preserve typed expression-scope values instead of coercing bools to doubles. */
+    if (ctx->expression_scope) {
+        cxpr_value scoped =
+            cxpr_expression_lookup_typed_result(ctx->expression_scope, instr->name, &scope_found);
+        if (scope_found) {
+            if (found) *found = true;
+            return scoped;
+        }
+    }
+
+    scalar = cxpr_ir_lookup_cached_scalar(
+        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
+        &scalar_found);
+    if (scalar_found) {
+        if (found) *found = true;
+        return cxpr_fv_double(scalar);
+    }
+
+    return cxpr_context_get_typed(ctx, instr->name, found);
+}
+
 static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                                            const cxpr_registry* reg, const double* locals,
                                            size_t local_count, cxpr_error* err);
@@ -458,14 +491,7 @@ static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_
         case CXPR_OP_LOAD_VAR:
             {
                 bool found = false;
-                double scalar = cxpr_ir_lookup_cached_scalar(
-                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
-                    false, &found);
-                if (found) {
-                    result = cxpr_fv_double(scalar);
-                } else {
-                    result = cxpr_context_get_typed(ctx, instr->name, &found);
-                }
+                result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
             }
             if (!cxpr_ir_stack_push(stack, &sp, result, 64, err)) return cxpr_fv_double(NAN);
@@ -473,14 +499,7 @@ static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_
         case CXPR_OP_LOAD_VAR_SQUARE:
             {
                 bool found = false;
-                double scalar = cxpr_ir_lookup_cached_scalar(
-                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
-                    false, &found);
-                if (found) {
-                    result = cxpr_fv_double(scalar);
-                } else {
-                    result = cxpr_context_get_typed(ctx, instr->name, &found);
-                }
+                result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
             }
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_fv_double(NAN);

@@ -528,9 +528,10 @@ static unsigned long cxpr_ir_lookup_shadow_version(const cxpr_context* request_c
     const cxpr_context* current = request_ctx;
     unsigned long fingerprint = 1469598103934665603UL;
 
-    while (current && current != owner_ctx) {
+    while (current) {
         fingerprint ^= cxpr_ir_lookup_version(current, param_lookup) + 0x9e3779b97f4a7c15UL +
                        (fingerprint << 6) + (fingerprint >> 2);
+        if (current == owner_ctx) break;
         current = current->parent;
     }
 
@@ -560,7 +561,8 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
 
     /* IR lookup cache: direct entry hit (same ctx, same entries array) */
     if (cache && cache->request_ctx == ctx && cache->owner_ctx == ctx &&
-        cache->entries_base == map_entries) {
+        cache->entries_base == map_entries &&
+        cache->shadow_version == cxpr_ir_lookup_shadow_version(ctx, ctx, param_lookup)) {
         if (found) *found = true;
         return cache->entries_base[cache->slot].value;
     }
@@ -589,8 +591,7 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
                 cache->entries_base = cur_map->entries;
                 cache->slot = (size_t)(entry - cur_map->entries);
                 cache->shadow_version =
-                    (current == ctx) ? 0UL
-                                     : cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
+                    cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
             }
             if (found) *found = true;
             return entry->value;
