@@ -528,9 +528,10 @@ static unsigned long cxpr_ir_lookup_shadow_version(const cxpr_context* request_c
     const cxpr_context* current = request_ctx;
     unsigned long fingerprint = 1469598103934665603UL;
 
-    while (current && current != owner_ctx) {
+    while (current) {
         fingerprint ^= cxpr_ir_lookup_version(current, param_lookup) + 0x9e3779b97f4a7c15UL +
                        (fingerprint << 6) + (fingerprint >> 2);
+        if (current == owner_ctx) break;
         current = current->parent;
     }
 
@@ -543,24 +544,30 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
     cxpr_hashmap_entry* map_entries =
         param_lookup ? ctx->params.entries : ctx->variables.entries;
     const cxpr_context* current;
-    cxpr_value typed;
 
-    if (!param_lookup) {
-        typed = cxpr_context_get_typed(ctx, instr->name, found);
-        if (found && *found) {
+    /* expression_scope results take priority over context variables */
+    if (!param_lookup && ctx->expression_scope) {
+        bool scope_found = false;
+        cxpr_value typed = cxpr_expression_lookup_typed_result(ctx->expression_scope,
+                                                               instr->name, &scope_found);
+        if (scope_found) {
+            if (found) *found = true;
             if (typed.type == CXPR_VALUE_NUMBER) return typed.d;
             if (typed.type == CXPR_VALUE_BOOL) return typed.b ? 1.0 : 0.0;
-            *found = false;
+            if (found) *found = false;
             return 0.0;
         }
     }
 
+    /* IR lookup cache: direct entry hit (same ctx, same entries array) */
     if (cache && cache->request_ctx == ctx && cache->owner_ctx == ctx &&
-        cache->entries_base == map_entries) {
+        cache->entries_base == map_entries &&
+        cache->shadow_version == cxpr_ir_lookup_shadow_version(ctx, ctx, param_lookup)) {
         if (found) *found = true;
         return cache->entries_base[cache->slot].value;
     }
 
+    /* IR lookup cache: parent-context hit with version fingerprint */
     if (cache && cache->request_ctx == ctx && cache->owner_ctx && cache->entries_base &&
         cache->entries_base ==
             (cxpr_hashmap_entry*)(param_lookup ? cache->owner_ctx->params.entries
@@ -584,8 +591,7 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
                 cache->entries_base = cur_map->entries;
                 cache->slot = (size_t)(entry - cur_map->entries);
                 cache->shadow_version =
-                    (current == ctx) ? 0UL
-                                     : cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
+                    cxpr_ir_lookup_shadow_version(ctx, current, param_lookup);
             }
             if (found) *found = true;
             return entry->value;

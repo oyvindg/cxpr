@@ -3,11 +3,16 @@
 [![CI](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml/badge.svg)](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`cxpr` is a small C11 library for runtime expressions.
-It parses expressions, evaluates them against a context, and optionally compiles them for repeated execution.
-It also includes an expression evaluator for named expressions with dependency resolution.
+`cxpr` is a C11 library for runtime expression evaluation. Given an expression string such as
+`"rsi < 30 and volume > $min_volume"`, it parses it into an AST, evaluates it against a
+context of variables and parameters, and optionally compiles it to an IR for repeated
+execution without re-parsing.
 
-No external dependencies.
+It supports numbers, booleans, struct-like values, custom C callbacks, and
+expression-defined functions. A named-expression evaluator manages sets of interdependent
+expressions with automatic topological ordering and cycle detection.
+
+No external dependencies. C11 required.
 
 ## What The Library Provides
 
@@ -29,6 +34,22 @@ Use `cxpr` when you need an embeddable expression evaluator in plain C without b
 - `cxpr_registry`: holds built-in and custom functions
 - `cxpr_program`: compiled form for hot paths
 - `cxpr_evaluator`: manages named expressions and their dependencies
+
+## Building and Testing
+
+```bash
+cmake --preset default          # configure (Release)
+cmake --build --preset default  # build
+ctest --preset default          # run tests
+```
+
+Additional presets:
+
+| Preset    | Purpose                                      |
+|-----------|----------------------------------------------|
+| `strict`  | Strict compiler warnings (`-Werror`)         |
+| `asan`    | AddressSanitizer (Debug)                     |
+| `ubsan`   | UndefinedBehaviorSanitizer (Debug)           |
 
 ## Installation
 
@@ -207,18 +228,49 @@ It parses the set, validates references, resolves evaluation order, and reports 
 cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
 
 const cxpr_expression_def defs[] = {
-    { "wide", "spread > $threshold" },
+    { "wide",  "spread > $threshold" },
     { "entry", "wide and mid > $min_mid" },
-    { "score", "mid + spread * 10" }
+    { "score", "mid + spread * 10" },
 };
 
 cxpr_error err = {0};
-cxpr_expressions_add(evaluator, defs, 3, &err);
-cxpr_evaluator_compile(evaluator, &err);
+if (!cxpr_expressions_add(evaluator, defs, 3, &err)
+    || !cxpr_evaluator_compile(evaluator, &err)) {
+    fprintf(stderr, "error: %s\n", err.message);
+    cxpr_evaluator_free(evaluator);
+    return 1;
+}
+
 cxpr_evaluator_eval(evaluator, ctx, &err);
+
+bool   entry = cxpr_expression_get_bool(evaluator,   "entry", NULL);
+double score = cxpr_expression_get_double(evaluator, "score", NULL);
+
+cxpr_evaluator_free(evaluator);
 ```
 
-## Analysis And Errors
+`cxpr_evaluator_eval` writes results back into `ctx` and also makes them available via
+`cxpr_expression_get`, `cxpr_expression_get_double`, and `cxpr_expression_get_bool`.
+
+## Errors
+
+All public functions that can fail accept a `cxpr_error*` output parameter (pass `NULL` to
+ignore). On failure, `err.code` is one of:
+
+| Code                        | Meaning                                      |
+|-----------------------------|----------------------------------------------|
+| `CXPR_ERR_SYNTAX`           | Malformed expression or bad argument         |
+| `CXPR_ERR_UNKNOWN_IDENTIFIER` | Variable or parameter not in context       |
+| `CXPR_ERR_UNKNOWN_FUNCTION` | Function not found in registry               |
+| `CXPR_ERR_WRONG_ARITY`      | Wrong number of arguments                    |
+| `CXPR_ERR_DIVISION_BY_ZERO` | Division or modulo by zero                   |
+| `CXPR_ERR_CIRCULAR_DEPENDENCY` | Cycle in named-expression dependencies    |
+| `CXPR_ERR_TYPE_MISMATCH`    | Value type incompatible with operation       |
+| `CXPR_ERR_OUT_OF_MEMORY`    | Allocation failure                           |
+
+`err.message`, `err.line`, `err.column`, and `err.position` give further detail.
+
+## Analysis
 
 `cxpr` can inspect an expression before execution:
 
@@ -227,8 +279,6 @@ cxpr_evaluator_eval(evaluator, ctx, &err);
 - Whether the result is numeric, boolean, or struct-like
 - Whether it can short-circuit
 - Whether there are unknown functions or invalid references
-
-Failures return `cxpr_error` with code, message, line, column, and byte position.
 
 ## Examples
 
@@ -239,8 +289,8 @@ Longer integration examples are in [examples/README.md](examples/README.md).
 Build and run the benchmark like this:
 
 ```bash
-cmake -S . -B build -DCXPR_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release /
-cmake --build build --target cxpr_bench_ir /
+cmake -S . -B build -DCXPR_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release && \
+cmake --build build --target cxpr_bench_ir && \
 ./build/benchmarks/cxpr_bench_ir
 ```
 

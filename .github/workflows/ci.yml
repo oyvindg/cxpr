@@ -47,7 +47,7 @@ jobs:
         run: cmake --build --preset asan --parallel
 
       - name: Test
-        run: cmake --build build-asan --target test
+        run: ctest --preset asan
 
   ubsan:
     runs-on: ubuntu-latest

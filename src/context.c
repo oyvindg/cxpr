@@ -402,6 +402,16 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         return cxpr_fv_double(entry->value);
     }
 
+    hash = cxpr_hash_string(name);
+    entry = cxpr_context_lookup_cached_entry((cxpr_hashmap*)&ctx->variables,
+                                             ((cxpr_context*)ctx)->variable_cache, name, hash);
+    if (entry) {
+        cxpr_context_refresh_pointer_cache((cxpr_hashmap*)&ctx->variables,
+                                           ((cxpr_context*)ctx)->variable_ptr_cache, name, entry);
+        if (found) *found = true;
+        return cxpr_fv_double(entry->value);
+    }
+
     {
         const cxpr_struct_value* struct_value = cxpr_context_lookup_struct_map(&ctx->structs, name);
         if (!struct_value) {
@@ -411,16 +421,6 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
             if (found) *found = true;
             return cxpr_fv_struct((cxpr_struct_value*)struct_value);
         }
-    }
-
-    hash = cxpr_hash_string(name);
-    entry = cxpr_context_lookup_cached_entry((cxpr_hashmap*)&ctx->variables,
-                                             ((cxpr_context*)ctx)->variable_cache, name, hash);
-    if (entry) {
-        cxpr_context_refresh_pointer_cache((cxpr_hashmap*)&ctx->variables,
-                                           ((cxpr_context*)ctx)->variable_ptr_cache, name, entry);
-        if (found) *found = true;
-        return cxpr_fv_double(entry->value);
     }
 
     if (ctx->parent) return cxpr_context_get_typed(ctx->parent, name, found);
