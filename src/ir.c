@@ -43,6 +43,10 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
 
 bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr, cxpr_error* err) {
     if (program->count == program->capacity) {
+        if (program->capacity > SIZE_MAX / 2) {
+            if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+            return false;
+        }
         size_t new_capacity = (program->capacity == 0) ? 8 : program->capacity * 2;
         cxpr_ir_instr* new_code =
             (cxpr_ir_instr*)realloc(program->code, new_capacity * sizeof(cxpr_ir_instr));

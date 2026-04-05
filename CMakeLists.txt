@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cxpr VERSION 1.0.1 LANGUAGES C)
+project(cxpr VERSION 1.0.2 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

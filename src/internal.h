@@ -10,6 +10,7 @@
 #define CXPR_INTERNAL_H
 
 #include <cxpr/cxpr.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -631,7 +632,7 @@ bool cxpr_expression_reference_matches_name(const char* reference, const char* n
 void cxpr_expression_result_dispose(cxpr_value* value);
 cxpr_value cxpr_expression_result_clone(const cxpr_value* value, cxpr_error* err);
 bool cxpr_expression_topo_sort(cxpr_evaluator* evaluator, cxpr_error* err);
-void cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator);
+bool cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator);
 cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
                                                const char* name, bool* found);
 

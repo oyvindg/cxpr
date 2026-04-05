@@ -36,6 +36,7 @@ void cxpr_hashmap_destroy(cxpr_hashmap* map) {
 }
 
 static bool cxpr_hashmap_grow(cxpr_hashmap* map) {
+    if (map->capacity > SIZE_MAX / 2) return false;
     size_t new_capacity = map->capacity * 2;
     cxpr_hashmap_entry* new_entries =
         (cxpr_hashmap_entry*)calloc(new_capacity, sizeof(cxpr_hashmap_entry));

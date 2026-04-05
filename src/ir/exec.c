@@ -4,7 +4,6 @@
  */
 
 #include "internal.h"
-#include <assert.h>
 #include <math.h>
 
 static double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
@@ -1051,7 +1050,7 @@ static double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxp
             }
             break;
         case CXPR_OP_RETURN:
-            assert(sp == 1);
+            if (sp != 1) return cxpr_ir_runtime_error(err, "IR stack imbalance on return").d;
             value = stack[--sp];
             return value;
         default:

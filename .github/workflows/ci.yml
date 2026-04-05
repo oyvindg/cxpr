@@ -21,6 +21,20 @@ jobs:
       - name: Test
         run: cmake --build build --target test
 
+  strict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset strict
+
+      - name: Build
+        run: cmake --build --preset strict --parallel
+
+      - name: Test
+        run: ctest --preset strict
+
   asan:
     runs-on: ubuntu-latest
     steps:
@@ -34,3 +48,17 @@ jobs:
 
       - name: Test
         run: cmake --build build-asan --target test
+
+  ubsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ubsan
+
+      - name: Build
+        run: cmake --build --preset ubsan --parallel
+
+      - name: Test
+        run: ctest --preset ubsan

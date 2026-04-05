@@ -82,15 +82,17 @@ static double cxpr_if(double cond, double a, double b) {
  * Registry internal helpers
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** @brief Double registry capacity. */
-static void cxpr_registry_grow(cxpr_registry* reg) {
+/** @brief Double registry capacity. Returns false on allocation failure. */
+static bool cxpr_registry_grow(cxpr_registry* reg) {
+    if (reg->capacity > SIZE_MAX / 2) return false;
     size_t new_capacity = reg->capacity * 2;
     cxpr_func_entry* new_entries = (cxpr_func_entry*)calloc(new_capacity, sizeof(cxpr_func_entry));
-    if (!new_entries) return;
+    if (!new_entries) return false;
     memcpy(new_entries, reg->entries, reg->count * sizeof(cxpr_func_entry));
     free(reg->entries);
     reg->entries = new_entries;
     reg->capacity = new_capacity;
+    return true;
 }
 
 /**
@@ -248,9 +250,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         return;
     }
 
-    if (reg->count >= reg->capacity) {
-        cxpr_registry_grow(reg);
-    }
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = func;
@@ -297,9 +297,7 @@ void cxpr_registry_add_value(cxpr_registry* reg, const char* name,
         return;
     }
 
-    if (reg->count >= reg->capacity) {
-        cxpr_registry_grow(reg);
-    }
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = NULL;
@@ -354,9 +352,7 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
         return;
     }
 
-    if (reg->count >= reg->capacity) {
-        cxpr_registry_grow(reg);
-    }
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = NULL;
@@ -569,7 +565,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
         return;
     }
 
-    if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
     cxpr_func_entry* entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = func;
@@ -640,7 +636,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
         return;
     }
 
-    if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
     entry = &reg->entries[reg->count++];
     entry->name = cxpr_strdup(name);
     entry->sync_func = NULL;
@@ -1035,7 +1031,11 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
             return err; /* CXPR_OK */
         }
 
-        if (reg->count >= reg->capacity) cxpr_registry_grow(reg);
+        if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) {
+            err.code    = CXPR_ERR_OUT_OF_MEMORY;
+            err.message = "Registry growth failed";
+            return err;
+        }
         cxpr_func_entry* entry           = &reg->entries[reg->count++];
         entry->name                      = cxpr_strdup(fname);
         entry->sync_func                 = NULL;

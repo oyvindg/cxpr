@@ -103,11 +103,12 @@ static cxpr_struct_map_entry* cxpr_struct_map_find_slot(const cxpr_struct_map* m
     return &((cxpr_struct_map*)map)->entries[hash];
 }
 
-static void cxpr_struct_map_grow(cxpr_struct_map* map) {
+static bool cxpr_struct_map_grow(cxpr_struct_map* map) {
+    if (map->capacity > SIZE_MAX / 2) return false;
     size_t new_capacity = map->capacity * 2;
     cxpr_struct_map_entry* new_entries =
         (cxpr_struct_map_entry*)calloc(new_capacity, sizeof(cxpr_struct_map_entry));
-    if (!new_entries) return;
+    if (!new_entries) return false;
 
     for (size_t i = 0; i < map->capacity; i++) {
         if (!map->entries[i].name) continue;
@@ -121,6 +122,7 @@ static void cxpr_struct_map_grow(cxpr_struct_map* map) {
     free(map->entries);
     map->entries = new_entries;
     map->capacity = new_capacity;
+    return true;
 }
 
 void cxpr_struct_map_init(cxpr_struct_map* map) {
@@ -167,8 +169,10 @@ bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src) {
                                      src->entries[i].value->field_values,
                                      src->entries[i].value->field_count);
         if (!copy) return false;
-        if ((double)(dst->count + 1) / dst->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-            cxpr_struct_map_grow(dst);
+        if ((double)(dst->count + 1) / dst->capacity > CXPR_HASHMAP_LOAD_FACTOR
+            && !cxpr_struct_map_grow(dst)) {
+            cxpr_struct_value_free(copy);
+            return false;
         }
         slot = cxpr_struct_map_find_slot(dst, src->entries[i].name);
         slot->name = cxpr_strdup(src->entries[i].name);
@@ -208,8 +212,10 @@ void cxpr_context_store_struct(cxpr_struct_map* map, const char* name,
         }
     }
 
-    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR) {
-        cxpr_struct_map_grow(map);
+    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR
+        && !cxpr_struct_map_grow(map)) {
+        cxpr_struct_value_free(copy);
+        return;
     }
 
     slot = cxpr_struct_map_find_slot(map, name);
