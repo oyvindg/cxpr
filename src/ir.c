@@ -543,24 +543,29 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
     cxpr_hashmap_entry* map_entries =
         param_lookup ? ctx->params.entries : ctx->variables.entries;
     const cxpr_context* current;
-    cxpr_value typed;
 
-    if (!param_lookup) {
-        typed = cxpr_context_get_typed(ctx, instr->name, found);
-        if (found && *found) {
+    /* expression_scope results take priority over context variables */
+    if (!param_lookup && ctx->expression_scope) {
+        bool scope_found = false;
+        cxpr_value typed = cxpr_expression_lookup_typed_result(ctx->expression_scope,
+                                                               instr->name, &scope_found);
+        if (scope_found) {
+            if (found) *found = true;
             if (typed.type == CXPR_VALUE_NUMBER) return typed.d;
             if (typed.type == CXPR_VALUE_BOOL) return typed.b ? 1.0 : 0.0;
-            *found = false;
+            if (found) *found = false;
             return 0.0;
         }
     }
 
+    /* IR lookup cache: direct entry hit (same ctx, same entries array) */
     if (cache && cache->request_ctx == ctx && cache->owner_ctx == ctx &&
         cache->entries_base == map_entries) {
         if (found) *found = true;
         return cache->entries_base[cache->slot].value;
     }
 
+    /* IR lookup cache: parent-context hit with version fingerprint */
     if (cache && cache->request_ctx == ctx && cache->owner_ctx && cache->entries_base &&
         cache->entries_base ==
             (cxpr_hashmap_entry*)(param_lookup ? cache->owner_ctx->params.entries

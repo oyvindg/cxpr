@@ -458,11 +458,13 @@ static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_
         case CXPR_OP_LOAD_VAR:
             {
                 bool found = false;
-                result = cxpr_context_get_typed(ctx, instr->name, &found);
-                if (!found) {
-                    result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
-                        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
-                        false, &found));
+                double scalar = cxpr_ir_lookup_cached_scalar(
+                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
+                    false, &found);
+                if (found) {
+                    result = cxpr_fv_double(scalar);
+                } else {
+                    result = cxpr_context_get_typed(ctx, instr->name, &found);
                 }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
             }
@@ -471,11 +473,13 @@ static cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_
         case CXPR_OP_LOAD_VAR_SQUARE:
             {
                 bool found = false;
-                result = cxpr_context_get_typed(ctx, instr->name, &found);
-                if (!found) {
-                    result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
-                        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
-                        false, &found));
+                double scalar = cxpr_ir_lookup_cached_scalar(
+                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL,
+                    false, &found);
+                if (found) {
+                    result = cxpr_fv_double(scalar);
+                } else {
+                    result = cxpr_context_get_typed(ctx, instr->name, &found);
                 }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
             }
