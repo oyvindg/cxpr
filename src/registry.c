@@ -237,6 +237,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
         existing->sync_func = func;
         existing->value_func = NULL;
         existing->typed_func = NULL;
+        existing->ast_func = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
@@ -256,6 +257,7 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     entry->sync_func = func;
     entry->value_func = NULL;
     entry->typed_func = NULL;
+    entry->ast_func = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
@@ -286,6 +288,7 @@ void cxpr_registry_add_value(cxpr_registry* reg, const char* name,
         existing->sync_func = NULL;
         existing->value_func = func;
         existing->typed_func = NULL;
+        existing->ast_func = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
@@ -303,6 +306,7 @@ void cxpr_registry_add_value(cxpr_registry* reg, const char* name,
     entry->sync_func = NULL;
     entry->value_func = func;
     entry->typed_func = NULL;
+    entry->ast_func = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
@@ -337,6 +341,7 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
         existing->sync_func = NULL;
         existing->value_func = NULL;
         existing->typed_func = func;
+        existing->ast_func = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
@@ -358,6 +363,7 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
     entry->sync_func = NULL;
     entry->value_func = NULL;
     entry->typed_func = func;
+    entry->ast_func = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
@@ -365,6 +371,58 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
     entry->max_args = max_args;
     entry->arg_types = owned_arg_types;
     entry->arg_type_count = max_args;
+    entry->return_type = return_type;
+    entry->has_return_type = true;
+    entry->userdata = userdata;
+    entry->userdata_free = free_userdata;
+    reg->version++;
+}
+
+void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
+                           cxpr_ast_func_ptr func, size_t min_args, size_t max_args,
+                           cxpr_value_type return_type,
+                           void* userdata, cxpr_userdata_free_fn free_userdata) {
+    if (!reg || !name || !func) return;
+
+    cxpr_func_entry* existing = cxpr_registry_find(reg, name);
+    if (existing) {
+        if (existing->userdata_free) {
+            existing->userdata_free(existing->userdata);
+        }
+        free_struct_fields(existing);
+        free_arg_types(existing);
+        free_defined_fn(existing);
+        existing->sync_func = NULL;
+        existing->value_func = NULL;
+        existing->typed_func = NULL;
+        existing->ast_func = func;
+        existing->struct_producer = NULL;
+        existing->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
+        existing->min_args = min_args;
+        existing->max_args = max_args;
+        existing->return_type = return_type;
+        existing->has_return_type = true;
+        existing->userdata = userdata;
+        existing->userdata_free = free_userdata;
+        reg->version++;
+        return;
+    }
+
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
+    cxpr_func_entry* entry = &reg->entries[reg->count++];
+    entry->name = cxpr_strdup(name);
+    entry->sync_func = NULL;
+    entry->value_func = NULL;
+    entry->typed_func = NULL;
+    entry->ast_func = func;
+    entry->struct_producer = NULL;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+    entry->min_args = min_args;
+    entry->max_args = max_args;
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
     entry->return_type = return_type;
     entry->has_return_type = true;
     entry->userdata = userdata;
@@ -547,6 +605,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
         existing->sync_func = func;
         existing->value_func = NULL;
         existing->typed_func = NULL;
+        existing->ast_func = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
@@ -571,6 +630,7 @@ void cxpr_registry_add_fn(cxpr_registry* reg, const char* name,
     entry->sync_func = func;
     entry->value_func = NULL;
     entry->typed_func = NULL;
+    entry->ast_func = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
@@ -619,6 +679,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
         /* Preserve any existing scalar callback so one entry can serve both
          * plain `name(...)` and `name(...).field`. */
         entry->struct_producer = func;
+        entry->ast_func = NULL;
         entry->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
         entry->min_args = min_args;
@@ -642,6 +703,7 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     entry->sync_func = NULL;
     entry->value_func = NULL;
     entry->typed_func = NULL;
+    entry->ast_func = NULL;
     entry->struct_producer = func;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));

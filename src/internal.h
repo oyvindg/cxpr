@@ -395,6 +395,7 @@ typedef struct {
     cxpr_func_ptr sync_func;    /**< Scalar function pointer */
     cxpr_value_func_ptr value_func; /**< Numeric-in, typed-out function pointer */
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
+    cxpr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
     enum {
         CXPR_NATIVE_KIND_NONE = 0,

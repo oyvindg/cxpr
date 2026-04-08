@@ -15,7 +15,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
-#include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)

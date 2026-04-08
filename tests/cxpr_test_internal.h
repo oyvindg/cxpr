@@ -161,6 +161,7 @@ typedef struct {
     cxpr_func_ptr sync_func;
     cxpr_value_func_ptr value_func;
     cxpr_typed_func_ptr typed_func;
+    cxpr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
     enum {
         CXPR_NATIVE_KIND_NONE = 0,

@@ -911,6 +911,9 @@ static cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
 
         if (!entry) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+        if (entry->ast_func) {
+            return entry->ast_func(ast, ctx, reg, entry->userdata, err);
+        }
         if (entry->defined_body) return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         if (entry->struct_producer && !entry->sync_func && !entry->value_func) {
             const cxpr_struct_value* produced =

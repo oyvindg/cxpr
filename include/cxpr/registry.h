@@ -37,6 +37,20 @@ typedef cxpr_value (*cxpr_value_func_ptr)(const double* args, size_t argc, void*
  */
 typedef cxpr_value (*cxpr_typed_func_ptr)(const cxpr_value* args, size_t argc, void* userdata);
 /**
+ * @brief Callback type for AST-aware functions.
+ * @param call_ast The full function-call AST node.
+ * @param ctx Evaluation context.
+ * @param reg Function registry.
+ * @param userdata Opaque user pointer supplied at registration time.
+ * @param err Optional error output.
+ * @return Typed function result.
+ */
+typedef cxpr_value (*cxpr_ast_func_ptr)(const cxpr_ast* call_ast,
+                                        const cxpr_context* ctx,
+                                        const cxpr_registry* reg,
+                                        void* userdata,
+                                        cxpr_error* err);
+/**
  * @brief Callback type for struct-producing functions.
  * @param args Evaluated numeric arguments.
  * @param argc Number of arguments.
@@ -107,6 +121,21 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
                              cxpr_typed_func_ptr func, size_t min_args, size_t max_args,
                              const cxpr_value_type* arg_types, cxpr_value_type return_type,
                              void* userdata, cxpr_userdata_free_fn free_userdata);
+/**
+ * @brief Register an AST-aware function.
+ * @param reg Destination registry.
+ * @param name Function name.
+ * @param func Callback that receives the full call AST and runtime context.
+ * @param min_args Minimum accepted arity.
+ * @param max_args Maximum accepted arity.
+ * @param return_type Declared result type for analysis and validation.
+ * @param userdata User pointer passed to `func`.
+ * @param free_userdata Optional cleanup callback for `userdata`.
+ */
+void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
+                           cxpr_ast_func_ptr func, size_t min_args, size_t max_args,
+                           cxpr_value_type return_type,
+                           void* userdata, cxpr_userdata_free_fn free_userdata);
 /**
  * @brief Register a unary scalar function.
  * @param reg Destination registry.

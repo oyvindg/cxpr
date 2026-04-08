@@ -193,7 +193,7 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
         }
 
         entry = cxpr_registry_find(reg, ast->data.function_call.name);
-        if (!entry || (entry->struct_fields && !entry->struct_producer) ||
+        if (!entry || entry->ast_func || (entry->struct_fields && !entry->struct_producer) ||
             (entry->struct_producer && !entry->sync_func)) {
             return CXPR_IR_RESULT_UNKNOWN;
         }
@@ -520,6 +520,14 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 }
             }
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
+        }
+
+        if (entry->ast_func) {
+            if (err) {
+                err->code = CXPR_ERR_SYNTAX;
+                err->message = "Function requires AST evaluation";
+            }
+            return false;
         }
 
         if ((entry->sync_func || entry->value_func) && !entry->struct_fields && !entry->defined_body) {
