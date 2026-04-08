@@ -139,6 +139,7 @@ bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out) {
 
     case CXPR_NODE_BOOL:
     case CXPR_NODE_CHAIN_ACCESS:
+    case CXPR_NODE_LOOKBACK:
         return false;
 
     case CXPR_NODE_UNARY_OP:
@@ -240,6 +241,10 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
             }
         }
         return true;
+
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_ir_ast_equal(left->data.lookback.target, right->data.lookback.target) &&
+               cxpr_ir_ast_equal(left->data.lookback.index, right->data.lookback.index);
 
     case CXPR_NODE_TERNARY:
         return cxpr_ir_ast_equal(left->data.ternary.condition,

@@ -37,6 +37,7 @@ static cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
                                                          const cxpr_context* ctx,
                                                          const cxpr_registry* reg,
                                                          cxpr_error* err);
+static cxpr_ast* cxpr_eval_clone_ast(const cxpr_ast* ast);
 
 static cxpr_value cxpr_eval_error(cxpr_error* err, cxpr_error_code code,
                                         const char* message) {
@@ -130,6 +131,100 @@ static bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out) {
     default:
         return false;
     }
+}
+
+static cxpr_ast* cxpr_eval_clone_ast(const cxpr_ast* ast) {
+    if (!ast) return NULL;
+
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+        return cxpr_ast_new_number(ast->data.number.value);
+    case CXPR_NODE_BOOL:
+        return cxpr_ast_new_bool(ast->data.boolean.value);
+    case CXPR_NODE_IDENTIFIER:
+        return cxpr_ast_new_identifier(ast->data.identifier.name);
+    case CXPR_NODE_VARIABLE:
+        return cxpr_ast_new_variable(ast->data.variable.name);
+    case CXPR_NODE_FIELD_ACCESS:
+        return cxpr_ast_new_field_access(ast->data.field_access.object, ast->data.field_access.field);
+    case CXPR_NODE_CHAIN_ACCESS:
+        return cxpr_ast_new_chain_access((const char* const*)ast->data.chain_access.path,
+                                         ast->data.chain_access.depth);
+    case CXPR_NODE_UNARY_OP: {
+        cxpr_ast* operand = cxpr_eval_clone_ast(ast->data.unary_op.operand);
+        if (!operand) return NULL;
+        return cxpr_ast_new_unary_op(ast->data.unary_op.op, operand);
+    }
+    case CXPR_NODE_BINARY_OP: {
+        cxpr_ast* left = cxpr_eval_clone_ast(ast->data.binary_op.left);
+        cxpr_ast* right = cxpr_eval_clone_ast(ast->data.binary_op.right);
+        if (!left || !right) {
+            cxpr_ast_free(left);
+            cxpr_ast_free(right);
+            return NULL;
+        }
+        return cxpr_ast_new_binary_op(ast->data.binary_op.op, left, right);
+    }
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_ast** args = NULL;
+        if (ast->data.function_call.argc > 0) {
+            args = (cxpr_ast**)calloc(ast->data.function_call.argc, sizeof(cxpr_ast*));
+            if (!args) return NULL;
+            for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+                args[i] = cxpr_eval_clone_ast(ast->data.function_call.args[i]);
+                if (!args[i]) {
+                    for (size_t j = 0; j < i; ++j) cxpr_ast_free(args[j]);
+                    free(args);
+                    return NULL;
+                }
+            }
+        }
+        return cxpr_ast_new_function_call(ast->data.function_call.name, args,
+                                          ast->data.function_call.argc);
+    }
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        cxpr_ast** args = NULL;
+        if (ast->data.producer_access.argc > 0) {
+            args = (cxpr_ast**)calloc(ast->data.producer_access.argc, sizeof(cxpr_ast*));
+            if (!args) return NULL;
+            for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+                args[i] = cxpr_eval_clone_ast(ast->data.producer_access.args[i]);
+                if (!args[i]) {
+                    for (size_t j = 0; j < i; ++j) cxpr_ast_free(args[j]);
+                    free(args);
+                    return NULL;
+                }
+            }
+        }
+        return cxpr_ast_new_producer_access(ast->data.producer_access.name, args,
+                                            ast->data.producer_access.argc,
+                                            ast->data.producer_access.field);
+    }
+    case CXPR_NODE_LOOKBACK: {
+        cxpr_ast* target = cxpr_eval_clone_ast(ast->data.lookback.target);
+        cxpr_ast* index = cxpr_eval_clone_ast(ast->data.lookback.index);
+        if (!target || !index) {
+            cxpr_ast_free(target);
+            cxpr_ast_free(index);
+            return NULL;
+        }
+        return cxpr_ast_new_lookback(target, index);
+    }
+    case CXPR_NODE_TERNARY: {
+        cxpr_ast* condition = cxpr_eval_clone_ast(ast->data.ternary.condition);
+        cxpr_ast* yes = cxpr_eval_clone_ast(ast->data.ternary.true_branch);
+        cxpr_ast* no = cxpr_eval_clone_ast(ast->data.ternary.false_branch);
+        if (!condition || !yes || !no) {
+            cxpr_ast_free(condition);
+            cxpr_ast_free(yes);
+            cxpr_ast_free(no);
+            return NULL;
+        }
+        return cxpr_ast_new_ternary(condition, yes, no);
+    }
+    }
+
+    return NULL;
 }
 
 static const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast) {
@@ -794,6 +889,25 @@ static cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
     case CXPR_NODE_CHAIN_ACCESS:
         return cxpr_eval_chain_access(ast, ctx, err);
 
+    case CXPR_NODE_LOOKBACK: {
+        cxpr_value value;
+        if (reg && reg->lookback_resolver) {
+            value = cxpr_fv_double(NAN);
+            if (reg->lookback_resolver(ast->data.lookback.target,
+                                       ast->data.lookback.index,
+                                       ctx,
+                                       reg,
+                                       reg->lookback_userdata,
+                                       &value,
+                                       err)) {
+                return value;
+            }
+            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+        }
+        return cxpr_eval_error(err, CXPR_ERR_SYNTAX,
+                               "Native lookback requires a registry lookback resolver");
+    }
+
     case CXPR_NODE_BINARY_OP: {
         int op = ast->data.binary_op.op;
 
@@ -1112,6 +1226,163 @@ bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to bool";
+        }
+        return false;
+    }
+    *out_value = value.b;
+    return true;
+}
+
+bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
+                               const cxpr_ast* index_ast,
+                               const cxpr_context* ctx,
+                               const cxpr_registry* reg,
+                               cxpr_value* out_value,
+                               cxpr_error* err) {
+    cxpr_ast* target_copy = NULL;
+    cxpr_ast* index_copy = NULL;
+    cxpr_ast* lookback_ast = NULL;
+    bool ok = false;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
+    }
+    if (!ast || !index_ast) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "Lookback evaluation requires target and index";
+        }
+        return false;
+    }
+
+    target_copy = cxpr_eval_clone_ast(ast);
+    index_copy = cxpr_eval_clone_ast(index_ast);
+    if (!target_copy || !index_copy) {
+        cxpr_ast_free(target_copy);
+        cxpr_ast_free(index_copy);
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return false;
+    }
+
+    lookback_ast = cxpr_ast_new_lookback(target_copy, index_copy);
+    if (!lookback_ast) {
+        cxpr_ast_free(target_copy);
+        cxpr_ast_free(index_copy);
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return false;
+    }
+
+    ok = cxpr_eval_ast(lookback_ast, ctx, reg, out_value, err);
+    cxpr_ast_free(lookback_ast);
+    return ok;
+}
+
+bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
+                             double lookback,
+                             const cxpr_context* ctx,
+                             const cxpr_registry* reg,
+                             cxpr_value* out_value,
+                             cxpr_error* err) {
+    cxpr_ast* index_ast = NULL;
+    bool ok = false;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
+    }
+    if (!isfinite(lookback) || lookback < 0.0) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "Lookback offset must be a finite non-negative number";
+        }
+        return false;
+    }
+
+    index_ast = cxpr_ast_new_number(lookback);
+    if (!index_ast) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return false;
+    }
+
+    ok = cxpr_eval_ast_at_lookback(ast, index_ast, ctx, reg, out_value, err);
+    cxpr_ast_free(index_ast);
+    return ok;
+}
+
+bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
+                                    double lookback,
+                                    const cxpr_context* ctx,
+                                    const cxpr_registry* reg,
+                                    double* out_value,
+                                    cxpr_error* err) {
+    cxpr_value value;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
+    }
+    if (!cxpr_eval_ast_at_offset(ast, lookback, ctx, reg, &value, err)) return false;
+    if (value.type != CXPR_VALUE_NUMBER) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expected number";
+        }
+        return false;
+    }
+    *out_value = value.d;
+    return true;
+}
+
+bool cxpr_eval_ast_bool_at_offset(const cxpr_ast* ast,
+                                  double lookback,
+                                  const cxpr_context* ctx,
+                                  const cxpr_registry* reg,
+                                  bool* out_value,
+                                  cxpr_error* err) {
+    cxpr_value value;
+
+    if (!out_value) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
+    }
+    if (!cxpr_eval_ast_at_offset(ast, lookback, ctx, reg, &value, err)) return false;
+    if (value.type != CXPR_VALUE_BOOL) {
+        if (err) {
+            *err = (cxpr_error){0};
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expected bool";
         }
         return false;
     }

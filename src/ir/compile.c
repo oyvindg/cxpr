@@ -110,6 +110,7 @@ static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const c
     case CXPR_NODE_FIELD_ACCESS:
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_PRODUCER_ACCESS:
+    case CXPR_NODE_LOOKBACK:
         return CXPR_IR_RESULT_UNKNOWN;
 
     case CXPR_NODE_UNARY_OP:
@@ -400,6 +401,14 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             },
                             err);
     }
+
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_CALL_AST,
+                                .ast = ast,
+                            },
+                            err);
 
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);

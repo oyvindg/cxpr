@@ -12,6 +12,7 @@
 #include <cxpr/ast.h>
 #include <cxpr/context.h>
 #include <cxpr/registry.h>
+#include <cxpr/basket.h>
 #include <cxpr/evaluator.h>
 #include <cxpr/expression.h>
 

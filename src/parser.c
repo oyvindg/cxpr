@@ -391,51 +391,44 @@ static cxpr_ast* parse_power(cxpr_parser* p) {
  * @return AST node or NULL on error.
  */
 static cxpr_ast* parse_primary(cxpr_parser* p) {
-    /* Number literal */
+    cxpr_ast* node = NULL;
+
     if (parser_check(p, CXPR_TOK_NUMBER)) {
-        double val = p->current.number_value;
+        const double val = p->current.number_value;
         parser_advance(p);
-        return cxpr_ast_new_number(val);
-    }
-
-    if (parser_check(p, CXPR_TOK_TRUE) || parser_check(p, CXPR_TOK_FALSE)) {
-        bool value = (p->current.type == CXPR_TOK_TRUE);
+        node = cxpr_ast_new_number(val);
+    } else if (parser_check(p, CXPR_TOK_TRUE) || parser_check(p, CXPR_TOK_FALSE)) {
+        const bool value = (p->current.type == CXPR_TOK_TRUE);
         parser_advance(p);
-        return cxpr_ast_new_bool(value);
-    }
-
-    /* Variable ($name) */
-    if (parser_check(p, CXPR_TOK_VARIABLE)) {
+        node = cxpr_ast_new_bool(value);
+    } else if (parser_check(p, CXPR_TOK_VARIABLE)) {
         char* name = token_to_string(&p->current);
         parser_advance(p);
         if (!name) return NULL;
-        cxpr_ast* node = cxpr_ast_new_variable(name);
+        node = cxpr_ast_new_variable(name);
         free(name);
-        return node;
-    }
-
-    /* Identifier → might be function call or field access */
-    if (parser_check(p, CXPR_TOK_IDENTIFIER)) {
+    } else if (parser_check(p, CXPR_TOK_IDENTIFIER)) {
         char* name = token_to_string(&p->current);
         parser_advance(p);
         if (!name) return NULL;
 
-        /* Function call: identifier "(" [args] ")" */
         if (parser_check(p, CXPR_TOK_LPAREN)) {
-            parser_advance(p); /* consume '(' */
-
-            /* Parse argument list */
             size_t argc = 0;
             size_t args_capacity = 8;
-            cxpr_ast** args = (cxpr_ast**)malloc(args_capacity * sizeof(cxpr_ast*));
-            if (!args) { free(name); return NULL; }
+            cxpr_ast** args = NULL;
+
+            parser_advance(p);
+            args = (cxpr_ast**)malloc(args_capacity * sizeof(cxpr_ast*));
+            if (!args) {
+                free(name);
+                return NULL;
+            }
 
             if (!parser_check(p, CXPR_TOK_RPAREN)) {
-                /* At least one argument */
                 args[argc] = parse_expression(p);
                 if (!args[argc] || p->had_error) {
                     free(name);
-                    for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
+                    for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                     free(args);
                     return NULL;
                 }
@@ -443,11 +436,12 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
 
                 while (parser_match(p, CXPR_TOK_COMMA)) {
                     if (argc >= args_capacity) {
+                        cxpr_ast** new_args;
                         args_capacity *= 2;
-                        cxpr_ast** new_args = (cxpr_ast**)realloc(args, args_capacity * sizeof(cxpr_ast*));
+                        new_args = (cxpr_ast**)realloc(args, args_capacity * sizeof(cxpr_ast*));
                         if (!new_args) {
                             free(name);
-                            for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
+                            for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                             free(args);
                             return NULL;
                         }
@@ -456,7 +450,7 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                     args[argc] = parse_expression(p);
                     if (!args[argc] || p->had_error) {
                         free(name);
-                        for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
+                        for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                         free(args);
                         return NULL;
                     }
@@ -466,14 +460,14 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
 
             if (!parser_expect(p, CXPR_TOK_RPAREN, "Expected ')' after function arguments")) {
                 free(name);
-                for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
+                for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                 free(args);
                 return NULL;
             }
 
-            /* Optional producer field access: name(args).field */
             if (parser_check(p, CXPR_TOK_DOT)) {
-                parser_advance(p); /* consume '.' */
+                char* field = NULL;
+                parser_advance(p);
                 if (!parser_check(p, CXPR_TOK_IDENTIFIER)) {
                     p->had_error = true;
                     p->last_error.code = CXPR_ERR_SYNTAX;
@@ -482,37 +476,29 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                     p->last_error.line = p->current.line;
                     p->last_error.column = p->current.column;
                     free(name);
-                    for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
+                    for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                     free(args);
                     return NULL;
                 }
-
-                char* field = token_to_string(&p->current);
+                field = token_to_string(&p->current);
                 parser_advance(p);
                 if (!field) {
                     free(name);
-                    for (size_t i = 0; i < argc; i++) cxpr_ast_free(args[i]);
+                    for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                     free(args);
                     return NULL;
                 }
-
-                cxpr_ast* node = cxpr_ast_new_producer_access(name, args, argc, field);
+                node = cxpr_ast_new_producer_access(name, args, argc, field);
                 free(name);
                 free(field);
-                return node;
+            } else {
+                node = cxpr_ast_new_function_call(name, args, argc);
+                free(name);
             }
-
-            cxpr_ast* node = cxpr_ast_new_function_call(name, args, argc);
-            free(name);
-            return node;
-        }
-
-        /* Field access: identifier "." identifier [ "." identifier ]* */
-        if (parser_check(p, CXPR_TOK_DOT)) {
+        } else if (parser_check(p, CXPR_TOK_DOT)) {
             char** segments = NULL;
             size_t depth = 0;
             size_t capacity = 4;
-            cxpr_ast* node = NULL;
 
             segments = (char**)calloc(capacity, sizeof(char*));
             if (!segments) {
@@ -530,7 +516,7 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                     p->last_error.position = p->current.position;
                     p->last_error.line = p->current.line;
                     p->last_error.column = p->current.column;
-                    for (size_t i = 0; i < depth; i++) free(segments[i]);
+                    for (size_t i = 0; i < depth; ++i) free(segments[i]);
                     free(segments);
                     return NULL;
                 }
@@ -539,7 +525,7 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                     capacity *= 2;
                     new_segments = (char**)realloc(segments, capacity * sizeof(char*));
                     if (!new_segments) {
-                        for (size_t i = 0; i < depth; i++) free(segments[i]);
+                        for (size_t i = 0; i < depth; ++i) free(segments[i]);
                         free(segments);
                         return NULL;
                     }
@@ -547,7 +533,7 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                 }
                 segments[depth] = token_to_string(&p->current);
                 if (!segments[depth]) {
-                    for (size_t i = 0; i < depth; i++) free(segments[i]);
+                    for (size_t i = 0; i < depth; ++i) free(segments[i]);
                     free(segments);
                     return NULL;
                 }
@@ -555,43 +541,54 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                 parser_advance(p);
             }
 
-            if (depth == 2) {
-                node = cxpr_ast_new_field_access(segments[0], segments[1]);
-            } else {
-                node = cxpr_ast_new_chain_access((const char* const*)segments, depth);
-            }
+            node = depth == 2
+                ? cxpr_ast_new_field_access(segments[0], segments[1])
+                : cxpr_ast_new_chain_access((const char* const*)segments, depth);
 
-            for (size_t i = 0; i < depth; i++) free(segments[i]);
+            for (size_t i = 0; i < depth; ++i) free(segments[i]);
             free(segments);
-            return node;
+        } else {
+            node = cxpr_ast_new_identifier(name);
+            free(name);
         }
-
-        /* Plain identifier */
-        cxpr_ast* node = cxpr_ast_new_identifier(name);
-        free(name);
-        return node;
-    }
-
-    /* Parenthesized expression */
-    if (parser_match(p, CXPR_TOK_LPAREN)) {
-        cxpr_ast* expr = parse_expression(p);
-        if (!expr || p->had_error) return NULL;
-
+    } else if (parser_match(p, CXPR_TOK_LPAREN)) {
+        node = parse_expression(p);
+        if (!node || p->had_error) return NULL;
         if (!parser_expect(p, CXPR_TOK_RPAREN, "Expected closing ')'")) {
-            cxpr_ast_free(expr);
+            cxpr_ast_free(node);
             return NULL;
         }
-        return expr;
+    } else {
+        p->had_error = true;
+        p->last_error.code = CXPR_ERR_SYNTAX;
+        p->last_error.message = "Unexpected token";
+        p->last_error.position = p->current.position;
+        p->last_error.line = p->current.line;
+        p->last_error.column = p->current.column;
+        return NULL;
     }
 
-    /* Error: unexpected token */
-    p->had_error = true;
-    p->last_error.code = CXPR_ERR_SYNTAX;
-    p->last_error.message = "Unexpected token";
-    p->last_error.position = p->current.position;
-    p->last_error.line = p->current.line;
-    p->last_error.column = p->current.column;
-    return NULL;
+    while (node && parser_match(p, CXPR_TOK_LBRACKET)) {
+        cxpr_ast* index_expr = parse_expression(p);
+        if (!index_expr || p->had_error) {
+            cxpr_ast_free(node);
+            return NULL;
+        }
+        if (!parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after lookback expression")) {
+            cxpr_ast_free(node);
+            cxpr_ast_free(index_expr);
+            return NULL;
+        }
+        node = cxpr_ast_new_lookback(node, index_expr);
+        if (!node) {
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            return NULL;
+        }
+    }
+
+    return node;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -195,6 +195,15 @@ cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t a
     return node;
 }
 
+cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index) {
+    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_LOOKBACK;
+    node->data.lookback.target = target;
+    node->data.lookback.index = index;
+    return node;
+}
+
 /**
  * @brief Create a TERNARY AST node.
  * @param condition Condition expression AST (ownership transferred).
@@ -269,6 +278,10 @@ void cxpr_ast_free(cxpr_ast* ast) {
             cxpr_ast_free(ast->data.function_call.args[i]);
         }
         free(ast->data.function_call.args);
+        break;
+    case CXPR_NODE_LOOKBACK:
+        cxpr_ast_free(ast->data.lookback.target);
+        cxpr_ast_free(ast->data.lookback.index);
         break;
     case CXPR_NODE_TERNARY:
         cxpr_ast_free(ast->data.ternary.condition);
@@ -424,6 +437,13 @@ const cxpr_ast* cxpr_ast_function_arg(const cxpr_ast* ast, size_t index) {
     if (index >= ast->data.function_call.argc) return NULL;
     return ast->data.function_call.args[index];
 }
+const cxpr_ast* cxpr_ast_lookback_target(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_LOOKBACK) ? ast->data.lookback.target : NULL;
+}
+
+const cxpr_ast* cxpr_ast_lookback_index(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_LOOKBACK) ? ast->data.lookback.index : NULL;
+}
 /**
  * @brief Get producer name of a PRODUCER_ACCESS node.
  * @param ast AST node (must be CXPR_NODE_PRODUCER_ACCESS).
@@ -558,6 +578,10 @@ static size_t cxpr_collect_references(const cxpr_ast* ast, const char** names,
             count = cxpr_collect_references(ast->data.function_call.args[i], names, count, max_names);
         }
         return count;
+    case CXPR_NODE_LOOKBACK:
+        count = cxpr_collect_references(ast->data.lookback.target, names, count, max_names);
+        count = cxpr_collect_references(ast->data.lookback.index, names, count, max_names);
+        return count;
     case CXPR_NODE_TERNARY:
         count = cxpr_collect_references(ast->data.ternary.condition, names, count, max_names);
         count = cxpr_collect_references(ast->data.ternary.true_branch, names, count, max_names);
@@ -603,6 +627,10 @@ static size_t cxpr_collect_functions(const cxpr_ast* ast, const char** names,
         for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
             count = cxpr_collect_functions(ast->data.producer_access.args[i], names, count, max_names);
         }
+        return count;
+    case CXPR_NODE_LOOKBACK:
+        count = cxpr_collect_functions(ast->data.lookback.target, names, count, max_names);
+        count = cxpr_collect_functions(ast->data.lookback.index, names, count, max_names);
         return count;
     case CXPR_NODE_BINARY_OP:
         count = cxpr_collect_functions(ast->data.binary_op.left, names, count, max_names);
@@ -662,6 +690,10 @@ static size_t cxpr_collect_variables(const cxpr_ast* ast, const char** names,
             count = cxpr_collect_variables(ast->data.producer_access.args[i], names, count, max_names);
         }
         return count;
+    case CXPR_NODE_LOOKBACK:
+        count = cxpr_collect_variables(ast->data.lookback.target, names, count, max_names);
+        count = cxpr_collect_variables(ast->data.lookback.index, names, count, max_names);
+        return count;
     case CXPR_NODE_TERNARY:
         count = cxpr_collect_variables(ast->data.ternary.condition, names, count, max_names);
         count = cxpr_collect_variables(ast->data.ternary.true_branch, names, count, max_names);
@@ -702,6 +734,10 @@ static size_t cxpr_collect_field_paths(const cxpr_ast* ast, const char** names,
         for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
             count = cxpr_collect_field_paths(ast->data.function_call.args[i], names, count, max_names);
         }
+        return count;
+    case CXPR_NODE_LOOKBACK:
+        count = cxpr_collect_field_paths(ast->data.lookback.target, names, count, max_names);
+        count = cxpr_collect_field_paths(ast->data.lookback.index, names, count, max_names);
         return count;
     case CXPR_NODE_BINARY_OP:
         count = cxpr_collect_field_paths(ast->data.binary_op.left, names, count, max_names);
@@ -799,6 +835,27 @@ static bool cxpr_analyze_node(const cxpr_ast* ast, const cxpr_registry* reg,
         out->result_type =
             (ast->data.unary_op.op == CXPR_TOK_NOT) ? CXPR_EXPR_BOOL : CXPR_EXPR_NUMBER;
         out->is_predicate = (out->result_type == CXPR_EXPR_BOOL);
+        return true;
+    }
+
+    case CXPR_NODE_LOOKBACK: {
+        cxpr_analysis target_analysis;
+        cxpr_analysis index_analysis;
+        memset(&target_analysis, 0, sizeof(target_analysis));
+        memset(&index_analysis, 0, sizeof(index_analysis));
+        target_analysis.is_constant = true;
+        index_analysis.is_constant = true;
+        if (!cxpr_analyze_node(ast->data.lookback.target, reg, &target_analysis, depth + 1, err)) {
+            return false;
+        }
+        if (!cxpr_analyze_node(ast->data.lookback.index, reg, &index_analysis, depth + 1, err)) {
+            return false;
+        }
+        cxpr_analysis_merge_into(out, &target_analysis);
+        cxpr_analysis_merge_into(out, &index_analysis);
+        out->result_type = target_analysis.result_type;
+        out->is_predicate = target_analysis.is_predicate;
+        out->is_constant = false;
         return true;
     }
 

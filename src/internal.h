@@ -101,6 +101,8 @@ typedef enum {
     /* Delimiters */
     CXPR_TOK_LPAREN,            /**< ( */
     CXPR_TOK_RPAREN,            /**< ) */
+    CXPR_TOK_LBRACKET,          /**< [ */
+    CXPR_TOK_RBRACKET,          /**< ] */
     CXPR_TOK_COMMA,             /**< , */
     CXPR_TOK_DOT,               /**< . */
     CXPR_TOK_QUESTION,          /**< ? (ternary) */
@@ -241,6 +243,12 @@ struct cxpr_ast {
             bool cached_lookup_valid;                    /**< True when cache fields are initialized */
         } function_call;
 
+        /* CXPR_NODE_LOOKBACK */
+        struct {
+            struct cxpr_ast* target;
+            struct cxpr_ast* index;
+        } lookback;
+
         /* CXPR_NODE_TERNARY */
         struct {
             struct cxpr_ast* condition;
@@ -272,6 +280,8 @@ cxpr_ast* cxpr_ast_new_binary_op(int op, cxpr_ast* left, cxpr_ast* right);
 cxpr_ast* cxpr_ast_new_unary_op(int op, cxpr_ast* operand);
 /** @brief Create a FUNCTION_CALL node (takes ownership of args). */
 cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc);
+/** @brief Create a LOOKBACK node (takes ownership of target/index). */
+cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index);
 /** @brief Create a TERNARY conditional node. */
 cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch, cxpr_ast* false_branch);
 /** @} */
@@ -439,6 +449,9 @@ struct cxpr_registry {
     size_t capacity;
     size_t count;
     unsigned long version;      /**< Bumped whenever entries mutate or move */
+    cxpr_lookback_resolver_ptr lookback_resolver;
+    void* lookback_userdata;
+    cxpr_userdata_free_fn free_lookback_userdata;
 };
 
 /** @brief Find a function entry by name in the registry. */
@@ -542,6 +555,19 @@ typedef struct {
         const cxpr_ast* ast; /* CALL_AST */
     };
 } cxpr_ir_instr;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Internal builtin registration helpers
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Register cxpr's built-in native time-series functions.
+ * @param reg Destination registry.
+ *
+ * Keeps time-aware builtins such as `rising(...)` and `falling(...)`
+ * separate from the generic registry implementation.
+ */
+void cxpr_register_timeseries_builtins(cxpr_registry* reg);
 
 _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr for stor");
 

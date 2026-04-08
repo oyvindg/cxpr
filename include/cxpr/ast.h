@@ -110,6 +110,13 @@ cxpr_ast* cxpr_ast_new_unary_op(int op, cxpr_ast* operand);
  */
 cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc);
 /**
+ * @brief Construct a postfix lookback node.
+ * @param target Expression being indexed.
+ * @param index Lookback/index expression.
+ * @return Newly allocated AST node taking ownership of both children, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index);
+/**
  * @brief Construct a ternary conditional node.
  * @param condition Condition expression.
  * @param true_branch Branch used when `condition` is true.
@@ -134,6 +141,7 @@ typedef enum {
     CXPR_NODE_BINARY_OP,
     CXPR_NODE_UNARY_OP,
     CXPR_NODE_FUNCTION_CALL,
+    CXPR_NODE_LOOKBACK,
     CXPR_NODE_TERNARY
 } cxpr_node_type;
 
@@ -262,6 +270,18 @@ size_t cxpr_ast_function_argc(const cxpr_ast* ast);
  * @return Borrowed argument node, or NULL if `index` is out of range.
  */
 const cxpr_ast* cxpr_ast_function_arg(const cxpr_ast* ast, size_t index);
+/**
+ * @brief Return the target child of a lookback node.
+ * @param ast Lookback node.
+ * @return Borrowed target child, or NULL when not applicable.
+ */
+const cxpr_ast* cxpr_ast_lookback_target(const cxpr_ast* ast);
+/**
+ * @brief Return the index child of a lookback node.
+ * @param ast Lookback node.
+ * @return Borrowed index child, or NULL when not applicable.
+ */
+const cxpr_ast* cxpr_ast_lookback_index(const cxpr_ast* ast);
 /**
  * @brief Return the producer name for a producer-access node.
  * @param ast Producer-access node.
@@ -392,6 +412,70 @@ bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
  */
 bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
                         const cxpr_registry* reg, bool* out_value, cxpr_error* err);
+/**
+ * @brief Evaluate an AST at a lookback expression (`ast[index_ast]`).
+ * @param ast Target AST to evaluate.
+ * @param index_ast AST that evaluates to the desired lookback index.
+ * @param ctx Runtime context providing variables and params.
+ * @param reg Function registry used during evaluation.
+ * @param out_value Output value on success.
+ * @param err Optional error output.
+ * @return True on success, false on evaluation failure.
+ */
+bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
+                               const cxpr_ast* index_ast,
+                               const cxpr_context* ctx,
+                               const cxpr_registry* reg,
+                               cxpr_value* out_value,
+                               cxpr_error* err);
+/**
+ * @brief Evaluate an AST at one numeric lookback offset (`ast[offset]`).
+ * @param ast Target AST to evaluate.
+ * @param lookback Non-negative lookback offset.
+ * @param ctx Runtime context providing variables and params.
+ * @param reg Function registry used during evaluation.
+ * @param out_value Output value on success.
+ * @param err Optional error output.
+ * @return True on success, false on evaluation failure.
+ */
+bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
+                             double lookback,
+                             const cxpr_context* ctx,
+                             const cxpr_registry* reg,
+                             cxpr_value* out_value,
+                             cxpr_error* err);
+/**
+ * @brief Evaluate an AST to a number at one numeric lookback offset.
+ * @param ast Target AST to evaluate.
+ * @param lookback Non-negative lookback offset.
+ * @param ctx Runtime context providing variables and params.
+ * @param reg Function registry used during evaluation.
+ * @param out_value Output number on success.
+ * @param err Optional error output.
+ * @return True on success, false on evaluation failure or type mismatch.
+ */
+bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
+                                    double lookback,
+                                    const cxpr_context* ctx,
+                                    const cxpr_registry* reg,
+                                    double* out_value,
+                                    cxpr_error* err);
+/**
+ * @brief Evaluate an AST to a bool at one numeric lookback offset.
+ * @param ast Target AST to evaluate.
+ * @param lookback Non-negative lookback offset.
+ * @param ctx Runtime context providing variables and params.
+ * @param reg Function registry used during evaluation.
+ * @param out_value Output bool on success.
+ * @param err Optional error output.
+ * @return True on success, false on evaluation failure or type mismatch.
+ */
+bool cxpr_eval_ast_bool_at_offset(const cxpr_ast* ast,
+                                  double lookback,
+                                  const cxpr_context* ctx,
+                                  const cxpr_registry* reg,
+                                  bool* out_value,
+                                  cxpr_error* err);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Compiled Program API

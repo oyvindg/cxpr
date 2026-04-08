@@ -51,6 +51,44 @@ typedef cxpr_value (*cxpr_ast_func_ptr)(const cxpr_ast* call_ast,
                                         void* userdata,
                                         cxpr_error* err);
 /**
+ * @brief Callback type for AST-aware time-series functions.
+ *
+ * Time-series functions receive unevaluated argument ASTs so they can inspect
+ * or re-evaluate arguments at historical offsets, for example `rising(x, 3)`
+ * or `falling(macd(...).signal, 2)`.
+ *
+ * This is intentionally the same low-level signature as `cxpr_ast_func_ptr`,
+ * but is exposed as a separate concept so hosts can register time-aware
+ * functions explicitly.
+ */
+typedef cxpr_value (*cxpr_timeseries_func_ptr)(const cxpr_ast* call_ast,
+                                               const cxpr_context* ctx,
+                                               const cxpr_registry* reg,
+                                               void* userdata,
+                                               cxpr_error* err);
+/**
+ * @brief Optional callback for native AST lookback evaluation.
+ * @param target Lookback target AST.
+ * @param index Lookback index AST.
+ * @param ctx Evaluation context.
+ * @param reg Function registry.
+ * @param userdata Opaque user pointer supplied at registration time.
+ * @param out_value Output value on success.
+ * @param err Optional error output.
+ * @return True when the lookback was resolved, false to fall back to default cxpr handling.
+ *
+ * `cxpr` parses postfix lookbacks such as `close[1]` and `macd(12,26,9).signal[2]`
+ * into `CXPR_NODE_LOOKBACK` AST nodes. Runtime evaluation of those nodes depends on
+ * this callback; there is no built-in `lag_*` fallback in the evaluator.
+ */
+typedef bool (*cxpr_lookback_resolver_ptr)(const cxpr_ast* target,
+                                           const cxpr_ast* index,
+                                           const cxpr_context* ctx,
+                                           const cxpr_registry* reg,
+                                           void* userdata,
+                                           cxpr_value* out_value,
+                                           cxpr_error* err);
+/**
  * @brief Callback type for struct-producing functions.
  * @param args Evaluated numeric arguments.
  * @param argc Number of arguments.
@@ -77,6 +115,20 @@ cxpr_registry* cxpr_registry_new(void);
  * @param reg Registry to free. May be NULL.
  */
 void cxpr_registry_free(cxpr_registry* reg);
+/**
+ * @brief Install an optional native lookback resolver.
+ * @param reg Destination registry.
+ * @param resolver Callback used to evaluate `target[index]`.
+ * @param userdata User pointer passed to `resolver`.
+ * @param free_userdata Optional cleanup callback for `userdata`.
+ *
+ * Install this when expressions may contain postfix lookbacks (`expr[n]`).
+ * Without a resolver, evaluating `CXPR_NODE_LOOKBACK` fails with a syntax error.
+ */
+void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
+                                         cxpr_lookback_resolver_ptr resolver,
+                                         void* userdata,
+                                         cxpr_userdata_free_fn free_userdata);
 
 /**
  * @brief Register a scalar function.
@@ -136,6 +188,26 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
                            cxpr_ast_func_ptr func, size_t min_args, size_t max_args,
                            cxpr_value_type return_type,
                            void* userdata, cxpr_userdata_free_fn free_userdata);
+/**
+ * @brief Register an AST-aware time-series function.
+ * @param reg Destination registry.
+ * @param name Function name.
+ * @param func Callback that receives the full call AST and runtime context.
+ * @param min_args Minimum accepted arity.
+ * @param max_args Maximum accepted arity.
+ * @param return_type Declared result type for analysis and validation.
+ * @param userdata User pointer passed to `func`.
+ * @param free_userdata Optional cleanup callback for `userdata`.
+ *
+ * This is a semantic wrapper over `cxpr_registry_add_ast(...)` for functions
+ * that inspect or re-evaluate argument expressions across lookbacks.
+ */
+void cxpr_registry_add_timeseries(cxpr_registry* reg, const char* name,
+                                  cxpr_timeseries_func_ptr func,
+                                  size_t min_args, size_t max_args,
+                                  cxpr_value_type return_type,
+                                  void* userdata,
+                                  cxpr_userdata_free_fn free_userdata);
 /**
  * @brief Register a unary scalar function.
  * @param reg Destination registry.

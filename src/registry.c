@@ -197,6 +197,9 @@ static void free_defined_fn(cxpr_func_entry* entry) {
  */
 void cxpr_registry_free(cxpr_registry* reg) {
     if (!reg) return;
+    if (reg->free_lookback_userdata && reg->lookback_userdata) {
+        reg->free_lookback_userdata(reg->lookback_userdata);
+    }
     for (size_t i = 0; i < reg->count; i++) {
         if (reg->entries[i].userdata_free) {
             reg->entries[i].userdata_free(reg->entries[i].userdata);
@@ -208,6 +211,20 @@ void cxpr_registry_free(cxpr_registry* reg) {
     }
     free(reg->entries);
     free(reg);
+}
+
+void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
+                                         cxpr_lookback_resolver_ptr resolver,
+                                         void* userdata,
+                                         cxpr_userdata_free_fn free_userdata) {
+    if (!reg) return;
+    if (reg->free_lookback_userdata && reg->lookback_userdata &&
+        reg->lookback_userdata != userdata) {
+        reg->free_lookback_userdata(reg->lookback_userdata);
+    }
+    reg->lookback_resolver = resolver;
+    reg->lookback_userdata = userdata;
+    reg->free_lookback_userdata = free_userdata;
 }
 
 /**
@@ -428,6 +445,23 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
     reg->version++;
+}
+
+void cxpr_registry_add_timeseries(cxpr_registry* reg, const char* name,
+                                  cxpr_timeseries_func_ptr func,
+                                  size_t min_args, size_t max_args,
+                                  cxpr_value_type return_type,
+                                  void* userdata,
+                                  cxpr_userdata_free_fn free_userdata) {
+    cxpr_registry_add_ast(
+        reg,
+        name,
+        (cxpr_ast_func_ptr)func,
+        min_args,
+        max_args,
+        return_type,
+        userdata,
+        free_userdata);
 }
 
 /** @brief Heap payload for unary adapters. */
@@ -776,7 +810,7 @@ void cxpr_register_builtins(cxpr_registry* reg) {
     cxpr_registry_add_nullary(reg, "inf", cxpr_inf);
 
     cxpr_registry_add_ternary(reg, "if", cxpr_if);
-
+    cxpr_register_timeseries_builtins(reg);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -836,6 +870,10 @@ static void collect_fields_in_ast(
     case CXPR_NODE_UNARY_OP:
         collect_fields_in_ast(node->data.unary_op.operand, param_names, param_count, sets);
         break;
+    case CXPR_NODE_LOOKBACK:
+        collect_fields_in_ast(node->data.lookback.target, param_names, param_count, sets);
+        collect_fields_in_ast(node->data.lookback.index, param_names, param_count, sets);
+        break;
     case CXPR_NODE_FUNCTION_CALL:
         for (size_t i = 0; i < node->data.function_call.argc; i++) {
             collect_fields_in_ast(node->data.function_call.args[i], param_names, param_count, sets);
@@ -894,6 +932,12 @@ static void collect_transitive_fields_in_ast(const cxpr_ast* node, const cxpr_re
         break;
     case CXPR_NODE_UNARY_OP:
         collect_transitive_fields_in_ast(node->data.unary_op.operand, reg,
+                                         param_names, param_count, sets);
+        break;
+    case CXPR_NODE_LOOKBACK:
+        collect_transitive_fields_in_ast(node->data.lookback.target, reg,
+                                         param_names, param_count, sets);
+        collect_transitive_fields_in_ast(node->data.lookback.index, reg,
                                          param_names, param_count, sets);
         break;
     case CXPR_NODE_TERNARY:

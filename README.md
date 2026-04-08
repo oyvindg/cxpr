@@ -183,6 +183,21 @@ Supported language features:
 - Function calls: `sqrt(x)`, `clamp(v, lo, hi)`
 - Params with `$` prefix: `$threshold`
 - Field access for named structs and produced structs: `quote.mid`, `body.velocity.x`
+- Postfix lookback syntax: `close[1]`, `macd(12, 26, 9).signal[2]`
+
+## Lookback Evaluation
+
+`cxpr` represents postfix lookbacks as native AST nodes. The public syntax is `expr[n]`;
+there is no `lag_*` language fallback in the evaluator.
+
+To evaluate lookbacks at runtime, install a registry lookback resolver:
+
+```c
+cxpr_registry_set_lookback_resolver(reg, my_lookback_resolver, my_userdata, NULL);
+```
+
+Without a resolver, evaluating expressions such as `close[1]` or
+`zigzag(0.03).line[1]` fails because `CXPR_NODE_LOOKBACK` must be handled by the host.
 
 ## Custom Functions
 

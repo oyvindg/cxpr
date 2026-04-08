@@ -48,6 +48,8 @@ add_library(cxpr STATIC
     src/struct.c
     src/context.c
     src/registry.c
+    src/timeseries.c
+    src/basket.c
     src/evaluator.c
     src/expression.c
 )
