@@ -189,6 +189,30 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
                            cxpr_value_type return_type,
                            void* userdata, cxpr_userdata_free_fn free_userdata);
 /**
+ * @brief Register an AST-aware overlay for an existing (or new) function entry.
+ *
+ * Unlike `cxpr_registry_add_ast`, this call preserves any existing `sync_func`
+ * and `struct_producer` on the entry so that plain scalar calls and struct field
+ * access (`name(...).field`) continue to work.  The overlay is invoked for ALL
+ * `CXPR_NODE_FUNCTION_CALL` evaluations of `name`, taking priority over
+ * `ast_func` and `sync_func`.  Use it to intercept calls that carry a trailing
+ * string-literal timeframe argument while forwarding purely numeric calls to the
+ * original scalar implementation via the captured closure.
+ *
+ * @param reg            Destination registry.
+ * @param name           Function name.
+ * @param func           Overlay callback (receives raw call AST and context).
+ * @param min_args       Minimum accepted arity (merged with existing entry).
+ * @param max_args       Maximum accepted arity (merged with existing entry).
+ * @param userdata       User pointer passed to `func`.
+ * @param free_userdata  Optional cleanup callback for `userdata`.
+ */
+void cxpr_registry_add_ast_overlay(cxpr_registry* reg, const char* name,
+                                    cxpr_ast_func_ptr func,
+                                    size_t min_args, size_t max_args,
+                                    void* userdata,
+                                    cxpr_userdata_free_fn free_userdata);
+/**
  * @brief Register an AST-aware time-series function.
  * @param reg Destination registry.
  * @param name Function name.

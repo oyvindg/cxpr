@@ -401,6 +401,16 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
         const bool value = (p->current.type == CXPR_TOK_TRUE);
         parser_advance(p);
         node = cxpr_ast_new_bool(value);
+    } else if (parser_check(p, CXPR_TOK_STRING)) {
+        /* String literal: token.start points to content (after opening '"') */
+        const size_t len = p->current.length;
+        char* value = (char*)malloc(len + 1);
+        if (!value) return NULL;
+        memcpy(value, p->current.start, len);
+        value[len] = '\0';
+        parser_advance(p);
+        node = cxpr_ast_new_string(value);
+        free(value);
     } else if (parser_check(p, CXPR_TOK_VARIABLE)) {
         char* name = token_to_string(&p->current);
         parser_advance(p);

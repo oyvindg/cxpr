@@ -219,8 +219,10 @@ static cxpr_token cxpr_lexer_identifier(cxpr_lexer* lexer) {
     }
 
     /* Check for keyword aliases */
-    return cxpr_make_token(cxpr_check_keyword(start, length), start, length,
-                           start_pos, start_line, start_col);
+    {
+        cxpr_token_type kw_type = cxpr_check_keyword(start, length);
+        return cxpr_make_token(kw_type, start, length, start_pos, start_line, start_col);
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -309,6 +311,20 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
     /* Variables ($name) */
     if (c == '$') {
         return cxpr_lexer_variable(lexer);
+    }
+
+    /* String literals ("...") */
+    if (c == '"') {
+        cxpr_lexer_advance(lexer); /* skip opening '"' */
+        const char* str_start = lexer->current;
+        while (*lexer->current && *lexer->current != '"') {
+            cxpr_lexer_advance(lexer);
+        }
+        cxpr_token tok = cxpr_make_token(CXPR_TOK_STRING, str_start,
+                                          (size_t)(lexer->current - str_start),
+                                          start_pos, start_line, start_col);
+        if (*lexer->current == '"') cxpr_lexer_advance(lexer); /* skip closing '"' */
+        return tok;
     }
 
     /* Two-character operators */

@@ -176,6 +176,11 @@ struct cxpr_ast {
             bool value;
         } boolean;
 
+        /* CXPR_NODE_STRING */
+        struct {
+            char* value;              /**< Owned, NUL-terminated string content (without quotes) */
+        } string;
+
         /* CXPR_NODE_IDENTIFIER */
         struct {
             char* name;               /**< Owned, free with free() */
@@ -263,6 +268,8 @@ struct cxpr_ast {
 /** @brief Create a NUMBER literal node. */
 cxpr_ast* cxpr_ast_new_number(double value);
 cxpr_ast* cxpr_ast_new_bool(bool value);
+/** @brief Create a STRING literal node (strdup's value). */
+cxpr_ast* cxpr_ast_new_string(const char* value);
 /** @brief Create an IDENTIFIER node (strdup's name). */
 cxpr_ast* cxpr_ast_new_identifier(const char* name);
 /** @brief Create a VARIABLE ($param) node (strdup's name). */
@@ -407,6 +414,10 @@ typedef struct {
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
     cxpr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
+    /* AST overlay: coexists with sync_func/struct_producer for TF string dispatch */
+    cxpr_ast_func_ptr ast_func_overlay; /**< Overlay AST function; takes priority for FUNCTION_CALL */
+    void* ast_func_overlay_userdata;
+    cxpr_userdata_free_fn ast_func_overlay_userdata_free;
     enum {
         CXPR_NATIVE_KIND_NONE = 0,
         CXPR_NATIVE_KIND_NULLARY,

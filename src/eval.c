@@ -141,6 +141,8 @@ static cxpr_ast* cxpr_eval_clone_ast(const cxpr_ast* ast) {
         return cxpr_ast_new_number(ast->data.number.value);
     case CXPR_NODE_BOOL:
         return cxpr_ast_new_bool(ast->data.boolean.value);
+    case CXPR_NODE_STRING:
+        return cxpr_ast_new_string(ast->data.string.value);
     case CXPR_NODE_IDENTIFIER:
         return cxpr_ast_new_identifier(ast->data.identifier.name);
     case CXPR_NODE_VARIABLE:
@@ -864,6 +866,13 @@ static cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
     case CXPR_NODE_BOOL:
         return cxpr_fv_bool(ast->data.boolean.value);
 
+    case CXPR_NODE_STRING:
+        /* String literals are only valid as arguments to ast_func functions.
+         * Evaluating one in a plain numeric context is a type error. */
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "String literal cannot be evaluated as a value");
+
+
     case CXPR_NODE_IDENTIFIER: {
         bool found = false;
         cxpr_value value = cxpr_context_get_typed(ctx, ast->data.identifier.name, &found);
@@ -1025,6 +1034,9 @@ static cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
 
         if (!entry) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+        if (entry->ast_func_overlay) {
+            return entry->ast_func_overlay(ast, ctx, reg, entry->ast_func_overlay_userdata, err);
+        }
         if (entry->ast_func) {
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
         }

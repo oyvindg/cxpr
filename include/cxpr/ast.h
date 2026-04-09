@@ -133,6 +133,7 @@ cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch,
 typedef enum {
     CXPR_NODE_NUMBER,
     CXPR_NODE_BOOL,
+    CXPR_NODE_STRING,
     CXPR_NODE_IDENTIFIER,
     CXPR_NODE_VARIABLE,
     CXPR_NODE_FIELD_ACCESS,
@@ -190,6 +191,12 @@ double cxpr_ast_number_value(const cxpr_ast* ast);
  * @return Literal boolean value.
  */
 bool cxpr_ast_bool_value(const cxpr_ast* ast);
+/**
+ * @brief Return the string payload of a string literal node.
+ * @param ast String node to inspect.
+ * @return Borrowed NUL-terminated string value, or NULL if `ast` is not a string node.
+ */
+const char* cxpr_ast_string_value(const cxpr_ast* ast);
 /**
  * @brief Return the identifier name for an identifier node.
  * @param ast Identifier node to inspect.

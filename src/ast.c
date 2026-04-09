@@ -29,6 +29,20 @@ cxpr_ast* cxpr_ast_new_bool(bool value) {
     return node;
 }
 
+/**
+ * @brief Create a STRING literal node.
+ * @param value NUL-terminated string content (without surrounding quotes). Strdup'd internally.
+ * @return New AST node, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_string(const char* value) {
+    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_STRING;
+    node->data.string.value = cxpr_strdup(value ? value : "");
+    if (!node->data.string.value) { free(node); return NULL; }
+    return node;
+}
+
 cxpr_ast* cxpr_ast_new_identifier(const char* name) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
@@ -237,6 +251,9 @@ void cxpr_ast_free(cxpr_ast* ast) {
         break;
     case CXPR_NODE_BOOL:
         break;
+    case CXPR_NODE_STRING:
+        free(ast->data.string.value);
+        break;
     case CXPR_NODE_IDENTIFIER:
         free(ast->data.identifier.name);
         break;
@@ -321,6 +338,15 @@ double cxpr_ast_number_value(const cxpr_ast* ast) {
  */
 bool cxpr_ast_bool_value(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_BOOL) ? ast->data.boolean.value : false;
+}
+
+/**
+ * @brief Get string content of a STRING node.
+ * @param ast AST node (must be CXPR_NODE_STRING).
+ * @return Borrowed NUL-terminated string value, or NULL if ast is NULL or wrong type.
+ */
+const char* cxpr_ast_string_value(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_STRING) ? ast->data.string.value : NULL;
 }
 
 /**

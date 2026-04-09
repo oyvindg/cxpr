@@ -531,7 +531,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
-        if (entry->ast_func) {
+        if (entry->ast_func || entry->ast_func_overlay) {
             if (err) {
                 err->code = CXPR_ERR_SYNTAX;
                 err->message = "Function requires AST evaluation";

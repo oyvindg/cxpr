@@ -204,6 +204,10 @@ void cxpr_registry_free(cxpr_registry* reg) {
         if (reg->entries[i].userdata_free) {
             reg->entries[i].userdata_free(reg->entries[i].userdata);
         }
+        if (reg->entries[i].ast_func_overlay_userdata_free) {
+            reg->entries[i].ast_func_overlay_userdata_free(
+                reg->entries[i].ast_func_overlay_userdata);
+        }
         free(reg->entries[i].name);
         free_struct_fields(&reg->entries[i]);
         free_arg_types(&reg->entries[i]);
@@ -406,6 +410,9 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
         if (existing->userdata_free) {
             existing->userdata_free(existing->userdata);
         }
+        if (existing->ast_func_overlay_userdata_free) {
+            existing->ast_func_overlay_userdata_free(existing->ast_func_overlay_userdata);
+        }
         free_struct_fields(existing);
         free_arg_types(existing);
         free_defined_fn(existing);
@@ -413,6 +420,9 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
         existing->value_func = NULL;
         existing->typed_func = NULL;
         existing->ast_func = func;
+        existing->ast_func_overlay = NULL;
+        existing->ast_func_overlay_userdata = NULL;
+        existing->ast_func_overlay_userdata_free = NULL;
         existing->struct_producer = NULL;
         existing->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
@@ -433,6 +443,9 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
     entry->value_func = NULL;
     entry->typed_func = NULL;
     entry->ast_func = func;
+    entry->ast_func_overlay = NULL;
+    entry->ast_func_overlay_userdata = NULL;
+    entry->ast_func_overlay_userdata_free = NULL;
     entry->struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
@@ -444,6 +457,64 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
     entry->has_return_type = true;
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
+    reg->version++;
+}
+
+void cxpr_registry_add_ast_overlay(cxpr_registry* reg, const char* name,
+                                    cxpr_ast_func_ptr func,
+                                    size_t min_args, size_t max_args,
+                                    void* userdata,
+                                    cxpr_userdata_free_fn free_userdata) {
+    if (!reg || !name || !func) return;
+
+    cxpr_func_entry* entry = cxpr_registry_find(reg, name);
+    if (entry) {
+        /* Free existing overlay if any */
+        if (entry->ast_func_overlay_userdata_free) {
+            entry->ast_func_overlay_userdata_free(entry->ast_func_overlay_userdata);
+        }
+        entry->ast_func_overlay = func;
+        entry->ast_func_overlay_userdata = userdata;
+        entry->ast_func_overlay_userdata_free = free_userdata;
+        /* Extend arity range to accommodate both base and overlay call forms */
+        if (min_args < entry->min_args) entry->min_args = min_args;
+        if (max_args > entry->max_args) entry->max_args = max_args;
+        reg->version++;
+        return;
+    }
+
+    /* No existing entry — create one with only the overlay (no sync/struct) */
+    if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
+    entry = &reg->entries[reg->count++];
+    entry->name = cxpr_strdup(name);
+    entry->sync_func = NULL;
+    entry->value_func = NULL;
+    entry->typed_func = NULL;
+    entry->ast_func = NULL;
+    entry->ast_func_overlay = func;
+    entry->ast_func_overlay_userdata = userdata;
+    entry->ast_func_overlay_userdata_free = free_userdata;
+    entry->struct_producer = NULL;
+    entry->native_kind = CXPR_NATIVE_KIND_NONE;
+    memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+    entry->min_args = min_args;
+    entry->max_args = max_args;
+    entry->arg_types = NULL;
+    entry->arg_type_count = 0;
+    entry->return_type = CXPR_VALUE_NUMBER;
+    entry->has_return_type = false;
+    entry->userdata = NULL;
+    entry->userdata_free = NULL;
+    entry->struct_fields = NULL;
+    entry->fields_per_arg = 0;
+    entry->struct_argc = 0;
+    entry->defined_body = NULL;
+    entry->defined_program = NULL;
+    entry->defined_program_failed = false;
+    entry->defined_param_names = NULL;
+    entry->defined_param_count = 0;
+    entry->defined_param_fields = NULL;
+    entry->defined_param_field_counts = NULL;
     reg->version++;
 }
 
