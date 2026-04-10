@@ -65,55 +65,6 @@ static inline char* cxpr_strtok_r(char* str, const char* delim, char** saveptr) 
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Token types (used by lexer and parser)
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-typedef enum {
-    /* Literals */
-    CXPR_TOK_NUMBER,            /**< Numeric literal */
-    CXPR_TOK_IDENTIFIER,        /**< Identifier (e.g. "rsi", "ema_fast") */
-    CXPR_TOK_VARIABLE,          /**< Parameter variable ($name) */
-    CXPR_TOK_TRUE,              /**< true */
-    CXPR_TOK_FALSE,             /**< false */
-    CXPR_TOK_STRING,            /**< String literal (reserved for future) */
-
-    /* Arithmetic operators */
-    CXPR_TOK_PLUS,              /**< + */
-    CXPR_TOK_MINUS,             /**< - */
-    CXPR_TOK_STAR,              /**< * */
-    CXPR_TOK_SLASH,             /**< / */
-    CXPR_TOK_PERCENT,           /**< % */
-    CXPR_TOK_POWER,             /**< ^ or ** */
-
-    /* Comparison operators */
-    CXPR_TOK_EQ,                /**< == */
-    CXPR_TOK_NEQ,               /**< != */
-    CXPR_TOK_LT,                /**< < */
-    CXPR_TOK_GT,                /**< > */
-    CXPR_TOK_LTE,               /**< <= */
-    CXPR_TOK_GTE,               /**< >= */
-
-    /* Logical operators */
-    CXPR_TOK_AND,               /**< && or and */
-    CXPR_TOK_OR,                /**< || or or */
-    CXPR_TOK_NOT,               /**< ! or not */
-
-    /* Delimiters */
-    CXPR_TOK_LPAREN,            /**< ( */
-    CXPR_TOK_RPAREN,            /**< ) */
-    CXPR_TOK_LBRACKET,          /**< [ */
-    CXPR_TOK_RBRACKET,          /**< ] */
-    CXPR_TOK_COMMA,             /**< , */
-    CXPR_TOK_DOT,               /**< . */
-    CXPR_TOK_QUESTION,          /**< ? (ternary) */
-    CXPR_TOK_COLON,             /**< : (ternary) */
-
-    /* Special */
-    CXPR_TOK_EOF,               /**< End of input */
-    CXPR_TOK_ERROR              /**< Lexer error */
-} cxpr_token_type;
-
-/* ═══════════════════════════════════════════════════════════════════════════
  * Token structure
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -209,6 +160,7 @@ struct cxpr_ast {
         struct {
             char* name;
             struct cxpr_ast** args;
+            char** arg_names;
             size_t argc;
             char* field;
             char* full_key;
@@ -240,6 +192,7 @@ struct cxpr_ast {
         struct {
             char* name;               /**< Function name, owned */
             struct cxpr_ast** args;     /**< Array of argument ASTs, owned */
+            char** arg_names;          /**< Optional per-argument names, owned */
             size_t argc;              /**< Number of arguments */
             const struct cxpr_registry* cached_registry; /**< Registry used for cached entry */
             unsigned long cached_registry_version;       /**< Registry version of cached entry */
@@ -281,12 +234,17 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth);
 /** @brief Create a PRODUCER_ACCESS node (e.g. macd(12, 3).line). */
 cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t argc,
                                        const char* field);
+cxpr_ast* cxpr_ast_new_producer_access_named(const char* name, cxpr_ast** args,
+                                             char** arg_names, size_t argc,
+                                             const char* field);
 /** @brief Create a BINARY_OP node (op + left/right children). */
 cxpr_ast* cxpr_ast_new_binary_op(int op, cxpr_ast* left, cxpr_ast* right);
 /** @brief Create a UNARY_OP node (op + operand child). */
 cxpr_ast* cxpr_ast_new_unary_op(int op, cxpr_ast* operand);
 /** @brief Create a FUNCTION_CALL node (takes ownership of args). */
 cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc);
+cxpr_ast* cxpr_ast_new_function_call_named(const char* name, cxpr_ast** args,
+                                           char** arg_names, size_t argc);
 /** @brief Create a LOOKBACK node (takes ownership of target/index). */
 cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index);
 /** @brief Create a TERNARY conditional node. */
@@ -433,6 +391,8 @@ typedef struct {
     } native_scalar;
     size_t min_args;
     size_t max_args;
+    char** param_names;           /**< Optional parameter name array, owned */
+    size_t param_name_count;      /**< Number of parameter names */
     cxpr_value_type* arg_types; /**< Optional declared argument types (length max_args) */
     size_t arg_type_count;      /**< Number of entries in arg_types */
     cxpr_value_type return_type; /**< Declared result type when known */
@@ -467,6 +427,9 @@ struct cxpr_registry {
 
 /** @brief Find a function entry by name in the registry. */
 cxpr_func_entry* cxpr_registry_find(const cxpr_registry* reg, const char* name);
+const char* const* cxpr_registry_entry_param_names(const cxpr_func_entry* entry,
+                                                   size_t* count);
+bool cxpr_ast_call_uses_named_args(const cxpr_ast* ast);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Parser structure

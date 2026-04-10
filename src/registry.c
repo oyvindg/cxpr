@@ -111,6 +111,21 @@ cxpr_func_entry* cxpr_registry_find(const cxpr_registry* reg, const char* name) 
     return NULL;
 }
 
+const char* const* cxpr_registry_entry_param_names(const cxpr_func_entry* entry,
+                                                   size_t* count) {
+    if (count) *count = 0;
+    if (!entry) return NULL;
+    if (entry->defined_param_names && entry->defined_param_count > 0) {
+        if (count) *count = entry->defined_param_count;
+        return (const char* const*)entry->defined_param_names;
+    }
+    if (entry->param_names && entry->param_name_count > 0) {
+        if (count) *count = entry->param_name_count;
+        return (const char* const*)entry->param_names;
+    }
+    return NULL;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Registry API
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -148,6 +163,37 @@ static void free_arg_types(cxpr_func_entry* entry) {
     entry->arg_type_count = 0;
     entry->has_return_type = false;
     entry->return_type = CXPR_VALUE_NUMBER;
+}
+
+static void free_param_names(cxpr_func_entry* entry) {
+    if (!entry->param_names) return;
+    for (size_t i = 0; i < entry->param_name_count; ++i) {
+        free(entry->param_names[i]);
+    }
+    free(entry->param_names);
+    entry->param_names = NULL;
+    entry->param_name_count = 0;
+}
+
+static char** clone_param_names(const char* const* param_names, size_t param_count) {
+    char** out;
+    if (!param_names || param_count == 0) return NULL;
+    out = (char**)calloc(param_count, sizeof(char*));
+    if (!out) return NULL;
+    for (size_t i = 0; i < param_count; ++i) {
+        if (!param_names[i]) {
+            for (size_t j = 0; j < param_count; ++j) free(out[j]);
+            free(out);
+            return NULL;
+        }
+        out[i] = cxpr_strdup(param_names[i]);
+        if (!out[i]) {
+            for (size_t j = 0; j <= i; ++j) free(out[j]);
+            free(out);
+            return NULL;
+        }
+    }
+    return out;
 }
 
 static cxpr_value_type* clone_arg_types(const cxpr_value_type* arg_types, size_t arg_count) {
@@ -210,6 +256,7 @@ void cxpr_registry_free(cxpr_registry* reg) {
         }
         free(reg->entries[i].name);
         free_struct_fields(&reg->entries[i]);
+        free_param_names(&reg->entries[i]);
         free_arg_types(&reg->entries[i]);
         free_defined_fn(&reg->entries[i]);
     }
@@ -291,6 +338,28 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
     reg->version++;
+}
+
+bool cxpr_registry_set_param_names(cxpr_registry* reg, const char* name,
+                                   const char* const* param_names, size_t param_count) {
+    cxpr_func_entry* entry;
+    char** owned;
+    if (!reg || !name) return false;
+    entry = cxpr_registry_find(reg, name);
+    if (!entry) return false;
+    if (!param_names || param_count == 0) {
+        free_param_names(entry);
+        reg->version++;
+        return true;
+    }
+    if (param_count < entry->max_args) return false;
+    owned = clone_param_names(param_names, param_count);
+    if (!owned) return false;
+    free_param_names(entry);
+    entry->param_names = owned;
+    entry->param_name_count = param_count;
+    reg->version++;
+    return true;
 }
 
 void cxpr_registry_add_value(cxpr_registry* reg, const char* name,

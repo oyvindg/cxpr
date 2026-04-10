@@ -368,6 +368,7 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
     case '/': return cxpr_make_token(CXPR_TOK_SLASH, start, 1, start_pos, start_line, start_col);
     case '%': return cxpr_make_token(CXPR_TOK_PERCENT, start, 1, start_pos, start_line, start_col);
     case '^': return cxpr_make_token(CXPR_TOK_POWER, start, 1, start_pos, start_line, start_col);
+    case '=': return cxpr_make_token(CXPR_TOK_ASSIGN, start, 1, start_pos, start_line, start_col);
     case '<': return cxpr_make_token(CXPR_TOK_LT, start, 1, start_pos, start_line, start_col);
     case '>': return cxpr_make_token(CXPR_TOK_GT, start, 1, start_pos, start_line, start_col);
     case '!': return cxpr_make_token(CXPR_TOK_NOT, start, 1, start_pos, start_line, start_col);

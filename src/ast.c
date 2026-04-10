@@ -131,8 +131,9 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t argc,
-                                       const char* field) {
+cxpr_ast* cxpr_ast_new_producer_access_named(const char* name, cxpr_ast** args,
+                                             char** arg_names, size_t argc,
+                                             const char* field) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     size_t name_len;
     size_t field_len;
@@ -140,6 +141,7 @@ cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t
     node->type = CXPR_NODE_PRODUCER_ACCESS;
     node->data.producer_access.name = cxpr_strdup(name);
     node->data.producer_access.args = args;
+    node->data.producer_access.arg_names = arg_names;
     node->data.producer_access.argc = argc;
     node->data.producer_access.field = cxpr_strdup(field);
     name_len = strlen(name);
@@ -157,6 +159,11 @@ cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t
         return NULL;
     }
     return node;
+}
+
+cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t argc,
+                                       const char* field) {
+    return cxpr_ast_new_producer_access_named(name, args, NULL, argc, field);
 }
 
 /**
@@ -198,15 +205,21 @@ cxpr_ast* cxpr_ast_new_unary_op(int op, cxpr_ast* operand) {
  * @param argc Number of arguments.
  * @return New AST node, or NULL on allocation failure.
  */
-cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc) {
+cxpr_ast* cxpr_ast_new_function_call_named(const char* name, cxpr_ast** args,
+                                           char** arg_names, size_t argc) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_FUNCTION_CALL;
     node->data.function_call.name = cxpr_strdup(name);
     node->data.function_call.args = args;
+    node->data.function_call.arg_names = arg_names;
     node->data.function_call.argc = argc;
-    if (!node->data.function_call.name) { free(node); return NULL; }
+    if (!node->data.function_call.name) { cxpr_ast_free(node); return NULL; }
     return node;
+}
+
+cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc) {
+    return cxpr_ast_new_function_call_named(name, args, NULL, argc);
 }
 
 cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index) {
@@ -278,8 +291,11 @@ void cxpr_ast_free(cxpr_ast* ast) {
         free(ast->data.producer_access.full_key);
         free(ast->data.producer_access.cached_const_key);
         for (size_t i = 0; i < ast->data.producer_access.argc; i++) {
+            free(ast->data.producer_access.arg_names ?
+                 ast->data.producer_access.arg_names[i] : NULL);
             cxpr_ast_free(ast->data.producer_access.args[i]);
         }
+        free(ast->data.producer_access.arg_names);
         free(ast->data.producer_access.args);
         break;
     case CXPR_NODE_BINARY_OP:
@@ -292,8 +308,11 @@ void cxpr_ast_free(cxpr_ast* ast) {
     case CXPR_NODE_FUNCTION_CALL:
         free(ast->data.function_call.name);
         for (size_t i = 0; i < ast->data.function_call.argc; i++) {
+            free(ast->data.function_call.arg_names ?
+                 ast->data.function_call.arg_names[i] : NULL);
             cxpr_ast_free(ast->data.function_call.args[i]);
         }
+        free(ast->data.function_call.arg_names);
         free(ast->data.function_call.args);
         break;
     case CXPR_NODE_LOOKBACK:
@@ -463,6 +482,23 @@ const cxpr_ast* cxpr_ast_function_arg(const cxpr_ast* ast, size_t index) {
     if (index >= ast->data.function_call.argc) return NULL;
     return ast->data.function_call.args[index];
 }
+
+const char* cxpr_ast_function_arg_name(const cxpr_ast* ast, size_t index) {
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return NULL;
+    if (index >= ast->data.function_call.argc || !ast->data.function_call.arg_names) return NULL;
+    return ast->data.function_call.arg_names[index];
+}
+
+bool cxpr_ast_function_has_named_args(const cxpr_ast* ast) {
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !ast->data.function_call.arg_names) {
+        return false;
+    }
+    for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+        if (ast->data.function_call.arg_names[i]) return true;
+    }
+    return false;
+}
+
 const cxpr_ast* cxpr_ast_lookback_target(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_LOOKBACK) ? ast->data.lookback.target : NULL;
 }
@@ -507,6 +543,22 @@ const cxpr_ast* cxpr_ast_producer_arg(const cxpr_ast* ast, size_t index) {
     if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS) return NULL;
     if (index >= ast->data.producer_access.argc) return NULL;
     return ast->data.producer_access.args[index];
+}
+
+const char* cxpr_ast_producer_arg_name(const cxpr_ast* ast, size_t index) {
+    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS) return NULL;
+    if (index >= ast->data.producer_access.argc || !ast->data.producer_access.arg_names) return NULL;
+    return ast->data.producer_access.arg_names[index];
+}
+
+bool cxpr_ast_producer_has_named_args(const cxpr_ast* ast) {
+    if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS || !ast->data.producer_access.arg_names) {
+        return false;
+    }
+    for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+        if (ast->data.producer_access.arg_names[i]) return true;
+    }
+    return false;
 }
 /**
  * @brief Get condition of a TERNARY node.
@@ -817,6 +869,112 @@ static bool cxpr_analysis_validate_arity(const cxpr_func_entry* entry, size_t ar
     return true;
 }
 
+static bool cxpr_analysis_validate_named_args(const cxpr_ast* ast,
+                                              const cxpr_func_entry* entry,
+                                              cxpr_error* err) {
+    const char* const* param_names;
+    size_t param_count = 0;
+    bool seen_named = false;
+    bool used[64] = {0};
+
+    if (!cxpr_ast_call_uses_named_args(ast)) return true;
+    param_names = cxpr_registry_entry_param_names(entry, &param_count);
+    if (!param_names || param_count == 0 || param_count > sizeof(used) / sizeof(used[0])) {
+        cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Named arguments are not supported for this function");
+        return false;
+    }
+
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) {
+        size_t positional_index = 0;
+        for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+            const char* arg_name = ast->data.function_call.arg_names ?
+                                   ast->data.function_call.arg_names[i] : NULL;
+            if (!arg_name) {
+                if (seen_named) {
+                    cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX,
+                                            "Positional arguments cannot follow named arguments");
+                    return false;
+                }
+                if (positional_index >= param_count) {
+                    cxpr_analysis_set_error(err, CXPR_ERR_WRONG_ARITY, "Wrong number of arguments");
+                    return false;
+                }
+                used[positional_index++] = true;
+                continue;
+            }
+            seen_named = true;
+            size_t match = param_count;
+            for (size_t j = 0; j < param_count; ++j) {
+                if (strcmp(param_names[j], arg_name) == 0) {
+                    match = j;
+                    break;
+                }
+            }
+            if (match == param_count) {
+                cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Unknown named argument");
+                return false;
+            }
+            if (used[match]) {
+                cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Duplicate argument");
+                return false;
+            }
+            used[match] = true;
+        }
+        for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+            if (!used[i]) {
+                cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Named arguments must fill a positional prefix");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS) {
+        size_t positional_index = 0;
+        for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+            const char* arg_name = ast->data.producer_access.arg_names ?
+                                   ast->data.producer_access.arg_names[i] : NULL;
+            if (!arg_name) {
+                if (seen_named) {
+                    cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX,
+                                            "Positional arguments cannot follow named arguments");
+                    return false;
+                }
+                if (positional_index >= param_count) {
+                    cxpr_analysis_set_error(err, CXPR_ERR_WRONG_ARITY, "Wrong number of arguments");
+                    return false;
+                }
+                used[positional_index++] = true;
+                continue;
+            }
+            seen_named = true;
+            size_t match = param_count;
+            for (size_t j = 0; j < param_count; ++j) {
+                if (strcmp(param_names[j], arg_name) == 0) {
+                    match = j;
+                    break;
+                }
+            }
+            if (match == param_count) {
+                cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Unknown named argument");
+                return false;
+            }
+            if (used[match]) {
+                cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Duplicate argument");
+                return false;
+            }
+            used[match] = true;
+        }
+        for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+            if (!used[i]) {
+                cxpr_analysis_set_error(err, CXPR_ERR_SYNTAX, "Named arguments must fill a positional prefix");
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static bool cxpr_analyze_node(const cxpr_ast* ast, const cxpr_registry* reg,
                               cxpr_analysis* out, unsigned depth, cxpr_error* err) {
     cxpr_func_entry* entry;
@@ -948,6 +1106,7 @@ static bool cxpr_analyze_node(const cxpr_ast* ast, const cxpr_registry* reg,
         }
         if (entry) {
             if (!cxpr_analysis_validate_arity(entry, ast->data.function_call.argc, err)) return false;
+            if (!cxpr_analysis_validate_named_args(ast, entry, err)) return false;
             if (entry->defined_body) out->uses_expressions = true;
         }
         for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
@@ -988,6 +1147,7 @@ static bool cxpr_analyze_node(const cxpr_ast* ast, const cxpr_registry* reg,
         }
         if (entry) {
             if (!cxpr_analysis_validate_arity(entry, ast->data.producer_access.argc, err)) return false;
+            if (!cxpr_analysis_validate_named_args(ast, entry, err)) return false;
         }
         for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
             if (!cxpr_analyze_node(ast->data.producer_access.args[i], reg, out, depth + 1, err)) {
@@ -1046,6 +1206,13 @@ bool cxpr_analyze(const cxpr_ast* ast, const cxpr_registry* reg,
     out_analysis->parameter_count = cxpr_ast_variables_used(ast, names, 256);
     out_analysis->field_path_count = cxpr_collect_field_paths(ast, names, 0, 256);
     return true;
+}
+
+bool cxpr_ast_call_uses_named_args(const cxpr_ast* ast) {
+    if (!ast) return false;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) return cxpr_ast_function_has_named_args(ast);
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS) return cxpr_ast_producer_has_named_args(ast);
+    return false;
 }
 
 bool cxpr_analyze_expr(const char* expression, const cxpr_registry* reg,

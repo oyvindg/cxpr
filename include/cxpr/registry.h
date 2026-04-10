@@ -144,6 +144,19 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
                        cxpr_func_ptr func, size_t min_args, size_t max_args,
                        void* userdata, cxpr_userdata_free_fn free_userdata);
 /**
+ * @brief Attach canonical parameter names to a registered function.
+ * @param reg Destination registry.
+ * @param name Function name already present in the registry.
+ * @param param_names Parameter names in canonical positional order.
+ * @param param_count Number of entries in `param_names`.
+ * @return True on success, false when the function is missing or the metadata is invalid.
+ *
+ * These names are used to bind named arguments like `macd(fast=9, slow=21)`
+ * back into canonical positional order before evaluation.
+ */
+bool cxpr_registry_set_param_names(cxpr_registry* reg, const char* name,
+                                   const char* const* param_names, size_t param_count);
+/**
  * @brief Register a typed-value function.
  * @param reg Destination registry.
  * @param name Function name.

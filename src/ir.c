@@ -213,6 +213,12 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
             return false;
         }
         for (i = 0; i < left->data.producer_access.argc; ++i) {
+            const char* left_name = left->data.producer_access.arg_names ?
+                                    left->data.producer_access.arg_names[i] : NULL;
+            const char* right_name = right->data.producer_access.arg_names ?
+                                     right->data.producer_access.arg_names[i] : NULL;
+            if ((left_name == NULL) != (right_name == NULL)) return false;
+            if (left_name && strcmp(left_name, right_name) != 0) return false;
             if (!cxpr_ir_ast_equal(left->data.producer_access.args[i],
                                    right->data.producer_access.args[i])) {
                 return false;
@@ -235,6 +241,12 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
             return false;
         }
         for (i = 0; i < left->data.function_call.argc; ++i) {
+            const char* left_name = left->data.function_call.arg_names ?
+                                    left->data.function_call.arg_names[i] : NULL;
+            const char* right_name = right->data.function_call.arg_names ?
+                                     right->data.function_call.arg_names[i] : NULL;
+            if ((left_name == NULL) != (right_name == NULL)) return false;
+            if (left_name && strcmp(left_name, right_name) != 0) return false;
             if (!cxpr_ir_ast_equal(left->data.function_call.args[i],
                                    right->data.function_call.args[i])) {
                 return false;

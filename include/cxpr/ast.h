@@ -14,6 +14,62 @@ extern "C" {
 #endif
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * Operator / token tags shared with AST nodes
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Token/operator tags used by the parser and stored on operator AST nodes.
+ *
+ * These values are part of the public AST surface because `cxpr_ast_operator()`
+ * returns them for unary and binary operator nodes.
+ */
+typedef enum {
+    /* Literals */
+    CXPR_TOK_NUMBER,            /**< Numeric literal */
+    CXPR_TOK_IDENTIFIER,        /**< Identifier (e.g. "rsi", "ema_fast") */
+    CXPR_TOK_VARIABLE,          /**< Parameter variable ($name) */
+    CXPR_TOK_TRUE,              /**< true */
+    CXPR_TOK_FALSE,             /**< false */
+    CXPR_TOK_STRING,            /**< String literal */
+
+    /* Arithmetic operators */
+    CXPR_TOK_PLUS,              /**< + */
+    CXPR_TOK_MINUS,             /**< - */
+    CXPR_TOK_STAR,              /**< * */
+    CXPR_TOK_SLASH,             /**< / */
+    CXPR_TOK_PERCENT,           /**< % */
+    CXPR_TOK_POWER,             /**< ^ or ** */
+
+    /* Comparison / assignment operators */
+    CXPR_TOK_ASSIGN,            /**< = */
+    CXPR_TOK_EQ,                /**< == */
+    CXPR_TOK_NEQ,               /**< != */
+    CXPR_TOK_LT,                /**< < */
+    CXPR_TOK_GT,                /**< > */
+    CXPR_TOK_LTE,               /**< <= */
+    CXPR_TOK_GTE,               /**< >= */
+
+    /* Logical operators */
+    CXPR_TOK_AND,               /**< && or and */
+    CXPR_TOK_OR,                /**< || or or */
+    CXPR_TOK_NOT,               /**< ! or not */
+
+    /* Delimiters */
+    CXPR_TOK_LPAREN,            /**< ( */
+    CXPR_TOK_RPAREN,            /**< ) */
+    CXPR_TOK_LBRACKET,          /**< [ */
+    CXPR_TOK_RBRACKET,          /**< ] */
+    CXPR_TOK_COMMA,             /**< , */
+    CXPR_TOK_DOT,               /**< . */
+    CXPR_TOK_QUESTION,          /**< ? */
+    CXPR_TOK_COLON,             /**< : */
+
+    /* Special */
+    CXPR_TOK_EOF,               /**< End of input */
+    CXPR_TOK_ERROR              /**< Lexer error */
+} cxpr_token_type;
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * Parser API
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -87,6 +143,18 @@ cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field);
 cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args,
                                        size_t argc, const char* field);
 /**
+ * @brief Construct a producer-field access node with optional named arguments.
+ * @param name Producer name.
+ * @param args Producer argument array.
+ * @param arg_names Optional owned per-argument name array; NULL entry means positional.
+ * @param argc Number of producer arguments.
+ * @param field Field name selected from the produced struct.
+ * @return Newly allocated AST node taking ownership of `args` and `arg_names`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_producer_access_named(const char* name, cxpr_ast** args,
+                                             char** arg_names, size_t argc,
+                                             const char* field);
+/**
  * @brief Construct a binary operator node.
  * @param op Internal operator token.
  * @param left Left operand.
@@ -109,6 +177,16 @@ cxpr_ast* cxpr_ast_new_unary_op(int op, cxpr_ast* operand);
  * @return Newly allocated AST node taking ownership of `args`, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc);
+/**
+ * @brief Construct a function-call node with optional named arguments.
+ * @param name Function name.
+ * @param args Argument array.
+ * @param arg_names Optional owned per-argument name array; NULL entry means positional.
+ * @param argc Number of arguments.
+ * @return Newly allocated AST node taking ownership of `args` and `arg_names`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_function_call_named(const char* name, cxpr_ast** args,
+                                           char** arg_names, size_t argc);
 /**
  * @brief Construct a postfix lookback node.
  * @param target Expression being indexed.
@@ -278,6 +356,19 @@ size_t cxpr_ast_function_argc(const cxpr_ast* ast);
  */
 const cxpr_ast* cxpr_ast_function_arg(const cxpr_ast* ast, size_t index);
 /**
+ * @brief Return the argument name for a function-call argument.
+ * @param ast Function-call node.
+ * @param index Zero-based argument index.
+ * @return Borrowed argument name, or NULL when the argument is positional or `index` is out of range.
+ */
+const char* cxpr_ast_function_arg_name(const cxpr_ast* ast, size_t index);
+/**
+ * @brief Return true when a function-call node contains at least one named argument.
+ * @param ast Function-call node.
+ * @return True when at least one argument is named.
+ */
+bool cxpr_ast_function_has_named_args(const cxpr_ast* ast);
+/**
  * @brief Return the target child of a lookback node.
  * @param ast Lookback node.
  * @return Borrowed target child, or NULL when not applicable.
@@ -314,6 +405,19 @@ size_t cxpr_ast_producer_argc(const cxpr_ast* ast);
  * @return Borrowed argument node, or NULL if `index` is out of range.
  */
 const cxpr_ast* cxpr_ast_producer_arg(const cxpr_ast* ast, size_t index);
+/**
+ * @brief Return the argument name for a producer-call argument.
+ * @param ast Producer-access node.
+ * @param index Zero-based argument index.
+ * @return Borrowed argument name, or NULL when the argument is positional or `index` is out of range.
+ */
+const char* cxpr_ast_producer_arg_name(const cxpr_ast* ast, size_t index);
+/**
+ * @brief Return true when a producer-access node contains at least one named argument.
+ * @param ast Producer-access node.
+ * @return True when at least one argument is named.
+ */
+bool cxpr_ast_producer_has_named_args(const cxpr_ast* ast);
 /**
  * @brief Return the condition child of a ternary node.
  * @param ast Ternary node.

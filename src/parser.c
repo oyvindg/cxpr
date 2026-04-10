@@ -84,18 +84,6 @@ static bool parser_expect(cxpr_parser* p, cxpr_token_type type, const char* mess
     return false;
 }
 
-/**
- * @brief Extract a null-terminated string from a token.
- * @return Heap-allocated string (caller must free), or NULL on failure.
- */
-static char* token_to_string(const cxpr_token* tok) {
-    char* s = (char*)malloc(tok->length + 1);
-    if (!s) return NULL;
-    memcpy(s, tok->start, tok->length);
-    s[tok->length] = '\0';
-    return s;
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
  * Recursive descent parser functions (forward declarations)
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -112,6 +100,53 @@ static cxpr_ast* parse_term(cxpr_parser* p);
 static cxpr_ast* parse_unary(cxpr_parser* p);
 static cxpr_ast* parse_power(cxpr_parser* p);
 static cxpr_ast* parse_primary(cxpr_parser* p);
+
+/**
+ * @brief Extract a null-terminated string from a token.
+ * @return Heap-allocated string (caller must free), or NULL on failure.
+ */
+static char* token_to_string(const cxpr_token* tok) {
+    char* s = (char*)malloc(tok->length + 1);
+    if (!s) return NULL;
+    memcpy(s, tok->start, tok->length);
+    s[tok->length] = '\0';
+    return s;
+}
+
+static cxpr_token parser_peek_next(const cxpr_parser* p) {
+    cxpr_lexer saved = p->lexer;
+    return cxpr_lexer_peek(&saved);
+}
+
+static bool parse_call_argument(cxpr_parser* p, cxpr_ast** out_arg, char** out_name) {
+    cxpr_ast* arg = NULL;
+    char* name = NULL;
+
+    if (!out_arg || !out_name) return false;
+    *out_arg = NULL;
+    *out_name = NULL;
+
+    if (parser_check(p, CXPR_TOK_IDENTIFIER) &&
+        parser_peek_next(p).type == CXPR_TOK_ASSIGN) {
+        name = token_to_string(&p->current);
+        if (!name) return false;
+        parser_advance(p);
+        if (!parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' after named argument")) {
+            free(name);
+            return false;
+        }
+    }
+
+    arg = parse_expression(p);
+    if (!arg || p->had_error) {
+        free(name);
+        return false;
+    }
+
+    *out_arg = arg;
+    *out_name = name;
+    return true;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * expression → ternary
@@ -426,19 +461,24 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
             size_t argc = 0;
             size_t args_capacity = 8;
             cxpr_ast** args = NULL;
+            char** arg_names = NULL;
 
             parser_advance(p);
             args = (cxpr_ast**)malloc(args_capacity * sizeof(cxpr_ast*));
-            if (!args) {
+            arg_names = (char**)calloc(args_capacity, sizeof(char*));
+            if (!args || !arg_names) {
+                free(arg_names);
+                free(args);
                 free(name);
                 return NULL;
             }
 
             if (!parser_check(p, CXPR_TOK_RPAREN)) {
-                args[argc] = parse_expression(p);
-                if (!args[argc] || p->had_error) {
+                if (!parse_call_argument(p, &args[argc], &arg_names[argc])) {
                     free(name);
                     for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                    for (size_t i = 0; i <= argc; ++i) free(arg_names[i]);
+                    free(arg_names);
                     free(args);
                     return NULL;
                 }
@@ -447,20 +487,31 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                 while (parser_match(p, CXPR_TOK_COMMA)) {
                     if (argc >= args_capacity) {
                         cxpr_ast** new_args;
+                        char** new_arg_names;
+                        size_t old_capacity = args_capacity;
                         args_capacity *= 2;
                         new_args = (cxpr_ast**)realloc(args, args_capacity * sizeof(cxpr_ast*));
-                        if (!new_args) {
+                        new_arg_names = (char**)realloc(arg_names, args_capacity * sizeof(char*));
+                        if (!new_args || !new_arg_names) {
                             free(name);
                             for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                            for (size_t i = 0; i < argc; ++i) free(arg_names[i]);
+                            if (new_args && new_args != args) free(new_args);
+                            if (new_arg_names && new_arg_names != arg_names) free(new_arg_names);
+                            free(arg_names);
                             free(args);
                             return NULL;
                         }
                         args = new_args;
+                        arg_names = new_arg_names;
+                        memset(arg_names + old_capacity, 0,
+                               (args_capacity - old_capacity) * sizeof(char*));
                     }
-                    args[argc] = parse_expression(p);
-                    if (!args[argc] || p->had_error) {
+                    if (!parse_call_argument(p, &args[argc], &arg_names[argc])) {
                         free(name);
                         for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                        for (size_t i = 0; i <= argc; ++i) free(arg_names[i]);
+                        free(arg_names);
                         free(args);
                         return NULL;
                     }
@@ -471,6 +522,8 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
             if (!parser_expect(p, CXPR_TOK_RPAREN, "Expected ')' after function arguments")) {
                 free(name);
                 for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                for (size_t i = 0; i < argc; ++i) free(arg_names[i]);
+                free(arg_names);
                 free(args);
                 return NULL;
             }
@@ -487,6 +540,8 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                     p->last_error.column = p->current.column;
                     free(name);
                     for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                    for (size_t i = 0; i < argc; ++i) free(arg_names[i]);
+                    free(arg_names);
                     free(args);
                     return NULL;
                 }
@@ -495,14 +550,16 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                 if (!field) {
                     free(name);
                     for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                    for (size_t i = 0; i < argc; ++i) free(arg_names[i]);
+                    free(arg_names);
                     free(args);
                     return NULL;
                 }
-                node = cxpr_ast_new_producer_access(name, args, argc, field);
+                node = cxpr_ast_new_producer_access_named(name, args, arg_names, argc, field);
                 free(name);
                 free(field);
             } else {
-                node = cxpr_ast_new_function_call(name, args, argc);
+                node = cxpr_ast_new_function_call_named(name, args, arg_names, argc);
                 free(name);
             }
         } else if (parser_check(p, CXPR_TOK_DOT)) {

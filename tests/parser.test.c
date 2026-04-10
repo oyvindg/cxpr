@@ -298,6 +298,37 @@ static void test_function_field_access(void) {
     printf("  ✓ test_function_field_access\n");
 }
 
+static void test_function_named_args(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast = parse_ok(p, "macd(fast=9, slow=21, period=3)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_ast_function_argc(ast) == 3);
+    assert(cxpr_ast_function_has_named_args(ast));
+    assert(strcmp(cxpr_ast_function_arg_name(ast, 0), "fast") == 0);
+    assert(strcmp(cxpr_ast_function_arg_name(ast, 1), "slow") == 0);
+    assert(strcmp(cxpr_ast_function_arg_name(ast, 2), "period") == 0);
+    assert(fabs(cxpr_ast_number_value(cxpr_ast_function_arg(ast, 0)) - 9.0) < 1e-10);
+    assert(fabs(cxpr_ast_number_value(cxpr_ast_function_arg(ast, 1)) - 21.0) < 1e-10);
+    assert(fabs(cxpr_ast_number_value(cxpr_ast_function_arg(ast, 2)) - 3.0) < 1e-10);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  ✓ test_function_named_args\n");
+}
+
+static void test_producer_named_args(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast = parse_ok(p, "macd(fast=9, slow=21, period=3).signal");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(cxpr_ast_producer_argc(ast) == 3);
+    assert(cxpr_ast_producer_has_named_args(ast));
+    assert(strcmp(cxpr_ast_producer_arg_name(ast, 0), "fast") == 0);
+    assert(strcmp(cxpr_ast_producer_arg_name(ast, 1), "slow") == 0);
+    assert(strcmp(cxpr_ast_producer_arg_name(ast, 2), "period") == 0);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  ✓ test_producer_named_args\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: ternary
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -503,6 +534,26 @@ static void test_analysis_wrong_arity(void) {
     printf("  ✓ test_analysis_wrong_arity\n");
 }
 
+static void test_analysis_named_args_reorders_by_signature(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_analysis info;
+    cxpr_error err = {0};
+    const char* params[] = {"slow", "fast", "period"};
+
+    cxpr_registry_add(reg, "macd", stub_cross, 3, 3, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd", params, 3));
+    cxpr_ast* ast = parse_ok(p, "macd(fast=9, slow=21, period=3)");
+
+    assert(cxpr_analyze(ast, reg, &info, &err));
+    assert(err.code == CXPR_OK);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_analysis_named_args_reorders_by_signature\n");
+}
+
 static void test_analyze_expr_convenience_api(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_analysis info;
@@ -605,6 +656,8 @@ int main(void) {
     test_function_two_args();
     test_function_nested();
     test_function_field_access();
+    test_function_named_args();
+    test_producer_named_args();
 
     /* Ternary */
     test_ternary();
@@ -620,6 +673,7 @@ int main(void) {
     test_analysis_field_paths();
     test_analysis_unknown_function();
     test_analysis_wrong_arity();
+    test_analysis_named_args_reorders_by_signature();
     test_analyze_expr_convenience_api();
 
     /* Errors */

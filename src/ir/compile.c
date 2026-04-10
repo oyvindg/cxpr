@@ -88,6 +88,95 @@ static bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program
     }
 }
 
+static bool cxpr_ir_ast_contains_string_literal(const cxpr_ast* ast) {
+    size_t i;
+
+    if (!ast) return false;
+
+    switch (ast->type) {
+    case CXPR_NODE_STRING:
+        return true;
+
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_ir_ast_contains_string_literal(ast->data.binary_op.left) ||
+               cxpr_ir_ast_contains_string_literal(ast->data.binary_op.right);
+
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_ir_ast_contains_string_literal(ast->data.unary_op.operand);
+
+    case CXPR_NODE_FUNCTION_CALL:
+        for (i = 0; i < ast->data.function_call.argc; ++i) {
+            if (cxpr_ir_ast_contains_string_literal(ast->data.function_call.args[i])) {
+                return true;
+            }
+        }
+        return false;
+
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (i = 0; i < ast->data.producer_access.argc; ++i) {
+            if (cxpr_ir_ast_contains_string_literal(ast->data.producer_access.args[i])) {
+                return true;
+            }
+        }
+        return false;
+
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_ir_ast_contains_string_literal(ast->data.lookback.target) ||
+               cxpr_ir_ast_contains_string_literal(ast->data.lookback.index);
+
+    case CXPR_NODE_TERNARY:
+        return cxpr_ir_ast_contains_string_literal(ast->data.ternary.condition) ||
+               cxpr_ir_ast_contains_string_literal(ast->data.ternary.true_branch) ||
+               cxpr_ir_ast_contains_string_literal(ast->data.ternary.false_branch);
+
+    default:
+        return false;
+    }
+}
+
+static bool cxpr_ir_arg_needs_overlay_passthrough(const cxpr_ast* ast) {
+    if (!ast) return false;
+
+    switch (ast->type) {
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+    case CXPR_NODE_FUNCTION_CALL:
+    case CXPR_NODE_PRODUCER_ACCESS:
+    case CXPR_NODE_LOOKBACK:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool cxpr_ir_runtime_call_needs_overlay_passthrough(const cxpr_ast* ast) {
+    size_t i;
+
+    if (!ast) return false;
+
+    switch (ast->type) {
+    case CXPR_NODE_FUNCTION_CALL:
+        for (i = 0; i < ast->data.function_call.argc; ++i) {
+            if (cxpr_ir_arg_needs_overlay_passthrough(ast->data.function_call.args[i])) {
+                return true;
+            }
+        }
+        return false;
+
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (i = 0; i < ast->data.producer_access.argc; ++i) {
+            if (cxpr_ir_arg_needs_overlay_passthrough(ast->data.producer_access.args[i])) {
+                return true;
+            }
+        }
+        return false;
+
+    default:
+        return false;
+    }
+}
+
 static unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
                                                     size_t depth) {
     unsigned char left_kind;
@@ -330,12 +419,30 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
         char* const_key = NULL;
         double* const_args = NULL;
+        if (cxpr_ast_call_uses_named_args(ast)) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
+        }
         if (!entry || !entry->struct_producer) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_FUNCTION;
                 err->message = "Unknown function";
             }
             return false;
+        }
+        if (entry->ast_func_overlay &&
+            (cxpr_ir_ast_contains_string_literal(ast) ||
+             cxpr_ir_runtime_call_needs_overlay_passthrough(ast))) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
         }
         const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
                                                         (const cxpr_ast* const*)ast->data.producer_access.args,
@@ -413,6 +520,14 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
         const char* fname = ast->data.function_call.name;
+        if (cxpr_ast_call_uses_named_args(ast)) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
+        }
         if (!entry) {
             if (!cxpr_ir_is_special_builtin_name(fname)) {
                 if (err) {
@@ -531,7 +646,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
-        if (entry->ast_func || entry->ast_func_overlay) {
+        if (entry->ast_func) {
             if (err) {
                 err->code = CXPR_ERR_SYNTAX;
                 err->message = "Function requires AST evaluation";
@@ -539,7 +654,19 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return false;
         }
 
-        if ((entry->sync_func || entry->value_func) && !entry->struct_fields && !entry->defined_body) {
+        if (entry->ast_func_overlay &&
+            (cxpr_ir_ast_contains_string_literal(ast) ||
+             cxpr_ir_runtime_call_needs_overlay_passthrough(ast))) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
+        }
+
+        if ((entry->sync_func || entry->value_func || entry->typed_func) &&
+            !entry->struct_fields && !entry->defined_body) {
             size_t i;
             for (i = 0; i < ast->data.function_call.argc; ++i) {
                 if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,

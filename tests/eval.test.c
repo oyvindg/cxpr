@@ -284,6 +284,132 @@ static void test_function_call_field_access(void) {
     printf("  ✓ test_function_call_field_access\n");
 }
 
+static void test_named_args_reorder_by_signature(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    const char* params[] = {"slow", "fast", "period"};
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add(reg, "macd_signal", test_macd_signal, 3, 3, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd_signal", params, 3));
+
+    ASSERT_DOUBLE_EQ(eval_ok("macd_signal(fast=9, slow=21, period=3)", ctx, reg), 15.0);
+    ASSERT_DOUBLE_EQ(eval_ok("macd_signal(21, fast=9, period=3)", ctx, reg), 15.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_named_args_reorder_by_signature\n");
+}
+
+static void test_named_args_for_producer_field_access(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    const char* fields[] = {"signal"};
+    const char* params[] = {"slow", "fast", "period"};
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer, 3, 3, fields, 1, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd", params, 3));
+
+    ASSERT_DOUBLE_EQ(eval_ok("macd(fast=9, slow=21, period=3).signal", ctx, reg), 15.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_named_args_for_producer_field_access\n");
+}
+
+static void test_named_args_support_ir_fallback(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    cxpr_program* prog;
+    const char* params[] = {"slow", "fast", "period"};
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add(reg, "macd_signal", test_macd_signal, 3, 3, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd_signal", params, 3));
+
+    ast = cxpr_parse(p, "macd_signal(fast=9, slow=21, period=3)", &err);
+    assert(ast != NULL);
+    prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_test_eval_program_number(prog, ctx, reg, &err), 15.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_named_args_support_ir_fallback\n");
+}
+
+static void test_named_args_expression_values_with_ir_and_varying_context(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    cxpr_program* prog;
+    const char* params[] = {"slow", "fast", "period"};
+    const char* expr = "macd_signal(fast=ema_len + 1, slow=$slow, period=if($use_short, 3, 9))";
+    double ast_result;
+    double prog_result;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add(reg, "macd_signal", test_macd_signal, 3, 3, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd_signal", params, 3));
+
+    ast = cxpr_parse(p, expr, &err);
+    assert(ast != NULL);
+    prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(err.code == CXPR_OK);
+
+    cxpr_context_set(ctx, "ema_len", 8.0);
+    cxpr_context_set_param(ctx, "slow", 21.0);
+    cxpr_context_set_param(ctx, "use_short", 1.0);
+    ast_result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    prog_result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(ast_result, -9.0);
+    ASSERT_DOUBLE_EQ(prog_result, -9.0);
+
+    cxpr_context_set(ctx, "ema_len", 12.0);
+    cxpr_context_set_param(ctx, "slow", 26.0);
+    cxpr_context_set_param(ctx, "use_short", 0.0);
+    ast_result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    prog_result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(ast_result, -4.0);
+    ASSERT_DOUBLE_EQ(prog_result, -4.0);
+
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_named_args_expression_values_with_ir_and_varying_context\n");
+}
+
+static void test_named_args_for_defined_function(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_builtins(reg);
+
+    assert(cxpr_registry_define_fn(reg, "spread(slow, fast, period) => slow - fast + period").code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(eval_ok("spread(fast=9, slow=21, period=3)", ctx, reg), 15.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_named_args_for_defined_function\n");
+}
+
 static void test_unknown_identifier_error(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -711,6 +837,11 @@ int main(void) {
     test_ternary();
     test_field_access();
     test_function_call_field_access();
+    test_named_args_reorder_by_signature();
+    test_named_args_for_producer_field_access();
+    test_named_args_support_ir_fallback();
+    test_named_args_expression_values_with_ir_and_varying_context();
+    test_named_args_for_defined_function();
     test_typed_if();
     test_boolean_literals();
     test_defined_function_scalar_ir_path();
