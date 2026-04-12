@@ -50,7 +50,7 @@ static cxpr_value eval_typed_fails(const char *expr,
 
 static void test_double_field(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *names[] = {"x", "y", "z"};
@@ -79,7 +79,7 @@ static void test_double_field(void) {
 
 static void test_bool_field(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *names[] = {"active", "value"};
@@ -109,7 +109,7 @@ static void test_bool_field(void) {
 
 static void test_nested_struct_field(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *inner_names[] = {"z"};
@@ -141,7 +141,7 @@ static void test_nested_struct_field(void) {
 
 static void test_set_struct_replaces(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *names[] = {"v"};
@@ -221,7 +221,7 @@ static void test_context_clone(void) {
 
 static void test_parent_walk(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *parent = cxpr_context_new();
 
     const char *names[] = {"v"};
@@ -253,7 +253,7 @@ static void test_parent_walk(void) {
 
 static void test_flat_key_fallback(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     /* old API: flat keys like "pos.x" */

@@ -30,7 +30,7 @@ int main(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "distance_front", 0.42);
     cxpr_context_set(ctx, "battery", 76.0);

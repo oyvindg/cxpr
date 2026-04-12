@@ -140,7 +140,7 @@ static void test_struct_value_nested_deep_copy(void) {
 
 static void test_arithmetic_double(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     cxpr_value r;
@@ -166,7 +166,7 @@ static void test_arithmetic_double(void) {
 
 static void test_comparison_returns_bool(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     cxpr_value r;
@@ -200,7 +200,7 @@ static void test_comparison_returns_bool(void) {
 
 static void test_bool_literals(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     cxpr_value r;
@@ -228,7 +228,7 @@ static void test_bool_literals(void) {
 
 static void test_struct_bool_field_equality(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
     const char *field_names[] = {"active"};
     cxpr_value field_values[] = {cxpr_fv_bool(true)};
@@ -252,7 +252,7 @@ static void test_struct_bool_field_equality(void) {
 
 static void test_logical_operators(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     cxpr_value r;
@@ -283,7 +283,7 @@ static void test_logical_operators(void) {
 
 static void test_ternary_typed(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     cxpr_value r;
@@ -309,7 +309,7 @@ static void test_ternary_typed(void) {
 
 static void test_type_errors(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     /* bool in arithmetic */
@@ -338,7 +338,7 @@ static void test_type_errors(void) {
 
 static void test_eval_double_wrapper(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     /* cxpr_ast_eval_double on a bool expression → NAN + TYPE_MISMATCH */
@@ -370,7 +370,7 @@ static void test_eval_double_wrapper(void) {
 
 static void test_eval_bool_wrapper(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     /* cxpr_ast_eval_bool on a double expression → false + TYPE_MISMATCH */
@@ -404,7 +404,7 @@ static void test_eval_bool_wrapper(void) {
 
 static void test_ir_parity(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     cxpr_value r;

@@ -24,7 +24,7 @@ static double eval_expr(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
@@ -179,7 +179,7 @@ static void test_builtin_nan_inf(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, "nan()", &err);
@@ -213,7 +213,7 @@ static void test_builtin_if(void) {
     cxpr_error err = {0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     ASSERT_DOUBLE_EQ(eval_expr("if(1, 10, 20)"), 10.0);
     ASSERT_DOUBLE_EQ(eval_expr("if(0, 10, 20)"), 20.0);
     ASSERT_DOUBLE_EQ(eval_expr("if(3 > 2, 100, 200)"), 100.0);
@@ -245,7 +245,7 @@ static void test_complex_math(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_context_set(ctx, "x", 3.0);
@@ -310,7 +310,7 @@ static void test_custom_functions(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_registry_add(reg, "wavg", fn_wavg, 2, 10, NULL, NULL);
@@ -351,7 +351,7 @@ static void test_extreme_nested_expressions(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
     cxpr_ast* ast;
 

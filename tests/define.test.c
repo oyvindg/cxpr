@@ -60,7 +60,7 @@ static bool eval_bool_expr(const char* expr, cxpr_context* ctx, cxpr_registry* r
 
 static void test_scalar_params(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
 
     cxpr_error err = cxpr_registry_define_fn(reg, "sum(a, b) => a + b");
@@ -84,7 +84,7 @@ static void test_scalar_params(void) {
 
 static void test_struct_params_distance3(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_error err = cxpr_registry_define_fn(reg,
         "distance3(goal, pose) => "
@@ -108,7 +108,7 @@ static void test_struct_params_distance3(void) {
 
 static void test_struct_params_dot2(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_error err = cxpr_registry_define_fn(reg, "dot2(u, v) => u.x*v.x + u.y*v.y");
     assert(err.code == CXPR_OK);
@@ -130,7 +130,7 @@ static void test_struct_params_dot2(void) {
 
 static void test_struct_with_dollar_params(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_error err = cxpr_registry_define_fn(reg,
         "clamp_val(p) => clamp(p.value, $lo, $hi)");
@@ -156,7 +156,7 @@ static void test_struct_with_dollar_params(void) {
 
 static void test_defined_fn_calls_defined_fn(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_error err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
     assert(err.code == CXPR_OK);
@@ -174,7 +174,7 @@ static void test_defined_fn_calls_defined_fn(void) {
 
 static void test_defined_fn_used_in_comparison(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_error err = cxpr_registry_define_fn(reg,
         "dist2(a, b) => sqrt((a.x-b.x)^2 + (a.y-b.y)^2)");
@@ -195,7 +195,7 @@ static void test_defined_fn_used_in_comparison(void) {
 
 static void test_overwrite(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
 
     cxpr_error err = cxpr_registry_define_fn(reg, "double_it(x) => x * 2");
@@ -236,7 +236,7 @@ static void test_error_missing_arrow(void) {
 
 static void test_error_wrong_arity_at_call(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
 
     cxpr_error err = cxpr_registry_define_fn(reg, "add(a, b) => a + b");
@@ -252,7 +252,7 @@ static void test_error_wrong_arity_at_call(void) {
 
 static void test_error_struct_arg_not_identifier(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
 
     cxpr_error err = cxpr_registry_define_fn(reg, "len2(v) => sqrt(v.x^2 + v.y^2)");
@@ -269,7 +269,7 @@ static void test_error_struct_arg_not_identifier(void) {
 
 static void test_error_missing_field_in_context(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
 
     cxpr_error err = cxpr_registry_define_fn(reg, "len2(v) => sqrt(v.x^2 + v.y^2)");

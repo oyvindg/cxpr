@@ -896,14 +896,14 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Register all built-in math functions
+ * Register default cxpr functions
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * @brief Register all built-in math functions into the registry.
+ * @brief Register the default cxpr functions into the registry.
  * @param[in] reg Registry to populate (no-op if NULL)
  */
-void cxpr_register_builtins(cxpr_registry* reg) {
+void cxpr_register_defaults(cxpr_registry* reg) {
     if (!reg) return;
 
     /* min/max: arity 1..8. argc=1 allows unary min/max; argc>=2 is the
@@ -951,6 +951,10 @@ void cxpr_register_builtins(cxpr_registry* reg) {
 
     cxpr_registry_add_ternary(reg, "if", cxpr_if);
     cxpr_register_timeseries_builtins(reg);
+}
+
+void cxpr_register_builtins(cxpr_registry* reg) {
+    cxpr_register_defaults(reg);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

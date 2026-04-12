@@ -468,7 +468,7 @@ int main(void) {
         fprintf(stderr, "Failed to initialize benchmark state\n");
         return 1;
     }
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_unary(reg, "native_sq", native_sq);
     cxpr_registry_add_binary(reg, "native_hyp2", native_hyp2);
     cxpr_registry_add_ternary(reg, "native_f3", native_f3);

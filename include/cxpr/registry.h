@@ -358,10 +358,11 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
                               cxpr_userdata_free_fn free_userdata);
 
 /**
- * @brief Register the built-in math library into a registry.
+ * @brief Register the default cxpr function set into a registry.
  * @param reg Destination registry.
  */
-void cxpr_register_builtins(cxpr_registry* reg);
+void cxpr_register_defaults(cxpr_registry* reg);
+
 /**
  * @brief Register an expression-defined function.
  * @param reg Destination registry.

@@ -107,7 +107,7 @@ static void test_ast_function_can_read_variable_argument(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_ast(reg, "pick_param", pick_param_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
 
     cxpr_context_set_param(ctx, "threshold", 5.5);
@@ -130,7 +130,7 @@ static void test_ast_function_can_eval_nested_expression(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_ast(reg, "double_eval", double_eval_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
 
     cxpr_context_set(ctx, "base", 4.0);
@@ -153,7 +153,7 @@ static void test_ast_function_blocks_ir_compile(void) {
     cxpr_error err = {0};
     cxpr_program* prog;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_ast(reg, "pick_param", pick_param_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_context_set_param(ctx, "threshold", 5.0);
 
@@ -186,7 +186,7 @@ static void test_ast_function_userdata_cleanup_on_overwrite_and_free(void) {
     *factor2 = 2;
     *factor3 = 3;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_ast(reg, "scale_eval", scale_eval_ast_fn, 1, 1, CXPR_VALUE_NUMBER,
                           factor2, ast_userdata_free);
     cxpr_registry_add_ast(reg, "scale_eval", scale_eval_ast_fn, 1, 1, CXPR_VALUE_NUMBER,
@@ -378,7 +378,7 @@ static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
     cxpr_value typed_out = {0};
     cxpr_value_type arg_types[1] = {CXPR_VALUE_NUMBER};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_ast* ast = parse_or_die(p, "mode(2)");
 
     /* AST function path: eval works, IR compile is intentionally blocked. */
@@ -441,7 +441,7 @@ static void test_ast_overlay_numeric_calls_compile_to_scalar_ir(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -482,7 +482,7 @@ static void test_ast_overlay_string_calls_fall_back_to_ast_in_ir(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -523,7 +523,7 @@ static void test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "source_pick", source_pick_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "source_pick", source_pick_overlay_ast_fn, 1, 1, NULL, NULL);
 
@@ -566,7 +566,7 @@ static void test_expression_compile_supports_timeframe_overlay(void) {
     double out = 0.0;
 
     assert(evaluator != NULL);
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
     cxpr_context_set(ctx, "base", 2.0);
@@ -597,7 +597,7 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
     double out = 0.0;
     const char* fields[] = {"signal"};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_struct(reg, "trend_tf", trend_struct_producer, 1, 2, fields, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "trend_tf", trend_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -642,7 +642,7 @@ static void test_overlay_passthrough_binary_op_with_identifier(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -682,7 +682,7 @@ static void test_overlay_no_passthrough_binary_op_constants_only(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -721,7 +721,7 @@ static void test_overlay_passthrough_unary_op_with_identifier(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -759,7 +759,7 @@ static void test_overlay_passthrough_lookback_arg(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -788,7 +788,7 @@ static void test_overlay_passthrough_ternary_with_identifier(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -829,7 +829,7 @@ static void test_overlay_passthrough_nested_binary_ops(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 
@@ -869,7 +869,7 @@ static void test_overlay_passthrough_function_call_arg(void) {
     cxpr_error err = {0};
     double out = 0.0;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
 

@@ -522,7 +522,7 @@ static void test_analysis_wrong_arity(void) {
     cxpr_analysis info;
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_ast* ast = parse_ok(p, "sqrt(1, 2)");
 
     assert(!cxpr_analyze(ast, reg, &info, &err));

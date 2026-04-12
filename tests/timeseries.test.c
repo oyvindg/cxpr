@@ -166,7 +166,7 @@ static void test_eval_ast_at_offset_reuses_lookback_resolver(void) {
     double out = 0.0;
     bool bool_out = false;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, (void*)&env, NULL);
     cxpr_context_set(ctx, "close", close_series[env.current_index]);
     cxpr_context_set(ctx, "base", base_series[env.current_index]);
@@ -209,7 +209,7 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     cxpr_error err = {0};
     bool out = false;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, &env, NULL);
     cxpr_context_set(ctx, "close", rising_close[env.current_index]);
     cxpr_context_set(ctx, "base", rising_base[env.current_index]);
@@ -270,7 +270,7 @@ static void test_registered_timeseries_function_uses_same_api(void) {
     cxpr_error err = {0};
     bool out = false;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, (void*)&env, NULL);
     cxpr_registry_add_timeseries(reg, "strictly_rising", strictly_rising_fn, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);

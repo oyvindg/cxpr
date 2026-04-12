@@ -120,7 +120,7 @@ static void test_eval_number_out_api_type_mismatch(void) {
 static void test_constant(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     ASSERT_DOUBLE_EQ(eval_ok("42", ctx, reg), 42.0);
     ASSERT_DOUBLE_EQ(eval_ok("3.14", ctx, reg), 3.14);
     cxpr_context_free(ctx);
@@ -131,7 +131,7 @@ static void test_constant(void) {
 static void test_variable_lookup(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "rsi", 28.0);
     cxpr_context_set(ctx, "ema_fast", 101.0);
     ASSERT_DOUBLE_EQ(eval_ok("rsi", ctx, reg), 28.0);
@@ -144,7 +144,7 @@ static void test_variable_lookup(void) {
 static void test_param_substitution(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "rsi", 25.0);
     cxpr_context_set_param(ctx, "oversold", 30.0);
     assert(eval_bool_ok("rsi < $oversold", ctx, reg) == true);
@@ -158,7 +158,7 @@ static void test_param_substitution(void) {
 static void test_param_substitution_dotted(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "range_pct", 0.35);
     cxpr_context_set_param(ctx, "breakout.range_pct_min", 0.20);
     assert(eval_bool_ok("range_pct >= $breakout.range_pct_min", ctx, reg) == true);
@@ -172,7 +172,7 @@ static void test_param_substitution_dotted(void) {
 static void test_arithmetic(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     ASSERT_DOUBLE_EQ(eval_ok("2 + 3", ctx, reg), 5.0);
     ASSERT_DOUBLE_EQ(eval_ok("10 - 4", ctx, reg), 6.0);
     ASSERT_DOUBLE_EQ(eval_ok("3 * 7", ctx, reg), 21.0);
@@ -187,7 +187,7 @@ static void test_arithmetic(void) {
 static void test_comparison(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(eval_bool_ok("3 < 5", ctx, reg) == true);
     assert(eval_bool_ok("5 < 3", ctx, reg) == false);
     assert(eval_bool_ok("3 == 3", ctx, reg) == true);
@@ -202,7 +202,7 @@ static void test_comparison(void) {
 static void test_logical(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(eval_bool_ok("true and true", ctx, reg) == true);
     assert(eval_bool_ok("true and false", ctx, reg) == false);
     assert(eval_bool_ok("false or true", ctx, reg) == true);
@@ -217,7 +217,7 @@ static void test_logical(void) {
 static void test_function_call(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     ASSERT_DOUBLE_EQ(eval_ok("abs(-5)", ctx, reg), 5.0);
     ASSERT_DOUBLE_EQ(eval_ok("min(3, 7)", ctx, reg), 3.0);
     ASSERT_DOUBLE_EQ(eval_ok("max(3, 7)", ctx, reg), 7.0);
@@ -233,7 +233,7 @@ static void test_function_call(void) {
 static void test_ternary(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "x", 5.0);
     ASSERT_DOUBLE_EQ(eval_ok("x > 0 ? x : 0", ctx, reg), 5.0);
     cxpr_context_set(ctx, "x", -3.0);
@@ -246,7 +246,7 @@ static void test_ternary(void) {
 static void test_field_access(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "macd.histogram", 0.5);
     cxpr_context_set(ctx, "adx.adx", 28.0);
     ASSERT_DOUBLE_EQ(eval_ok("macd.histogram", ctx, reg), 0.5);
@@ -275,7 +275,7 @@ static void test_function_call_field_access(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     const char* fields[] = {"signal"};
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer,
                                       3, 3, fields, 1, NULL, NULL);
     ASSERT_DOUBLE_EQ(eval_ok("macd(12, 26, 9).signal", ctx, reg), -5.0);
@@ -289,7 +289,7 @@ static void test_named_args_reorder_by_signature(void) {
     cxpr_registry* reg = cxpr_registry_new();
     const char* params[] = {"slow", "fast", "period"};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add(reg, "macd_signal", test_macd_signal, 3, 3, NULL, NULL);
     assert(cxpr_registry_set_param_names(reg, "macd_signal", params, 3));
 
@@ -307,7 +307,7 @@ static void test_named_args_for_producer_field_access(void) {
     const char* fields[] = {"signal"};
     const char* params[] = {"slow", "fast", "period"};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer, 3, 3, fields, 1, NULL, NULL);
     assert(cxpr_registry_set_param_names(reg, "macd", params, 3));
 
@@ -327,7 +327,7 @@ static void test_named_args_support_ir_fallback(void) {
     cxpr_program* prog;
     const char* params[] = {"slow", "fast", "period"};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add(reg, "macd_signal", test_macd_signal, 3, 3, NULL, NULL);
     assert(cxpr_registry_set_param_names(reg, "macd_signal", params, 3));
 
@@ -359,7 +359,7 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
     double ast_result;
     double prog_result;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add(reg, "macd_signal", test_macd_signal, 3, 3, NULL, NULL);
     assert(cxpr_registry_set_param_names(reg, "macd_signal", params, 3));
 
@@ -400,7 +400,7 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
 static void test_named_args_for_defined_function(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     assert(cxpr_registry_define_fn(reg, "spread(slow, fast, period) => slow - fast + period").code == CXPR_OK);
     ASSERT_DOUBLE_EQ(eval_ok("spread(fast=9, slow=21, period=3)", ctx, reg), 15.0);
@@ -413,7 +413,7 @@ static void test_named_args_for_defined_function(void) {
 static void test_unknown_identifier_error(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(eval_error("unknown_var", ctx, reg) == CXPR_ERR_UNKNOWN_IDENTIFIER);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -423,7 +423,7 @@ static void test_unknown_identifier_error(void) {
 static void test_division_by_zero(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(eval_error("1 / 0", ctx, reg) == CXPR_ERR_DIVISION_BY_ZERO);
     assert(eval_error("10 % 0", ctx, reg) == CXPR_ERR_DIVISION_BY_ZERO);
     cxpr_context_free(ctx);
@@ -434,7 +434,7 @@ static void test_division_by_zero(void) {
 static void test_unknown_function(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(eval_error("nonexistent(1)", ctx, reg) == CXPR_ERR_UNKNOWN_FUNCTION);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -444,7 +444,7 @@ static void test_unknown_function(void) {
 static void test_wrong_arity(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     /* sqrt takes 1 arg, give it 2 */
     assert(eval_error("sqrt(1, 2)", ctx, reg) == CXPR_ERR_WRONG_ARITY);
     cxpr_context_free(ctx);
@@ -528,7 +528,7 @@ static void test_typed_function_bool_argument(void) {
     cxpr_struct_value* sensor = cxpr_struct_value_new(field_names, sensor_values, 2);
     assert(sensor != NULL);
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_typed(reg, "is_valid", test_is_valid_typed, 2, 2,
                             sig, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_context_set_struct(ctx, "sensor", sensor);
@@ -566,7 +566,7 @@ static void test_typed_function_bool_argument(void) {
 static void test_full_expression(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_registry_add_value(reg, "cross_above", test_cross_above, 2, 2, NULL, NULL);
 
@@ -607,7 +607,7 @@ static void test_typed_function_struct_argument(void) {
     assert(macd_ctx != NULL);
     assert(min_hist != NULL);
     *min_hist = 0.1;
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_typed(reg, "macd_signal_ok", test_macd_signal_ok, 2, 2,
                             sig, CXPR_VALUE_BOOL, min_hist, test_free_userdata);
     cxpr_registry_add_struct(reg, "macd", test_macd_producer,
@@ -642,7 +642,7 @@ static void test_typed_function_struct_argument(void) {
 static void test_registry_userdata_cleanup(void) {
     g_userdata_free_count = 0;
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     double* ud1 = (double*)malloc(sizeof(double));
     assert(ud1 != NULL);
@@ -681,7 +681,7 @@ static void test_ast_function_cache_invalidates_on_registry_change(void) {
     cxpr_error err = {0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add(reg, "scale", test_scale2, 1, 1, NULL, NULL);
     ast = cxpr_parse(p, "scale(5)", &err);
     assert(ast);
@@ -705,7 +705,7 @@ static void test_typed_if(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_ast* ast = cxpr_parse(p, "if(true, false, true)", &err);
     cxpr_program* prog;
     assert(ast != NULL);
@@ -729,7 +729,7 @@ static void test_typed_if(void) {
 static void test_boolean_literals(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(eval_bool_ok("true", ctx, reg) == true);
     assert(eval_bool_ok("false", ctx, reg) == false);
     assert(eval_bool_ok("true and false", ctx, reg) == false);
@@ -744,7 +744,7 @@ static void test_defined_function_scalar_ir_path(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_func_entry* sq_entry;
     cxpr_func_entry* hyp_entry;
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     assert(cxpr_registry_define_fn(reg, "sq(x) => x * x").code == CXPR_OK);
     assert(cxpr_registry_define_fn(reg, "hyp(a, b) => sqrt(sq(a) + sq(b))").code == CXPR_OK);
@@ -773,7 +773,7 @@ static void test_defined_function_scalar_ir_path(void) {
 static void test_set_fields(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     /* Set multiple fields with prefix */
     const char* macd_fields[] = {"macdLine", "signalLine", "histogram"};
@@ -797,7 +797,7 @@ static void test_set_fields(void) {
 static void test_multiple_prefixes(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     /* Set MACD fields */
     const char* macd_fields[] = {"histogram"};

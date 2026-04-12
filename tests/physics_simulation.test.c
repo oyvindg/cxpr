@@ -78,7 +78,7 @@ static void test_formula_engine_damped_oscillator(void) {
     assert(evaluator);
     assert(ctx);
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set_param(ctx, "mass", mass);
     cxpr_context_set_param(ctx, "stiffness", stiffness);

@@ -22,7 +22,7 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     assert(p);
     assert(ctx);
     assert(reg);
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(cxpr_registry_define_fn(reg,
                                    "dist2(p, q) => sqrt((p.x - q.x)*(p.x - q.x) + "
                                    "(p.y - q.y)*(p.y - q.y))")

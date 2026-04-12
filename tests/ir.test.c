@@ -746,7 +746,7 @@ static void test_ir_eval_builtin_function_matches_ast(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_ast* ast = cxpr_parse(p, "sqrt(9) + abs(-2)", &err);
     assert(ast);
 
@@ -775,7 +775,7 @@ static void test_ir_eval_intrinsics_match_ast(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "x", -2.4);
     cxpr_context_set(ctx, "y", 4.2);
     cxpr_context_set(ctx, "z", 0.7);
@@ -856,7 +856,7 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     err = cxpr_registry_define_fn(reg, "sum2(a, b) => a + b");
     assert(err.code == CXPR_OK);
     cxpr_ast* ast = cxpr_parse(p, "sum2(x, y)", &err);
@@ -929,7 +929,7 @@ static void test_ir_eval_nested_defined_function_matches_ast(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
     assert(err.code == CXPR_OK);
     err = cxpr_registry_define_fn(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))");
@@ -969,7 +969,7 @@ static void test_ir_eval_struct_param_defined_function_matches_ast(void) {
     double q_vals[] = {0.0, 0.0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     err = cxpr_registry_define_fn(reg,
                                   "dist2(p, q) => sqrt((p.x - q.x)*(p.x - q.x) + "
                                   "(p.y - q.y)*(p.y - q.y))");
@@ -1008,7 +1008,7 @@ static void test_ir_eval_struct_param_field_substitution(void) {
     double rhs_vals[] = {11.0, 5.0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     err = cxpr_registry_define_fn(reg, "pick(p, q) => p.x * 100 + q.y");
     assert(err.code == CXPR_OK);
 
@@ -1043,7 +1043,7 @@ static void test_ir_eval_struct_param_defined_function_nested_with_inline_limit(
     double q_vals[] = {0.0, 0.0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(cxpr_registry_define_fn(reg,
                                    "d0(a, b) => sqrt((a.x - b.x)*(a.x - b.x) + "
                                    "(a.y - b.y)*(a.y - b.y))")
@@ -1098,7 +1098,7 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     double right_vals[] = {0.0, 0.0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(cxpr_registry_define_fn(reg,
                                    "dist2(p, q) => sqrt((p.x - q.x)*(p.x - q.x) + "
                                    "(p.y - q.y)*(p.y - q.y))")
@@ -1132,7 +1132,7 @@ static void test_ir_fast_result_kind_scalar_defined_function(void) {
     cxpr_error err = {0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(cxpr_registry_define_fn(reg, "twice(v) => v * 2").code == CXPR_OK);
     cxpr_context_set(ctx, "a", 3.0);
 
@@ -1164,7 +1164,7 @@ static void test_ir_fast_result_kind_struct_defined_function_stays_unknown(void)
     double right_vals[] = {0.0, 0.0};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(cxpr_registry_define_fn(reg,
                                    "dist2(p, q) => sqrt((p.x - q.x)*(p.x - q.x) + "
                                    "(p.y - q.y)*(p.y - q.y))")
@@ -1198,7 +1198,7 @@ static void test_ir_fast_result_kind_producer_field_access_stays_unknown(void) {
     const char* fields[] = {"x"};
     cxpr_ast* ast;
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_struct(reg, "shift", producer_shift_x, 1, 1, fields, 1, NULL, NULL);
 
     ast = cxpr_parse(p, "shift(3).x + 1", &err);

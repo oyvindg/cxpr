@@ -41,7 +41,7 @@ static void test_readme_quick_start(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "angle_deg", 30.0);
     cxpr_context_set_param(ctx, "limit", 1.2);
@@ -86,7 +86,7 @@ static void test_readme_ir_path(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_registry_add_unary(reg, "deg2rad", readme_deg2rad);
@@ -142,7 +142,7 @@ static void test_readme_custom_c_functions(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_registry_add_unary(reg,   "deg2rad",      readme_deg2rad);
     cxpr_registry_add_ternary(reg, "clamp",        readme_clamp);
@@ -211,7 +211,7 @@ static void test_readme_custom_fn_with_userdata(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     readme_table_t* tbl = (readme_table_t*)malloc(sizeof(readme_table_t));
     assert(tbl);
@@ -250,7 +250,7 @@ static void test_readme_define_scalar(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     assert(cxpr_registry_define_fn(reg, "sq(x) => x * x").code == CXPR_OK);
     assert(cxpr_registry_define_fn(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))").code == CXPR_OK);
@@ -302,7 +302,7 @@ static void test_readme_define_scalar(void) {
 
 static void test_readme_define_struct(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_parser*  parser = cxpr_parser_new();
 
@@ -365,7 +365,7 @@ static void readme_quote2_producer(const double* args, size_t argc,
 
 static void test_readme_formula_engine(void) {
     cxpr_registry*      reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context*        ctx    = cxpr_context_new();
     cxpr_error err = {0};
@@ -421,7 +421,7 @@ static void test_readme_formula_engine(void) {
 
 static void test_readme_domain_trading(void) {
     cxpr_registry*       reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context*        ctx    = cxpr_context_new();
     cxpr_error err = {0};
@@ -472,7 +472,7 @@ static void test_readme_domain_robotics(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "distance_front", 0.42);
     cxpr_context_set(ctx, "battery",        76.0);
@@ -536,7 +536,7 @@ static void test_readme_domain_distance(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     const char* xy[]  = {"x", "y"};
     cxpr_registry_add_fn(reg, "distance2", fn_distance2, xy, 2, 2, NULL, NULL);
@@ -592,7 +592,7 @@ static void test_readme_domain_physics(void) {
     cxpr_parser*   parser = cxpr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     const char* body_fields[] = {"x", "y", "vx", "vy"};
     double body_vals[]        = {1.2, -0.5, 3.0, 4.0};

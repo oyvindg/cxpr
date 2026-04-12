@@ -14,7 +14,7 @@ int main(void) {
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "close",         98.5);
     cxpr_context_set(ctx, "ema_fast",      99.2);
@@ -66,7 +66,7 @@ int main(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "cross_below", fn_cross_below, 4, 4, NULL, NULL);
 
     cxpr_context_set(ctx, "rsi",           28.0);
@@ -136,7 +136,7 @@ int main(void) {
         { "entry",    "trend and pullback and rsi > 50 and volume > $min_volume" }
     };
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context_set_param(ctx, "min_volume", 1000000.0);
     cxpr_expressions_add(evaluator, defs, 3, &err);
     cxpr_evaluator_compile(evaluator, &err);

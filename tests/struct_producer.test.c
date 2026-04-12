@@ -85,7 +85,7 @@ static void zero_arg_producer(const double *args, size_t argc,
 
 static void test_zero_arg_producer_basic(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -105,7 +105,7 @@ static void test_zero_arg_producer_basic(void) {
 
 static void test_zero_arg_producer_called_once(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -150,7 +150,7 @@ static double combo_scalar(const double *args, size_t argc, void *userdata) {
 
 static void test_arg_producer(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -172,7 +172,7 @@ static void test_arg_producer(void) {
 
 static void test_arg_producer_called_once_for_two_fields(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -190,7 +190,7 @@ static void test_arg_producer_called_once_for_two_fields(void) {
 
 static void test_struct_function_call_returns_struct(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -211,7 +211,7 @@ static void test_struct_function_call_returns_struct(void) {
 
 static void test_arg_producer_cache_key_includes_arguments(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -231,7 +231,7 @@ static void test_arg_producer_cache_key_includes_arguments(void) {
 
 static void test_combo_entry_keeps_scalar_call_and_field_producer(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -268,7 +268,7 @@ static void bool_output_producer(const double *args, size_t argc,
 
 static void test_bool_output_field(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"value", "active"};
@@ -303,7 +303,7 @@ static void priority_producer(const double *args, size_t argc,
 
 static void test_host_set_takes_priority(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"v"};
@@ -340,7 +340,7 @@ static void recallable_producer(const double *args, size_t argc,
 
 static void test_clear_causes_recall(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"v"};
@@ -365,7 +365,7 @@ static void test_clear_causes_recall(void) {
 
 static void test_wrong_arity(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"v"};
@@ -383,7 +383,7 @@ static void test_wrong_arity(void) {
 
 static void test_unknown_field(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line"};
@@ -401,7 +401,7 @@ static void test_unknown_field(void) {
 
 static void test_ir_parity(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -418,7 +418,7 @@ static void test_ir_parity(void) {
     ctx = cxpr_context_new();
     cxpr_registry_free(reg);
     reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     /* arg-bearing producer */
     cxpr_registry_add_struct(reg, "macd", arg_producer,
@@ -436,7 +436,7 @@ static void test_ir_parity(void) {
 
 static void test_ir_struct_function_call_returns_struct(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};
@@ -456,7 +456,7 @@ static void test_ir_struct_function_call_returns_struct(void) {
 
 static void test_ir_combo_entry_keeps_scalar_call_and_field_producer(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
     const char *fields[] = {"line", "histogram"};

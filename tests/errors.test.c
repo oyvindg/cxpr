@@ -146,7 +146,7 @@ static void test_eval_error_unknown_identifier(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, "unknown_var + 1", &err);
@@ -170,7 +170,7 @@ static void test_eval_error_unknown_param(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, "$missing_param", &err);
@@ -194,7 +194,7 @@ static void test_eval_error_unknown_function(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, "foobar(1, 2)", &err);
@@ -218,7 +218,7 @@ static void test_eval_error_wrong_arity(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     /* sqrt takes 1 arg, not 3 */
@@ -253,7 +253,7 @@ static void test_eval_error_division_by_zero(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, "10 / 0", &err);
@@ -305,7 +305,7 @@ static void test_error_position(void) {
 
 static void test_formula_parse_error(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
@@ -321,7 +321,7 @@ static void test_formula_parse_error(void) {
 
 static void test_formula_circular_error(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
@@ -344,7 +344,7 @@ static void test_formula_circular_error(void) {
 
 static void test_registry_lookup(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     /* Built-in functions should be findable */
     size_t min_a, max_a;

@@ -17,7 +17,7 @@ int main(void) {
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "cross_below", fn_cross_below, 4, 4, NULL, NULL);
 
     cxpr_context_set(ctx, "close", 98.5);

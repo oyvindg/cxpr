@@ -25,7 +25,7 @@ static double eval_expr(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
@@ -50,7 +50,7 @@ static bool eval_bool_expr(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
@@ -75,7 +75,7 @@ static bool eval_bool_expr_ctx(const char* expr, const char* names[], const doub
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     for (int i = 0; names[i] != NULL; i++) {
@@ -111,7 +111,7 @@ static double eval_expr_ctx(const char* expr, const char* names[], const double 
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     for (int i = 0; names[i] != NULL; i++) {

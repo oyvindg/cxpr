@@ -36,7 +36,7 @@ static void test_formula_point_producer(const double* args, size_t argc,
 
 static void test_single_formula(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -64,7 +64,7 @@ static void test_single_formula(void) {
 
 static void test_multi_formula_dependencies(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -98,7 +98,7 @@ static void test_multi_formula_dependencies(void) {
 
 static void test_formula_batch_add(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -132,7 +132,7 @@ static void test_formula_batch_add(void) {
 
 static void test_formula_batch_add_rolls_back_on_error(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -168,7 +168,7 @@ static void test_formula_batch_add_rolls_back_on_error(void) {
 
 static void test_evaluation_order(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
@@ -205,7 +205,7 @@ static void test_evaluation_order(void) {
 
 static void test_circular_dependency(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
@@ -228,7 +228,7 @@ static void test_circular_dependency(void) {
 
 static void test_self_reference(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
@@ -249,7 +249,7 @@ static void test_self_reference(void) {
 
 static void test_independent_formulas(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -283,7 +283,7 @@ static void test_independent_formulas(void) {
 
 static void test_formula_with_functions(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -309,7 +309,7 @@ static void test_formula_with_functions(void) {
 
 static void test_formula_bool_result_is_typed(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -345,7 +345,7 @@ static void test_analyze_formulas_reports_dependencies(void) {
         { "trend", "ema_fast > ema_slow" }
     };
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     assert(cxpr_analyze_expressions(defs, 3, reg, analyses, order, &err));
     assert(err.code == CXPR_OK);
     assert(analyses[0].uses_expressions == true);
@@ -405,7 +405,7 @@ static void test_analyze_formulas_detects_cycles(void) {
 
 static void test_formula_bool_dependency_stays_typed(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -441,7 +441,7 @@ static void test_formula_bool_dependency_stays_typed(void) {
 
 static void test_formula_struct_result_and_field_dependency(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -482,7 +482,7 @@ static void test_formula_struct_result_and_field_dependency(void) {
 
 static void test_get_nonexistent(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 

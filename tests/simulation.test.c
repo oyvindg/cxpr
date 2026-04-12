@@ -214,7 +214,7 @@ static void test_sma_crossover(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);
@@ -294,7 +294,7 @@ static void test_ema_convergence(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);
@@ -349,7 +349,7 @@ static void test_rsi_signals(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);
@@ -424,7 +424,7 @@ static void test_bollinger_bands(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);
@@ -507,7 +507,7 @@ static void test_full_strategy_simulation(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);
@@ -655,7 +655,7 @@ static void test_full_strategy_simulation(void) {
 static void test_formula_engine_indicators(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);
@@ -760,7 +760,7 @@ static void test_stress_multi_expression(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     register_trading_functions(reg);

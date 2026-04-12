@@ -109,7 +109,7 @@ static void test_three_segment_is_chain_access(void) {
 
 static void test_chain_double(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = make_nested_ctx();
 
     cxpr_value r = eval_typed("outer.inner.value", ctx, reg);
@@ -125,7 +125,7 @@ static void test_chain_double(void) {
 
 static void test_chain_bool(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = make_nested_ctx();
 
     cxpr_value r = eval_typed("outer.inner.flag", ctx, reg);
@@ -141,7 +141,7 @@ static void test_chain_bool(void) {
 
 static void test_chain_four_segments(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = make_nested_ctx();
 
     cxpr_value r = eval_typed("outer.inner.sub.deep", ctx, reg);
@@ -157,7 +157,7 @@ static void test_chain_four_segments(void) {
 
 static void test_non_struct_intermediate(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = make_nested_ctx();
 
     /* outer.inner.value is double — cannot descend further */
@@ -172,7 +172,7 @@ static void test_non_struct_intermediate(void) {
 
 static void test_unknown_intermediate(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = make_nested_ctx();
 
     eval_typed_fails("outer.missing.value", ctx, reg, CXPR_ERR_UNKNOWN_IDENTIFIER);
@@ -204,7 +204,7 @@ static void test_chain_ast_references(void) {
 
 static void test_chain_in_expression(void) {
     cxpr_registry *reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_context *ctx = make_nested_ctx();
 
     /* outer.inner.value (double 7.0) > 5.0 → bool true */

@@ -14,7 +14,7 @@ int main(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "mass",          2.0);
     cxpr_context_set(ctx, "velocity",      3.0);

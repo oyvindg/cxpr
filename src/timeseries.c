@@ -13,7 +13,7 @@ typedef enum {
 
 /**
  * @brief Shared evaluator for monotonic trend predicates over historical offsets.
- * @param call_ast Function-call AST containing `(value_expr, bars)`.
+ * @param call_ast Function-call AST containing `(value_expr, lookback)`.
  * @param ctx Runtime context.
  * @param reg Function registry.
  * @param mode Direction to test.
@@ -26,9 +26,9 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
                                              cxpr_timeseries_trend_mode mode,
                                              cxpr_error* err) {
     const cxpr_ast* value_ast;
-    const cxpr_ast* bars_ast;
-    double bars_value = 0.0;
-    long long bars_ll;
+    const cxpr_ast* lookback_ast;
+    double lookback_value = 0.0;
+    long long lookback_ll;
 
     if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
         if (err) {
@@ -42,31 +42,31 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
         if (err) {
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = mode == CXPR_TIMESERIES_TREND_RISING
-                ? "rising(...) expects value, bars"
-                : "falling(...) expects value, bars";
+                ? "rising(...) expects value, lookback"
+                : "falling(...) expects value, lookback";
         }
         return cxpr_fv_bool(false);
     }
 
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    bars_ast = cxpr_ast_function_arg(call_ast, 1);
+    lookback_ast = cxpr_ast_function_arg(call_ast, 1);
 
-    if (!cxpr_eval_ast_number(bars_ast, ctx, reg, &bars_value, err)) {
+    if (!cxpr_eval_ast_number(lookback_ast, ctx, reg, &lookback_value, err)) {
         return cxpr_fv_bool(false);
     }
 
-    bars_ll = (long long)llround(bars_value);
-    if (!isfinite(bars_value) || fabs(bars_value - (double)bars_ll) > 1e-9 || bars_ll < 2) {
+    lookback_ll = (long long)llround(lookback_value);
+    if (!isfinite(lookback_value) || fabs(lookback_value - (double)lookback_ll) > 1e-9 || lookback_ll < 2) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
             err->message = mode == CXPR_TIMESERIES_TREND_RISING
-                ? "rising(...) requires integer bars >= 2"
-                : "falling(...) requires integer bars >= 2";
+                ? "rising(...) requires integer lookback >= 2"
+                : "falling(...) requires integer lookback >= 2";
         }
         return cxpr_fv_bool(false);
     }
 
-    for (long long i = 0; i < bars_ll - 1; ++i) {
+    for (long long i = 0; i < lookback_ll - 1; ++i) {
         double lhs = 0.0;
         double rhs = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &lhs, err) ||
@@ -83,7 +83,7 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
     return cxpr_fv_bool(true);
 }
 
-/** @brief Native implementation for `rising(value, bars)`. */
+/** @brief Native implementation for `rising(value, lookback)`. */
 static cxpr_value cxpr_timeseries_rising(const cxpr_ast* call_ast,
                                          const cxpr_context* ctx,
                                          const cxpr_registry* reg,
@@ -94,7 +94,7 @@ static cxpr_value cxpr_timeseries_rising(const cxpr_ast* call_ast,
         call_ast, ctx, reg, CXPR_TIMESERIES_TREND_RISING, err);
 }
 
-/** @brief Native implementation for `falling(value, bars)`. */
+/** @brief Native implementation for `falling(value, lookback)`. */
 static cxpr_value cxpr_timeseries_falling(const cxpr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,

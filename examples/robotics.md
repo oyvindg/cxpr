@@ -14,7 +14,7 @@ int main(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "distance_front", 0.42);
     cxpr_context_set(ctx, "battery",        76.0);
@@ -83,7 +83,7 @@ int main(void) {
     double goal3_xyz[] = {3.0, 0.0, 0.0};
     double pose3_xyz[] = {0.0, 0.0, 0.0};
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_fn(reg, "planar_goal_range", fn_planar_goal_range, xy, 2, 2, NULL, NULL);
     cxpr_registry_add(reg, "spatial_waypoint_range", fn_spatial_waypoint_range, 6, 6, NULL, NULL);
 
@@ -159,7 +159,7 @@ int main(void) {
         {0.35, 52.0, 18.0, 0.14, 2.6, 0.2, 3.0, 0.0}
     };
 
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
     cxpr_registry_add_fn(reg, "planar_goal_range", fn_planar_goal_range, xy, 2, 2, NULL, NULL);
 
     cxpr_context_set(ctx, "max_speed", 2.0);

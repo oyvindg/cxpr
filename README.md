@@ -111,7 +111,7 @@ int main(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_register_builtins(reg);
+    cxpr_register_defaults(reg);
 
     cxpr_context_set(ctx, "angle_deg", 120.0);
     cxpr_context_set_param(ctx, "limit", 1.2);
