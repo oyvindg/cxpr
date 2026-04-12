@@ -17,39 +17,7 @@
 extern "C" {
 #endif
 
-typedef enum {
-    CXPR_TOK_NUMBER,
-    CXPR_TOK_IDENTIFIER,
-    CXPR_TOK_VARIABLE,
-    CXPR_TOK_TRUE,
-    CXPR_TOK_FALSE,
-    CXPR_TOK_STRING,
-    CXPR_TOK_PLUS,
-    CXPR_TOK_MINUS,
-    CXPR_TOK_STAR,
-    CXPR_TOK_SLASH,
-    CXPR_TOK_PERCENT,
-    CXPR_TOK_POWER,
-    CXPR_TOK_EQ,
-    CXPR_TOK_NEQ,
-    CXPR_TOK_LT,
-    CXPR_TOK_GT,
-    CXPR_TOK_LTE,
-    CXPR_TOK_GTE,
-    CXPR_TOK_AND,
-    CXPR_TOK_OR,
-    CXPR_TOK_NOT,
-    CXPR_TOK_LPAREN,
-    CXPR_TOK_RPAREN,
-    CXPR_TOK_LBRACKET,
-    CXPR_TOK_RBRACKET,
-    CXPR_TOK_COMMA,
-    CXPR_TOK_DOT,
-    CXPR_TOK_QUESTION,
-    CXPR_TOK_COLON,
-    CXPR_TOK_EOF,
-    CXPR_TOK_ERROR
-} cxpr_token_type;
+/* cxpr_token_type is publicly defined in cxpr/ast.h (included via cxpr/cxpr.h) */
 
 typedef struct {
     cxpr_token_type type;
@@ -165,6 +133,9 @@ typedef struct {
     cxpr_typed_func_ptr typed_func;
     cxpr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
+    cxpr_ast_func_ptr ast_func_overlay;
+    void* ast_func_overlay_userdata;
+    cxpr_userdata_free_fn ast_func_overlay_userdata_free;
     enum {
         CXPR_NATIVE_KIND_NONE = 0,
         CXPR_NATIVE_KIND_NULLARY,
@@ -180,6 +151,8 @@ typedef struct {
     } native_scalar;
     size_t min_args;
     size_t max_args;
+    char** param_names;
+    size_t param_name_count;
     cxpr_value_type* arg_types; /**< Optional declared argument types (length max_args) */
     size_t arg_type_count;      /**< Number of entries in arg_types */
     cxpr_value_type return_type; /**< Declared result type when known */

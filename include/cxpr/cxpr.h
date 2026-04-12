@@ -8,6 +8,13 @@
 #ifndef CXPR_H
 #define CXPR_H
 
+/** @brief Public cxpr major version. */
+#define CXPR_VERSION_MAJOR 1
+/** @brief Public cxpr minor version. */
+#define CXPR_VERSION_MINOR 0
+/** @brief Public cxpr patch version. */
+#define CXPR_VERSION_PATCH 4
+
 #include <cxpr/types.h>
 #include <cxpr/ast.h>
 #include <cxpr/context.h>

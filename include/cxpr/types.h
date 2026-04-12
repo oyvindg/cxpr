@@ -13,13 +13,6 @@
 extern "C" {
 #endif
 
-/** @brief Public cxpr major version. */
-#define CXPR_VERSION_MAJOR 1
-/** @brief Public cxpr minor version. */
-#define CXPR_VERSION_MINOR 0
-/** @brief Public cxpr patch version. */
-#define CXPR_VERSION_PATCH 0
-
 /** @brief Opaque parser handle. */
 typedef struct cxpr_parser cxpr_parser;
 /** @brief Opaque AST handle. */

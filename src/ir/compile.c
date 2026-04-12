@@ -145,6 +145,15 @@ static bool cxpr_ir_arg_needs_overlay_passthrough(const cxpr_ast* ast) {
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_LOOKBACK:
         return true;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_ir_arg_needs_overlay_passthrough(ast->data.binary_op.left) ||
+               cxpr_ir_arg_needs_overlay_passthrough(ast->data.binary_op.right);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_ir_arg_needs_overlay_passthrough(ast->data.unary_op.operand);
+    case CXPR_NODE_TERNARY:
+        return cxpr_ir_arg_needs_overlay_passthrough(ast->data.ternary.condition) ||
+               cxpr_ir_arg_needs_overlay_passthrough(ast->data.ternary.true_branch) ||
+               cxpr_ir_arg_needs_overlay_passthrough(ast->data.ternary.false_branch);
     default:
         return false;
     }

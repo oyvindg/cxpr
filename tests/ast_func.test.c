@@ -631,6 +631,272 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
     printf("  ✓ test_producer_access_string_calls_fall_back_to_ast_in_ir\n");
 }
 
+/**
+ * Binary op arg containing an identifier triggers overlay passthrough.
+ * mode_tf(close / 100) — BINARY_OP(IDENTIFIER, NUMBER) → CALL_AST.
+ */
+static void test_overlay_passthrough_binary_op_with_identifier(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf(close / 100)");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+    assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
+
+    cxpr_context_set(ctx, "close", 100.0);
+    g_mode_overlay_ast_calls = 0;
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 2.0);
+    assert(g_mode_overlay_ast_calls == 1);
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_passthrough_binary_op_with_identifier\n");
+}
+
+/**
+ * Pure-constant binary op arg does NOT trigger overlay passthrough.
+ * mode_tf(2 + 3) — BINARY_OP(NUMBER, NUMBER) → CALL_FUNC, not CALL_AST.
+ */
+static void test_overlay_no_passthrough_binary_op_constants_only(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf(2 + 3)");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
+
+    g_mode_overlay_ast_calls = 0;
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 6.0);
+    assert(g_mode_overlay_ast_calls == 0);
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_no_passthrough_binary_op_constants_only\n");
+}
+
+/**
+ * Unary op arg containing an identifier triggers overlay passthrough.
+ * mode_tf(-close) — UNARY_OP(IDENTIFIER) → CALL_AST.
+ */
+static void test_overlay_passthrough_unary_op_with_identifier(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf(-close)");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+    assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
+
+    cxpr_context_set(ctx, "close", 5.0);
+    g_mode_overlay_ast_calls = 0;
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, -4.0);
+    assert(g_mode_overlay_ast_calls == 1);
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_passthrough_unary_op_with_identifier\n");
+}
+
+/**
+ * Lookback arg directly triggers overlay passthrough.
+ * mode_tf(close[3]) — LOOKBACK → CALL_AST.
+ */
+static void test_overlay_passthrough_lookback_arg(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf(close[3])");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+    assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_passthrough_lookback_arg\n");
+}
+
+/**
+ * Ternary arg containing an identifier triggers overlay passthrough.
+ * mode_tf(x > 0 ? close : 0) — TERNARY(…, IDENTIFIER, …) → CALL_AST.
+ */
+static void test_overlay_passthrough_ternary_with_identifier(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf(x > 0 ? close : 0)");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+    assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
+
+    cxpr_context_set(ctx, "x", 1.0);
+    cxpr_context_set(ctx, "close", 50.0);
+    g_mode_overlay_ast_calls = 0;
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 51.0);
+    assert(g_mode_overlay_ast_calls == 1);
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_passthrough_ternary_with_identifier\n");
+}
+
+/**
+ * Nested binary op: only the inner identifier triggers passthrough.
+ * mode_tf((close + high) / 2) — deeply nested identifiers → CALL_AST.
+ */
+static void test_overlay_passthrough_nested_binary_ops(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf((close + high) / 2)");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+
+    cxpr_context_set(ctx, "close", 100.0);
+    cxpr_context_set(ctx, "high", 110.0);
+    g_mode_overlay_ast_calls = 0;
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 106.0);
+    assert(g_mode_overlay_ast_calls == 1);
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_passthrough_nested_binary_ops\n");
+}
+
+/**
+ * Function call arg triggers overlay passthrough (conservative — any FUNCTION_CALL in args).
+ * mode_tf(sqrt(close)) — inner arg is FUNCTION_CALL → CALL_AST.
+ */
+static void test_overlay_passthrough_function_call_arg(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_builtins(reg);
+    cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+
+    cxpr_ast* ast = parse_or_die(p, "mode_tf(sqrt(close))");
+
+    cxpr_ir_program ir = {0};
+    assert(cxpr_ir_compile(ast, reg, &ir, &err));
+    assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
+
+    cxpr_context_set(ctx, "close", 16.0);
+    g_mode_overlay_ast_calls = 0;
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 5.0);
+    assert(g_mode_overlay_ast_calls == 1);
+
+    cxpr_ir_program_reset(&ir);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_overlay_passthrough_function_call_arg\n");
+}
+
 int main(void) {
     printf("Running ast function tests...\n");
     test_ast_function_can_read_variable_argument();
@@ -643,6 +909,13 @@ int main(void) {
     test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir();
     test_expression_compile_supports_timeframe_overlay();
     test_producer_access_string_calls_fall_back_to_ast_in_ir();
+    test_overlay_passthrough_binary_op_with_identifier();
+    test_overlay_no_passthrough_binary_op_constants_only();
+    test_overlay_passthrough_unary_op_with_identifier();
+    test_overlay_passthrough_lookback_arg();
+    test_overlay_passthrough_ternary_with_identifier();
+    test_overlay_passthrough_nested_binary_ops();
+    test_overlay_passthrough_function_call_arg();
     printf("All ast function tests passed!\n");
     return 0;
 }
