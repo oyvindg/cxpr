@@ -1005,19 +1005,27 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
                         char** new_arg_names;
                         size_t old_capacity = args_capacity;
                         args_capacity *= 2;
+
                         new_args = (cxpr_ast**)realloc(args, args_capacity * sizeof(cxpr_ast*));
-                        new_arg_names = (char**)realloc(arg_names, args_capacity * sizeof(char*));
-                        if (!new_args || !new_arg_names) {
+                        if (!new_args) {
                             free(name);
                             for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
                             for (size_t i = 0; i < argc; ++i) free(arg_names[i]);
-                            if (new_args && new_args != args) free(new_args);
-                            if (new_arg_names && new_arg_names != arg_names) free(new_arg_names);
                             free(arg_names);
                             free(args);
                             return NULL;
                         }
                         args = new_args;
+
+                        new_arg_names = (char**)realloc(arg_names, args_capacity * sizeof(char*));
+                        if (!new_arg_names) {
+                            free(name);
+                            for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
+                            for (size_t i = 0; i < argc; ++i) free(arg_names[i]);
+                            free(arg_names);
+                            free(args);
+                            return NULL;
+                        }
                         arg_names = new_arg_names;
                         memset(arg_names + old_capacity, 0,
                                (args_capacity - old_capacity) * sizeof(char*));
