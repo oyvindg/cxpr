@@ -361,3 +361,49 @@ cmake --build build --target cxpr_bench_ir && \
 ```
 
 Use `-DCMAKE_BUILD_TYPE=Release` when benchmarking for meaningful timings.
+
+Example output from `./build-release/benchmarks/cxpr_bench_ir`:
+
+```text
+cxpr AST vs IR benchmark
+
+Scalar
+case                     iters   AST ns/eval    IR ns/eval   speedup
+simple_arith            500000         58.03         48.05      1.21x
+nested_expr             400000         97.82         79.35      1.23x
+function_call           250000        154.72         59.49      2.60x
+defined_fn              200000        247.60         50.06      4.95x
+native_fn               200000        125.59         51.82      2.42x
+defined_chain           120000        292.27         73.57      3.97x
+native_chain            120000        145.80         64.50      2.26x
+mixed_chain             120000        208.75         70.90      2.94x
+deep_defined             80000        272.29         77.85      3.50x
+deep_native              80000        372.05         68.13      5.46x
+context_churn           200000        132.41        112.79      1.17x
+
+Typed Struct
+case                     iters   AST ns/eval    IR ns/eval   speedup
+producer_field          150000        129.96         89.84      1.45x
+producer_struct         150000        315.61         66.42      4.75x
+
+IR-only
+case                     iters   AST ns/eval    IR ns/eval   speedup
+context_slot            200000             -         88.44         -
+
+Context Update Paths
+case                     iters     set ns/op     alt ns/op   speedup
+base_array              500000        101.45         86.73      1.17x
+mutate_array            500000         45.70         39.85      1.15x
+mutate_prehashed        500000         45.70         32.57      1.40x
+mutate_slot             500000         45.70         10.79      4.24x
+
+Param Update Paths
+case                     iters     set ns/op     alt ns/op   speedup
+base_param_array        500000         61.62         57.80      1.07x
+mutate_param_array      500000         62.39         58.10      1.07x
+mutate_param_hash       500000         62.39         50.34      1.24x
+sink=66507643.882822
+```
+
+These numbers are machine-dependent, but they show the expected shape: IR evaluation
+is usually faster than AST evaluation, and slot/prehashed update paths help the hottest loops.
