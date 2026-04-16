@@ -45,11 +45,11 @@ ctest --preset default          # run tests
 
 Additional presets:
 
-| Preset    | Purpose                                      |
-|-----------|----------------------------------------------|
-| `strict`  | Strict compiler warnings (`-Werror`)         |
-| `asan`    | AddressSanitizer (Debug)                     |
-| `ubsan`   | UndefinedBehaviorSanitizer (Debug)           |
+| Preset   | Purpose                              |
+| -------- | ------------------------------------ |
+| `strict` | Strict compiler warnings (`-Werror`) |
+| `asan`   | AddressSanitizer (Debug)             |
+| `ubsan`  | UndefinedBehaviorSanitizer (Debug)   |
 
 ## Installation
 
@@ -93,14 +93,18 @@ target_link_libraries(my_target PRIVATE cxpr::cxpr)
 #include <cxpr/cxpr.h>
 #include <stdio.h>
 
+// 1. Define some functions the expression can call.
+// deg2rad converts degrees to radians.
 static double deg2rad(double d) {
     return d * 3.14159265358979323846 / 180.0;
 }
 
+// clamp keeps a value inside the inclusive [lo, hi] interval.
 static double clamp(double v, double lo, double hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
+// within_limit returns true when the first argument is below the second.
 static cxpr_value within_limit(const double* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
@@ -116,11 +120,13 @@ int main(void) {
     cxpr_context_set(ctx, "angle_deg", 120.0);
     cxpr_context_set_param(ctx, "limit", 1.2);
 
+    // 2. Register those functions under the names used in the expression.
     cxpr_registry_add_unary(reg, "deg2rad", deg2rad);
     cxpr_registry_add_ternary(reg, "clamp", clamp);
     cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
     cxpr_error err = {0};
+    // 3. Parse an expression that converts angle_deg, clamps it, and checks $limit.
     cxpr_ast* ast = cxpr_parse(parser,
         "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)",
         &err);
@@ -129,6 +135,7 @@ int main(void) {
         return 1;
     }
 
+    // 4. Evaluate the parsed AST with the current context and parameters.
     bool result = false;
     if (!cxpr_eval_ast_bool(ast, ctx, reg, &result, &err)) {
         fprintf(stderr, "eval error at %zu:%zu: %s\n", err.line, err.column, err.message);
@@ -206,24 +213,30 @@ Without a resolver, evaluating expressions such as `close[1]` or
 Register C functions directly before parsing expressions that call them:
 
 ```c
+// 1. Define some functions the expression can call.
+// deg2rad converts degrees to radians.
 static double deg2rad(double d) {
     return d * 3.14159265358979323846 / 180.0;
 }
 
+// clamp keeps a value inside the inclusive [lo, hi] interval.
 static double clamp(double v, double lo, double hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
+// within_limit returns true when the first argument is below the second.
 static cxpr_value within_limit(const double* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
     return cxpr_fv_bool(args[0] < args[1]);
 }
 
+// 2. Register those functions under the names used in the expression.
 cxpr_registry_add_unary(reg, "deg2rad", deg2rad);
 cxpr_registry_add_ternary(reg, "clamp", clamp);
 cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
+// 3. Parse a pipe-style expression with the same steps as the nested-call example.
 cxpr_ast* ast = cxpr_parse(parser,
     "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)",
     &err);
@@ -274,16 +287,16 @@ cxpr_evaluator_free(evaluator);
 All public functions that can fail accept a `cxpr_error*` output parameter (pass `NULL` to
 ignore). On failure, `err.code` is one of:
 
-| Code                        | Meaning                                      |
-|-----------------------------|----------------------------------------------|
-| `CXPR_ERR_SYNTAX`           | Malformed expression or bad argument         |
-| `CXPR_ERR_UNKNOWN_IDENTIFIER` | Variable or parameter not in context       |
-| `CXPR_ERR_UNKNOWN_FUNCTION` | Function not found in registry               |
-| `CXPR_ERR_WRONG_ARITY`      | Wrong number of arguments                    |
-| `CXPR_ERR_DIVISION_BY_ZERO` | Division or modulo by zero                   |
-| `CXPR_ERR_CIRCULAR_DEPENDENCY` | Cycle in named-expression dependencies    |
-| `CXPR_ERR_TYPE_MISMATCH`    | Value type incompatible with operation       |
-| `CXPR_ERR_OUT_OF_MEMORY`    | Allocation failure                           |
+| Code                           | Meaning                                |
+| ------------------------------ | -------------------------------------- |
+| `CXPR_ERR_SYNTAX`              | Malformed expression or bad argument   |
+| `CXPR_ERR_UNKNOWN_IDENTIFIER`  | Variable or parameter not in context   |
+| `CXPR_ERR_UNKNOWN_FUNCTION`    | Function not found in registry         |
+| `CXPR_ERR_WRONG_ARITY`         | Wrong number of arguments              |
+| `CXPR_ERR_DIVISION_BY_ZERO`    | Division or modulo by zero             |
+| `CXPR_ERR_CIRCULAR_DEPENDENCY` | Cycle in named-expression dependencies |
+| `CXPR_ERR_TYPE_MISMATCH`       | Value type incompatible with operation |
+| `CXPR_ERR_OUT_OF_MEMORY`       | Allocation failure                     |
 
 `err.message`, `err.line`, `err.column`, and `err.position` give further detail.
 
