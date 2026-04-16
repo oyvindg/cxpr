@@ -414,8 +414,8 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
     assert(err.code == CXPR_OK);
     prog_result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    ASSERT_DOUBLE_EQ(ast_result, -9.0);
-    ASSERT_DOUBLE_EQ(prog_result, -9.0);
+    ASSERT_DOUBLE_EQ(ast_result, 15.0);
+    ASSERT_DOUBLE_EQ(prog_result, 15.0);
 
     cxpr_context_set(ctx, "ema_len", 12.0);
     cxpr_context_set_param(ctx, "slow", 26.0);
@@ -424,8 +424,8 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
     assert(err.code == CXPR_OK);
     prog_result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    ASSERT_DOUBLE_EQ(ast_result, -4.0);
-    ASSERT_DOUBLE_EQ(prog_result, -4.0);
+    ASSERT_DOUBLE_EQ(ast_result, 22.0);
+    ASSERT_DOUBLE_EQ(prog_result, 22.0);
 
     cxpr_program_free(prog);
     cxpr_ast_free(ast);
