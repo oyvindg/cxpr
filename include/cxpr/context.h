@@ -42,6 +42,17 @@ cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
  * @param value Numeric value to store.
  */
 void cxpr_context_set(cxpr_context* ctx, const char* name, double value);
+/** @brief One numeric runtime-variable assignment entry. */
+typedef struct {
+    const char* name;
+    double value;
+} cxpr_context_entry;
+/**
+ * @brief Set multiple numeric runtime variables from a NULL-terminated array.
+ * @param ctx Destination context.
+ * @param entries Array of `{ name, value }` pairs terminated by `{ NULL, 0 }`.
+ */
+void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries);
 /**
  * @brief Set a numeric runtime variable using a precomputed hash.
  * @param ctx Destination context.
@@ -67,6 +78,12 @@ double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found);
  * @param value Numeric value to store.
  */
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value);
+/**
+ * @brief Set multiple numeric `$param`s from a NULL-terminated array.
+ * @param ctx Destination context.
+ * @param entries Array of `{ name, value }` pairs terminated by `{ NULL, 0 }`.
+ */
+void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* entries);
 /**
  * @brief Set a numeric `$param` using a precomputed hash.
  * @param ctx Destination context.
@@ -119,6 +136,14 @@ double cxpr_context_slot_get(const cxpr_context_slot* slot);
  * @return Parameter value, or `0.0` on miss.
  */
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up one binding as a typed cxpr value.
+ * @param ctx Context to query.
+ * @param name Binding name.
+ * @param found Optional success flag output.
+ * @return Number, bool, or struct value on hit; zero-like value on miss.
+ */
+cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found);
 /**
  * @brief Clear all variables, params, structs, and caches from a context.
  * @param ctx Context to clear.

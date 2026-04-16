@@ -124,6 +124,37 @@ static void test_power_double_star(void) {
     printf("  ✓ test_power_double_star\n");
 }
 
+static void test_pipe_operator(void) {
+    cxpr_lexer lex;
+    cxpr_lexer_init(&lex, "a |> f");
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_PIPE);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EOF);
+    printf("  ✓ test_pipe_operator\n");
+}
+
+static void test_pipe_gt_operator_combinations(void) {
+    cxpr_lexer lex;
+    cxpr_lexer_init(&lex, "a |> f > g >= h || i |> j ||> k");
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* a */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_PIPE);       /* |> */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* f */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_GT);         /* > */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* g */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_GTE);        /* >= */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* h */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_OR);         /* || */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* i */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_PIPE);       /* |> */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* j */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_OR);         /* || (from ||>) */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_GT);         /* >  (from ||>) */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_IDENTIFIER); /* k */
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EOF);
+    printf("  ✓ test_pipe_gt_operator_combinations\n");
+}
+
 static void test_delimiters(void) {
     cxpr_lexer lex;
     cxpr_lexer_init(&lex, "( ) , . ? :");
@@ -484,6 +515,8 @@ int main(void) {
     test_comparison_operators();
     test_logical_operators();
     test_power_double_star();
+    test_pipe_operator();
+    test_pipe_gt_operator_combinations();
     test_delimiters();
 
     /* Keywords */

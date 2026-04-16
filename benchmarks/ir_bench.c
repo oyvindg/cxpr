@@ -98,6 +98,42 @@ static void mutate_values(cxpr_context* ctx, size_t i) {
     cxpr_context_set(ctx, "z", 13.5 - t * 0.25);
 }
 
+static void set_base_values_array(cxpr_context* ctx) {
+    cxpr_context_set_array(ctx, (cxpr_context_entry[]) {
+        {"a", 1.5},
+        {"b", 2.5},
+        {"c", 3.5},
+        {"d", 4.5},
+        {"e", 5.5},
+        {"f", 6.5},
+        {"g", 7.5},
+        {"h", 8.5},
+        {"i", 9.5},
+        {"j", 10.5},
+        {"x", 11.5},
+        {"y", 12.5},
+        {"z", 13.5},
+        {"m", 14.5},
+        {"n", -15.5},
+        {NULL, 0.0}
+    });
+}
+
+static void mutate_values_array(cxpr_context* ctx, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_set_array(ctx, (cxpr_context_entry[]) {
+        {"a", 1.5 + t},
+        {"b", 2.5 + t * 2.0},
+        {"c", 3.5 + t * 3.0},
+        {"d", 4.5 + t * 4.0},
+        {"e", 5.5 + t * 5.0},
+        {"x", 11.5 - t},
+        {"y", 12.5 + t * 0.5},
+        {"z", 13.5 - t * 0.25},
+        {NULL, 0.0}
+    });
+}
+
 typedef struct {
     cxpr_context_slot a, b, c, d, e, x, y, z;
 } churn_slots;
@@ -105,6 +141,10 @@ typedef struct {
 typedef struct {
     unsigned long a, b, c, d, e, x, y, z;
 } churn_hashes;
+
+typedef struct {
+    unsigned long p1, p2, p3, p4, p5, p6, p7, p8;
+} param_hashes;
 
 static churn_hashes make_churn_hashes(void) {
     churn_hashes h;
@@ -116,6 +156,19 @@ static churn_hashes make_churn_hashes(void) {
     h.x = cxpr_hash_string("x");
     h.y = cxpr_hash_string("y");
     h.z = cxpr_hash_string("z");
+    return h;
+}
+
+static param_hashes make_param_hashes(void) {
+    param_hashes h;
+    h.p1 = cxpr_hash_string("p1");
+    h.p2 = cxpr_hash_string("p2");
+    h.p3 = cxpr_hash_string("p3");
+    h.p4 = cxpr_hash_string("p4");
+    h.p5 = cxpr_hash_string("p5");
+    h.p6 = cxpr_hash_string("p6");
+    h.p7 = cxpr_hash_string("p7");
+    h.p8 = cxpr_hash_string("p8");
     return h;
 }
 
@@ -141,6 +194,218 @@ static void mutate_values_slots(churn_slots* s, size_t i) {
     cxpr_context_slot_set(&s->x, 11.5 - t);
     cxpr_context_slot_set(&s->y, 12.5 + t * 0.5);
     cxpr_context_slot_set(&s->z, 13.5 - t * 0.25);
+}
+
+static void set_base_params(cxpr_context* ctx) {
+    cxpr_context_set_param(ctx, "p1", 1.5);
+    cxpr_context_set_param(ctx, "p2", 2.5);
+    cxpr_context_set_param(ctx, "p3", 3.5);
+    cxpr_context_set_param(ctx, "p4", 4.5);
+    cxpr_context_set_param(ctx, "p5", 5.5);
+    cxpr_context_set_param(ctx, "p6", 6.5);
+    cxpr_context_set_param(ctx, "p7", 7.5);
+    cxpr_context_set_param(ctx, "p8", 8.5);
+}
+
+static void set_base_params_array(cxpr_context* ctx) {
+    cxpr_context_set_param_array(ctx, (cxpr_context_entry[]) {
+        {"p1", 1.5},
+        {"p2", 2.5},
+        {"p3", 3.5},
+        {"p4", 4.5},
+        {"p5", 5.5},
+        {"p6", 6.5},
+        {"p7", 7.5},
+        {"p8", 8.5},
+        {NULL, 0.0}
+    });
+}
+
+static void mutate_params(cxpr_context* ctx, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_set_param(ctx, "p1", 1.5 + t);
+    cxpr_context_set_param(ctx, "p2", 2.5 + t * 2.0);
+    cxpr_context_set_param(ctx, "p3", 3.5 + t * 3.0);
+    cxpr_context_set_param(ctx, "p4", 4.5 + t * 4.0);
+    cxpr_context_set_param(ctx, "p5", 5.5 + t * 5.0);
+    cxpr_context_set_param(ctx, "p6", 6.5 - t);
+    cxpr_context_set_param(ctx, "p7", 7.5 + t * 0.5);
+    cxpr_context_set_param(ctx, "p8", 8.5 - t * 0.25);
+}
+
+static void mutate_params_array(cxpr_context* ctx, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_set_param_array(ctx, (cxpr_context_entry[]) {
+        {"p1", 1.5 + t},
+        {"p2", 2.5 + t * 2.0},
+        {"p3", 3.5 + t * 3.0},
+        {"p4", 4.5 + t * 4.0},
+        {"p5", 5.5 + t * 5.0},
+        {"p6", 6.5 - t},
+        {"p7", 7.5 + t * 0.5},
+        {"p8", 8.5 - t * 0.25},
+        {NULL, 0.0}
+    });
+}
+
+static void mutate_params_prehashed(cxpr_context* ctx, const param_hashes* h, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_set_param_prehashed(ctx, "p1", h->p1, 1.5 + t);
+    cxpr_context_set_param_prehashed(ctx, "p2", h->p2, 2.5 + t * 2.0);
+    cxpr_context_set_param_prehashed(ctx, "p3", h->p3, 3.5 + t * 3.0);
+    cxpr_context_set_param_prehashed(ctx, "p4", h->p4, 4.5 + t * 4.0);
+    cxpr_context_set_param_prehashed(ctx, "p5", h->p5, 5.5 + t * 5.0);
+    cxpr_context_set_param_prehashed(ctx, "p6", h->p6, 6.5 - t);
+    cxpr_context_set_param_prehashed(ctx, "p7", h->p7, 7.5 + t * 0.5);
+    cxpr_context_set_param_prehashed(ctx, "p8", h->p8, 8.5 - t * 0.25);
+}
+
+static double time_set_base_values(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        set_base_values(ctx);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_set_base_values_array(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        set_base_values_array(ctx);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_values(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_values(ctx, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_values_array(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_values_array(ctx, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_values_prehashed_only(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+    churn_hashes hashes = make_churn_hashes();
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_values_prehashed(ctx, &hashes, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_values_slots_only(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+    churn_slots s;
+
+    set_base_values(ctx);
+    if (!cxpr_context_slot_bind(ctx, "a", &s.a) ||
+        !cxpr_context_slot_bind(ctx, "b", &s.b) ||
+        !cxpr_context_slot_bind(ctx, "c", &s.c) ||
+        !cxpr_context_slot_bind(ctx, "d", &s.d) ||
+        !cxpr_context_slot_bind(ctx, "e", &s.e) ||
+        !cxpr_context_slot_bind(ctx, "x", &s.x) ||
+        !cxpr_context_slot_bind(ctx, "y", &s.y) ||
+        !cxpr_context_slot_bind(ctx, "z", &s.z)) {
+        fprintf(stderr, "Slot bind failed\n");
+        exit(1);
+    }
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_values_slots(&s, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_set_base_params(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        set_base_params(ctx);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_set_base_params_array(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        set_base_params_array(ctx);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_params(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_params(ctx, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_params_array_only(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_params_array(ctx, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_params_prehashed_only(cxpr_context* ctx, size_t iterations) {
+    size_t i;
+    long long start, end;
+    param_hashes hashes = make_param_hashes();
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        mutate_params_prehashed(ctx, &hashes, i);
+    }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
 }
 
 static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
@@ -434,6 +699,58 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     cxpr_ast_free(ast);
 }
 
+static void bench_context_update_paths(cxpr_context* ctx) {
+    const size_t iterations = 500000;
+    double set_ns;
+    double array_ns;
+    double mutate_set_ns;
+    double mutate_array_ns;
+    double mutate_prehashed_ns;
+    double mutate_slot_ns;
+
+    set_ns = time_set_base_values(ctx, iterations);
+    array_ns = time_set_base_values_array(ctx, iterations);
+    mutate_set_ns = time_mutate_values(ctx, iterations);
+    mutate_array_ns = time_mutate_values_array(ctx, iterations);
+    mutate_prehashed_ns = time_mutate_values_prehashed_only(ctx, iterations);
+    mutate_slot_ns = time_mutate_values_slots_only(ctx, iterations);
+
+    printf("%-18s  %10s  %12s  %12s  %8s\n",
+           "case", "iters", "set ns/op", "alt ns/op", "speedup");
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "base_array", iterations, set_ns, array_ns, set_ns / array_ns);
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "mutate_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "mutate_prehashed", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "mutate_slot", iterations, mutate_set_ns, mutate_slot_ns, mutate_set_ns / mutate_slot_ns);
+}
+
+static void bench_param_update_paths(cxpr_context* ctx) {
+    const size_t iterations = 500000;
+    double set_ns;
+    double array_ns;
+    double mutate_set_ns;
+    double mutate_array_ns;
+    double mutate_prehashed_ns;
+
+    set_ns = time_set_base_params(ctx, iterations);
+    array_ns = time_set_base_params_array(ctx, iterations);
+    mutate_set_ns = time_mutate_params(ctx, iterations);
+    mutate_array_ns = time_mutate_params_array_only(ctx, iterations);
+    mutate_prehashed_ns = time_mutate_params_prehashed_only(ctx, iterations);
+
+    printf("%-18s  %10s  %12s  %12s  %8s\n",
+           "case", "iters", "set ns/op", "alt ns/op", "speedup");
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "base_param_array", iterations, set_ns, array_ns, set_ns / array_ns);
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "mutate_param_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "mutate_param_hash", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
+}
+
 static void print_bench_header(const char* title) {
     printf("\n%s\n", title);
     printf("%-18s  %10s  %12s  %12s  %8s\n",
@@ -528,6 +845,12 @@ int main(void) {
 
     print_bench_header("IR-only");
     bench_slot_churn(parser, ctx, reg);
+
+    printf("\nContext Update Paths\n");
+    bench_context_update_paths(ctx);
+
+    printf("\nParam Update Paths\n");
+    bench_param_update_paths(ctx);
 
     printf("sink=%.6f\n", g_sink);
 

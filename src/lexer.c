@@ -101,6 +101,8 @@ static const cxpr_keyword_entry cxpr_keywords[] = {
     {"OR",    CXPR_TOK_OR},
     {"not",   CXPR_TOK_NOT},
     {"NOT",   CXPR_TOK_NOT},
+    {"in",    CXPR_TOK_IN},
+    {"IN",    CXPR_TOK_IN},
     {"true",  CXPR_TOK_TRUE},
     {"TRUE",  CXPR_TOK_TRUE},
     {"false", CXPR_TOK_FALSE},
@@ -349,6 +351,10 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
     if (c == '&' && next == '&') {
         cxpr_lexer_advance(lexer); cxpr_lexer_advance(lexer);
         return cxpr_make_token(CXPR_TOK_AND, start, 2, start_pos, start_line, start_col);
+    }
+    if (c == '|' && next == '>') {
+        cxpr_lexer_advance(lexer); cxpr_lexer_advance(lexer);
+        return cxpr_make_token(CXPR_TOK_PIPE, start, 2, start_pos, start_line, start_col);
     }
     if (c == '|' && next == '|') {
         cxpr_lexer_advance(lexer); cxpr_lexer_advance(lexer);

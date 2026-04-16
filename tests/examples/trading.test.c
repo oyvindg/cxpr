@@ -20,18 +20,24 @@ int main(void) {
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "cross_below", fn_cross_below, 4, 4, NULL, NULL);
 
-    cxpr_context_set(ctx, "close", 98.5);
-    cxpr_context_set(ctx, "ema_fast", 99.2);
-    cxpr_context_set(ctx, "ema_slow", 99.4);
-    cxpr_context_set(ctx, "rsi", 54.0);
-    cxpr_context_set(ctx, "volume", 1500000.0);
-    cxpr_context_set(ctx, "lower_band", 99.0);
-    cxpr_context_set(ctx, "atr", 2.1);
-    cxpr_context_set(ctx, "prev_ema_fast", 99.6);
-    cxpr_context_set(ctx, "prev_ema_slow", 99.4);
+    cxpr_context_set_array(ctx, (cxpr_context_entry[]) {
+        {"close", 98.5},
+        {"ema_fast", 99.2},
+        {"ema_slow", 99.4},
+        {"rsi", 54.0},
+        {"volume", 1500000.0},
+        {"lower_band", 99.0},
+        {"atr", 2.1},
+        {"prev_ema_fast", 99.6},
+        {"prev_ema_slow", 99.4},
+        {NULL, 0.0}
+    });
 
-    cxpr_context_set_param(ctx, "min_volume", 1000000.0);
-    cxpr_context_set_param(ctx, "max_vol_ratio", 0.03);
+    cxpr_context_set_param_array(ctx, (cxpr_context_entry[]) {
+        {"min_volume", 1000000.0},
+        {"max_vol_ratio", 0.03},
+        {NULL, 0.0}
+    });
 
     const cxpr_expression_def defs[] = {
         { "trend", "close > ema_fast and ema_fast > ema_slow" },
@@ -90,11 +96,14 @@ int main(void) {
         assert(cxpr_evaluator_compile(evaluator, &err));
 
         for (size_t i = 0; i < sizeof(bars) / sizeof(bars[0]); ++i) {
-            cxpr_context_set(ctx, "close", bars[i].close);
-            cxpr_context_set(ctx, "ema_fast", bars[i].ema_fast);
-            cxpr_context_set(ctx, "ema_slow", bars[i].ema_slow);
-            cxpr_context_set(ctx, "rsi", bars[i].rsi);
-            cxpr_context_set(ctx, "volume", bars[i].volume);
+            cxpr_context_set_array(ctx, (cxpr_context_entry[]) {
+                {"close", bars[i].close},
+                {"ema_fast", bars[i].ema_fast},
+                {"ema_slow", bars[i].ema_slow},
+                {"rsi", bars[i].rsi},
+                {"volume", bars[i].volume},
+                {NULL, 0.0}
+            });
 
             cxpr_evaluator_eval(evaluator, ctx, &err);
             assert(err.code == CXPR_OK);

@@ -178,9 +178,11 @@ Supported language features:
 
 - Arithmetic: `+`, `-`, `*`, `/`, `%`, `^`, `**`
 - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- Range membership: `x in [10, 20]`, `x not in [min=10, max=20]`
 - Logic: `and`, `or`, `not`, `&&`, `||`, `!`
 - Ternary: `condition ? a : b`
 - Function calls: `sqrt(x)`, `clamp(v, lo, hi)`
+- Forward pipe: `x |> f |> g(1)` (desugars to `g(f(x), 1)`, RHS must be callable)
 - Params with `$` prefix: `$threshold`
 - Field access for named structs and produced structs: `quote.mid`, `body.velocity.x`
 - Postfix lookback syntax: `close[1]`, `macd(12, 26, 9).signal[2]`
@@ -223,7 +225,7 @@ cxpr_registry_add_ternary(reg, "clamp", clamp);
 cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
 cxpr_ast* ast = cxpr_parse(parser,
-    "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)",
+    "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)",
     &err);
 ```
 

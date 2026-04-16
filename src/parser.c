@@ -3,18 +3,20 @@
  * @brief Recursive descent parser for cxpr expressions.
  *
  * Parses token streams into AST using the EBNF grammar:
- *   expression  → ternary
+ *   expression  → pipe
+ *   pipe        → ternary { "|>" ternary }
  *   ternary     → or_expr [ "?" expression ":" expression ]
  *   or_expr     → and_expr { ("||"|"or") and_expr }
  *   and_expr    → not_expr { ("&&"|"and") not_expr }
  *   not_expr    → ("!"|"not") not_expr | equality
  *   equality    → relational [ ("=="|"!=") relational ]
- *   relational  → arithmetic [ ("<"|"<="|">"|">=") arithmetic ]
+ *   relational  → arithmetic [ ("<"|"<="|">"|">=") arithmetic
+ *                            | [ "not" ] "in" "[" expression "," expression "]" ]
  *   arithmetic  → term { ("+"|"-") term }
  *   term        → unary { ("*"|"/"|"%") unary }
  *   unary       → ("-"|"+") unary | power
  *   power       → primary [ ("^"|"**") power ]  (right-assoc)
- *   primary     → number | variable | func_call | field_access | ident | "(" expr ")"
+ *   primary     → number | variable | func_call | field_access | ident | "(" expr ")" [ "." field ]
  */
 
 #include "internal.h"
@@ -89,6 +91,7 @@ static bool parser_expect(cxpr_parser* p, cxpr_token_type type, const char* mess
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static cxpr_ast* parse_expression(cxpr_parser* p);
+static cxpr_ast* parse_pipe(cxpr_parser* p);
 static cxpr_ast* parse_ternary(cxpr_parser* p);
 static cxpr_ast* parse_or(cxpr_parser* p);
 static cxpr_ast* parse_and(cxpr_parser* p);
@@ -148,17 +151,460 @@ static bool parse_call_argument(cxpr_parser* p, cxpr_ast** out_arg, char** out_n
     return true;
 }
 
+static cxpr_ast* parser_clone_ast(const cxpr_ast* ast) {
+    if (!ast) return NULL;
+
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+        return cxpr_ast_new_number(ast->data.number.value);
+    case CXPR_NODE_BOOL:
+        return cxpr_ast_new_bool(ast->data.boolean.value);
+    case CXPR_NODE_STRING:
+        return cxpr_ast_new_string(ast->data.string.value);
+    case CXPR_NODE_IDENTIFIER:
+        return cxpr_ast_new_identifier(ast->data.identifier.name);
+    case CXPR_NODE_VARIABLE:
+        return cxpr_ast_new_variable(ast->data.variable.name);
+    case CXPR_NODE_FIELD_ACCESS:
+        return cxpr_ast_new_field_access(ast->data.field_access.object, ast->data.field_access.field);
+    case CXPR_NODE_CHAIN_ACCESS:
+        return cxpr_ast_new_chain_access((const char* const*)ast->data.chain_access.path,
+                                         ast->data.chain_access.depth);
+    case CXPR_NODE_UNARY_OP: {
+        cxpr_ast* operand = parser_clone_ast(ast->data.unary_op.operand);
+        if (!operand) return NULL;
+        return cxpr_ast_new_unary_op(ast->data.unary_op.op, operand);
+    }
+    case CXPR_NODE_BINARY_OP: {
+        cxpr_ast* left = parser_clone_ast(ast->data.binary_op.left);
+        cxpr_ast* right = parser_clone_ast(ast->data.binary_op.right);
+        if (!left || !right) {
+            cxpr_ast_free(left);
+            cxpr_ast_free(right);
+            return NULL;
+        }
+        return cxpr_ast_new_binary_op(ast->data.binary_op.op, left, right);
+    }
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_ast** args = NULL;
+        char** arg_names = NULL;
+        if (ast->data.function_call.argc > 0) {
+            args = (cxpr_ast**)calloc(ast->data.function_call.argc, sizeof(cxpr_ast*));
+            arg_names = (char**)calloc(ast->data.function_call.argc, sizeof(char*));
+            if (!args || !arg_names) {
+                free(args);
+                free(arg_names);
+                return NULL;
+            }
+            for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+                args[i] = parser_clone_ast(ast->data.function_call.args[i]);
+                if (!args[i]) {
+                    for (size_t j = 0; j < i; ++j) cxpr_ast_free(args[j]);
+                    for (size_t j = 0; j < i; ++j) free(arg_names[j]);
+                    free(args);
+                    free(arg_names);
+                    return NULL;
+                }
+                if (ast->data.function_call.arg_names &&
+                    ast->data.function_call.arg_names[i]) {
+                    arg_names[i] = cxpr_strdup(ast->data.function_call.arg_names[i]);
+                    if (!arg_names[i]) {
+                        for (size_t j = 0; j <= i; ++j) cxpr_ast_free(args[j]);
+                        for (size_t j = 0; j < i; ++j) free(arg_names[j]);
+                        free(args);
+                        free(arg_names);
+                        return NULL;
+                    }
+                }
+            }
+        }
+        return cxpr_ast_new_function_call_named(ast->data.function_call.name, args,
+                                                arg_names, ast->data.function_call.argc);
+    }
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        cxpr_ast** args = NULL;
+        char** arg_names = NULL;
+        if (ast->data.producer_access.argc > 0) {
+            args = (cxpr_ast**)calloc(ast->data.producer_access.argc, sizeof(cxpr_ast*));
+            arg_names = (char**)calloc(ast->data.producer_access.argc, sizeof(char*));
+            if (!args || !arg_names) {
+                free(args);
+                free(arg_names);
+                return NULL;
+            }
+            for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+                args[i] = parser_clone_ast(ast->data.producer_access.args[i]);
+                if (!args[i]) {
+                    for (size_t j = 0; j < i; ++j) cxpr_ast_free(args[j]);
+                    for (size_t j = 0; j < i; ++j) free(arg_names[j]);
+                    free(args);
+                    free(arg_names);
+                    return NULL;
+                }
+                if (ast->data.producer_access.arg_names &&
+                    ast->data.producer_access.arg_names[i]) {
+                    arg_names[i] = cxpr_strdup(ast->data.producer_access.arg_names[i]);
+                    if (!arg_names[i]) {
+                        for (size_t j = 0; j <= i; ++j) cxpr_ast_free(args[j]);
+                        for (size_t j = 0; j < i; ++j) free(arg_names[j]);
+                        free(args);
+                        free(arg_names);
+                        return NULL;
+                    }
+                }
+            }
+        }
+        return cxpr_ast_new_producer_access_named(ast->data.producer_access.name, args,
+                                                  arg_names, ast->data.producer_access.argc,
+                                                  ast->data.producer_access.field);
+    }
+    case CXPR_NODE_LOOKBACK: {
+        cxpr_ast* target = parser_clone_ast(ast->data.lookback.target);
+        cxpr_ast* index = parser_clone_ast(ast->data.lookback.index);
+        if (!target || !index) {
+            cxpr_ast_free(target);
+            cxpr_ast_free(index);
+            return NULL;
+        }
+        return cxpr_ast_new_lookback(target, index);
+    }
+    case CXPR_NODE_TERNARY: {
+        cxpr_ast* condition = parser_clone_ast(ast->data.ternary.condition);
+        cxpr_ast* yes = parser_clone_ast(ast->data.ternary.true_branch);
+        cxpr_ast* no = parser_clone_ast(ast->data.ternary.false_branch);
+        if (!condition || !yes || !no) {
+            cxpr_ast_free(condition);
+            cxpr_ast_free(yes);
+            cxpr_ast_free(no);
+            return NULL;
+        }
+        return cxpr_ast_new_ternary(condition, yes, no);
+    }
+    }
+
+    return NULL;
+}
+
+static void parser_set_error(cxpr_parser* p, const char* message) {
+    p->had_error = true;
+    p->last_error.code = CXPR_ERR_SYNTAX;
+    p->last_error.message = message;
+    p->last_error.position = p->current.position;
+    p->last_error.line = p->current.line;
+    p->last_error.column = p->current.column;
+}
+
+static bool parse_interval(cxpr_parser* p,
+                           cxpr_ast** out_min,
+                           cxpr_ast** out_max,
+                           bool* out_include_min,
+                           bool* out_include_max) {
+    cxpr_ast* first = NULL;
+    cxpr_ast* second = NULL;
+    cxpr_ast* min_ast = NULL;
+    cxpr_ast* max_ast = NULL;
+    char* first_name = NULL;
+    char* second_name = NULL;
+    bool first_named = false;
+    bool second_named = false;
+
+    if (!out_min || !out_max || !out_include_min || !out_include_max) return false;
+    *out_min = NULL;
+    *out_max = NULL;
+    *out_include_min = true;
+    *out_include_max = true;
+
+    if (!parser_match(p, CXPR_TOK_LBRACKET)) {
+        parser_set_error(p, "Expected '[' to start interval after 'in'");
+        return false;
+    }
+
+    if (parser_check(p, CXPR_TOK_IDENTIFIER) && parser_peek_next(p).type == CXPR_TOK_ASSIGN) {
+        first_named = true;
+        first_name = token_to_string(&p->current);
+        if (!first_name) {
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return false;
+        }
+        parser_advance(p);
+        if (!parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' in interval bound")) goto fail;
+    }
+    first = parse_expression(p);
+    if (!first || p->had_error) goto fail;
+
+    if (!parser_expect(p, CXPR_TOK_COMMA, "Expected ',' in interval bounds")) goto fail;
+
+    if (parser_check(p, CXPR_TOK_IDENTIFIER) && parser_peek_next(p).type == CXPR_TOK_ASSIGN) {
+        second_named = true;
+        second_name = token_to_string(&p->current);
+        if (!second_name) {
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            goto fail;
+        }
+        parser_advance(p);
+        if (!parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' in interval bound")) goto fail;
+    }
+    second = parse_expression(p);
+    if (!second || p->had_error) goto fail;
+
+    if (!parser_expect(p, CXPR_TOK_RBRACKET, "Expected ']' to close interval")) goto fail;
+
+    if (first_named || second_named) {
+        if (!first_named || !second_named || !first_name || !second_name) {
+            parser_set_error(p, "Named interval bounds require both min=... and max=...");
+            goto fail;
+        }
+        if (strcmp(first_name, "min") == 0 && strcmp(second_name, "max") == 0) {
+            min_ast = first;
+            max_ast = second;
+            first = NULL;
+            second = NULL;
+        } else if (strcmp(first_name, "max") == 0 && strcmp(second_name, "min") == 0) {
+            min_ast = second;
+            max_ast = first;
+            first = NULL;
+            second = NULL;
+        } else {
+            parser_set_error(p, "Named interval bounds must be min=..., max=...");
+            goto fail;
+        }
+    } else {
+        min_ast = first;
+        max_ast = second;
+        first = NULL;
+        second = NULL;
+    }
+
+    *out_min = min_ast;
+    *out_max = max_ast;
+    free(first_name);
+    free(second_name);
+    return true;
+
+fail:
+    cxpr_ast_free(first);
+    cxpr_ast_free(second);
+    cxpr_ast_free(min_ast);
+    cxpr_ast_free(max_ast);
+    free(first_name);
+    free(second_name);
+    return false;
+}
+
+static cxpr_ast* pipe_inject_argument(cxpr_parser* p, cxpr_ast* stage, cxpr_ast* piped) {
+    cxpr_ast* node = NULL;
+    if (!stage || !piped) {
+        cxpr_ast_free(stage);
+        cxpr_ast_free(piped);
+        return NULL;
+    }
+
+    switch (stage->type) {
+    case CXPR_NODE_IDENTIFIER: {
+        cxpr_ast** args = (cxpr_ast**)malloc(sizeof(cxpr_ast*));
+        char** arg_names = (char**)calloc(1, sizeof(char*));
+        if (!args || !arg_names) {
+            free(args);
+            free(arg_names);
+            cxpr_ast_free(stage);
+            cxpr_ast_free(piped);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+        args[0] = piped;
+        node = cxpr_ast_new_function_call_named(stage->data.identifier.name, args, arg_names, 1);
+        if (!node) {
+            free(args);
+            free(arg_names);
+            cxpr_ast_free(stage);
+            cxpr_ast_free(piped);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+        cxpr_ast_free(stage);
+        return node;
+    }
+    case CXPR_NODE_FUNCTION_CALL: {
+        const size_t old_argc = stage->data.function_call.argc;
+        cxpr_ast** new_args = (cxpr_ast**)malloc((old_argc + 1u) * sizeof(cxpr_ast*));
+        char** new_arg_names = (char**)calloc(old_argc + 1u, sizeof(char*));
+        if (!new_args || !new_arg_names) {
+            free(new_args);
+            free(new_arg_names);
+            cxpr_ast_free(stage);
+            cxpr_ast_free(piped);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+
+        new_args[0] = piped;
+        for (size_t i = 0; i < old_argc; ++i) {
+            new_args[i + 1u] = stage->data.function_call.args[i];
+            new_arg_names[i + 1u] = stage->data.function_call.arg_names
+                                        ? stage->data.function_call.arg_names[i]
+                                        : NULL;
+        }
+        free(stage->data.function_call.args);
+        free(stage->data.function_call.arg_names);
+        stage->data.function_call.args = NULL;
+        stage->data.function_call.arg_names = NULL;
+        stage->data.function_call.argc = 0;
+
+        node = cxpr_ast_new_function_call_named(stage->data.function_call.name,
+                                                new_args,
+                                                new_arg_names,
+                                                old_argc + 1u);
+        cxpr_ast_free(stage);
+        if (!node) {
+            for (size_t i = 0; i < old_argc + 1u; ++i) {
+                free(new_arg_names[i]);
+                cxpr_ast_free(new_args[i]);
+            }
+            free(new_args);
+            free(new_arg_names);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+        return node;
+    }
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        const size_t old_argc = stage->data.producer_access.argc;
+        cxpr_ast** new_args = (cxpr_ast**)malloc((old_argc + 1u) * sizeof(cxpr_ast*));
+        char** new_arg_names = (char**)calloc(old_argc + 1u, sizeof(char*));
+        if (!new_args || !new_arg_names) {
+            free(new_args);
+            free(new_arg_names);
+            cxpr_ast_free(stage);
+            cxpr_ast_free(piped);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+
+        new_args[0] = piped;
+        for (size_t i = 0; i < old_argc; ++i) {
+            new_args[i + 1u] = stage->data.producer_access.args[i];
+            new_arg_names[i + 1u] = stage->data.producer_access.arg_names
+                                        ? stage->data.producer_access.arg_names[i]
+                                        : NULL;
+        }
+        free(stage->data.producer_access.args);
+        free(stage->data.producer_access.arg_names);
+        stage->data.producer_access.args = NULL;
+        stage->data.producer_access.arg_names = NULL;
+        stage->data.producer_access.argc = 0;
+
+        node = cxpr_ast_new_producer_access_named(stage->data.producer_access.name,
+                                                  new_args,
+                                                  new_arg_names,
+                                                  old_argc + 1u,
+                                                  stage->data.producer_access.field);
+        cxpr_ast_free(stage);
+        if (!node) {
+            for (size_t i = 0; i < old_argc + 1u; ++i) {
+                free(new_arg_names[i]);
+                cxpr_ast_free(new_args[i]);
+            }
+            free(new_args);
+            free(new_arg_names);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+        return node;
+    }
+    default:
+        p->had_error = true;
+        p->last_error.code = CXPR_ERR_SYNTAX;
+        p->last_error.message = "Expected callable after '|>' (identifier or function call)";
+        p->last_error.position = p->current.position;
+        p->last_error.line = p->current.line;
+        p->last_error.column = p->current.column;
+        cxpr_ast_free(stage);
+        cxpr_ast_free(piped);
+        return NULL;
+    }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
- * expression → ternary
+ * expression → pipe
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * @brief Top-level rule: expression → ternary.
+ * @brief Top-level rule: expression → pipe.
  * @param p Parser instance.
  * @return AST node or NULL on error.
  */
 static cxpr_ast* parse_expression(cxpr_parser* p) {
-    return parse_ternary(p);
+    return parse_pipe(p);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * pipe → ternary { "|>" ternary }
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Forward pipe rule: ternary { "|>" ternary }.
+ *
+ * The parser desugars piping into regular function calls by injecting the
+ * left expression as the first argument on the right callable.
+ * @param p Parser instance.
+ * @return AST node or NULL on error.
+ */
+static cxpr_ast* parse_pipe(cxpr_parser* p) {
+    cxpr_ast* left = parse_ternary(p);
+    if (!left || p->had_error) return left;
+
+    while (parser_check(p, CXPR_TOK_PIPE)) {
+        cxpr_ast* stage = NULL;
+        parser_advance(p);
+        stage = parse_ternary(p);
+        if (!stage || p->had_error) {
+            cxpr_ast_free(left);
+            return NULL;
+        }
+        left = pipe_inject_argument(p, stage, left);
+        if (!left || p->had_error) return NULL;
+    }
+    return left;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -288,7 +734,8 @@ static cxpr_ast* parse_equality(cxpr_parser* p) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * relational → arithmetic [ ("<" | "<=" | ">" | ">=") arithmetic ]
+ * relational → arithmetic [ ("<" | "<=" | ">" | ">=") arithmetic
+ *                        | [ "not" ] "in" "[" expression "," expression "]" ]
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
@@ -312,6 +759,74 @@ static cxpr_ast* parse_relational(cxpr_parser* p) {
         if (!right || p->had_error) { cxpr_ast_free(left); return NULL; }
         return cxpr_ast_new_binary_op(op, left, right);
     }
+
+    if ((parser_check(p, CXPR_TOK_NOT) && parser_peek_next(p).type == CXPR_TOK_IN) ||
+        parser_check(p, CXPR_TOK_IN)) {
+        bool negated = false;
+        bool include_min = false;
+        bool include_max = false;
+        int lo_op;
+        int hi_op;
+        cxpr_ast* left_clone = NULL;
+        cxpr_ast* lower = NULL;
+        cxpr_ast* upper = NULL;
+        cxpr_ast* lo_cmp = NULL;
+        cxpr_ast* hi_cmp = NULL;
+        cxpr_ast* both = NULL;
+        cxpr_ast* out = NULL;
+
+        if (parser_check(p, CXPR_TOK_NOT)) {
+            negated = true;
+            parser_advance(p);
+        }
+        parser_advance(p); /* consume in */
+
+        if (!parse_interval(p, &lower, &upper, &include_min, &include_max)) {
+            cxpr_ast_free(left);
+            return NULL;
+        }
+
+        left_clone = parser_clone_ast(left);
+        if (!left_clone) {
+            cxpr_ast_free(left);
+            cxpr_ast_free(lower);
+            cxpr_ast_free(upper);
+            p->had_error = true;
+            p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+            p->last_error.message = "Out of memory";
+            p->last_error.position = p->current.position;
+            p->last_error.line = p->current.line;
+            p->last_error.column = p->current.column;
+            return NULL;
+        }
+
+        lo_op = include_min ? CXPR_TOK_GTE : CXPR_TOK_GT;
+        hi_op = include_max ? CXPR_TOK_LTE : CXPR_TOK_LT;
+
+        lo_cmp = cxpr_ast_new_binary_op(lo_op, left, lower);
+        hi_cmp = cxpr_ast_new_binary_op(hi_op, left_clone, upper);
+        if (!lo_cmp || !hi_cmp) {
+            cxpr_ast_free(lo_cmp);
+            cxpr_ast_free(hi_cmp);
+            return NULL;
+        }
+        both = cxpr_ast_new_binary_op(CXPR_TOK_AND, lo_cmp, hi_cmp);
+        if (!both) {
+            cxpr_ast_free(lo_cmp);
+            cxpr_ast_free(hi_cmp);
+            return NULL;
+        }
+        if (negated) {
+            out = cxpr_ast_new_unary_op(CXPR_TOK_NOT, both);
+            if (!out) {
+                cxpr_ast_free(both);
+                return NULL;
+            }
+            return out;
+        }
+        return both;
+    }
+
     return left;
 }
 
@@ -624,6 +1139,70 @@ static cxpr_ast* parse_primary(cxpr_parser* p) {
         if (!parser_expect(p, CXPR_TOK_RPAREN, "Expected closing ')'")) {
             cxpr_ast_free(node);
             return NULL;
+        }
+        /* Support (func(...)).field — same semantics as func(...).field */
+        if (parser_check(p, CXPR_TOK_DOT)) {
+            char* fn_name;
+            cxpr_ast** fn_args;
+            char** fn_arg_names;
+            size_t fn_argc;
+            char* field;
+
+            if (node->type != CXPR_NODE_FUNCTION_CALL) {
+                p->had_error = true;
+                p->last_error.code = CXPR_ERR_SYNTAX;
+                p->last_error.message = "Field access via '.' requires a function call inside parentheses";
+                p->last_error.position = p->current.position;
+                p->last_error.line = p->current.line;
+                p->last_error.column = p->current.column;
+                cxpr_ast_free(node);
+                return NULL;
+            }
+
+            fn_name      = node->data.function_call.name;
+            fn_args      = node->data.function_call.args;
+            fn_arg_names = node->data.function_call.arg_names;
+            fn_argc      = node->data.function_call.argc;
+            node->data.function_call.name     = NULL;
+            node->data.function_call.args     = NULL;
+            node->data.function_call.arg_names = NULL;
+            node->data.function_call.argc     = 0;
+            cxpr_ast_free(node);
+            node = NULL;
+
+            parser_advance(p); /* consume '.' */
+            if (!parser_check(p, CXPR_TOK_IDENTIFIER)) {
+                p->had_error = true;
+                p->last_error.code = CXPR_ERR_SYNTAX;
+                p->last_error.message = "Expected field name after '.'";
+                p->last_error.position = p->current.position;
+                p->last_error.line = p->current.line;
+                p->last_error.column = p->current.column;
+                free(fn_name);
+                for (size_t i = 0; i < fn_argc; ++i) {
+                    if (fn_arg_names) free(fn_arg_names[i]);
+                    cxpr_ast_free(fn_args[i]);
+                }
+                free(fn_args);
+                free(fn_arg_names);
+                return NULL;
+            }
+            field = token_to_string(&p->current);
+            parser_advance(p);
+            if (!field) {
+                free(fn_name);
+                for (size_t i = 0; i < fn_argc; ++i) {
+                    if (fn_arg_names) free(fn_arg_names[i]);
+                    cxpr_ast_free(fn_args[i]);
+                }
+                free(fn_args);
+                free(fn_arg_names);
+                return NULL;
+            }
+            node = cxpr_ast_new_producer_access_named(fn_name, fn_args, fn_arg_names, fn_argc, field);
+            free(fn_name);
+            free(field);
+            if (!node) return NULL;
         }
     } else {
         p->had_error = true;

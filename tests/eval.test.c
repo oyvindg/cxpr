@@ -169,6 +169,29 @@ static void test_param_substitution_dotted(void) {
     printf("  ✓ test_param_substitution_dotted\n");
 }
 
+static void test_set_param_array(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    static const cxpr_context_entry entries[] = {
+        {"oversold", 30.0},
+        {"use_short", 1.0},
+        {NULL, 0.0}
+    };
+    bool found = false;
+
+    cxpr_register_defaults(reg);
+    cxpr_context_set(ctx, "rsi", 25.0);
+    cxpr_context_set_param_array(ctx, entries);
+
+    ASSERT_DOUBLE_EQ(cxpr_context_get_param(ctx, "oversold", &found), 30.0);
+    assert(found);
+    assert(eval_bool_ok("rsi < $oversold and $use_short == 1", ctx, reg));
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_set_param_array\n");
+}
+
 static void test_arithmetic(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -228,6 +251,21 @@ static void test_function_call(void) {
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_function_call\n");
+}
+
+static void test_pipe_evaluates_like_nested_calls(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_context_set(ctx, "x", -15.0);
+
+    ASSERT_DOUBLE_EQ(eval_ok("x |> abs", ctx, reg), eval_ok("abs(x)", ctx, reg));
+    ASSERT_DOUBLE_EQ(eval_ok("x |> abs |> clamp(0, 10)", ctx, reg),
+                     eval_ok("clamp(abs(x), 0, 10)", ctx, reg));
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_pipe_evaluates_like_nested_calls\n");
 }
 
 static void test_ternary(void) {
@@ -818,6 +856,30 @@ static void test_multiple_prefixes(void) {
     printf("  ✓ test_multiple_prefixes\n");
 }
 
+static void test_set_array(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    static const cxpr_context_entry entries[] = {
+        {"close", 100.0},
+        {"ema_fast", 101.5},
+        {"ema_slow", 98.0},
+        {NULL, 0.0}
+    };
+    bool found = false;
+
+    cxpr_register_defaults(reg);
+    cxpr_context_set_array(ctx, entries);
+
+    ASSERT_DOUBLE_EQ(cxpr_context_get(ctx, "close", &found), 100.0);
+    assert(found);
+    ASSERT_DOUBLE_EQ(eval_ok("ema_fast - ema_slow", ctx, reg), 3.5);
+    assert(eval_bool_ok("close < ema_fast and ema_fast > ema_slow", ctx, reg));
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_set_array\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Main
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -828,12 +890,14 @@ int main(void) {
     test_variable_lookup();
     test_param_substitution();
     test_param_substitution_dotted();
+    test_set_param_array();
     test_eval_bool_out_api();
     test_eval_number_out_api_type_mismatch();
     test_arithmetic();
     test_comparison();
     test_logical();
     test_function_call();
+    test_pipe_evaluates_like_nested_calls();
     test_ternary();
     test_field_access();
     test_function_call_field_access();
@@ -856,6 +920,7 @@ int main(void) {
     test_ast_function_cache_invalidates_on_registry_change();
 
     /* Prefixed fields tests */
+    test_set_array();
     test_set_fields();
     test_multiple_prefixes();
 

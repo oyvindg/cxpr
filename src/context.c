@@ -264,6 +264,16 @@ void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
     cxpr_context_set_prehashed(ctx, name, cxpr_hash_string(name), value);
 }
 
+void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries) {
+    size_t i;
+
+    if (!ctx || !entries) return;
+
+    for (i = 0; entries[i].name; ++i) {
+        cxpr_context_set(ctx, entries[i].name, entries[i].value);
+    }
+}
+
 double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found) {
     cxpr_value typed;
 
@@ -293,6 +303,16 @@ void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
     if (!ctx || !name) return;
     cxpr_context_set_param_prehashed(ctx, name, cxpr_hash_string(name), value);
+}
+
+void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* entries) {
+    size_t i;
+
+    if (!ctx || !entries) return;
+
+    for (i = 0; entries[i].name; ++i) {
+        cxpr_context_set_param(ctx, entries[i].name, entries[i].value);
+    }
 }
 
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found) {

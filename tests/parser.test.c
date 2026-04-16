@@ -9,6 +9,7 @@
  * - Parenthesized expressions
  * - Unary operators (negation, not)
  * - Field access (macd.histogram)
+ * - Grouped function field access ((func(...)).field)
  * - Function calls (simple and nested)
  * - Ternary expressions
  * - $variable parsing
@@ -298,6 +299,69 @@ static void test_function_field_access(void) {
     printf("  ✓ test_function_field_access\n");
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Test: grouped function field access — (func(...)).field
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_grouped_function_field_access(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast;
+    const char* refs[4] = {0};
+
+    /* (macd(12, 26, 9)).signal must produce the same node as macd(12, 26, 9).signal */
+    ast = parse_ok(p, "(macd(12, 26, 9)).signal");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(strcmp(cxpr_ast_producer_name(ast), "macd") == 0);
+    assert(strcmp(cxpr_ast_producer_field(ast), "signal") == 0);
+    assert(cxpr_ast_producer_argc(ast) == 3);
+    assert(cxpr_ast_references(ast, refs, 4) == 1);
+    assert(strcmp(refs[0], "macd.signal") == 0);
+    cxpr_ast_free(ast);
+
+    /* (adx(14)).adx — single-arg form */
+    ast = parse_ok(p, "(adx(14)).adx");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(strcmp(cxpr_ast_producer_name(ast), "adx") == 0);
+    assert(strcmp(cxpr_ast_producer_field(ast), "adx") == 0);
+    assert(cxpr_ast_producer_argc(ast) == 1);
+    cxpr_ast_free(ast);
+
+    cxpr_parser_free(p);
+    printf("  ✓ test_grouped_function_field_access\n");
+}
+
+static void test_grouped_function_field_access_in_expr(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast;
+
+    /* (adx(14)).adx > 25 — used in a larger expression */
+    ast = parse_ok(p, "(adx(14)).adx > 25");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_ast_type(cxpr_ast_left(ast)) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(cxpr_ast_type(cxpr_ast_right(ast)) == CXPR_NODE_NUMBER);
+    cxpr_ast_free(ast);
+
+    /* score((adx(14)).adx, 18, 35) — alias expansion use case */
+    ast = parse_ok(p, "score((adx(14)).adx, 18, 35)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_ast_function_argc(ast) == 3);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 0)) == CXPR_NODE_PRODUCER_ACCESS);
+    cxpr_ast_free(ast);
+
+    cxpr_parser_free(p);
+    printf("  ✓ test_grouped_function_field_access_in_expr\n");
+}
+
+static void test_grouped_field_access_error(void) {
+    cxpr_parser* p = cxpr_parser_new();
+
+    /* (a + b).field — non-function-call inside parens must fail */
+    parse_fail(p, "(a + b).field");
+
+    cxpr_parser_free(p);
+    printf("  ✓ test_grouped_field_access_error\n");
+}
+
 static void test_function_named_args(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast = parse_ok(p, "macd(fast=9, slow=21, period=3)");
@@ -575,6 +639,65 @@ static void test_analyze_expr_convenience_api(void) {
     printf("  ✓ test_analyze_expr_convenience_api\n");
 }
 
+static void test_pipe_desugars_to_nested_calls(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast = parse_ok(p, "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit(limit)");
+
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_ast_function_name(ast), "within_limit") == 0);
+    assert(cxpr_ast_function_argc(ast) == 2);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 0)) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 1)) == CXPR_NODE_IDENTIFIER);
+    assert(strcmp(cxpr_ast_identifier_name(cxpr_ast_function_arg(ast, 1)), "limit") == 0);
+
+    const cxpr_ast* clamp_call = cxpr_ast_function_arg(ast, 0);
+    assert(strcmp(cxpr_ast_function_name(clamp_call), "clamp") == 0);
+    assert(cxpr_ast_function_argc(clamp_call) == 3);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(clamp_call, 0)) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(clamp_call, 1)) == CXPR_NODE_NUMBER);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(clamp_call, 2)) == CXPR_NODE_NUMBER);
+
+    const cxpr_ast* deg_call = cxpr_ast_function_arg(clamp_call, 0);
+    assert(strcmp(cxpr_ast_function_name(deg_call), "deg2rad") == 0);
+    assert(cxpr_ast_function_argc(deg_call) == 1);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(deg_call, 0)) == CXPR_NODE_IDENTIFIER);
+    assert(strcmp(cxpr_ast_identifier_name(cxpr_ast_function_arg(deg_call, 0)), "angle_deg") == 0);
+
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  ✓ test_pipe_desugars_to_nested_calls\n");
+}
+
+static void test_pipe_requires_callable_rhs(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "x |> f + g", &err);
+    assert(ast == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Expected callable after '|>'") != NULL);
+    cxpr_parser_free(p);
+    printf("  ✓ test_pipe_requires_callable_rhs\n");
+}
+
+static void test_pipe_gt_edgecases(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "(x |> abs) > y and (y |> abs) >= 0", &err);
+    assert(ast != NULL);
+    assert(err.code == CXPR_OK);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "x |> abs > y", &err);
+    assert(ast == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Expected callable after '|>'") != NULL);
+
+    cxpr_parser_free(p);
+    printf("  ✓ test_pipe_gt_edgecases\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: syntax errors
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -656,6 +779,9 @@ int main(void) {
     test_function_two_args();
     test_function_nested();
     test_function_field_access();
+    test_grouped_function_field_access();
+    test_grouped_function_field_access_in_expr();
+    test_grouped_field_access_error();
     test_function_named_args();
     test_producer_named_args();
 
@@ -675,6 +801,9 @@ int main(void) {
     test_analysis_wrong_arity();
     test_analysis_named_args_reorders_by_signature();
     test_analyze_expr_convenience_api();
+    test_pipe_desugars_to_nested_calls();
+    test_pipe_requires_callable_rhs();
+    test_pipe_gt_edgecases();
 
     /* Errors */
     test_syntax_errors();

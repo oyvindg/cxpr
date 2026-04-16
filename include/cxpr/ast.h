@@ -53,6 +53,7 @@ typedef enum {
     CXPR_TOK_AND,               /**< && or and */
     CXPR_TOK_OR,                /**< || or or */
     CXPR_TOK_NOT,               /**< ! or not */
+    CXPR_TOK_IN,                /**< in */
 
     /* Delimiters */
     CXPR_TOK_LPAREN,            /**< ( */
@@ -61,6 +62,7 @@ typedef enum {
     CXPR_TOK_RBRACKET,          /**< ] */
     CXPR_TOK_COMMA,             /**< , */
     CXPR_TOK_DOT,               /**< . */
+    CXPR_TOK_PIPE,              /**< |> */
     CXPR_TOK_QUESTION,          /**< ? */
     CXPR_TOK_COLON,             /**< : */
 
