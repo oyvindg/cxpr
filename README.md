@@ -60,7 +60,8 @@ add_subdirectory(libs/cxpr)
 target_link_libraries(my_target PRIVATE cxpr::cxpr)
 ```
 
-Tests are only built when `cxpr` is the top-level project.
+Tests are built by default when `cxpr` is the top-level project.
+When embedding `cxpr`, enable them explicitly with `-DCXPR_BUILD_TESTS=ON`.
 
 ### Via FetchContent
 
@@ -112,33 +113,50 @@ static cxpr_value within_limit(const double* args, size_t argc, void* userdata) 
 }
 
 int main(void) {
+    // 2. Create the core cxpr objects:
+    // parser parses source text into an AST,
+    // ctx stores runtime variables and $params,
+    // reg holds built-in and custom functions.
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
+
+    // Register the built-in standard library functions like sqrt, abs, min, and max.
     cxpr_register_defaults(reg);
 
+    // 3. Populate runtime data.
+    // angle_deg is a normal context variable referenced as angle_deg in expressions.
     cxpr_context_set(ctx, "angle_deg", 120.0);
+
+    // limit is a parameter referenced as $limit in expressions.
     cxpr_context_set_param(ctx, "limit", 1.2);
 
-    // 2. Register those functions under the names used in the expression.
+    // 4. Register those functions under the names used in the expression.
     cxpr_registry_add_unary(reg, "deg2rad", deg2rad);
     cxpr_registry_add_ternary(reg, "clamp", clamp);
     cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
     cxpr_error err = {0};
-    // 3. Parse an expression that converts angle_deg, clamps it, and checks $limit.
+    // 5. Parse an expression that converts angle_deg, clamps it, and checks $limit.
     cxpr_ast* ast = cxpr_parse(parser,
         "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)",
         &err);
     if (!ast) {
         fprintf(stderr, "parse error at %zu:%zu: %s\n", err.line, err.column, err.message);
+
+        // Free the core objects before returning on parse error.
+        cxpr_parser_free(parser);
+        cxpr_context_free(ctx);
+        cxpr_registry_free(reg);
         return 1;
     }
 
-    // 4. Evaluate the parsed AST with the current context and parameters.
+    // 6. Evaluate the parsed AST with the current context and parameters.
     bool result = false;
     if (!cxpr_eval_ast_bool(ast, ctx, reg, &result, &err)) {
         fprintf(stderr, "eval error at %zu:%zu: %s\n", err.line, err.column, err.message);
+
+        // Free anything already created before returning on error.
         cxpr_ast_free(ast);
         cxpr_parser_free(parser);
         cxpr_context_free(ctx);
@@ -148,6 +166,7 @@ int main(void) {
 
     printf("result = %s\n", result ? "true" : "false");
 
+    // 7. Free the AST and the core cxpr objects when you are done.
     cxpr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_context_free(ctx);
@@ -159,13 +178,16 @@ int main(void) {
 Compile once when the same expression will be evaluated many times:
 
 ```c
+// 1. Compile the AST into a reusable program.
 cxpr_program* prog = cxpr_compile(ast, reg, &err);
 
+// 2. Evaluate the compiled program with the current context and registry.
 bool result = false;
 if (!cxpr_eval_program_bool(prog, ctx, reg, &result, &err)) {
-    /* handle error */
+    // Handle error.
 }
 
+// 3. Free the compiled program when you are done with it.
 cxpr_program_free(prog);
 ```
 
@@ -237,6 +259,8 @@ cxpr_registry_add_ternary(reg, "clamp", clamp);
 cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
 // 3. Parse a pipe-style expression with the same steps as the nested-call example.
+// This reads left-to-right:
+// angle_deg -> deg2rad(...) -> clamp(..., 0.0, 1.57) -> within_limit(..., $limit)
 cxpr_ast* ast = cxpr_parse(parser,
     "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)",
     &err);
@@ -255,27 +279,39 @@ The expression evaluator is for named expressions that depend on each other.
 It parses the set, validates references, resolves evaluation order, and reports cycles.
 
 ```c
+// 1. Create an evaluator for a set of named expressions.
 cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
 
+// 2. Define expressions that can reference variables, params, and each other.
 const cxpr_expression_def defs[] = {
     { "wide",  "spread > $threshold" },
     { "entry", "wide and mid > $min_mid" },
     { "score", "mid + spread * 10" },
 };
 
+// 3. Add the expressions and compile them into dependency order.
 cxpr_error err = {0};
 if (!cxpr_expressions_add(evaluator, defs, 3, &err)
     || !cxpr_evaluator_compile(evaluator, &err)) {
     fprintf(stderr, "error: %s\n", err.message);
+
+    // Free the evaluator before returning on error.
     cxpr_evaluator_free(evaluator);
     return 1;
 }
 
+// 4. Evaluate all compiled expressions against the current context.
 cxpr_evaluator_eval(evaluator, ctx, &err);
 
+// 5. Read back results by expression name.
+// Use cxpr_expression_get(...) when you want the raw cxpr_value.
+// The returned value is borrowed from the evaluator; if it is a struct result,
+// do not free it yourself and do not keep it after freeing or re-evaluating the evaluator.
+cxpr_value raw_entry = cxpr_expression_get(evaluator, "entry", NULL);
 bool   entry = cxpr_expression_get_bool(evaluator,   "entry", NULL);
 double score = cxpr_expression_get_double(evaluator, "score", NULL);
 
+// 6. Free the evaluator when you are done.
 cxpr_evaluator_free(evaluator);
 ```
 
