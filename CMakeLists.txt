@@ -1,5 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
-project(cxpr VERSION 1.0.2 LANGUAGES C)
+
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/cxpr/version.h" CXPR_VERSION_DEFINES
+    REGEX "^#define CXPR_VERSION_(MAJOR|MINOR|PATCH) [0-9]+$"
+)
+foreach(CXPR_VERSION_DEFINE IN LISTS CXPR_VERSION_DEFINES)
+    if(CXPR_VERSION_DEFINE MATCHES "^#define CXPR_VERSION_([A-Z]+) ([0-9]+)$")
+        set(CXPR_VERSION_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+    endif()
+endforeach()
+if(NOT DEFINED CXPR_VERSION_MAJOR OR NOT DEFINED CXPR_VERSION_MINOR OR NOT DEFINED CXPR_VERSION_PATCH)
+    message(FATAL_ERROR "Failed to parse CXPR_VERSION_* from include/cxpr/version.h")
+endif()
+
+project(cxpr
+    VERSION "${CXPR_VERSION_MAJOR}.${CXPR_VERSION_MINOR}.${CXPR_VERSION_PATCH}"
+    LANGUAGES C
+)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
