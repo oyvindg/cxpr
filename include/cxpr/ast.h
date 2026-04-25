@@ -253,6 +253,11 @@ typedef struct {
     const char* first_unknown_function;  /**< First unresolved function/producer name, or NULL if none. */
 } cxpr_analysis;
 
+typedef struct {
+    const char* producer_name;           /**< Producer/function name, e.g. `ichimoku`. */
+    const char* field_name;              /**< Selected field name, e.g. `senkouA`. */
+} cxpr_producer_field_ref;
+
 /**
  * @brief Return the node kind for an AST node.
  * @param ast AST node to inspect.
@@ -459,6 +464,16 @@ size_t cxpr_ast_references(const cxpr_ast* ast, const char** names, size_t max_n
  * @return Number of unique names written or available.
  */
 size_t cxpr_ast_functions_used(const cxpr_ast* ast, const char** names, size_t max_names);
+/**
+ * @brief Collect unique producer field accesses used by an AST.
+ * @param ast AST to inspect.
+ * @param refs Output array for borrowed `(producer, field)` pairs.
+ * @param max_refs Maximum number of pairs to write to `refs`.
+ * @return Number of unique producer-field pairs written or available.
+ */
+size_t cxpr_ast_producer_fields_used(const cxpr_ast* ast,
+                                     cxpr_producer_field_ref* refs,
+                                     size_t max_refs);
 /**
  * @brief Collect unique `$param` names used by an AST.
  * @param ast AST to inspect.

@@ -3,7 +3,7 @@
  * @brief Typed struct storage support for cxpr contexts.
  */
 
-#include "internal.h"
+#include "context/state.h"
 
 static cxpr_value cxpr_value_clone(const cxpr_value* value);
 

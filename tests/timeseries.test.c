@@ -218,6 +218,18 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out);
+    {
+        cxpr_ir_program ir = {0};
+        cxpr_program* prog;
+        assert(cxpr_ir_compile(ast, reg, &ir, &err));
+        prog = cxpr_compile(ast, reg, &err);
+        assert(prog != NULL);
+        assert(cxpr_eval_program_bool(prog, ctx, reg, &out, &err));
+        assert(err.code == CXPR_OK);
+        assert(out);
+        cxpr_program_free(prog);
+        cxpr_ir_program_reset(&ir);
+    }
     cxpr_ast_free(ast);
 
     ast = parse_or_die(parser, "falling(close, 3)");

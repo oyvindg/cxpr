@@ -3,7 +3,8 @@
  * @brief Native time-series helpers and builtins for cxpr.
  */
 
-#include "internal.h"
+#include "registry/internal.h"
+#include <cxpr/ast.h>
 #include <math.h>
 
 typedef enum {

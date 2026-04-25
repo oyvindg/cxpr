@@ -53,21 +53,46 @@ endif()
 # C core library
 # ═══════════════════════════════════════════════════════════════════════════
 add_library(cxpr STATIC
-    src/lexer.c
-    src/parser.c
-    src/ast.c
-    src/eval.c
-    src/ir.c
+    src/lexer/lexer.c
+    src/parser/parser.c
+    src/parser/helpers.c
+    src/parser/grammar_expr.c
+    src/parser/primary.c
+    src/ast/construct.c
+    src/ast/free.c
+    src/ast/inspect.c
+    src/ast/references.c
+    src/ast/analyze.c
+    src/call/args.c
+    src/eval/helpers.c
+    src/eval/calls.c
+    src/eval/tree.c
+    src/eval/api.c
+    src/ir/program.c
+    src/ir/cache_key.c
+    src/ir/validate.c
     src/ir/compile.c
-    src/ir/exec.c
-    src/hashmap.c
+    src/ir/exec/lookup.c
+    src/ir/exec/calls.c
+    src/ir/exec/typed.c
+    src/ir/exec/fast.c
+    src/ir/exec/api.c
+    src/hashmap/hashmap.c
     src/struct.c
-    src/context.c
-    src/registry.c
+    src/context/cache.c
+    src/context/lifecycle.c
+    src/context/values.c
+    src/context/structs.c
+    src/context/slot.c
+    src/registry/helpers.c
+    src/registry/add.c
+    src/registry/defaults.c
+    src/registry/define.c
+    src/registry/call.c
     src/timeseries.c
     src/basket.c
-    src/evaluator.c
-    src/expression.c
+    src/expression/evaluator.c
+    src/expression/expression.c
 )
 add_library(cxpr::cxpr ALIAS cxpr)
 
@@ -79,6 +104,9 @@ set_target_properties(cxpr PROPERTIES
 target_include_directories(cxpr PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+)
+target_include_directories(cxpr PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 # Determinism: no fast-math, no FP contraction

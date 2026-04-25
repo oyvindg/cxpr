@@ -3,11 +3,8 @@
  * @brief Internal tests for expression-evaluator compiled-program integration.
  */
 
-#include "cxpr_test_internal.h"
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
-#include <string.h>
 
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)

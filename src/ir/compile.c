@@ -3,6 +3,8 @@
  * @brief IR compilation support for cxpr.
  */
 
+#include "../ast/internal.h"
+#include "../call/args.h"
 #include "internal.h"
 
 static size_t cxpr_ir_local_index(const char* name, const char* const* local_names,
@@ -428,14 +430,9 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
         char* const_key = NULL;
         double* const_args = NULL;
-        if (cxpr_ast_call_uses_named_args(ast)) {
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){
-                                    .op = CXPR_OP_CALL_AST,
-                                    .ast = ast,
-                                },
-                                err);
-        }
+        const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+        cxpr_error_code bind_code = CXPR_OK;
+        const char* bind_message = NULL;
         if (!entry || !entry->struct_producer) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_FUNCTION;
@@ -453,8 +450,15 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
+        if (!cxpr_call_bind_args(ast, entry, ordered_args, &bind_code, &bind_message)) {
+            if (err) {
+                err->code = bind_code;
+                err->message = bind_message;
+            }
+            return false;
+        }
         const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
-                                                        (const cxpr_ast* const*)ast->data.producer_access.args,
+                                                        ordered_args,
                                                         ast->data.producer_access.argc);
         if (const_key) {
             const_args = (double*)calloc(ast->data.producer_access.argc ? ast->data.producer_access.argc : 1,
@@ -468,7 +472,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 return false;
             }
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                if (!cxpr_ir_constant_value(ast->data.producer_access.args[i], &const_args[i])) {
+                if (!cxpr_ir_constant_value(ordered_args[i], &const_args[i])) {
                     free(const_args);
                     free(const_key);
                     break;
@@ -495,7 +499,7 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         free(const_args);
         free(const_key);
         for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-            if (!cxpr_ir_compile_node(ast->data.producer_access.args[i], program, reg,
+            if (!cxpr_ir_compile_node(ordered_args[i], program, reg,
                                       local_names, local_count, subst, inline_depth, err)) {
                 return false;
             }
@@ -656,11 +660,12 @@ static bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         }
 
         if (entry->ast_func) {
-            if (err) {
-                err->code = CXPR_ERR_SYNTAX;
-                err->message = "Function requires AST evaluation";
-            }
-            return false;
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
         }
 
         if (entry->ast_func_overlay &&

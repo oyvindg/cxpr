@@ -356,6 +356,23 @@ static void test_named_args_for_producer_field_access(void) {
     printf("  ✓ test_named_args_for_producer_field_access\n");
 }
 
+static void test_named_args_for_producer_field_access_allow_omitted_leading_default(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    const char* fields[] = {"signal"};
+    const char* params[] = {"source", "slow", "fast", "period"};
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer, 3, 4, fields, 1, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd", params, 4));
+
+    ASSERT_DOUBLE_EQ(eval_ok("macd(fast=9, slow=21, period=3).signal", ctx, reg), 15.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_named_args_for_producer_field_access_allow_omitted_leading_default\n");
+}
+
 static void test_named_args_support_ir_fallback(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -903,6 +920,7 @@ int main(void) {
     test_function_call_field_access();
     test_named_args_reorder_by_signature();
     test_named_args_for_producer_field_access();
+    test_named_args_for_producer_field_access_allow_omitted_leading_default();
     test_named_args_support_ir_fallback();
     test_named_args_expression_values_with_ir_and_varying_context();
     test_named_args_for_defined_function();

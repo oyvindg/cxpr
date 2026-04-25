@@ -154,6 +154,26 @@ void cxpr_context_clear(cxpr_context* ctx);
  * @param ctx Context to clear cached structs from.
  */
 void cxpr_context_clear_cached_structs(cxpr_context* ctx);
+/**
+ * @brief Store a cached producer struct result on a context.
+ *
+ * Cached structs are cleared by cxpr_context_clear_cached_structs() (which
+ * the evaluator calls at the start of each evaluation pass).
+ *
+ * @param ctx Destination context.
+ * @param name Cache key (typically "indicator(arg1,arg2,...)").
+ * @param value Struct value to deep-copy into the cache.
+ */
+void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
+                                    const cxpr_struct_value* value);
+/**
+ * @brief Look up a cached producer struct result from a context.
+ * @param ctx Context to query.
+ * @param name Cache key.
+ * @return Borrowed struct pointer, or NULL on miss.
+ */
+const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
+                                                        const char* name);
 
 /**
  * @brief Store a named struct value in the context.

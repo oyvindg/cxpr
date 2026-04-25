@@ -3,7 +3,7 @@
  * @brief Basket aggregate helpers layered on top of cxpr.
  */
 
-#include "internal.h"
+#include "core.h"
 #include <cxpr/basket.h>
 #include <limits.h>
 #include <math.h>

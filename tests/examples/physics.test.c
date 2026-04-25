@@ -1,9 +1,7 @@
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 
 #include <cxpr/cxpr.h>
-#include "../cxpr_test_internal.h"
 
 #define EPSILON 1e-12
 

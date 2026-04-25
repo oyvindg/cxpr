@@ -8,10 +8,8 @@
  */
 #include <cxpr/cxpr.h>
 #include <assert.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
 #include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
