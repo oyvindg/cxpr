@@ -58,12 +58,28 @@ typedef struct {
     cxpr_hashmap_entry* entries_base;
 } cxpr_context_entry_cache;
 
+/** @brief One per-evaluation memoized AST result. */
+typedef struct {
+    const struct cxpr_ast* ast;
+    unsigned long hash;
+    cxpr_value value;
+} cxpr_eval_memo_entry;
+
+/** @brief Dynamic per-context memo table for structurally equal AST subtrees. */
+typedef struct {
+    cxpr_eval_memo_entry* entries;
+    size_t capacity;
+    size_t count;
+    size_t depth;
+} cxpr_eval_memo;
+
 /** @brief Internal owned context storage backing the public `cxpr_context` handle. */
 struct cxpr_context {
     cxpr_hashmap variables;
     cxpr_hashmap params;
     cxpr_struct_map structs;
     cxpr_struct_map cached_structs;
+    cxpr_eval_memo eval_memo;
     cxpr_context_entry_cache variable_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     cxpr_context_entry_cache param_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     cxpr_context_entry_cache variable_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];

@@ -4,8 +4,8 @@
  */
 
 #include "internal.h"
-#include "../registry/internal.h"
-#include "../call/args.h"
+#include "registry/internal.h"
+#include "call/args.h"
 #include <string.h>
 
 typedef struct {

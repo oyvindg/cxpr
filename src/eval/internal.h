@@ -7,8 +7,8 @@
 #define CXPR_EVAL_INTERNAL_H
 
 #include "../ast/internal.h"
-#include <cxpr/context.h>
 #include "../registry/internal.h"
+#include <cxpr/context.h>
 
 /** @brief Populate an error object and return a zero-like failure value. */
 cxpr_value cxpr_eval_error(cxpr_error* err, cxpr_error_code code, const char* message);
@@ -92,6 +92,28 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
                                             const cxpr_context* ctx,
                                             const cxpr_registry* reg,
                                             cxpr_error* err);
+/** @brief Return a structural hash for one AST subtree. */
+unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast);
+/** @brief Check structural AST equality for evaluation memoization. */
+bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs);
+/** @brief Return true when an AST can be memoized without bypassing runtime-aware hooks. */
+bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg);
+/** @brief Look up one memoized number/bool AST result from the current eval pass. */
+bool cxpr_eval_memo_get(const cxpr_context* ctx,
+                        const cxpr_ast* ast,
+                        unsigned long hash,
+                        cxpr_value* out_value);
+/** @brief Store one number/bool AST result in the current eval-pass memo. */
+bool cxpr_eval_memo_set(const cxpr_context* ctx,
+                        const cxpr_ast* ast,
+                        unsigned long hash,
+                        cxpr_value value);
+/** @brief Clear memoized AST values without touching producer struct cache. */
+void cxpr_eval_memo_clear(cxpr_context* ctx);
+/** @brief Begin one top-level memoized evaluation scope. */
+void cxpr_eval_memo_enter(cxpr_context* ctx);
+/** @brief End one top-level memoized evaluation scope. */
+void cxpr_eval_memo_leave(cxpr_context* ctx);
 
 /** @brief Evaluate a dotted field-access node against the current context. */
 cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,

@@ -26,7 +26,6 @@ void cxpr_context_refresh_pointer_cache(cxpr_hashmap* map,
                                         cxpr_hashmap_entry* entry);
 /** @brief Clear one direct-mapped context cache array. */
 void cxpr_context_clear_entry_cache(cxpr_context_entry_cache* cache);
-
 /** @brief Find the mutable storage slot for one variable binding. */
 static inline cxpr_hashmap_entry* cxpr_context_find_variable_slot(cxpr_context* ctx,
                                                                   const char* key,

@@ -444,6 +444,15 @@ const cxpr_ast* cxpr_ast_ternary_true_branch(const cxpr_ast* ast);
  */
 const cxpr_ast* cxpr_ast_ternary_false_branch(const cxpr_ast* ast);
 
+/**
+ * @brief Return whether the AST root is a boolean-valued predicate expression.
+ * @param ast Root AST to inspect.
+ * @return `true` for comparisons, logical expressions, boolean literals,
+ *         boolean unary operators, ternaries with boolean branches, and
+ *         boolean-style calls such as `cross_above(...)`.
+ */
+bool cxpr_ast_is_boolean_expression(const cxpr_ast* ast);
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * AST Reference Extraction API
  * ═══════════════════════════════════════════════════════════════════════════ */

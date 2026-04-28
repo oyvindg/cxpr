@@ -5,9 +5,9 @@
 #ifndef CXPR_IR_INTERNAL_H
 #define CXPR_IR_INTERNAL_H
 
-#include "../limits.h"
-#include "../context/state.h"
-#include "../registry/internal.h"
+#include "limits.h" // IWYU pragma: keep
+#include "context/state.h" // IWYU pragma: keep
+#include "registry/internal.h"
 /** @brief Result kind is not known statically for this IR program. */
 #define CXPR_IR_RESULT_UNKNOWN 0
 /** @brief IR program is known to produce a numeric scalar result. */
@@ -256,7 +256,15 @@ void cxpr_ir_program_reset(cxpr_ir_program* program);
 /** @brief Compile one AST into internal IR. */
 bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);
-/** @brief Compile one AST into IR with an explicit local-variable table. */
+/** @brief Compile one AST into IR with an explicit local-variable table.
+ * @param ast AST to compile.
+ * @param reg Registry used for call resolution.
+ * @param local_names Optional local-name table.
+ * @param local_count Number of entries in `local_names`.
+ * @param program Destination IR program to reset and populate.
+ * @param err Optional error output.
+ * @return True on success, false on compilation failure.
+ */
 bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
                                  const char* const* local_names, size_t local_count,
                                  cxpr_ir_program* program, cxpr_error* err);
@@ -272,6 +280,9 @@ double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_conte
                                 size_t local_count, cxpr_error* err);
 /** @brief Return a stable printable opcode name. */
 const char* cxpr_ir_opcode_name(cxpr_opcode op);
+/** @brief Release one public compiled-program wrapper and all owned internal IR state.
+ * @param prog Program wrapper to free. May be NULL.
+ */
 void cxpr_program_free(cxpr_program* prog);
 
-#endif
+#endif /* CXPR_IR_INTERNAL_H */

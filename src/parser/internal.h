@@ -9,6 +9,7 @@
 #include "../lexer/internal.h"
 #include "../ast/internal.h"
 
+/** @brief Mutable parser state for one in-progress parse. */
 struct cxpr_parser {
     cxpr_lexer lexer;
     cxpr_token current;         /**< Current token */
@@ -40,4 +41,4 @@ cxpr_ast* cxpr_parse_expression(cxpr_parser* p);
 /** @brief Parse one primary expression node. */
 cxpr_ast* cxpr_parse_primary(cxpr_parser* p);
 
-#endif
+#endif /* CXPR_PARSER_INTERNAL_H */

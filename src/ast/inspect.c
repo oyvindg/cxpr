@@ -5,12 +5,18 @@
 
 #include "internal.h"
 
+#include <string.h>
+
 static bool cxpr_ast_named_args_present(char* const* arg_names, size_t argc) {
     if (!arg_names) return false;
     for (size_t i = 0; i < argc; ++i) {
         if (arg_names[i]) return true;
     }
     return false;
+}
+
+static bool cxpr_ast_branches_are_boolean(const cxpr_ast* left, const cxpr_ast* right) {
+    return cxpr_ast_is_boolean_expression(left) && cxpr_ast_is_boolean_expression(right);
 }
 
 bool cxpr_ast_call_uses_named_args(const cxpr_ast* ast) {
@@ -164,4 +170,43 @@ const cxpr_ast* cxpr_ast_ternary_true_branch(const cxpr_ast* ast) {
 
 const cxpr_ast* cxpr_ast_ternary_false_branch(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_TERNARY) ? ast->data.ternary.false_branch : NULL;
+}
+
+bool cxpr_ast_is_boolean_expression(const cxpr_ast* ast) {
+    const char* name;
+
+    if (!ast) return false;
+
+    switch (ast->type) {
+        case CXPR_NODE_BOOL:
+            return true;
+        case CXPR_NODE_BINARY_OP:
+            switch (ast->data.binary_op.op) {
+                case CXPR_TOK_EQ:
+                case CXPR_TOK_NEQ:
+                case CXPR_TOK_LT:
+                case CXPR_TOK_GT:
+                case CXPR_TOK_LTE:
+                case CXPR_TOK_GTE:
+                case CXPR_TOK_AND:
+                case CXPR_TOK_OR:
+                case CXPR_TOK_IN:
+                    return true;
+                default:
+                    return false;
+            }
+        case CXPR_NODE_UNARY_OP:
+            return ast->data.unary_op.op == CXPR_TOK_NOT;
+        case CXPR_NODE_FUNCTION_CALL:
+            name = ast->data.function_call.name;
+            return name != NULL &&
+                   (strcmp(name, "cross_above") == 0 ||
+                    strcmp(name, "cross_below") == 0);
+        case CXPR_NODE_TERNARY:
+            return cxpr_ast_is_boolean_expression(ast->data.ternary.condition) &&
+                   cxpr_ast_branches_are_boolean(ast->data.ternary.true_branch,
+                                                ast->data.ternary.false_branch);
+        default:
+            return false;
+    }
 }

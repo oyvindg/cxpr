@@ -4,11 +4,8 @@
  */
 
 #include "internal.h"
-
-#include "../call/args.h"
-#include "../context/internal.h"
-#include "../ir/internal.h"
-#include "../limits.h"
+#include "call/args.h"
+#include "ir/internal.h"
 #include <math.h>
 #include <stdlib.h>
 

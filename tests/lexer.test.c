@@ -342,6 +342,25 @@ static void test_dotted_variable(void) {
     printf("  ✓ test_dotted_variable\n");
 }
 
+static void test_string_literals(void) {
+    cxpr_lexer lex;
+    cxpr_token tok;
+
+    cxpr_lexer_init(&lex, "\"1h\" '1d'");
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_STRING);
+    assert(tok.length == 2 && memcmp(tok.start, "1h", 2) == 0);
+
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_STRING);
+    assert(tok.length == 2 && memcmp(tok.start, "1d", 2) == 0);
+
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_EOF);
+
+    printf("  ✓ test_string_literals\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: position tracking
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -544,6 +563,9 @@ int main(void) {
     /* Variables */
     test_variables();
     test_dotted_variable();
+
+    /* Strings */
+    test_string_literals();
 
     /* Position */
     test_position_tracking();

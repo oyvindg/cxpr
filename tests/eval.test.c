@@ -300,6 +300,34 @@ static double test_macd_signal(const double* args, size_t argc, void* ud) {
     return args[0] - args[1] + args[2];
 }
 
+static double test_counted_identity(const double* args, size_t argc, void* ud) {
+    int* calls = (int*)ud;
+    assert(argc == 1);
+    if (calls) *calls += 1;
+    return args[0];
+}
+
+static void test_eval_memo_reuses_structurally_equal_subexpressions(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    int calls = 0;
+
+    cxpr_register_defaults(reg);
+    cxpr_context_set(ctx, "close", 10.0);
+    cxpr_registry_add(reg, "counted", test_counted_identity, 1, 1, &calls, NULL);
+
+    ASSERT_DOUBLE_EQ(eval_ok("(counted(close) + 1) + (counted(close) + 1)", ctx, reg), 22.0);
+    assert(calls == 1);
+
+    cxpr_context_set(ctx, "close", 20.0);
+    ASSERT_DOUBLE_EQ(eval_ok("(counted(close) + 1) + (counted(close) + 1)", ctx, reg), 42.0);
+    assert(calls == 2);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_eval_memo_reuses_structurally_equal_subexpressions\n");
+}
+
 static void test_macd_signal_producer(const double* args, size_t argc,
                                       cxpr_value* out, size_t field_count,
                                       void* ud) {
@@ -914,6 +942,7 @@ int main(void) {
     test_comparison();
     test_logical();
     test_function_call();
+    test_eval_memo_reuses_structurally_equal_subexpressions();
     test_pipe_evaluates_like_nested_calls();
     test_ternary();
     test_field_access();

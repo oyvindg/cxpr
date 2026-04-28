@@ -82,8 +82,8 @@ cxpr_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_context* ctx,
     return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
 }
 
-cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
-                          const cxpr_registry* reg, cxpr_error* err) {
+static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_context* ctx,
+                                          const cxpr_registry* reg, cxpr_error* err) {
     if (!ast) return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "NULL AST node");
 
     switch (ast->type) {
@@ -399,4 +399,25 @@ cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
     }
 
     return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown AST node type");
+}
+
+cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
+                          const cxpr_registry* reg, cxpr_error* err) {
+    unsigned long hash;
+    cxpr_value cached;
+    cxpr_value value;
+
+    if (!ast) return cxpr_eval_node_uncached(ast, ctx, reg, err);
+
+    if (!cxpr_eval_ast_memoable(ast, reg)) {
+        return cxpr_eval_node_uncached(ast, ctx, reg, err);
+    }
+
+    hash = cxpr_eval_ast_hash(ast);
+    if (cxpr_eval_memo_get(ctx, ast, hash, &cached)) return cached;
+
+    value = cxpr_eval_node_uncached(ast, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return value;
+    (void)cxpr_eval_memo_set(ctx, ast, hash, value);
+    return value;
 }

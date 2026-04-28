@@ -34,10 +34,10 @@ static void test_parser_primary_forms(void) {
     assert(p);
     err = (cxpr_error){0};
     ast = cxpr_parse(p, "\"tf_1h\"", &err);
-    assert(ast == NULL);
-    assert(err.code != CXPR_OK);
-    assert(err.message != NULL);
-    assert(strcmp(err.message, "String literals not yet supported") == 0);
+    assert(ast);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_STRING);
+    assert(strcmp(cxpr_ast_string_value(ast), "tf_1h") == 0);
+    cxpr_ast_free(ast);
     cxpr_parser_free(p);
 
     p = cxpr_parser_new();

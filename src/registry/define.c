@@ -4,8 +4,8 @@
  */
 
 #include "internal.h"
-#include "../core.h"
-#include "../ast/internal.h"
+#include "core.h"
+#include "ast/internal.h"
 #include <stdlib.h>
 #include <string.h>
 

@@ -6,7 +6,7 @@
 #ifndef CXPR_EXPRESSION_INTERNAL_H
 #define CXPR_EXPRESSION_INTERNAL_H
 
-#include "../core.h"
+#include "core.h" // IWYU pragma: keep
 
 /**
  * @brief A single expression entry in the evaluator.
@@ -49,4 +49,4 @@ bool cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator);
 cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
                                                const char* name, bool* found);
 
-#endif
+#endif /* CXPR_EXPRESSION_INTERNAL_H */

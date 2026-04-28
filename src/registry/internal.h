@@ -59,8 +59,10 @@ typedef struct cxpr_func_entry {
     size_t*    defined_param_field_counts; /**< Per-param field counts */
 } cxpr_func_entry;
 
+/** @brief Initial owned entry capacity for new registries. */
 #define CXPR_REGISTRY_INITIAL_CAPACITY 64
 
+/** @brief Internal owned registry state backing the public `cxpr_registry` handle. */
 struct cxpr_registry {
     cxpr_func_entry* entries;   /**< Array of function entries */
     size_t capacity;

@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include "../src/core.h" // IWYU pragma: keep
 #include "../src/context/internal.h"
 
 static void test_context_entry_cache_helpers(void) {

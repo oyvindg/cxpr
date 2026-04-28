@@ -4,13 +4,16 @@
  */
 
 #include "internal.h"
-
 #include <math.h>
 
 cxpr_value cxpr_eval_ast_value(const cxpr_ast* ast, const cxpr_context* ctx,
                                const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_value value;
     if (err) *err = (cxpr_error){0};
-    return cxpr_eval_node(ast, ctx, reg, err);
+    cxpr_eval_memo_enter((cxpr_context*)ctx);
+    value = cxpr_eval_node(ast, ctx, reg, err);
+    cxpr_eval_memo_leave((cxpr_context*)ctx);
+    return value;
 }
 
 bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,

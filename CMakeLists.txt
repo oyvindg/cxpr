@@ -64,13 +64,19 @@ add_library(cxpr STATIC
     src/ast/references.c
     src/ast/analyze.c
     src/call/args.c
-    src/eval/helpers.c
+    src/eval/helpers/base.c
+    src/eval/helpers/constants.c
+    src/eval/helpers/clone.c
+    src/eval/helpers/cache.c
     src/eval/calls.c
     src/eval/tree.c
     src/eval/api.c
     src/ir/program.c
     src/ir/cache_key.c
     src/ir/validate.c
+    src/ir/compile/shared.c
+    src/ir/compile/infer.c
+    src/ir/compile/node.c
     src/ir/compile.c
     src/ir/exec/lookup.c
     src/ir/exec/calls.c

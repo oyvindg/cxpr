@@ -269,8 +269,34 @@ static cxpr_token cxpr_lexer_variable(cxpr_lexer* lexer) {
                            start_pos, start_line, start_col);
 }
 
-static cxpr_token cxpr_lexer_string(const cxpr_lexer* lexer) {
-    return cxpr_make_error_token("String literals not yet supported", lexer);
+static cxpr_token cxpr_lexer_string(cxpr_lexer* lexer) {
+    const char quote = *lexer->current;
+    const size_t start_pos = lexer->position;
+    const size_t start_line = lexer->line;
+    const size_t start_col = lexer->column;
+    const char* value_start;
+
+    cxpr_lexer_advance(lexer); /* opening quote */
+    value_start = lexer->current;
+
+    while (*lexer->current != '\0' && *lexer->current != quote) {
+        if (*lexer->current == '\\' && lexer->current[1] != '\0') {
+            cxpr_lexer_advance(lexer);
+        }
+        cxpr_lexer_advance(lexer);
+    }
+
+    if (*lexer->current != quote) {
+        return cxpr_make_error_token("Unterminated string literal", lexer);
+    }
+
+    {
+        cxpr_token tok = cxpr_make_token(CXPR_TOK_STRING, value_start,
+                                         (size_t)(lexer->current - value_start),
+                                         start_pos, start_line, start_col);
+        cxpr_lexer_advance(lexer); /* closing quote */
+        return tok;
+    }
 }
 
 void cxpr_lexer_init(cxpr_lexer* lexer, const char* source) {
@@ -310,15 +336,24 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
     if (c == '$') {
         return cxpr_lexer_variable(lexer);
     }
+    if (c == '"' || c == '\'') {
+        return cxpr_lexer_string(lexer);
+    }
 
     cxpr_lexer_advance(lexer);
 
     switch (c) {
         case '+': return cxpr_make_token(CXPR_TOK_PLUS, start, 1, start_pos, start_line, start_col);
         case '-': return cxpr_make_token(CXPR_TOK_MINUS, start, 1, start_pos, start_line, start_col);
-        case '*': return cxpr_make_token(CXPR_TOK_STAR, start, 1, start_pos, start_line, start_col);
+        case '*':
+            if (*lexer->current == '*') {
+                cxpr_lexer_advance(lexer);
+                return cxpr_make_token(CXPR_TOK_POWER, start, 2, start_pos, start_line, start_col);
+            }
+            return cxpr_make_token(CXPR_TOK_STAR, start, 1, start_pos, start_line, start_col);
         case '/': return cxpr_make_token(CXPR_TOK_SLASH, start, 1, start_pos, start_line, start_col);
         case '%': return cxpr_make_token(CXPR_TOK_PERCENT, start, 1, start_pos, start_line, start_col);
+        case '^': return cxpr_make_token(CXPR_TOK_POWER, start, 1, start_pos, start_line, start_col);
         case '(': return cxpr_make_token(CXPR_TOK_LPAREN, start, 1, start_pos, start_line, start_col);
         case ')': return cxpr_make_token(CXPR_TOK_RPAREN, start, 1, start_pos, start_line, start_col);
         case '[': return cxpr_make_token(CXPR_TOK_LBRACKET, start, 1, start_pos, start_line, start_col);
@@ -362,10 +397,11 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
                 cxpr_lexer_advance(lexer);
                 return cxpr_make_token(CXPR_TOK_OR, start, 2, start_pos, start_line, start_col);
             }
+            if (*lexer->current == '>') {
+                cxpr_lexer_advance(lexer);
+                return cxpr_make_token(CXPR_TOK_PIPE, start, 2, start_pos, start_line, start_col);
+            }
             break;
-        case '"':
-        case '\'':
-            return cxpr_lexer_string(lexer);
     }
 
     return cxpr_make_error_token("Unexpected character", lexer);

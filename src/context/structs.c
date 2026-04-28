@@ -4,7 +4,7 @@
  */
 
 #include "internal.h"
-#include "../expression/internal.h"
+#include "expression/internal.h"
 
 #include <stdio.h>
 

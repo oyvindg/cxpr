@@ -3,7 +3,6 @@
  * @brief Named expression registration and query helpers for cxpr.
  */
 
-#include "../ast/internal.h"
 #include "internal.h"
 #include <stdio.h>
 

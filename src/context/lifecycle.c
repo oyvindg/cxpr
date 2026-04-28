@@ -12,6 +12,10 @@ cxpr_context* cxpr_context_new(void) {
     cxpr_hashmap_init(&ctx->params);
     cxpr_struct_map_init(&ctx->structs);
     cxpr_struct_map_init(&ctx->cached_structs);
+    ctx->eval_memo.entries = NULL;
+    ctx->eval_memo.capacity = 0u;
+    ctx->eval_memo.count = 0u;
+    ctx->eval_memo.depth = 0u;
     ctx->variables_version = 1;
     ctx->params_version = 1;
     ctx->parent = NULL;
@@ -41,6 +45,7 @@ void cxpr_context_free(cxpr_context* ctx) {
     cxpr_hashmap_destroy(&ctx->params);
     cxpr_struct_map_destroy(&ctx->structs);
     cxpr_struct_map_destroy(&ctx->cached_structs);
+    free(ctx->eval_memo.entries);
     free(ctx);
 }
 
@@ -71,6 +76,10 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
     clone->params = *param_clone;
     clone->variables_version = ctx->variables_version;
     clone->params_version = ctx->params_version;
+    clone->eval_memo.entries = NULL;
+    clone->eval_memo.capacity = 0u;
+    clone->eval_memo.count = 0u;
+    clone->eval_memo.depth = 0u;
     clone->parent = NULL;
     free(var_clone);
     free(param_clone);
@@ -83,6 +92,8 @@ void cxpr_context_clear(cxpr_context* ctx) {
     cxpr_hashmap_clear(&ctx->params);
     cxpr_struct_map_clear(&ctx->structs);
     cxpr_struct_map_clear(&ctx->cached_structs);
+    ctx->eval_memo.count = 0u;
+    ctx->eval_memo.depth = 0u;
     cxpr_context_clear_entry_cache(ctx->variable_cache);
     cxpr_context_clear_entry_cache(ctx->param_cache);
     cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
@@ -94,4 +105,6 @@ void cxpr_context_clear(cxpr_context* ctx) {
 void cxpr_context_clear_cached_structs(cxpr_context* ctx) {
     if (!ctx) return;
     cxpr_struct_map_clear(&ctx->cached_structs);
+    ctx->eval_memo.count = 0u;
+    ctx->eval_memo.depth = 0u;
 }
