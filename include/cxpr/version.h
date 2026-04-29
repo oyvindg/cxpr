@@ -9,8 +9,8 @@
 /** @brief Public cxpr major version. */
 #define CXPR_VERSION_MAJOR 1
 /** @brief Public cxpr minor version. */
-#define CXPR_VERSION_MINOR 0
+#define CXPR_VERSION_MINOR 1
 /** @brief Public cxpr patch version. */
-#define CXPR_VERSION_PATCH 4
+#define CXPR_VERSION_PATCH 0
 
 #endif /* CXPR_VERSION_H */

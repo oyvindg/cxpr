@@ -7,6 +7,8 @@ static void test_context_struct_storage_paths(void) {
     const char* fields[] = {"x", "y"};
     double values[] = {3.0, 4.0};
     const cxpr_struct_value* s;
+    const cxpr_struct_value* cached;
+    cxpr_struct_value* owned_cached;
     cxpr_value field;
     bool found = false;
 
@@ -25,6 +27,20 @@ static void test_context_struct_storage_paths(void) {
     field = cxpr_context_get_field(ctx, "pose", "y", &found);
     assert(found);
     assert(field.d == 4.0);
+
+    {
+        cxpr_value cached_values[] = {cxpr_fv_double(8.0), cxpr_fv_double(9.0)};
+        owned_cached = cxpr_struct_value_new(fields, cached_values, 2);
+        assert(owned_cached);
+        cxpr_context_set_cached_struct(ctx, "cached_pose", owned_cached);
+        cxpr_struct_value_free(owned_cached);
+    }
+    cached = cxpr_context_get_cached_struct(ctx, "cached_pose");
+    assert(cached);
+    assert(cached->field_count == 2);
+    assert(cached->field_values[0].d == 8.0);
+    cxpr_context_clear_cached_structs(ctx);
+    assert(cxpr_context_get_cached_struct(ctx, "cached_pose") == NULL);
 
     cxpr_context_free(ctx);
 }

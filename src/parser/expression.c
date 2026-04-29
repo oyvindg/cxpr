@@ -1,6 +1,6 @@
 /**
- * @file parser_grammar_expr.c
- * @brief Recursive descent grammar rules above primary expressions.
+ * @file expression.c
+ * @brief Recursive descent parsing for expression operators above primary nodes.
  */
 
 #include "internal.h"

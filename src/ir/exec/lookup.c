@@ -4,7 +4,7 @@
  */
 
 #include "internal.h"
-#include "../../expression/internal.h"
+#include "expression/internal.h"
 #include <math.h>
 
 double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,

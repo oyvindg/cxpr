@@ -4,8 +4,8 @@
  */
 
 #include "args.h"
-#include "../ast/internal.h"
-#include "../limits.h"
+#include "ast/internal.h"
+#include "limits.h"
 #include <string.h>
 
 static void cxpr_call_bind_set_error(cxpr_error_code* out_code,

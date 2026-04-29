@@ -146,12 +146,13 @@ static void test_ast_function_can_eval_nested_expression(void) {
     printf("  ✓ test_ast_function_can_eval_nested_expression\n");
 }
 
-static void test_ast_function_blocks_ir_compile(void) {
+static void test_ast_function_compiles_via_ast_ir_opcode(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_program* prog;
+    double result = 0.0;
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_ast(reg, "pick_param", pick_param_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
@@ -159,16 +160,18 @@ static void test_ast_function_blocks_ir_compile(void) {
 
     cxpr_ast* ast = parse_or_die(p, "pick_param($threshold)");
     prog = cxpr_compile(ast, reg, &err);
-    assert(prog == NULL);
-    assert(err.code == CXPR_ERR_SYNTAX);
-    assert(err.message != NULL);
-    assert(strcmp(err.message, "Function requires AST evaluation") == 0);
+    assert(prog != NULL);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &result, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(result, 5.0);
 
+    cxpr_program_free(prog);
     cxpr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_ast_function_blocks_ir_compile\n");
+    printf("  ✓ test_ast_function_compiles_via_ast_ir_opcode\n");
 }
 
 static void test_ast_function_userdata_cleanup_on_overwrite_and_free(void) {
@@ -381,15 +384,17 @@ static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
     cxpr_register_defaults(reg);
     cxpr_ast* ast = parse_or_die(p, "mode(2)");
 
-    /* AST function path: eval works, IR compile is intentionally blocked. */
+    /* AST function path: eval works, and compiled programs delegate via CALL_AST. */
     cxpr_registry_add_ast(reg, "mode", mode_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 102.0);
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
-    assert(prog == NULL);
-    assert(err.code == CXPR_ERR_SYNTAX);
-    assert(err.message && strcmp(err.message, "Function requires AST evaluation") == 0);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 102.0);
+    cxpr_program_free(prog);
 
     /* Overwrite with value function: should restore regular compile/eval behavior. */
     cxpr_registry_add_value(reg, "mode", mode_value_fn, 1, 1, NULL, NULL);
@@ -417,15 +422,17 @@ static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
     ASSERT_DOUBLE_EQ(typed_out.d, 20.0);
     cxpr_program_free(prog);
 
-    /* Overwrite back to AST function: compile must fail again for the same reason. */
+    /* Overwrite back to AST function: compiled programs delegate via CALL_AST again. */
     cxpr_registry_add_ast(reg, "mode", mode_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 102.0);
     prog = cxpr_compile(ast, reg, &err);
-    assert(prog == NULL);
-    assert(err.code == CXPR_ERR_SYNTAX);
-    assert(err.message && strcmp(err.message, "Function requires AST evaluation") == 0);
+    assert(prog != NULL);
+    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 102.0);
+    cxpr_program_free(prog);
 
     cxpr_ast_free(ast);
     cxpr_registry_free(reg);
@@ -901,7 +908,7 @@ int main(void) {
     printf("Running ast function tests...\n");
     test_ast_function_can_read_variable_argument();
     test_ast_function_can_eval_nested_expression();
-    test_ast_function_blocks_ir_compile();
+    test_ast_function_compiles_via_ast_ir_opcode();
     test_ast_function_userdata_cleanup_on_overwrite_and_free();
     test_registry_overwrite_ast_value_typed_ast_sequence();
     test_ast_overlay_numeric_calls_compile_to_scalar_ir();

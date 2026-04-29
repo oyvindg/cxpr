@@ -4,8 +4,8 @@
  */
 
 #include "internal.h"
+#include "limits.h"
 
-#include "../limits.h"
 #include <math.h>
 
 cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,

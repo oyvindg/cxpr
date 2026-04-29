@@ -4,10 +4,21 @@
  */
 
 #include "internal.h"
-#include "../core.h"
+#include "core.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+static void cxpr_registry_clear_struct_metadata(cxpr_func_entry* entry) {
+    if (!entry->struct_fields) return;
+    for (size_t i = 0; i < entry->fields_per_arg; ++i) {
+        free(entry->struct_fields[i]);
+    }
+    free(entry->struct_fields);
+    entry->struct_fields = NULL;
+    entry->fields_per_arg = 0;
+    entry->struct_argc = 0;
+}
 
 static void cxpr_registry_replace_entry(cxpr_func_entry* entry) {
     cxpr_registry_clear_owned_entry(entry);
@@ -359,14 +370,16 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
 
     entry = cxpr_registry_find(reg, name);
     if (entry) {
-        cxpr_registry_replace_entry(entry);
+        cxpr_registry_clear_struct_metadata(entry);
         entry->struct_producer = func;
-        entry->min_args = min_args;
-        entry->max_args = max_args;
-        entry->return_type = CXPR_VALUE_STRUCT;
-        entry->has_return_type = true;
-        entry->userdata = userdata;
-        entry->userdata_free = free_userdata;
+        if (!entry->sync_func && !entry->value_func && !entry->typed_func) {
+            entry->min_args = min_args;
+            entry->max_args = max_args;
+            entry->return_type = CXPR_VALUE_STRUCT;
+            entry->has_return_type = true;
+            entry->userdata = userdata;
+            entry->userdata_free = free_userdata;
+        }
         entry->struct_fields = owned_fields;
         entry->fields_per_arg = field_count;
         entry->struct_argc = 0;

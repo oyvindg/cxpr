@@ -6,8 +6,8 @@
 #ifndef CXPR_PARSER_INTERNAL_H
 #define CXPR_PARSER_INTERNAL_H
 
-#include "../lexer/internal.h"
-#include "../ast/internal.h"
+#include "lexer/internal.h"
+#include "ast/internal.h" // IWYU pragma: keep
 
 /** @brief Mutable parser state for one in-progress parse. */
 struct cxpr_parser {

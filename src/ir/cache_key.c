@@ -3,7 +3,7 @@
  * @brief IR producer cache-key helpers.
  */
 
-#include "../core.h"
+#include "core.h"
 #include "internal.h"
 
 const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args, size_t argc,

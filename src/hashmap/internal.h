@@ -6,7 +6,7 @@
 #ifndef CXPR_HASHMAP_INTERNAL_H
 #define CXPR_HASHMAP_INTERNAL_H
 
-#include "../core.h" // IWYU pragma: keep
+#include "core.h" // IWYU pragma: keep
 
 /** @brief Initial open-addressed slot count for internal cxpr hash maps. */
 #define CXPR_HASHMAP_INITIAL_CAPACITY 32

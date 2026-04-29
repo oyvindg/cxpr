@@ -4,7 +4,7 @@
  */
 
 #include "internal.h" // IWYU pragma: keep
-#include "../../context/state.h"
+#include "context/state.h"
 #include "limits.h"
 
 static unsigned long cxpr_eval_hash_mix(unsigned long hash, unsigned long value) {

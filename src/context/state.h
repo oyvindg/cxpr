@@ -6,7 +6,7 @@
 #ifndef CXPR_CONTEXT_STATE_H
 #define CXPR_CONTEXT_STATE_H
 
-#include "../hashmap/internal.h"
+#include "hashmap/internal.h"
 
 /** @brief Fixed-size direct-mapped cache used for repeated context entry lookups. */
 #define CXPR_CONTEXT_ENTRY_CACHE_SIZE 64

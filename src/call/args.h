@@ -6,7 +6,7 @@
 #ifndef CXPR_CALL_ARGS_H
 #define CXPR_CALL_ARGS_H
 
-#include "../registry/internal.h"
+#include "registry/internal.h"
 
 /**
  * @brief Bind call-site arguments to a registry entry's canonical parameter order.

@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-static void test_parser_grammar_expression_forms(void) {
+static void test_parser_expression_forms(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast* ast;
@@ -37,7 +37,7 @@ static void test_parser_grammar_expression_forms(void) {
 }
 
 int main(void) {
-    test_parser_grammar_expression_forms();
-    printf("  \xE2\x9C\x93 parser_grammar_expr\n");
+    test_parser_expression_forms();
+    printf("  \xE2\x9C\x93 parser_expression\n");
     return 0;
 }

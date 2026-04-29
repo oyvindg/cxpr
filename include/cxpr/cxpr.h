@@ -16,5 +16,9 @@
 #include <cxpr/basket.h>
 #include <cxpr/evaluator.h>
 #include <cxpr/expression.h>
+#include <cxpr/provider.h>
+#include <cxpr/runtime_call.h>
+#include <cxpr/source_plan.h>
+#include <cxpr/scope.h>
 
 #endif /* CXPR_H */

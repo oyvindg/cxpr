@@ -135,6 +135,8 @@ cxpr_value_type* cxpr_registry_clone_arg_types(const cxpr_value_type* arg_types,
 }
 
 void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
+    free(entry->name);
+    entry->name = NULL;
     entry->sync_func = NULL;
     entry->value_func = NULL;
     entry->typed_func = NULL;

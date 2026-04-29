@@ -56,7 +56,7 @@ add_library(cxpr STATIC
     src/lexer/lexer.c
     src/parser/parser.c
     src/parser/helpers.c
-    src/parser/grammar_expr.c
+    src/parser/expression.c
     src/parser/primary.c
     src/ast/construct.c
     src/ast/free.c
@@ -95,6 +95,12 @@ add_library(cxpr STATIC
     src/registry/defaults.c
     src/registry/define.c
     src/registry/call.c
+    src/provider/provider.c
+    src/provider/registry.c
+    src/source/canonical.c
+    src/source/plan.c
+    src/runtime/call.c
+    src/scope/source.c
     src/timeseries.c
     src/basket.c
     src/expression/evaluator.c

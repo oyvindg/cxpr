@@ -42,11 +42,12 @@ set(CXPR_C_TESTS
     "${CMAKE_CURRENT_SOURCE_DIR}/lookback.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/math.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/parser.test.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/parser_grammar_expr.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/parser_expression.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/parser_helpers.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/parser_primary.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/physics_simulation.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/precedence.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/provider.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/program.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/readme.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/registry_add.test.c"
@@ -54,6 +55,7 @@ set(CXPR_C_TESTS
     "${CMAKE_CURRENT_SOURCE_DIR}/registry_defaults.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/registry_helpers.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/simulation.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/scope.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/strategy_expression.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/struct_ctx.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/struct_fn.test.c"
@@ -64,10 +66,13 @@ set(CXPR_C_TEST_NAMES)
 
 set(CXPR_C_TEST_INTERNAL_INCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/chain_access.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/context_cache.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/context_values.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/define.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/errors.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/eval.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/field_value.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/hashmap.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/math.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/lexer.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/precedence.test.c"
@@ -96,7 +101,9 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     endif()
 
     if(test_file IN_LIST CXPR_C_TEST_INTERNAL_INCLUDE)
-        target_include_directories("${target_name}" PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_include_directories("${target_name}" PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            "${CMAKE_CURRENT_SOURCE_DIR}/../src")
     endif()
 
     add_test(NAME "${test_base}" COMMAND "$<TARGET_FILE:${target_name}>")

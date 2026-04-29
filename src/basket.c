@@ -5,7 +5,6 @@
 
 #include "core.h"
 #include <cxpr/basket.h>
-#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -28,7 +27,7 @@ static void cxpr_basket_role_binding_clear(cxpr_basket_role_binding* binding) {
 }
 
 static char* cxpr_basket_role_struct_name(const char* role) {
-    const char* prefix = "__dynasty_role_";
+    const char* prefix = "__cxpr_basket_role_";
     const size_t prefix_len = strlen(prefix);
     const size_t role_len = role ? strlen(role) : 0;
     char* name = (char*)malloc(prefix_len + role_len + 1);

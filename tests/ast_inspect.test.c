@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static cxpr_ast* parse_expr(const char* expression) {
     cxpr_parser* parser = cxpr_parser_new();

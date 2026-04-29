@@ -26,7 +26,8 @@ static void test_context_clone_overlay_and_clear(void) {
 
     cxpr_context_clear(child);
     (void)cxpr_context_get(child, "x", &found);
-    assert(found == false);
+    assert(found == true);
+    assert(cxpr_context_get(child, "x", &found) == 5.0 && found);
 
     cxpr_context_free(child);
     cxpr_context_free(clone);

@@ -6,7 +6,7 @@
 #ifndef CXPR_IR_EXEC_INTERNAL_H
 #define CXPR_IR_EXEC_INTERNAL_H
 
-#include "../internal.h"
+#include "ir/internal.h"
 
 /** @brief Read one scalar variable or param using a precomputed hash. */
 double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,

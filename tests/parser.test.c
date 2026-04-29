@@ -289,10 +289,11 @@ static void test_function_nested(void) {
 static void test_function_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast = parse_ok(p, "macd(12, 26, 9).signal");
-    const char* refs[4] = {0};
+    cxpr_producer_field_ref refs[4] = {0};
     assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
-    assert(cxpr_ast_references(ast, refs, 4) == 1);
-    assert(strcmp(refs[0], "macd.signal") == 0);
+    assert(cxpr_ast_producer_fields_used(ast, refs, 4) == 1);
+    assert(strcmp(refs[0].producer_name, "macd") == 0);
+    assert(strcmp(refs[0].field_name, "signal") == 0);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     printf("  ✓ test_function_field_access\n");
@@ -305,7 +306,7 @@ static void test_function_field_access(void) {
 static void test_grouped_function_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast;
-    const char* refs[4] = {0};
+    cxpr_producer_field_ref refs[4] = {0};
 
     /* (macd(12, 26, 9)).signal must produce the same node as macd(12, 26, 9).signal */
     ast = parse_ok(p, "(macd(12, 26, 9)).signal");
@@ -313,8 +314,9 @@ static void test_grouped_function_field_access(void) {
     assert(strcmp(cxpr_ast_producer_name(ast), "macd") == 0);
     assert(strcmp(cxpr_ast_producer_field(ast), "signal") == 0);
     assert(cxpr_ast_producer_argc(ast) == 3);
-    assert(cxpr_ast_references(ast, refs, 4) == 1);
-    assert(strcmp(refs[0], "macd.signal") == 0);
+    assert(cxpr_ast_producer_fields_used(ast, refs, 4) == 1);
+    assert(strcmp(refs[0].producer_name, "macd") == 0);
+    assert(strcmp(refs[0].field_name, "signal") == 0);
     cxpr_ast_free(ast);
 
     /* (adx(14)).adx — single-arg form */

@@ -99,7 +99,7 @@ int main(void) {
     assert(role);
 
     cxpr_register_basket_builtins(reg);
-    cxpr_context_set_struct(ctx, "__dynasty_role_pair", role);
+    cxpr_context_set_struct(ctx, "__cxpr_basket_role_pair", role);
     cxpr_struct_value_free(role);
 
     assert(cxpr_basket_is_builtin("avg"));

@@ -3,9 +3,9 @@
  * @brief Shared IR helpers and public compiled-program scaffolding.
  */
 
-#include "../expression/internal.h"
+#include "expression/internal.h"
 #include "internal.h"
-#include "../ast/internal.h"
+#include "ast/internal.h"
 #include <math.h>
 #include <stdint.h>
 
