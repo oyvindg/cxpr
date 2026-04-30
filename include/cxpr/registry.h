@@ -364,6 +364,13 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
 void cxpr_register_defaults(cxpr_registry* reg);
 
 /**
+ * @brief Return true when `name` is one of the built-in time-series helpers.
+ * @param name Function name to inspect.
+ * @return True for cxpr-owned time-series builtins such as `rising` and `delta`.
+ */
+bool cxpr_timeseries_is_builtin(const char* name);
+
+/**
  * @brief Register an expression-defined function.
  * @param reg Destination registry.
  * @param def Definition string of the form `name(args) => body`.

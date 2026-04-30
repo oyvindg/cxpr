@@ -4,6 +4,7 @@ set(CXPR_C_TESTS
     "${CMAKE_CURRENT_SOURCE_DIR}/ast_free.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ast_func.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ast_inspect.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ast_printer.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ast_references.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/basket.test.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/call_args.test.c"
@@ -97,7 +98,10 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     target_include_directories("${target_name}" PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         target_compile_options("${target_name}" PRIVATE
+            -UNDEBUG
             -include "${CMAKE_CURRENT_SOURCE_DIR}/cxpr_test_internal.h")
+    elseif(MSVC)
+        target_compile_options("${target_name}" PRIVATE /UNDEBUG)
     endif()
 
     if(test_file IN_LIST CXPR_C_TEST_INTERNAL_INCLUDE)

@@ -249,13 +249,6 @@ int cxpr_register_provider_fn_spec(
     return cxpr_registry_set_param_names(reg, spec->name, param_names, total_param_count) ? 1 : 0;
 }
 
-static int cxpr_provider_should_skip_source_descriptor(
-    const cxpr_provider_fn_spec* spec,
-    const cxpr_host_config* host) {
-    if (!spec || !host || !host->skip_source_descriptor) return 0;
-    return host->skip_source_descriptor(spec, host->userdata) != 0;
-}
-
 void cxpr_provider_host_visible_arg_range(
     const cxpr_provider_fn_spec* spec,
     const cxpr_host_config* host,

@@ -15,6 +15,7 @@ static void test_context_value_paths(void) {
     cxpr_context_set_param_array(ctx, params);
     cxpr_context_set_prehashed(ctx, "c", cxpr_hash_string("c"), 3.0);
     cxpr_context_set_param_prehashed(ctx, "mult", cxpr_hash_string("mult"), 4.0);
+    cxpr_context_set_bool(ctx, "flag", true);
 
     assert(cxpr_context_get(ctx, "a", &found) == 1.0 && found);
     assert(cxpr_context_get(ctx, "c", &found) == 3.0 && found);
@@ -25,6 +26,32 @@ static void test_context_value_paths(void) {
     assert(found);
     assert(value.type == CXPR_VALUE_NUMBER);
     assert(value.d == 2.0);
+
+    value = cxpr_context_get_typed(ctx, "flag", &found);
+    assert(found);
+    assert(value.type == CXPR_VALUE_BOOL);
+    assert(value.b == true);
+    assert(cxpr_context_get(ctx, "flag", &found) == 1.0 && found);
+    assert(cxpr_context_get_bool(ctx, "flag", &found) == true && found);
+
+    cxpr_context_set(ctx, "flag", 5.0);
+    value = cxpr_context_get_typed(ctx, "flag", &found);
+    assert(found);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(value.d == 5.0);
+    assert(cxpr_context_get_bool(ctx, "flag", &found) == false && !found);
+
+    cxpr_context_set_bool(ctx, "parent_flag", true);
+    {
+        cxpr_context* overlay = cxpr_context_overlay_new(ctx);
+        assert(overlay);
+        cxpr_context_set(overlay, "parent_flag", 7.0);
+        value = cxpr_context_get_typed(overlay, "parent_flag", &found);
+        assert(found);
+        assert(value.type == CXPR_VALUE_NUMBER);
+        assert(value.d == 7.0);
+        cxpr_context_free(overlay);
+    }
 
     cxpr_context_free(ctx);
 }

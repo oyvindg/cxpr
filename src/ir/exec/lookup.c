@@ -4,6 +4,7 @@
  */
 
 #include "internal.h"
+#include "context/internal.h"
 #include "expression/internal.h"
 #include <math.h>
 
@@ -16,6 +17,14 @@ double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
         return 0.0;
     }
 
+    {
+        bool bool_found = false;
+        bool bool_value = cxpr_context_get_local_bool(ctx, name, &bool_found);
+        if (bool_found) {
+            if (found) *found = true;
+            return bool_value ? 1.0 : 0.0;
+        }
+    }
     value = cxpr_hashmap_get_prehashed(&ctx->variables, name, hash, found);
     if (found && *found) return value;
     if (ctx->parent) return cxpr_ir_context_get_prehashed(ctx->parent, name, hash, found);
@@ -202,6 +211,15 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
         if (scope_found) {
             if (found) *found = true;
             return scoped;
+        }
+    }
+
+    {
+        bool bool_found = false;
+        bool bool_value = cxpr_context_get_local_bool(ctx, instr->name, &bool_found);
+        if (bool_found) {
+            if (found) *found = true;
+            return cxpr_fv_bool(bool_value);
         }
     }
 

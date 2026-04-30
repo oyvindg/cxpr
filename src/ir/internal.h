@@ -161,12 +161,21 @@ size_t cxpr_ir_next_index(const cxpr_ir_program* program);
  * @param target Target instruction index to store.
  */
 void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target);
-/** @brief Try to fold an AST subtree to a compile-time constant.
+/** @brief Try to fold an AST subtree to a typed compile-time constant.
  * @param ast AST subtree to inspect.
+ * @param reg Function registry used to resolve pure scalar calls.
  * @param out Output location for the constant value.
  * @return true when the subtree is pure and was folded successfully.
  */
-bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out);
+bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
+                                  cxpr_value* out);
+/** @brief Try to fold an AST subtree to a numeric compile-time constant.
+ * @param ast AST subtree to inspect.
+ * @param reg Function registry used to resolve pure scalar calls.
+ * @param out Output location for the numeric constant.
+ * @return true when the subtree is pure and folded to a number.
+ */
+bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, double* out);
 /** @brief Compare two AST subtrees structurally.
  * @param left Left subtree.
  * @param right Right subtree.
@@ -216,6 +225,11 @@ cxpr_value cxpr_ir_make_not_found(cxpr_error* err, const char* message);
  * @return true when all reachable paths have consistent, safe stack depth.
  */
 bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program);
+/** @brief Validate type-safe use of the split-stack bool fast-path executor.
+ * @param program Compiled IR program to validate.
+ * @return true when all reachable paths keep number and bool stacks consistent.
+ */
+bool cxpr_ir_validate_bool_fast_program(const cxpr_ir_program* program);
 /** @brief Build a cache key for a producer call with constant AST arguments.
  * @param name Producer name.
  * @param args Producer argument AST nodes.
@@ -223,7 +237,7 @@ bool cxpr_ir_validate_scalar_fast_program(const cxpr_ir_program* program);
  * @return Newly allocated cache key, or NULL when the arguments are not constant.
  */
 char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
-                                          size_t argc);
+                                          size_t argc, const cxpr_registry* reg);
 /** @brief Resolve a scalar identifier lookup using the per-instruction cache when possible.
  * @param ctx Request context.
  * @param instr IR load instruction carrying the lookup name/hash.

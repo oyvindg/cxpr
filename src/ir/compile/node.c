@@ -12,7 +12,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                           const cxpr_ir_subst_frame* subst,
                           size_t inline_depth,
                           cxpr_error* err) {
-    double constant;
+    cxpr_value constant;
 
     if (!ast) {
         if (err) {
@@ -22,11 +22,16 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         return false;
     }
 
-    if (cxpr_ir_constant_value(ast, &constant)) {
+    if (cxpr_ir_constant_typed_value(ast, reg, &constant)) {
+        if (constant.type != CXPR_VALUE_NUMBER && constant.type != CXPR_VALUE_BOOL) return false;
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
-                                .op = CXPR_OP_PUSH_CONST,
-                                .value = constant,
+                                .op = constant.type == CXPR_VALUE_BOOL
+                                          ? CXPR_OP_PUSH_BOOL
+                                          : CXPR_OP_PUSH_CONST,
+                                .value = constant.type == CXPR_VALUE_BOOL
+                                             ? (constant.b ? 1.0 : 0.0)
+                                             : constant.d,
                             },
                             err);
     }
@@ -139,7 +144,8 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         }
         const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
                                                         ordered_args,
-                                                        ast->data.producer_access.argc);
+                                                        ast->data.producer_access.argc,
+                                                        reg);
         if (const_key) {
             const_args = (double*)calloc(ast->data.producer_access.argc ? ast->data.producer_access.argc : 1,
                                          sizeof(double));
@@ -152,7 +158,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 return false;
             }
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                if (!cxpr_ir_constant_value(ordered_args[i], &const_args[i])) {
+                if (!cxpr_ir_constant_value(ordered_args[i], reg, &const_args[i])) {
                     free(const_args);
                     free(const_key);
                     break;
@@ -239,6 +245,17 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
 
         if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
             size_t false_jump, end_jump;
+            unsigned char cond_kind = cxpr_ir_infer_fast_result_kind(
+                ast->data.function_call.args[0], reg, inline_depth + 1);
+
+            if (cond_kind != CXPR_IR_RESULT_BOOL) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_CALL_AST,
+                                        .ast = ast,
+                                    },
+                                    err);
+            }
 
             if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
                                       local_names, local_count, subst, inline_depth, err)) {
@@ -417,7 +434,8 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             }
             const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
                                                             (const cxpr_ast* const*)ast->data.function_call.args,
-                                                            ast->data.function_call.argc);
+                                                            ast->data.function_call.argc,
+                                                            reg);
             if (!cxpr_ir_emit(program,
                               (cxpr_ir_instr){
                                   .op = const_key ? CXPR_OP_CALL_PRODUCER_CONST
@@ -476,6 +494,19 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_BINARY_OP:
         if (ast->data.binary_op.op == CXPR_TOK_AND) {
             size_t left_false_jump, right_false_jump, end_jump;
+            cxpr_value left_const;
+
+            if (cxpr_ir_constant_typed_value(ast->data.binary_op.left, reg, &left_const) &&
+                left_const.type == CXPR_VALUE_BOOL) {
+                if (!left_const.b) {
+                    return cxpr_ir_emit(program,
+                                        (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 0.0 },
+                                        err);
+                }
+                return cxpr_ir_compile_node(ast->data.binary_op.right, program, reg,
+                                            local_names, local_count, subst, inline_depth,
+                                            err);
+            }
 
             if (!cxpr_ir_compile_node(ast->data.binary_op.left, program, reg,
                                       local_names, local_count, subst, inline_depth,
@@ -511,6 +542,19 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
 
         if (ast->data.binary_op.op == CXPR_TOK_OR) {
             size_t left_true_jump, right_false_jump, end_jump;
+            cxpr_value left_const;
+
+            if (cxpr_ir_constant_typed_value(ast->data.binary_op.left, reg, &left_const) &&
+                left_const.type == CXPR_VALUE_BOOL) {
+                if (left_const.b) {
+                    return cxpr_ir_emit(program,
+                                        (cxpr_ir_instr){ .op = CXPR_OP_PUSH_BOOL, .value = 1.0 },
+                                        err);
+                }
+                return cxpr_ir_compile_node(ast->data.binary_op.right, program, reg,
+                                            local_names, local_count, subst, inline_depth,
+                                            err);
+            }
 
             if (!cxpr_ir_compile_node(ast->data.binary_op.left, program, reg,
                                       local_names, local_count, subst, inline_depth,

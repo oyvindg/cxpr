@@ -26,6 +26,10 @@ void cxpr_context_refresh_pointer_cache(cxpr_hashmap* map,
                                         cxpr_hashmap_entry* entry);
 /** @brief Clear one direct-mapped context cache array. */
 void cxpr_context_clear_entry_cache(cxpr_context_entry_cache* cache);
+/** @brief Look up a bool binding only on this exact context, without parent fallback. */
+bool cxpr_context_get_local_bool(const cxpr_context* ctx, const char* name, bool* found);
+/** @brief Look up a bool param only on this exact context, without parent fallback. */
+bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name, bool* found);
 /** @brief Find the mutable storage slot for one variable binding. */
 static inline cxpr_hashmap_entry* cxpr_context_find_variable_slot(cxpr_context* ctx,
                                                                   const char* key,

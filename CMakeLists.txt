@@ -61,6 +61,7 @@ add_library(cxpr STATIC
     src/ast/construct.c
     src/ast/free.c
     src/ast/inspect.c
+    src/ast/printer.c
     src/ast/references.c
     src/ast/analyze.c
     src/call/args.c

@@ -24,9 +24,19 @@ struct cxpr_ast {
         } string;
         struct {
             char* name;
+            unsigned long hash;
+            const struct cxpr_context* cached_ctx;
+            void* cached_entries_base;
+            size_t cached_slot;
+            unsigned long cached_version;
         } identifier;
         struct {
             char* name;
+            unsigned long hash;
+            const struct cxpr_context* cached_ctx;
+            void* cached_entries_base;
+            size_t cached_slot;
+            unsigned long cached_version;
         } variable;
         struct {
             char* object;
@@ -74,6 +84,8 @@ struct cxpr_ast {
             size_t cached_entry_index;
             bool cached_entry_found;
             bool cached_lookup_valid;
+            char* cached_const_key;
+            bool cached_const_key_ready;
         } function_call;
         struct {
             struct cxpr_ast* target;

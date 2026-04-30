@@ -7,7 +7,7 @@
 const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args, size_t argc,
                                            char* local_buf, size_t local_cap, char** heap_buf);
 char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
-                                          size_t argc);
+                                          size_t argc, const cxpr_registry* reg);
 
 static void test_ir_cache_key_builders(void) {
     char buf[128];
@@ -23,7 +23,7 @@ static void test_ir_cache_key_builders(void) {
 
     args[0] = cxpr_ast_new_number(12.0);
     args[1] = cxpr_ast_new_number(26.0);
-    const_key = cxpr_ir_build_constant_producer_key("ema", (const cxpr_ast* const*)args, 2);
+    const_key = cxpr_ir_build_constant_producer_key("ema", (const cxpr_ast* const*)args, 2, NULL);
     assert(const_key);
     assert(strncmp(const_key, "ema(", 4) == 0);
     free(const_key);

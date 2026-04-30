@@ -93,21 +93,6 @@ static int cxpr_runtime_call_spec_index_for_name(
     return 0;
 }
 
-static int cxpr_runtime_call_ast_is_source_like(const cxpr_ast* ast) {
-    if (!ast) return 0;
-    switch (cxpr_ast_type(ast)) {
-        case CXPR_NODE_IDENTIFIER:
-        case CXPR_NODE_FUNCTION_CALL:
-        case CXPR_NODE_PRODUCER_ACCESS:
-        case CXPR_NODE_FIELD_ACCESS:
-        case CXPR_NODE_CHAIN_ACCESS:
-        case CXPR_NODE_LOOKBACK:
-            return 1;
-        default:
-            return 0;
-    }
-}
-
 static size_t cxpr_runtime_call_positional_count(const cxpr_ast* ast) {
     size_t argc;
     size_t i;
@@ -124,24 +109,10 @@ static size_t cxpr_runtime_call_omitted_leading_sources(
     const cxpr_ast* ast,
     const cxpr_expr_param_spec* spec,
     size_t positional_count) {
-    size_t spec_index;
-    size_t raw_index = 0u;
-    size_t omitted = 0u;
-
-    if (!ast || !spec || !spec->kinds) return 0u;
-    for (spec_index = 0u; spec_index < spec->count; ++spec_index) {
-        const cxpr_ast* raw;
-        if (spec->kinds[spec_index] != CXPR_EXPR_ARG_SCALAR_SOURCE) break;
-        raw = raw_index < positional_count
-                  ? cxpr_runtime_call_arg_raw(ast, raw_index)
-                  : NULL;
-        if (!cxpr_runtime_call_ast_is_source_like(raw)) {
-            ++omitted;
-            continue;
-        }
-        ++raw_index;
-    }
-    return omitted;
+    (void)ast;
+    (void)spec;
+    (void)positional_count;
+    return 0u;
 }
 
 static const cxpr_provider_scope_spec* cxpr_runtime_call_scope_spec(

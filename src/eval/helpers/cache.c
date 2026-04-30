@@ -190,39 +190,28 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
 }
 
 bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
-    size_t i;
-
     if (!ast) return false;
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
     case CXPR_NODE_BOOL:
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:
-        return true;
     case CXPR_NODE_STRING:
     case CXPR_NODE_LOOKBACK:
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_FIELD_ACCESS:
     case CXPR_NODE_CHAIN_ACCESS:
-        return false;
     case CXPR_NODE_BINARY_OP:
-        return cxpr_eval_ast_memoable(ast->data.binary_op.left, reg) &&
-               cxpr_eval_ast_memoable(ast->data.binary_op.right, reg);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_eval_ast_memoable(ast->data.unary_op.operand, reg);
+    case CXPR_NODE_TERNARY:
+        return false;
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry =
             reg ? cxpr_registry_find(reg, ast->data.function_call.name) : NULL;
         if (!entry || entry->ast_func_overlay || entry->ast_func) return false;
-        for (i = 0u; i < ast->data.function_call.argc; ++i) {
-            if (!cxpr_eval_ast_memoable(ast->data.function_call.args[i], reg)) return false;
-        }
+        if (entry->struct_producer && !entry->sync_func && !entry->value_func) return false;
         return true;
     }
-    case CXPR_NODE_TERNARY:
-        return cxpr_eval_ast_memoable(ast->data.ternary.condition, reg) &&
-               cxpr_eval_ast_memoable(ast->data.ternary.true_branch, reg) &&
-               cxpr_eval_ast_memoable(ast->data.ternary.false_branch, reg);
     }
     return false;
 }

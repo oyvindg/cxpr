@@ -83,6 +83,10 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err);
+/** @brief Execute a boolean fast-path IR program with separate number/bool stacks. */
+bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
+                            const cxpr_registry* reg, const double* locals,
+                            size_t local_count, bool* out_value, cxpr_error* err);
 /** @brief Evaluate a public `cxpr_program` to a typed runtime value. */
 cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context* ctx,
                                    const cxpr_registry* reg, cxpr_error* err);

@@ -6,6 +6,7 @@
 #include "expression/internal.h"
 #include "internal.h"
 #include "ast/internal.h"
+#include "context/internal.h"
 #include <math.h>
 #include <stdint.h>
 
@@ -129,52 +130,169 @@ void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target) {
     program->code[at].index = target;
 }
 
-bool cxpr_ir_constant_value(const cxpr_ast* ast, double* out) {
-    double left, right;
+bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
+                                  cxpr_value* out) {
+    cxpr_value left, right;
+    double numeric;
 
     if (!ast || !out) return false;
 
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
-        *out = ast->data.number.value;
+        *out = cxpr_fv_double(ast->data.number.value);
         return true;
 
     case CXPR_NODE_BOOL:
+        *out = cxpr_fv_bool(ast->data.boolean.value);
+        return true;
+
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_LOOKBACK:
         return false;
 
     case CXPR_NODE_UNARY_OP:
-        if (!cxpr_ir_constant_value(ast->data.unary_op.operand, out)) return false;
+        if (!cxpr_ir_constant_typed_value(ast->data.unary_op.operand, reg, &left)) return false;
         if (ast->data.unary_op.op == CXPR_TOK_MINUS) {
-            *out = -*out;
+            if (left.type != CXPR_VALUE_NUMBER) return false;
+            *out = cxpr_fv_double(-left.d);
+            return true;
+        }
+        if (ast->data.unary_op.op == CXPR_TOK_NOT) {
+            if (left.type != CXPR_VALUE_BOOL) return false;
+            *out = cxpr_fv_bool(!left.b);
             return true;
         }
         return false;
 
     case CXPR_NODE_BINARY_OP:
-        if (!cxpr_ir_constant_value(ast->data.binary_op.left, &left)) return false;
-        if (!cxpr_ir_constant_value(ast->data.binary_op.right, &right)) return false;
+        if (!cxpr_ir_constant_typed_value(ast->data.binary_op.left, reg, &left)) return false;
+        if (!cxpr_ir_constant_typed_value(ast->data.binary_op.right, reg, &right)) return false;
         switch (ast->data.binary_op.op) {
-        case CXPR_TOK_PLUS: *out = left + right; return true;
-        case CXPR_TOK_MINUS: *out = left - right; return true;
-        case CXPR_TOK_STAR: *out = left * right; return true;
+        case CXPR_TOK_PLUS:
+        case CXPR_TOK_MINUS:
+        case CXPR_TOK_STAR:
         case CXPR_TOK_SLASH:
-            if (right == 0.0) return false;
-            *out = left / right;
-            return true;
+        case CXPR_TOK_PERCENT:
+        case CXPR_TOK_POWER:
+            if (left.type != CXPR_VALUE_NUMBER || right.type != CXPR_VALUE_NUMBER) return false;
+            break;
+        case CXPR_TOK_LT:
+        case CXPR_TOK_LTE:
+        case CXPR_TOK_GT:
+        case CXPR_TOK_GTE:
+            if (left.type != CXPR_VALUE_NUMBER || right.type != CXPR_VALUE_NUMBER) return false;
+            break;
+        case CXPR_TOK_AND:
+        case CXPR_TOK_OR:
+            if (left.type != CXPR_VALUE_BOOL || right.type != CXPR_VALUE_BOOL) return false;
+            break;
+        case CXPR_TOK_EQ:
+        case CXPR_TOK_NEQ:
+            if (left.type != right.type ||
+                (left.type != CXPR_VALUE_NUMBER && left.type != CXPR_VALUE_BOOL)) {
+                return false;
+            }
+            break;
         default:
             return false;
         }
 
+        switch (ast->data.binary_op.op) {
+        case CXPR_TOK_PLUS: *out = cxpr_fv_double(left.d + right.d); return true;
+        case CXPR_TOK_MINUS: *out = cxpr_fv_double(left.d - right.d); return true;
+        case CXPR_TOK_STAR: *out = cxpr_fv_double(left.d * right.d); return true;
+        case CXPR_TOK_SLASH:
+            if (right.d == 0.0) return false;
+            *out = cxpr_fv_double(left.d / right.d);
+            return true;
+        case CXPR_TOK_PERCENT:
+            if (right.d == 0.0) return false;
+            *out = cxpr_fv_double(fmod(left.d, right.d));
+            return true;
+        case CXPR_TOK_POWER:
+            numeric = pow(left.d, right.d);
+            if (!isfinite(numeric)) return false;
+            *out = cxpr_fv_double(numeric);
+            return true;
+        case CXPR_TOK_EQ:
+            *out = left.type == CXPR_VALUE_NUMBER
+                       ? cxpr_fv_bool(left.d == right.d)
+                       : cxpr_fv_bool(left.b == right.b);
+            return true;
+        case CXPR_TOK_NEQ:
+            *out = left.type == CXPR_VALUE_NUMBER
+                       ? cxpr_fv_bool(left.d != right.d)
+                       : cxpr_fv_bool(left.b != right.b);
+            return true;
+        case CXPR_TOK_LT: *out = cxpr_fv_bool(left.d < right.d); return true;
+        case CXPR_TOK_LTE: *out = cxpr_fv_bool(left.d <= right.d); return true;
+        case CXPR_TOK_GT: *out = cxpr_fv_bool(left.d > right.d); return true;
+        case CXPR_TOK_GTE: *out = cxpr_fv_bool(left.d >= right.d); return true;
+        case CXPR_TOK_AND: *out = cxpr_fv_bool(left.b && right.b); return true;
+        case CXPR_TOK_OR: *out = cxpr_fv_bool(left.b || right.b); return true;
+        default:
+            return false;
+        }
+
+    case CXPR_NODE_FUNCTION_CALL: {
+        double args[CXPR_MAX_CALL_ARGS];
+        const cxpr_func_entry* entry;
+        size_t argc = ast->data.function_call.argc;
+
+        if (!reg || cxpr_ast_call_uses_named_args(ast) || argc > CXPR_MAX_CALL_ARGS) return false;
+
+        if (strcmp(ast->data.function_call.name, "if") == 0 && argc == 3u) {
+            cxpr_value condition;
+            if (!cxpr_ir_constant_typed_value(ast->data.function_call.args[0], reg, &condition)) {
+                return false;
+            }
+            if (condition.type != CXPR_VALUE_BOOL) return false;
+            return cxpr_ir_constant_typed_value(
+                condition.b ? ast->data.function_call.args[1] : ast->data.function_call.args[2],
+                reg,
+                out);
+        }
+
+        entry = cxpr_registry_find(reg, ast->data.function_call.name);
+        if (!entry || !entry->sync_func || entry->value_func || entry->typed_func ||
+            entry->ast_func || entry->ast_func_overlay || entry->struct_producer ||
+            entry->struct_fields || entry->defined_body ||
+            argc < entry->min_args || argc > entry->max_args) {
+            return false;
+        }
+
+        for (size_t i = 0; i < argc; ++i) {
+            if (!cxpr_ir_constant_value(ast->data.function_call.args[i], reg, &args[i])) {
+                return false;
+            }
+        }
+
+        numeric = entry->sync_func(args, argc, entry->userdata);
+        if (!isfinite(numeric)) return false;
+        *out = cxpr_fv_double(numeric);
+        return true;
+    }
+
     case CXPR_NODE_TERNARY:
-        if (!cxpr_ir_constant_value(ast->data.ternary.condition, &left)) return false;
-        if (left != 0.0) return cxpr_ir_constant_value(ast->data.ternary.true_branch, out);
-        return cxpr_ir_constant_value(ast->data.ternary.false_branch, out);
+        if (!cxpr_ir_constant_typed_value(ast->data.ternary.condition, reg, &left)) return false;
+        if (left.type != CXPR_VALUE_BOOL) return false;
+        return cxpr_ir_constant_typed_value(left.b ? ast->data.ternary.true_branch
+                                                   : ast->data.ternary.false_branch,
+                                            reg, out);
 
     default:
         return false;
     }
+}
+
+bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, double* out) {
+    cxpr_value value;
+
+    if (!out) return false;
+    if (!cxpr_ir_constant_typed_value(ast, reg, &value)) return false;
+    if (value.type != CXPR_VALUE_NUMBER) return false;
+    *out = value.d;
+    return true;
 }
 
 bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
@@ -352,6 +470,7 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
     cxpr_hashmap_entry* map_entries =
         param_lookup ? ctx->params.entries : ctx->variables.entries;
     const cxpr_context* current;
+    unsigned long version;
 
     /* expression_scope results take priority over context variables */
     if (!param_lookup && ctx->expression_scope) {
@@ -365,6 +484,58 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
             if (found) *found = false;
             return 0.0;
         }
+    }
+
+    if (!param_lookup) {
+        bool bool_found = false;
+        bool bool_value = cxpr_context_get_local_bool(ctx, instr->name, &bool_found);
+        if (bool_found) {
+            if (cache) {
+                cache->request_ctx = NULL;
+                cache->owner_ctx = NULL;
+                cache->entries_base = NULL;
+                cache->slot = 0;
+                cache->shadow_version = 0;
+            }
+            if (found) *found = true;
+            return bool_value ? 1.0 : 0.0;
+        }
+    }
+
+    if ((!param_lookup || ctx->bools.count == 0u) && !ctx->parent && !ctx->expression_scope) {
+        version = cxpr_ir_lookup_version(ctx, param_lookup);
+        if (cache && cache->request_ctx == ctx && cache->owner_ctx == ctx &&
+            cache->entries_base == map_entries && cache->shadow_version == version) {
+            if (found) *found = true;
+            return cache->entries_base[cache->slot].value;
+        }
+
+        {
+            const cxpr_hashmap* map = param_lookup ? &ctx->params : &ctx->variables;
+            const cxpr_hashmap_entry* entry =
+                cxpr_hashmap_find_prehashed_entry(map, instr->name, instr->hash);
+            if (entry) {
+                if (cache) {
+                    cache->request_ctx = ctx;
+                    cache->owner_ctx = ctx;
+                    cache->entries_base = map->entries;
+                    cache->slot = (size_t)(entry - map->entries);
+                    cache->shadow_version = version;
+                }
+                if (found) *found = true;
+                return entry->value;
+            }
+        }
+
+        if (cache) {
+            cache->request_ctx = NULL;
+            cache->owner_ctx = NULL;
+            cache->entries_base = NULL;
+            cache->slot = 0;
+            cache->shadow_version = 0;
+        }
+        if (found) *found = false;
+        return 0.0;
     }
 
     /* IR lookup cache: direct entry hit (same ctx, same entries array) */
@@ -392,6 +563,21 @@ double cxpr_ir_lookup_cached_scalar(const cxpr_context* ctx, const cxpr_ir_instr
             param_lookup ? &current->params : &current->variables;
         const cxpr_hashmap_entry* entry =
             cxpr_hashmap_find_prehashed_entry(cur_map, instr->name, instr->hash);
+        if (!param_lookup) {
+            bool bool_found = false;
+            bool bool_value = cxpr_context_get_local_bool(current, instr->name, &bool_found);
+            if (bool_found) {
+                if (cache) {
+                    cache->request_ctx = NULL;
+                    cache->owner_ctx = NULL;
+                    cache->entries_base = NULL;
+                    cache->slot = 0;
+                    cache->shadow_version = 0;
+                }
+                if (found) *found = true;
+                return bool_value ? 1.0 : 0.0;
+            }
+        }
         if (entry) {
             if (cache) {
                 cache->request_ctx = ctx;

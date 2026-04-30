@@ -55,7 +55,7 @@ const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args,
 }
 
 char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
-                                          size_t argc) {
+                                          size_t argc, const cxpr_registry* reg) {
     double values[CXPR_MAX_CALL_ARGS];
     char local_buf[256];
     char* heap_buf = NULL;
@@ -63,7 +63,7 @@ char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* cons
 
     if (!name || argc > CXPR_MAX_CALL_ARGS) return NULL;
     for (size_t i = 0; i < argc; ++i) {
-        if (!cxpr_ir_constant_value(args[i], &values[i])) return NULL;
+        if (!cxpr_ir_constant_value(args[i], reg, &values[i])) return NULL;
     }
 
     key = cxpr_ir_build_struct_cache_key(name, values, argc, local_buf, sizeof(local_buf), &heap_buf);

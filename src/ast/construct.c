@@ -62,6 +62,7 @@ cxpr_ast* cxpr_ast_new_identifier(const char* name) {
         free(node);
         return NULL;
     }
+    node->data.identifier.hash = cxpr_hash_string(node->data.identifier.name);
     return node;
 }
 
@@ -74,6 +75,7 @@ cxpr_ast* cxpr_ast_new_variable(const char* name) {
         free(node);
         return NULL;
     }
+    node->data.variable.hash = cxpr_hash_string(node->data.variable.name);
     return node;
 }
 

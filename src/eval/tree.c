@@ -5,8 +5,10 @@
 
 #include "internal.h"
 
+#include "../core.h"
 #include "../limits.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
@@ -82,6 +84,43 @@ cxpr_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_context* ctx,
     return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
 }
 
+static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_ast* ast,
+                                                        char* local_buf,
+                                                        size_t local_cap,
+                                                        char** heap_buf) {
+    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    double values[CXPR_MAX_CALL_ARGS];
+    const char* key;
+
+    if (heap_buf) *heap_buf = NULL;
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_ast_call_uses_named_args(ast) ||
+        ast->data.function_call.argc > CXPR_MAX_CALL_ARGS) {
+        return NULL;
+    }
+
+    if (ast->data.function_call.cached_const_key_ready) {
+        return ast->data.function_call.cached_const_key;
+    }
+
+    mutable_ast->data.function_call.cached_const_key_ready = true;
+    for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+        if (!cxpr_eval_constant_double(ast->data.function_call.args[i], &values[i])) {
+            return NULL;
+        }
+    }
+
+    key = cxpr_build_struct_cache_key(ast->data.function_call.name, values,
+                                      ast->data.function_call.argc,
+                                      local_buf, local_cap, heap_buf);
+    if (!key) return NULL;
+
+    mutable_ast->data.function_call.cached_const_key =
+        heap_buf && *heap_buf ? *heap_buf : cxpr_strdup(key);
+    if (heap_buf) *heap_buf = NULL;
+    return mutable_ast->data.function_call.cached_const_key;
+}
+
 static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_context* ctx,
                                           const cxpr_registry* reg, cxpr_error* err) {
     if (!ast) return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "NULL AST node");
@@ -108,6 +147,8 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
     case CXPR_NODE_VARIABLE: {
         bool found = false;
+        bool bool_value = cxpr_context_get_param_bool(ctx, ast->data.variable.name, &found);
+        if (found) return cxpr_fv_bool(bool_value);
         double value = cxpr_context_get_param(ctx, ast->data.variable.name, &found);
         if (!found) {
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -265,6 +306,30 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         if (entry->ast_func) {
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
         }
+        if (entry->struct_producer && !entry->sync_func && !entry->value_func &&
+            !cxpr_ast_call_uses_named_args(ast)) {
+            char const_key_local[256];
+            char* const_key_heap = NULL;
+            const char* const_key = cxpr_eval_prepare_const_key_for_call(
+                ast, const_key_local, sizeof(const_key_local), &const_key_heap);
+            if (const_key) {
+                const cxpr_struct_value* cached = cxpr_context_get_cached_struct(ctx, const_key);
+                if (cached) {
+                    free(const_key_heap);
+                    return cxpr_fv_struct((cxpr_struct_value*)cached);
+                }
+            }
+            {
+                const cxpr_ast* const* direct_args =
+                    (const cxpr_ast* const*)ast->data.function_call.args;
+                const cxpr_struct_value* produced =
+                    cxpr_eval_struct_result(entry, name, direct_args, argc,
+                                            const_key, ctx, reg, err);
+                free(const_key_heap);
+                if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+                return cxpr_fv_struct((cxpr_struct_value*)produced);
+            }
+        }
         if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
             return cxpr_fv_double(NAN);
         }
@@ -318,11 +383,9 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
             if (cond.type == CXPR_VALUE_BOOL) {
                 take_true = cond.b;
-            } else if (cond.type == CXPR_VALUE_NUMBER) {
-                take_true = (cond.d != 0.0);
             } else {
                 return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
-                                       "if() condition must be bool or double");
+                                       "if() condition must be bool");
             }
 
             if (take_true) {
@@ -409,7 +472,7 @@ cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
 
     if (!ast) return cxpr_eval_node_uncached(ast, ctx, reg, err);
 
-    if (!cxpr_eval_ast_memoable(ast, reg)) {
+    if (ast->type != CXPR_NODE_FUNCTION_CALL || !cxpr_eval_ast_memoable(ast, reg)) {
         return cxpr_eval_node_uncached(ast, ctx, reg, err);
     }
 

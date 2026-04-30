@@ -49,9 +49,14 @@ bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
         return false;
     }
 
-    if (program->fast_result_kind != CXPR_IR_RESULT_UNKNOWN &&
-        !cxpr_ir_validate_scalar_fast_program(program)) {
-        program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
+    if (program->fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        if (!cxpr_ir_validate_bool_fast_program(program)) {
+            program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
+        }
+    } else if (program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        if (!cxpr_ir_validate_scalar_fast_program(program)) {
+            program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
+        }
     }
 
     return true;

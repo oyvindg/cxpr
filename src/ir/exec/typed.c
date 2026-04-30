@@ -74,9 +74,14 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_LOAD_PARAM:
             {
                 bool found = false;
-                result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
-                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
-                    &found));
+                bool bool_value = cxpr_context_get_param_bool(ctx, instr->name, &found);
+                if (found) {
+                    result = cxpr_fv_bool(bool_value);
+                } else {
+                    result = cxpr_fv_double(cxpr_ir_lookup_cached_scalar(
+                        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                        &found));
+                }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
             }
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {

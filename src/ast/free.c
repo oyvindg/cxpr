@@ -65,6 +65,7 @@ void cxpr_ast_free(cxpr_ast* ast) {
             break;
         case CXPR_NODE_FUNCTION_CALL:
             free(ast->data.function_call.name);
+            free(ast->data.function_call.cached_const_key);
             if (ast->data.function_call.args) {
                 for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
                     cxpr_ast_free(ast->data.function_call.args[i]);

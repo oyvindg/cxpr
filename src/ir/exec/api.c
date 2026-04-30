@@ -76,12 +76,33 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
 
 cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context* ctx,
                                    const cxpr_registry* reg, cxpr_error* err) {
+    bool bool_value = false;
+
     if (!prog) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
             err->message = "NULL compiled program";
         }
         return cxpr_fv_double(NAN);
+    }
+    if (prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        if (err && err->code != CXPR_OK) {
+            cxpr_error typed_err = {0};
+            cxpr_value typed_value = cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, &typed_err);
+            if (typed_err.code == CXPR_OK) {
+                if (err) *err = typed_err;
+                return typed_value;
+            }
+            return cxpr_fv_double(NAN);
+        }
+        return cxpr_fv_double(fast_value);
+    }
+    if (prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        if (!cxpr_ir_exec_bool_fast(&prog->ir, ctx, reg, NULL, 0, &bool_value, err)) {
+            return cxpr_fv_double(NAN);
+        }
+        return cxpr_fv_bool(bool_value);
     }
     return cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, err);
 }
@@ -118,12 +139,6 @@ bool cxpr_eval_program_number(const cxpr_program* prog, const cxpr_context* ctx,
         return false;
     }
 
-    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
-        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
-        if (err && err->code != CXPR_OK) return false;
-        *out_value = fast_value;
-        return true;
-    }
     if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
         double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
         if (err && err->code != CXPR_OK) return false;
@@ -157,10 +172,7 @@ bool cxpr_eval_program_bool(const cxpr_program* prog, const cxpr_context* ctx,
     }
 
     if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
-        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
-        if (err && err->code != CXPR_OK) return false;
-        *out_value = (fast_value != 0.0);
-        return true;
+        return cxpr_ir_exec_bool_fast(&prog->ir, ctx, reg, NULL, 0, out_value, err);
     }
     value = cxpr_eval_program_value(prog, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;

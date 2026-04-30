@@ -102,8 +102,7 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_reg
                 cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[1], reg, depth + 1);
             right_kind =
                 cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[2], reg, depth + 1);
-            if ((cond_kind == CXPR_IR_RESULT_BOOL || cond_kind == CXPR_IR_RESULT_DOUBLE) &&
-                left_kind == right_kind &&
+            if (cond_kind == CXPR_IR_RESULT_BOOL && left_kind == right_kind &&
                 (left_kind == CXPR_IR_RESULT_DOUBLE || left_kind == CXPR_IR_RESULT_BOOL)) {
                 return left_kind;
             }

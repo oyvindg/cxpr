@@ -454,6 +454,27 @@ const cxpr_ast* cxpr_ast_ternary_false_branch(const cxpr_ast* ast);
 bool cxpr_ast_is_boolean_expression(const cxpr_ast* ast);
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * AST Source Rendering API
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Render an AST to an allocated expression string.
+ * @param ast AST to render.
+ * @return Newly allocated NUL-terminated string, or NULL on allocation failure.
+ *         Caller must free the returned string.
+ *
+ * The output is valid cxpr source that can be parsed back into an equivalent
+ * AST. Parentheses are inserted only where needed to preserve semantics.
+ */
+char* cxpr_ast_to_string(const cxpr_ast* ast);
+/**
+ * @brief Write an AST rendering to a FILE stream.
+ * @param ast AST to render.
+ * @param out Output stream.
+ */
+void cxpr_ast_dump(const cxpr_ast* ast, FILE* out);
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * AST Reference Extraction API
  * ═══════════════════════════════════════════════════════════════════════════ */
 

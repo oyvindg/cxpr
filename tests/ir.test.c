@@ -1371,6 +1371,34 @@ static void test_ir_eval_reuses_lookup_cache_across_value_updates(void) {
     printf("  ✓ test_ir_eval_reuses_lookup_cache_across_value_updates\n");
 }
 
+static void test_ir_eval_root_lookup_preserves_bool_priority(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "flag", &err);
+    cxpr_ir_program program = {0};
+
+    assert(p);
+    assert(ctx);
+    assert(reg);
+    assert(ast);
+
+    cxpr_context_set(ctx, "flag", 0.0);
+    cxpr_context_set_bool(ctx, "flag", true);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(cxpr_ir_exec(&program, ctx, reg, &err), 1.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_root_lookup_preserves_bool_priority\n");
+}
+
 static void test_ir_eval_invalidates_parent_lookup_when_child_shadows(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* parent = cxpr_context_new();
@@ -1475,6 +1503,156 @@ static void test_ir_constant_folding_reduces_program(void) {
     printf("  ✓ test_ir_constant_folding_reduces_program\n");
 }
 
+static void test_ir_constant_folding_comparison_logic_and_not(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "not (3 > 2 and 1 == 1)", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 2);
+    assert(program.code[0].op == CXPR_OP_PUSH_BOOL);
+    ASSERT_DOUBLE_EQ(program.code[0].value, 0.0);
+    assert(program.code[1].op == CXPR_OP_RETURN);
+
+    bool ast_result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
+    cxpr_program* compiled = cxpr_compile(ast, reg, &err);
+    cxpr_value value = {0};
+    bool ir_result = false;
+    assert(err.code == CXPR_OK);
+    assert(compiled);
+    assert(cxpr_eval_program(compiled, ctx, reg, &value, &err));
+    assert(err.code == CXPR_OK);
+    assert(value.type == CXPR_VALUE_BOOL);
+    assert(value.b == false);
+    assert(cxpr_eval_program_bool(compiled, ctx, reg, &ir_result, &err));
+    assert(err.code == CXPR_OK);
+    assert(ast_result == ir_result);
+    assert(ir_result == false);
+
+    cxpr_program_free(compiled);
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_constant_folding_comparison_logic_and_not\n");
+}
+
+static void test_ir_constant_folding_pure_function_call(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_register_defaults(reg);
+    cxpr_ast* ast = cxpr_parse(p, "sqrt(4) + abs(min(-3, -5))", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 2);
+    assert(program.code[0].op == CXPR_OP_PUSH_CONST);
+    ASSERT_DOUBLE_EQ(program.code[0].value, 7.0);
+    assert(program.code[1].op == CXPR_OP_RETURN);
+
+    double ast_result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(ast_result, ir_result);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_constant_folding_pure_function_call\n");
+}
+
+static void test_ir_constant_folding_keeps_variable_function_runtime(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_register_defaults(reg);
+    cxpr_ast* ast = cxpr_parse(p, "sqrt(x)", &err);
+    assert(ast);
+    cxpr_context_set(ctx, "x", 9.0);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count > 2);
+    assert(program.code[0].op == CXPR_OP_LOAD_VAR);
+
+    double ir_result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(ir_result, 3.0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_constant_folding_keeps_variable_function_runtime\n");
+}
+
+static void test_ir_constant_folding_short_circuit_left_constant(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "false and missing_rhs", &err);
+    assert(ast);
+
+    cxpr_ir_program program = {0};
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 2);
+    assert(program.code[0].op == CXPR_OP_PUSH_BOOL);
+    ASSERT_DOUBLE_EQ(program.code[0].value, 0.0);
+    assert(program.code[1].op == CXPR_OP_RETURN);
+
+    cxpr_program* compiled = cxpr_compile(ast, reg, &err);
+    bool ir_result = true;
+    assert(compiled);
+    assert(cxpr_eval_program_bool(compiled, ctx, reg, &ir_result, &err));
+    assert(err.code == CXPR_OK);
+    assert(ir_result == false);
+
+    cxpr_program_free(compiled);
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    ast = cxpr_parse(p, "true or missing_rhs", &err);
+    assert(ast);
+
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 2);
+    assert(program.code[0].op == CXPR_OP_PUSH_BOOL);
+    ASSERT_DOUBLE_EQ(program.code[0].value, 1.0);
+    assert(program.code[1].op == CXPR_OP_RETURN);
+
+    compiled = cxpr_compile(ast, reg, &err);
+    assert(compiled);
+    assert(cxpr_eval_program_bool(compiled, ctx, reg, &ir_result, &err));
+    assert(err.code == CXPR_OK);
+    assert(ir_result == true);
+
+    cxpr_program_free(compiled);
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_constant_folding_short_circuit_left_constant\n");
+}
+
 static void test_ir_constant_folding_keeps_div_zero_runtime_error(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -1570,9 +1748,14 @@ int main(void) {
     test_ir_compile_native_function_uses_specialized_call_ops();
     test_ir_compile_repeated_multiplication_to_square();
     test_ir_eval_reuses_lookup_cache_across_value_updates();
+    test_ir_eval_root_lookup_preserves_bool_priority();
     test_ir_eval_invalidates_parent_lookup_when_child_shadows();
     test_ir_eval_invalidates_parent_lookup_when_owner_map_grows();
     test_ir_constant_folding_reduces_program();
+    test_ir_constant_folding_comparison_logic_and_not();
+    test_ir_constant_folding_pure_function_call();
+    test_ir_constant_folding_keeps_variable_function_runtime();
+    test_ir_constant_folding_short_circuit_left_constant();
     test_ir_constant_folding_keeps_div_zero_runtime_error();
     test_ir_exec_rejects_bool_result();
     printf("All IR tests passed!\n");

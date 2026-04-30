@@ -59,6 +59,14 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         }
     }
 
+    {
+        bool bool_value = cxpr_context_get_local_bool(ctx, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return cxpr_fv_bool(bool_value);
+        }
+    }
+
     entry = cxpr_context_lookup_pointer_cached_entry((cxpr_hashmap*)&ctx->variables,
                                                      ((cxpr_context*)ctx)->variable_ptr_cache,
                                                      name);
