@@ -14,6 +14,7 @@ static void cxpr_ast_free_arg_names(char** arg_names, size_t argc) {
 
 void cxpr_ast_free(cxpr_ast* ast) {
     if (!ast) return;
+    cxpr_program_free(ast->compiled_cache);
 
     switch (ast->type) {
         case CXPR_NODE_NUMBER:

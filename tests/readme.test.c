@@ -625,6 +625,233 @@ static void test_readme_domain_physics(void) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * README: Pipe expressions — forward pipe desugars to nested calls
+ *
+ *   "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)"
+ *   desugars to:
+ *   "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)"
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_readme_pipe_expressions(void) {
+    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_context*  ctx    = cxpr_context_new();
+    cxpr_registry* reg    = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+
+    cxpr_registry_add_unary(reg, "deg2rad", readme_deg2rad);
+    cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
+    cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
+
+    cxpr_context_set(ctx, "angle_deg", 30.0);
+    cxpr_context_set_param(ctx, "limit", 1.2);
+    cxpr_error err = {0};
+
+    /* Pipe form from the README. */
+    cxpr_ast* pipe_ast = cxpr_parse(parser,
+        "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)", &err);
+    assert(pipe_ast);
+
+    /* Nested form from the Quick Start section — semantically identical. */
+    cxpr_ast* nested_ast = cxpr_parse(parser,
+        "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)", &err);
+    assert(nested_ast);
+
+    /* Both forms must agree. */
+    cxpr_value pipe_result   = cxpr_test_eval_ast(pipe_ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    cxpr_value nested_result = cxpr_test_eval_ast(nested_ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+
+    assert(pipe_result.type == CXPR_VALUE_BOOL);
+    assert(nested_result.type == CXPR_VALUE_BOOL);
+    assert(pipe_result.b == true);            /* 30deg ~= 0.52rad < 1.2 */
+    assert(pipe_result.b == nested_result.b);
+
+    /* Flip angle to 120 degrees — result changes for both forms. */
+    cxpr_context_set(ctx, "angle_deg", 120.0);
+    pipe_result   = cxpr_test_eval_ast(pipe_ast, ctx, reg, &err);
+    nested_result = cxpr_test_eval_ast(nested_ast, ctx, reg, &err);
+    assert(pipe_result.b == false);
+    assert(pipe_result.b == nested_result.b);
+
+    /* Pipe with defined functions — multi-step numeric pipeline. */
+    assert(cxpr_registry_define_fn(reg, "sq(x) => x * x").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(reg, "half(x) => x / 2").code == CXPR_OK);
+
+    cxpr_context_set(ctx, "val", 6.0);
+    cxpr_ast* num_pipe = cxpr_parse(parser, "val |> sq |> half", &err);
+    assert(num_pipe);
+    ASSERT_APPROX(cxpr_test_eval_ast_number(num_pipe, ctx, reg, &err), 18.0);  /* half(sq(6)) = 36/2 */
+    assert(err.code == CXPR_OK);
+
+    cxpr_ast_free(pipe_ast);
+    cxpr_ast_free(nested_ast);
+    cxpr_ast_free(num_pipe);
+    cxpr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_readme_pipe_expressions\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * README: Struct producer — bb(close, 20, 2.0).upper
+ *
+ *   static void bb_producer(const double* args, size_t argc,
+ *                           cxpr_value* out, size_t field_count, void* userdata);
+ *   cxpr_registry_add_struct(reg, "bb", bb_producer, 3, 3, bb_fields, 3, NULL, NULL);
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void readme_bb_producer(const double* args, size_t argc,
+                               cxpr_value* out, size_t field_count, void* userdata) {
+    (void)argc; (void)field_count; (void)userdata;
+    double close = args[0], period = args[1], mult = args[2];
+    double mid = close;
+    double band = mult * period;
+    out[0] = cxpr_fv_double(mid + band);  /* upper */
+    out[1] = cxpr_fv_double(mid);         /* middle */
+    out[2] = cxpr_fv_double(mid - band);  /* lower */
+}
+
+static void test_readme_struct_producer(void) {
+    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_context*  ctx    = cxpr_context_new();
+    cxpr_registry* reg    = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+
+    const char* bb_fields[] = {"upper", "middle", "lower"};
+    cxpr_registry_add_struct(reg, "bb", readme_bb_producer, 3, 3, bb_fields, 3, NULL, NULL);
+
+    cxpr_context_set(ctx, "close", 100.0);
+    cxpr_error err = {0};
+
+    /* bb(100, 20, 2.0) → mid=100, band=40 → upper=140, middle=100, lower=60 */
+    cxpr_ast* ast_upper = cxpr_parse(parser, "bb(close, 20, 2.0).upper", &err);
+    assert(ast_upper);
+    ASSERT_APPROX(cxpr_test_eval_ast_number(ast_upper, ctx, reg, &err), 140.0);
+    assert(err.code == CXPR_OK);
+
+    cxpr_ast* ast_middle = cxpr_parse(parser, "bb(close, 20, 2.0).middle", &err);
+    assert(ast_middle);
+    ASSERT_APPROX(cxpr_test_eval_ast_number(ast_middle, ctx, reg, &err), 100.0);
+
+    cxpr_ast* ast_lower = cxpr_parse(parser, "bb(close, 20, 2.0).lower", &err);
+    assert(ast_lower);
+    ASSERT_APPROX(cxpr_test_eval_ast_number(ast_lower, ctx, reg, &err), 60.0);
+
+    cxpr_ast_free(ast_upper);
+    cxpr_ast_free(ast_middle);
+    cxpr_ast_free(ast_lower);
+    cxpr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_readme_struct_producer\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * README: Context slot binding — hot-loop update path
+ *
+ *   cxpr_context_slot close_slot, volume_slot;
+ *   cxpr_context_slot_bind(ctx, "close", &close_slot);
+ *   cxpr_context_slot_set(&close_slot, bars[i].close);
+ *   cxpr_eval_program_bool(prog, ctx, reg, &result, NULL);
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_readme_context_slot_binding(void) {
+    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_context*  ctx    = cxpr_context_new();
+    cxpr_registry* reg    = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_error err = {0};
+
+    /* Pre-populate slots so bind can find them. */
+    cxpr_context_set(ctx, "close", 0.0);
+    cxpr_context_set(ctx, "volume", 0.0);
+    cxpr_context_set_param(ctx, "min_volume", 500.0);
+
+    cxpr_context_slot close_slot, volume_slot;
+    assert(cxpr_context_slot_bind(ctx, "close", &close_slot));
+    assert(cxpr_context_slot_bind(ctx, "volume", &volume_slot));
+
+    /* Compile expression once. */
+    cxpr_ast* ast = cxpr_parse(parser, "close > 100 and volume > $min_volume", &err);
+    assert(ast);
+    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    assert(prog);
+
+    /* Simulate bar data. */
+    struct { double close; double volume; } bars[] = {
+        {  99.0,  600.0 },  /* close too low */
+        { 101.0,  400.0 },  /* volume too low */
+        { 105.0, 1000.0 },  /* both pass */
+    };
+    bool expected[] = { false, false, true };
+    size_t bar_count = sizeof(bars) / sizeof(bars[0]);
+
+    for (size_t i = 0; i < bar_count; i++) {
+        cxpr_context_slot_set(&close_slot, bars[i].close);
+        cxpr_context_slot_set(&volume_slot, bars[i].volume);
+
+        bool result = false;
+        assert(cxpr_eval_program_bool(prog, ctx, reg, &result, &err));
+        assert(result == expected[i]);
+    }
+
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_readme_context_slot_binding\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * README: Analysis API — cxpr_analyze_expr and cxpr_ast_references
+ *
+ *   cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err);
+ *   cxpr_ast_references(ast, refs, 8);
+ *   cxpr_ast_variables_used(ast, params, 8);
+ *   cxpr_ast_functions_used(ast, fns, 8);
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_readme_analysis_api(void) {
+    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_registry* reg    = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_error err = {0};
+
+    /* Part 1: cxpr_analyze_expr */
+    cxpr_analysis info = {0};
+    assert(cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err));
+    assert(info.result_type == CXPR_EXPR_BOOL);
+    assert(info.uses_parameters == true);
+    assert(info.uses_variables == true);
+    assert(info.can_short_circuit == true);
+    assert(info.reference_count == 2);   /* rsi, volume */
+    assert(info.parameter_count == 1);   /* min_volume */
+
+    /* Part 2: cxpr_ast_references / variables_used / functions_used */
+    cxpr_ast* ast = cxpr_parse(parser, "ema_fast > ema_slow and rsi < $limit", &err);
+    assert(ast);
+
+    const char* refs[8];
+    size_t n = cxpr_ast_references(ast, refs, 8);
+    assert(n == 3);  /* ema_fast, ema_slow, rsi */
+
+    const char* params[8];
+    size_t p = cxpr_ast_variables_used(ast, params, 8);
+    assert(p == 1);  /* limit */
+
+    const char* fns[8];
+    size_t f = cxpr_ast_functions_used(ast, fns, 8);
+    assert(f == 0);  /* no function calls */
+
+    cxpr_ast_free(ast);
+    cxpr_parser_free(parser);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_readme_analysis_api\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * Main
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -641,6 +868,10 @@ int main(void) {
     test_readme_domain_robotics();
     test_readme_domain_distance();
     test_readme_domain_physics();
+    test_readme_pipe_expressions();
+    test_readme_struct_producer();
+    test_readme_context_slot_binding();
+    test_readme_analysis_api();
     printf("All readme examples tests passed!\n");
     return 0;
 }

@@ -11,6 +11,10 @@
 /** @brief Internal owned AST node representation. */
 struct cxpr_ast {
     cxpr_node_type type;
+    cxpr_program* compiled_cache;
+    const struct cxpr_registry* compiled_registry;
+    unsigned long compiled_registry_version;
+    bool compiled_cache_failed;
 
     union {
         struct {
@@ -84,6 +88,12 @@ struct cxpr_ast {
             size_t cached_entry_index;
             bool cached_entry_found;
             bool cached_lookup_valid;
+            const struct cxpr_registry* cached_memoable_registry;
+            unsigned long cached_memoable_registry_version;
+            unsigned long cached_hash;
+            bool cached_memoable;
+            bool cached_memoable_valid;
+            bool cached_hash_valid;
             char* cached_const_key;
             bool cached_const_key_ready;
         } function_call;

@@ -19,6 +19,14 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                        const cxpr_value* args,
                                        size_t argc, cxpr_error* err);
 
+static char* test_strdup(const char* text) {
+    size_t len = strlen(text) + 1;
+    char* copy = (char*)malloc(len);
+    assert(copy);
+    memcpy(copy, text, len);
+    return copy;
+}
+
 static void pair_producer(const double* args, size_t argc, cxpr_value* out, size_t field_count,
                           void* userdata) {
     (void)argc;
@@ -43,8 +51,8 @@ static void test_ir_exec_call_helpers(void) {
     entry.fields_per_arg = 2;
     entry.struct_fields = (char**)calloc(2, sizeof(char*));
     assert(entry.struct_fields);
-    entry.struct_fields[0] = strdup("sum");
-    entry.struct_fields[1] = strdup("diff");
+    entry.struct_fields[0] = test_strdup("sum");
+    entry.struct_fields[1] = test_strdup("diff");
     assert(entry.struct_fields[0] && entry.struct_fields[1]);
 
     value = cxpr_ir_call_producer(&entry, "pair", ctx, args, 2, &err);

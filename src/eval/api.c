@@ -13,6 +13,123 @@
 static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, double* out, cxpr_error* err);
 
+static bool cxpr_eval_ast_auto_compile_safe(const cxpr_ast* ast, const cxpr_registry* reg) {
+    cxpr_func_entry* entry;
+
+    if (!ast) return false;
+
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+    case CXPR_NODE_BOOL:
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_VARIABLE:
+        return true;
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_eval_ast_auto_compile_safe(ast->data.unary_op.operand, reg);
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_eval_ast_auto_compile_safe(ast->data.binary_op.left, reg) &&
+               cxpr_eval_ast_auto_compile_safe(ast->data.binary_op.right, reg);
+    case CXPR_NODE_TERNARY:
+        return cxpr_eval_ast_auto_compile_safe(ast->data.ternary.condition, reg) &&
+               cxpr_eval_ast_auto_compile_safe(ast->data.ternary.true_branch, reg) &&
+               cxpr_eval_ast_auto_compile_safe(ast->data.ternary.false_branch, reg);
+    case CXPR_NODE_FUNCTION_CALL:
+        if (cxpr_ast_call_uses_named_args(ast)) return false;
+        entry = cxpr_eval_cached_function_entry(ast, reg);
+        if (!entry || ast->data.function_call.argc < entry->min_args ||
+            ast->data.function_call.argc > entry->max_args) {
+            return false;
+        }
+        if (entry->ast_func_overlay || entry->ast_func || entry->struct_producer ||
+            entry->struct_fields || entry->value_func || entry->typed_func ||
+            (entry->sync_func && entry->native_kind == CXPR_NATIVE_KIND_NONE &&
+             !entry->defined_body)) {
+            return false;
+        }
+        if (entry->defined_body) {
+            if (!cxpr_ir_prepare_defined_program(entry, reg, NULL) ||
+                !cxpr_eval_ast_auto_compile_safe(entry->defined_body, reg)) {
+                return false;
+            }
+        }
+        for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+            if (!cxpr_eval_ast_auto_compile_safe(ast->data.function_call.args[i], reg)) {
+                return false;
+            }
+        }
+        return true;
+    default:
+        return false;
+    }
+}
+
+static cxpr_program* cxpr_eval_ast_cached_program(const cxpr_ast* ast,
+                                                  const cxpr_registry* reg) {
+    cxpr_ast* mutable_ast;
+    const unsigned long version = reg ? reg->version : 0u;
+    cxpr_error compile_err = {0};
+    cxpr_program* compiled;
+
+    if (!ast) return NULL;
+    mutable_ast = (cxpr_ast*)ast;
+    if (mutable_ast->compiled_registry != reg ||
+        mutable_ast->compiled_registry_version != version) {
+        cxpr_program_free(mutable_ast->compiled_cache);
+        mutable_ast->compiled_cache = NULL;
+        mutable_ast->compiled_registry = reg;
+        mutable_ast->compiled_registry_version = version;
+        mutable_ast->compiled_cache_failed = false;
+    }
+
+    if (mutable_ast->compiled_cache) return mutable_ast->compiled_cache;
+    if (mutable_ast->compiled_cache_failed) return NULL;
+    if (!cxpr_eval_ast_auto_compile_safe(ast, reg)) return NULL;
+
+    compiled = cxpr_compile(ast, reg, &compile_err);
+    if (!compiled) {
+        mutable_ast->compiled_cache_failed = true;
+        return NULL;
+    }
+
+    mutable_ast->compiled_cache = compiled;
+    return compiled;
+}
+
+static bool cxpr_eval_function_call_memoable_cached(const cxpr_ast* ast,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_func_entry* entry) {
+    cxpr_ast* mutable_ast;
+    const unsigned long version = reg ? reg->version : 0u;
+
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return false;
+    if (ast->data.function_call.cached_memoable_valid &&
+        ast->data.function_call.cached_memoable_registry == reg &&
+        ast->data.function_call.cached_memoable_registry_version == version) {
+        return ast->data.function_call.cached_memoable;
+    }
+
+    mutable_ast = (cxpr_ast*)ast;
+    mutable_ast->data.function_call.cached_memoable =
+        entry && !entry->ast_func_overlay && !entry->ast_func &&
+        !(entry->struct_producer && !entry->sync_func && !entry->value_func);
+    mutable_ast->data.function_call.cached_memoable_valid = true;
+    mutable_ast->data.function_call.cached_memoable_registry = reg;
+    mutable_ast->data.function_call.cached_memoable_registry_version = version;
+    return mutable_ast->data.function_call.cached_memoable;
+}
+
+static unsigned long cxpr_eval_function_call_hash_cached(const cxpr_ast* ast) {
+    cxpr_ast* mutable_ast;
+
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return 0u;
+    if (ast->data.function_call.cached_hash_valid) return ast->data.function_call.cached_hash;
+
+    mutable_ast = (cxpr_ast*)ast;
+    mutable_ast->data.function_call.cached_hash = cxpr_eval_ast_hash(ast);
+    mutable_ast->data.function_call.cached_hash_valid = true;
+    return mutable_ast->data.function_call.cached_hash;
+}
+
 static bool cxpr_eval_root_slot_cached_number(const cxpr_context* ctx,
                                               const cxpr_hashmap* map,
                                               const char* name,
@@ -280,9 +397,9 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
             return true;
         }
 
-        should_memo = cxpr_eval_ast_memoable(ast, reg);
+        should_memo = cxpr_eval_function_call_memoable_cached(ast, reg, entry);
         if (should_memo) {
-            memo_hash = cxpr_eval_ast_hash(ast);
+            memo_hash = cxpr_eval_function_call_hash_cached(ast);
             if (cxpr_eval_memo_get(ctx, ast, memo_hash, &memo_value)) {
                 if (memo_value.type != CXPR_VALUE_NUMBER) return false;
                 *out = memo_value.d;
@@ -326,6 +443,11 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
             }
         }
 
+        if (entry->native_kind == CXPR_NATIVE_KIND_NONE && entry->sync_func) {
+            *out = entry->sync_func(args, argc, entry->userdata);
+            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+            return true;
+        }
         if (entry->native_kind == CXPR_NATIVE_KIND_NULLARY && argc == 0) {
             *out = entry->native_scalar.nullary();
             if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
@@ -361,7 +483,9 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
 cxpr_value cxpr_eval_ast_value(const cxpr_ast* ast, const cxpr_context* ctx,
                                const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value value;
+
     if (err) *err = (cxpr_error){0};
+
     cxpr_eval_memo_enter((cxpr_context*)ctx);
     value = cxpr_eval_node(ast, ctx, reg, err);
     cxpr_eval_memo_leave((cxpr_context*)ctx);
@@ -390,6 +514,7 @@ bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
 bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, double* out_value, cxpr_error* err) {
     cxpr_value value;
+    cxpr_program* cached;
     double fast_value;
 
     if (!out_value) {
@@ -402,6 +527,10 @@ bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
     }
 
     if (err) *err = (cxpr_error){0};
+    cached = cxpr_eval_ast_cached_program(ast, reg);
+    if (cached && cxpr_eval_program_number(cached, ctx, reg, out_value, err)) return true;
+    if (err && err->code != CXPR_OK) *err = (cxpr_error){0};
+
     cxpr_eval_memo_enter((cxpr_context*)ctx);
     if (cxpr_eval_number_fast(ast, ctx, reg, &fast_value, err)) {
         cxpr_eval_memo_leave((cxpr_context*)ctx);
