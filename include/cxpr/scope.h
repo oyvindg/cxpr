@@ -5,7 +5,7 @@
  * This is the low-level runtime side of provider sources. It registers source
  * names such as `close` or `temperature` in a cxpr registry and delegates value
  * lookup to a host resolver. Higher-level code may parse expressions such as
- * `close(selector="1d")[7]` into a host-specific handle before evaluation.
+ * `close(timeframe="1d")[7]` into a host-specific handle before evaluation.
  */
 
 #pragma once

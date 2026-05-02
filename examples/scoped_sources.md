@@ -2,13 +2,13 @@
 
 This example shows the smallest useful host-facing `cxpr` setup:
 
-- define one scope family, here `selector`
+- define one scope family, here `timeframe`
 - expose one scoped source, here `close`
 - let the host resolve scoped source requests through a callback
 
-This is the low-level runtime registration path. The preferred host-facing form is usually higher-level, such as `close(selector="1d")[7]`. In that case:
+This is the low-level runtime registration path. The preferred host-facing form is usually higher-level, such as `close(timeframe="1d")[7]`. In that case:
 
-- `selector="1d"` identifies one scoped series variant
+- `timeframe="1d"` identifies one scoped series variant
 - `[7]` is a normal `cxpr` lookback on that scoped series
 - the bridge stays agnostic about what `"1d"` actually means
 
@@ -28,7 +28,7 @@ The runnable snippet lives in [`scoped_sources.c`](scoped_sources.c). Its centra
 
 ```c
 static const cxpr_provider_scope_spec kScope = {
-    "selector",
+    "timeframe",
     1,
 };
 
@@ -65,13 +65,12 @@ into the concrete value `103.75`.
 
 The more natural host-facing form is often closer to:
 
-- `close(selector="1d")[7]`
-- `temperature(selector="warehouse-a")[3]`
-- `requests(selector="eu-west")[10]`
+- `close(timeframe="1d")[7]`
+- `temperature(warehouse="warehouse-a")[3]`
+- `requests(region="eu-west")[10]`
 
-Those all describe the same generic pattern: `source(selector="value")[lookback]`.
-Hosts may also choose a domain-specific scope parameter name, such as
-`timeframe="1d"`, when the provider metadata declares that name.
+Those all describe the same generic pattern: `source(scope_name="value")[lookback]`.
+Hosts choose the domain-specific scope parameter name through provider metadata.
 
 ## Test Coverage
 

@@ -164,16 +164,7 @@ static int cxpr_source_plan_node_set_scope_value(cxpr_source_plan_node* node, co
     if (!node || !text || text[0] == '\0') return 0;
 
     node->scope_value = cxpr_source_plan_strdup(text);
-    if (!node->scope_value) return 0;
-
-    node->timeframe = cxpr_source_plan_strdup(text);
-    if (!node->timeframe) {
-        free(node->scope_value);
-        node->scope_value = NULL;
-        return 0;
-    }
-
-    return 1;
+    return node->scope_value != NULL;
 }
 
 static int cxpr_source_plan_node_parse(const cxpr_provider* provider,

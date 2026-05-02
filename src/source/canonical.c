@@ -39,7 +39,6 @@ void cxpr_source_plan_node_clear(cxpr_source_plan_node* node) {
     if (!node) return;
     free(node->name);
     free(node->field_name);
-    free(node->timeframe);
     free(node->scope_value);
     free(node->arg_slots);
     if (node->source) {

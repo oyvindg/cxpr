@@ -592,7 +592,6 @@ static void test_source_plan_field_with_selector_and_lookback(void) {
     if (plan.root.kind != CXPR_SOURCE_PLAN_FIELD) abort();
     if (strcmp(plan.root.name, "close") != 0) abort();
     if (plan.root.scope_value == NULL || strcmp(plan.root.scope_value, "abc") != 0) abort();
-    if (plan.root.timeframe == NULL || strcmp(plan.root.timeframe, "abc") != 0) abort();
     if (plan.root.lookback_slot != 0u) abort();
     if (plan.arg_count != 1u) abort();
     if (plan.canonical == NULL) abort();

@@ -397,16 +397,16 @@ needs to detect those aggregate forms before execution.
 
 Provider metadata describes functions and direct sources that live in the host application.
 `cxpr` uses this metadata to register parse-time signatures, preserve named arguments,
-describe record fields, and decode scoped series selectors.
+describe record fields, and decode scoped series arguments.
 
 Important provider pieces:
 
 - `cxpr_provider_fn_spec` describes a host-backed function, its numeric arity, optional source
-  input shape, named parameters, output fields, primary field, flags, and scope selector.
+  input shape, named parameters, output fields, primary field, flags, and scope metadata.
 - `cxpr_provider_source_spec` describes a direct source such as `close`, `temperature`, or
   `requests`.
-- `cxpr_provider_scope_spec` describes optional named selectors. Trading providers usually
-  use `timeframe`; generic providers may use names such as `selector`, `region`, or another
+- `cxpr_provider_scope_spec` describes optional named scope arguments. Trading providers usually
+  use `timeframe`; generic providers may use names such as `warehouse`, `region`, or another
   provider-specific partition key.
 - `cxpr_host_config` supplies runtime scalar resolution and optional hooks for arity overrides,
   source descriptor filtering, and scoped-source error reporting.
@@ -432,7 +432,7 @@ if (cxpr_parse_runtime_call_provider(&provider, call_ast, &call)) {
 ```
 
 Use `cxpr_provider_runtime_call_arg` and `cxpr_provider_eval_runtime_call_number_args` to bind
-or evaluate value arguments while excluding named selector arguments. Use
+or evaluate value arguments while excluding named scope arguments. Use
 `cxpr_resolve_expression_scope` when a host needs to find the first provider-declared scoped
 call inside a larger expression.
 

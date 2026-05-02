@@ -4,7 +4,7 @@
  *
  * Source plans describe how a provider source expression should be materialized
  * by a host. They are useful for expressions such as `close`, `ema(close, 14)`,
- * `ema(close(selector="1d"), 14)[2]`, or arbitrary source expressions that must
+ * `ema(close(timeframe="1d"), 14)[2]`, or arbitrary source expressions that must
  * be evaluated bar-by-bar by the host.
  */
 
@@ -40,8 +40,7 @@ typedef struct cxpr_source_plan_node {
     uint64_t node_id;           /**< Stable hash derived from canonical node content. */
     char* name;                 /**< Source or provider function name, when applicable. */
     char* field_name;           /**< Selected record field, when applicable. */
-    char* timeframe;            /**< Backward-compatible alias for @ref scope_value. */
-    char* scope_value;          /**< Optional scope selector, such as `1d` or `warehouse-a`. */
+    char* scope_value;          /**< Optional scope value, such as timeframe `1d` or warehouse `warehouse-a`. */
     size_t arg_count;           /**< Number of numeric bound argument slots. */
     size_t* arg_slots;          /**< Slots into @ref cxpr_source_plan_ast::bound_arg_asts. */
     size_t lookback_slot;       /**< Bound lookback slot, or `SIZE_MAX` when absent. */

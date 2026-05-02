@@ -42,15 +42,15 @@ typedef struct {
 } cxpr_provider_field_descriptor;
 
 /**
- * @brief Optional selector metadata for scoped series variants.
+ * @brief Optional scope metadata for scoped series variants.
  *
  * A scope is intentionally more general than a trading timeframe. Examples:
  * `timeframe`, `resolution`, `sampling`, `bucket`, `region`, or any other
  * provider-specific series partition key.
  */
 typedef struct {
-    const char* param_name; /**< Named selector argument, such as `selector` or `timeframe`. */
-    bool optional;          /**< True when calls may omit the selector argument. */
+    const char* param_name; /**< Named scope argument, such as `timeframe`, `warehouse`, or `region`. */
+    bool optional;          /**< True when calls may omit the scope argument. */
 } cxpr_provider_scope_spec;
 
 /**
@@ -83,7 +83,7 @@ typedef struct {
     size_t field_count;                                /**< Number of entries in @p fields. */
     int primary_field_index;                           /**< Preferred default field index, or -1. */
     unsigned flags;                                    /**< Bitwise OR of `cxpr_provider_fn_flags`. */
-    const cxpr_provider_scope_spec* scope;             /**< Optional scoped-series selector metadata. */
+    const cxpr_provider_scope_spec* scope;             /**< Optional scoped-series scope metadata. */
 } cxpr_provider_fn_spec;
 
 /**
@@ -96,7 +96,7 @@ typedef struct {
     const char* name;                             /**< Stable expression-visible source name. */
     size_t min_args;                              /**< Minimum accepted argument count. */
     size_t max_args;                              /**< Maximum accepted argument count. */
-    const cxpr_provider_scope_spec* scope;        /**< Optional scoped-series selector metadata. */
+    const cxpr_provider_scope_spec* scope;        /**< Optional scoped-series scope metadata. */
 } cxpr_provider_source_spec;
 
 /**
