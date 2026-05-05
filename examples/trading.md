@@ -57,7 +57,7 @@ Direct expressions can stay inline when no dependency graph is needed. If you re
 static cxpr_value fn_cross_below(const double* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
-    return cxpr_fv_bool(args[2] >= args[3] && args[0] < args[1]);
+    return cxpr_bool(args[2] >= args[3] && args[0] < args[1]);
 }
 
 int main(void) {

@@ -5,6 +5,9 @@
 bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out);
 cxpr_ast* cxpr_eval_clone_ast(const cxpr_ast* ast);
 bool cxpr_eval_ast_contains_string_literal(const cxpr_ast* ast);
+void cxpr_eval_memo_enter(cxpr_context* ctx);
+void cxpr_eval_memo_clear(cxpr_context* ctx);
+void cxpr_eval_memo_leave(cxpr_context* ctx);
 
 static void test_eval_helper_functions(void) {
     cxpr_parser* p = cxpr_parser_new();
@@ -32,8 +35,20 @@ static void test_eval_helper_functions(void) {
     cxpr_parser_free(p);
 }
 
+static void test_eval_memo_clear_accepts_context_and_null(void) {
+    cxpr_context* ctx = cxpr_context_new();
+
+    assert(ctx);
+    cxpr_eval_memo_enter(ctx);
+    cxpr_eval_memo_clear(ctx);
+    cxpr_eval_memo_leave(ctx);
+    cxpr_eval_memo_clear(NULL);
+    cxpr_context_free(ctx);
+}
+
 int main(void) {
     test_eval_helper_functions();
+    test_eval_memo_clear_accepts_context_and_null();
     printf("  \xE2\x9C\x93 eval_helpers\n");
     return 0;
 }

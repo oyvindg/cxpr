@@ -86,9 +86,9 @@ static void set_vec3_struct(cxpr_context* ctx, const char* name,
                             double x, double y, double z) {
     const char* fields[] = {"x", "y", "z"};
     cxpr_value values[] = {
-        cxpr_fv_double(x),
-        cxpr_fv_double(y),
-        cxpr_fv_double(z),
+        cxpr_num(x),
+        cxpr_num(y),
+        cxpr_num(z),
     };
     cxpr_struct_value* s = cxpr_struct_value_new(fields, values, 3);
     assert(s != NULL);
@@ -100,8 +100,8 @@ static void set_vec2_struct(cxpr_context* ctx, const char* name,
                             double x, double y) {
     const char* fields[] = {"x", "y"};
     cxpr_value values[] = {
-        cxpr_fv_double(x),
-        cxpr_fv_double(y),
+        cxpr_num(x),
+        cxpr_num(y),
     };
     cxpr_struct_value* s = cxpr_struct_value_new(fields, values, 2);
     assert(s != NULL);
@@ -113,9 +113,9 @@ static void set_vec3_with_bool_y(cxpr_context* ctx, const char* name,
                                  double x, bool y, double z) {
     const char* fields[] = {"x", "y", "z"};
     cxpr_value values[] = {
-        cxpr_fv_double(x),
-        cxpr_fv_bool(y),
-        cxpr_fv_double(z),
+        cxpr_num(x),
+        cxpr_bool(y),
+        cxpr_num(z),
     };
     cxpr_struct_value* s = cxpr_struct_value_new(fields, values, 3);
     assert(s != NULL);

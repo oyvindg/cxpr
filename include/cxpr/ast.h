@@ -104,6 +104,12 @@ cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err);
  */
 void cxpr_ast_free(cxpr_ast* ast);
 /**
+ * @brief Deep-clone an AST and all owned descendants.
+ * @param ast AST to clone. May be NULL.
+ * @return Newly allocated AST clone, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_clone(const cxpr_ast* ast);
+/**
  * @brief Construct a numeric literal node.
  * @param value Literal numeric value.
  * @return Newly allocated AST node, or NULL on allocation failure.

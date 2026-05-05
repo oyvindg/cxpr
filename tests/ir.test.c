@@ -59,7 +59,7 @@ static void producer_shift_x(const double* args, size_t argc, cxpr_value* out,
     (void)argc;
     (void)field_count;
     (void)userdata;
-    out[0] = cxpr_fv_double(args[0] + 1.0);
+    out[0] = cxpr_num(args[0] + 1.0);
 }
 
 static void test_ir_eval_modulo_matches_ast(void) {
@@ -808,14 +808,14 @@ static void test_ir_eval_struct_function_matches_ast(void) {
     cxpr_error err = {0};
     const char* fields[] = {"x", "y", "z"};
     cxpr_value goal_vals[] = {
-        cxpr_fv_double(3.0),
-        cxpr_fv_double(4.0),
-        cxpr_fv_double(0.0),
+        cxpr_num(3.0),
+        cxpr_num(4.0),
+        cxpr_num(0.0),
     };
     cxpr_value pose_vals[] = {
-        cxpr_fv_double(0.0),
-        cxpr_fv_double(0.0),
-        cxpr_fv_double(0.0),
+        cxpr_num(0.0),
+        cxpr_num(0.0),
+        cxpr_num(0.0),
     };
     cxpr_struct_value* goal = NULL;
     cxpr_struct_value* pose = NULL;
@@ -894,7 +894,7 @@ static void test_ir_compile_unknown_function_fails(void) {
     assert(ast);
     assert(cxpr_ir_compile(ast, reg, &program, &err) == false);
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
-    assert(strcmp(err.message, "Unknown function") == 0);
+    assert(strcmp(err.message, "Unknown function 'missing_fn'") == 0);
     assert(program.code == NULL);
     assert(program.count == 0);
 
@@ -914,7 +914,7 @@ static void test_ir_compile_unknown_producer_fails(void) {
     assert(ast);
     assert(cxpr_ir_compile(ast, reg, &program, &err) == false);
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
-    assert(strcmp(err.message, "Unknown function") == 0);
+    assert(strcmp(err.message, "Unknown function 'missing_prod'") == 0);
     assert(program.code == NULL);
     assert(program.count == 0);
 

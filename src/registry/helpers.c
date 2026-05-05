@@ -142,9 +142,9 @@ void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
     entry->typed_func = NULL;
     entry->ast_func = NULL;
     entry->struct_producer = NULL;
-    entry->ast_func_overlay = NULL;
-    entry->ast_func_overlay_userdata = NULL;
-    entry->ast_func_overlay_userdata_free = NULL;
+    entry->ast_func_handler = NULL;
+    entry->ast_func_handler_userdata = NULL;
+    entry->ast_func_handler_userdata_free = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->min_args = 0;
@@ -173,8 +173,8 @@ void cxpr_registry_clear_owned_entry(cxpr_func_entry* entry) {
     if (entry->userdata_free) {
         entry->userdata_free(entry->userdata);
     }
-    if (entry->ast_func_overlay_userdata_free) {
-        entry->ast_func_overlay_userdata_free(entry->ast_func_overlay_userdata);
+    if (entry->ast_func_handler_userdata_free) {
+        entry->ast_func_handler_userdata_free(entry->ast_func_handler_userdata);
     }
     cxpr_registry_free_struct_fields(entry);
     cxpr_registry_free_param_names(entry);
@@ -182,9 +182,9 @@ void cxpr_registry_clear_owned_entry(cxpr_func_entry* entry) {
     cxpr_registry_free_defined_fn(entry);
     entry->userdata = NULL;
     entry->userdata_free = NULL;
-    entry->ast_func_overlay = NULL;
-    entry->ast_func_overlay_userdata = NULL;
-    entry->ast_func_overlay_userdata_free = NULL;
+    entry->ast_func_handler = NULL;
+    entry->ast_func_handler_userdata = NULL;
+    entry->ast_func_handler_userdata_free = NULL;
 }
 
 void cxpr_registry_prepare_entry(cxpr_func_entry* entry, const char* name) {

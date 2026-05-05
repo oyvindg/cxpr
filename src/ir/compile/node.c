@@ -6,6 +6,67 @@
 #include "call/args.h"
 #include "internal.h"
 
+#include <stdio.h>
+
+static const char* cxpr_ir_unknown_function_message(const char* name) {
+    static char message[256];
+    if (!name || name[0] == '\0') return "Unknown function";
+    snprintf(message, sizeof(message), "Unknown function '%s'", name);
+    return message;
+}
+
+static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
+                                                   const cxpr_ast* call_ast,
+                                                   cxpr_ir_program* program,
+                                                   cxpr_error* err) {
+    const cxpr_ast* body;
+    const char* body_param;
+    const char* body_field;
+    char flat_key[256];
+    int written;
+
+    if (!entry || !entry->defined_body || !call_ast ||
+        call_ast->type != CXPR_NODE_FUNCTION_CALL) {
+        return false;
+    }
+
+    body = entry->defined_body;
+    if (body->type == CXPR_NODE_FIELD_ACCESS) {
+        body_param = body->data.field_access.object;
+        body_field = body->data.field_access.field;
+    } else if (body->type == CXPR_NODE_CHAIN_ACCESS && body->data.chain_access.depth == 2) {
+        body_param = body->data.chain_access.path[0];
+        body_field = body->data.chain_access.path[1];
+    } else {
+        return false;
+    }
+
+    for (size_t i = 0; i < entry->defined_param_count; ++i) {
+        const cxpr_ast* arg;
+
+        if (strcmp(entry->defined_param_names[i], body_param) != 0) continue;
+        if (i >= call_ast->data.function_call.argc) return false;
+
+        arg = call_ast->data.function_call.args[i];
+        if (!arg || arg->type != CXPR_NODE_IDENTIFIER) return false;
+
+        written = snprintf(flat_key, sizeof(flat_key), "%s.%s",
+                           arg->data.identifier.name, body_field);
+        if (written <= 0 || (size_t)written >= sizeof(flat_key)) return false;
+
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_LOAD_NAMED_FIELD,
+                                .name = arg->data.identifier.name,
+                                .aux_name = body_field,
+                                .hash = cxpr_hash_string(flat_key),
+                            },
+                            err);
+    }
+
+    return false;
+}
+
 bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                           const cxpr_registry* reg,
                           const char* const* local_names, size_t local_count,
@@ -121,13 +182,13 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         if (!entry || !entry->struct_producer) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-                err->message = "Unknown function";
+                err->message = cxpr_ir_unknown_function_message(ast->data.producer_access.name);
             }
             return false;
         }
-        if (entry->ast_func_overlay &&
+        if (entry->ast_func_handler &&
             (cxpr_ir_ast_contains_string_literal(ast) ||
-             cxpr_ir_runtime_call_needs_overlay_passthrough(ast))) {
+             cxpr_ir_runtime_call_needs_catchor_passthrough(ast))) {
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_AST,
@@ -231,7 +292,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             if (!cxpr_ir_is_special_builtin_name(fname)) {
                 if (err) {
                     err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-                    err->message = "Unknown function";
+                    err->message = cxpr_ir_unknown_function_message(fname);
                 }
                 return false;
             }
@@ -365,9 +426,9 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                 err);
         }
 
-        if (entry->ast_func_overlay &&
+        if (entry->ast_func_handler &&
             (cxpr_ir_ast_contains_string_literal(ast) ||
-             cxpr_ir_runtime_call_needs_overlay_passthrough(ast))) {
+             cxpr_ir_runtime_call_needs_catchor_passthrough(ast))) {
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_AST,
@@ -448,6 +509,11 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 free(const_key);
                 return false;
             }
+            return true;
+        }
+
+        if (entry->defined_body &&
+            cxpr_ir_emit_defined_direct_field_call(entry, ast, program, err)) {
             return true;
         }
 

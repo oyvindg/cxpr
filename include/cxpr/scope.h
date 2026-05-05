@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include <cxpr/provider.h>
+#include <cxpr/source_plan.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -20,28 +20,6 @@ extern "C" {
 #endif
 
 struct cxpr_host_config;
-
-/**
- * @brief Resolve one scoped source handle to a numeric value.
- * @param[in] handle Host-defined source handle or lookback/index value.
- * @param[in] source_name Registered source name, such as `close`.
- * @param[out] out_value Receives the resolved numeric value.
- * @param[in] userdata Opaque pointer from @ref cxpr_scope_resolver.
- * @return Non-zero on success, zero when the value cannot be resolved.
- */
-typedef int (*cxpr_scope_resolver_fn)(
-    uint64_t handle,
-    const char* source_name,
-    double* out_value,
-    void* userdata);
-
-/**
- * @brief Host resolver configuration for scoped source functions.
- */
-typedef struct {
-    cxpr_scope_resolver_fn resolve; /**< Required resolver callback. */
-    void* userdata;                 /**< Host-owned pointer passed to @ref resolve. */
-} cxpr_scope_resolver;
 
 /**
  * @brief Runtime registration metadata for one scoped source family.

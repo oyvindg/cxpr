@@ -6,6 +6,7 @@
 #include "internal.h"
 
 #include <cxpr/runtime_call.h>
+#include <cxpr/scope.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -141,6 +142,12 @@ void cxpr_free_source_plan_ast(cxpr_source_plan_ast* plan) {
     free(plan->bound_arg_asts);
     free(plan->canonical);
     memset(plan, 0, sizeof(*plan));
+}
+
+void cxpr_free_source_plan_bindings(cxpr_source_plan_bindings* bindings) {
+    if (!bindings) return;
+    free(bindings->handles);
+    memset(bindings, 0, sizeof(*bindings));
 }
 
 static int cxpr_source_plan_bound_arg_append(const cxpr_ast* ast,
@@ -458,4 +465,343 @@ int cxpr_eval_source_plan_bound_args(
         }
     }
     return 1;
+}
+
+static int cxpr_source_plan_bindings_append(
+    cxpr_source_plan_bindings* out,
+    uint64_t handle) {
+    uint64_t* grown;
+    size_t next_count;
+
+    if (!out) return 0;
+    next_count = out->count + 1u;
+    grown = (uint64_t*)realloc(out->handles, next_count * sizeof(*grown));
+    if (!grown) return 0;
+    out->handles = grown;
+    out->handles[out->count] = handle;
+    out->count = next_count;
+    return 1;
+}
+
+static int cxpr_source_plan_collect_node_args(
+    const cxpr_source_plan_node* node,
+    const double* plan_args,
+    size_t plan_arg_count,
+    double** out_args,
+    size_t* out_count) {
+    double* args = NULL;
+    size_t i;
+
+    if (out_args) *out_args = NULL;
+    if (out_count) *out_count = 0u;
+    if (!node || !out_args || !out_count) return 0;
+    if (node->arg_count == 0u) return 1;
+    if (!node->arg_slots || !plan_args) return 0;
+
+    args = (double*)calloc(node->arg_count, sizeof(*args));
+    if (!args) return 0;
+    for (i = 0u; i < node->arg_count; ++i) {
+        size_t slot = node->arg_slots[i];
+        if (slot >= plan_arg_count) {
+            free(args);
+            return 0;
+        }
+        args[i] = plan_args[slot];
+    }
+    *out_args = args;
+    *out_count = node->arg_count;
+    return 1;
+}
+
+static int cxpr_source_plan_bind_leaf_nodes(
+    const cxpr_source_plan_node* node,
+    const double* plan_args,
+    size_t plan_arg_count,
+    cxpr_source_plan_bind_fn bind,
+    void* userdata,
+    cxpr_source_plan_bindings* out) {
+    double* node_args = NULL;
+    size_t node_arg_count = 0u;
+    uint64_t handle = 0u;
+    int ok;
+
+    if (!node || !bind || !out) return 0;
+    /* Source-input wrappers such as ema(close, 14) materialize from their
+       child source; bind the leaf that actually selects the host series. */
+    if (node->source) {
+        return cxpr_source_plan_bind_leaf_nodes(
+            node->source,
+            plan_args,
+            plan_arg_count,
+            bind,
+            userdata,
+            out);
+    }
+    if (node->kind == CXPR_SOURCE_PLAN_INVALID) return 0;
+
+    if (!cxpr_source_plan_collect_node_args(
+            node,
+            plan_args,
+            plan_arg_count,
+            &node_args,
+            &node_arg_count)) {
+        return 0;
+    }
+    ok = bind(node, node_args, node_arg_count, &handle, userdata);
+    free(node_args);
+    if (!ok) return 0;
+    return cxpr_source_plan_bindings_append(out, handle);
+}
+
+static int cxpr_source_plan_bind_parsed_plan(
+    const cxpr_source_plan_ast* plan,
+    const cxpr_context* ctx,
+    const cxpr_registry* reg,
+    cxpr_source_plan_bind_fn bind,
+    void* userdata,
+    cxpr_source_plan_bindings* out,
+    cxpr_error* err) {
+    double* plan_args = NULL;
+    int ok;
+
+    if (!plan || !bind || !out) return 0;
+    if (plan->arg_count > 0u) {
+        plan_args = (double*)calloc(plan->arg_count, sizeof(*plan_args));
+        if (!plan_args) return 0;
+    }
+    ok = cxpr_eval_source_plan_bound_args(
+        plan,
+        ctx,
+        reg,
+        plan_args,
+        plan->arg_count,
+        err);
+    if (ok) {
+        ok = cxpr_source_plan_bind_leaf_nodes(
+            &plan->root,
+            plan_args,
+            plan->arg_count,
+            bind,
+            userdata,
+            out);
+    }
+    free(plan_args);
+    return ok;
+}
+
+static int cxpr_source_plan_should_parse_at_node(const cxpr_ast* ast) {
+    if (!ast) return 0;
+    switch (cxpr_ast_type(ast)) {
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_FUNCTION_CALL:
+    case CXPR_NODE_PRODUCER_ACCESS:
+    case CXPR_NODE_LOOKBACK:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int cxpr_plan_bind_sources_walk(
+    const cxpr_provider* provider,
+    const cxpr_ast* ast,
+    const cxpr_context* ctx,
+    const cxpr_registry* reg,
+    cxpr_source_plan_bind_fn bind,
+    void* userdata,
+    cxpr_source_plan_bindings* out,
+    cxpr_error* err) {
+    cxpr_source_plan_ast plan = {0};
+    size_t i;
+
+    if (!ast) return 1;
+    /* Try provider source-plan parsing at source-shaped roots. If it succeeds,
+       cxpr owns the subtree and the host only sees parsed leaf nodes. */
+    if (cxpr_source_plan_should_parse_at_node(ast) &&
+        cxpr_parse_provider_source_plan_ast(provider, ast, &plan)) {
+        int ok = cxpr_source_plan_bind_parsed_plan(
+            &plan,
+            ctx,
+            reg,
+            bind,
+            userdata,
+            out,
+            err);
+        cxpr_free_source_plan_ast(&plan);
+        return ok;
+    }
+
+    switch (cxpr_ast_type(ast)) {
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_left(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_ast_right(ast), ctx, reg, bind, userdata, out, err);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_operand(ast), ctx, reg, bind, userdata, out, err);
+    case CXPR_NODE_FUNCTION_CALL:
+        for (i = 0u; i < cxpr_ast_function_argc(ast); ++i) {
+            if (!cxpr_plan_bind_sources_walk(
+                    provider,
+                    cxpr_ast_function_arg(ast, i),
+                    ctx,
+                    reg,
+                    bind,
+                    userdata,
+                    out,
+                    err)) {
+                return 0;
+            }
+        }
+        return 1;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+            if (!cxpr_plan_bind_sources_walk(
+                    provider,
+                    cxpr_ast_producer_arg(ast, i),
+                    ctx,
+                    reg,
+                    bind,
+                    userdata,
+                    out,
+                    err)) {
+                return 0;
+            }
+        }
+        return 1;
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_lookback_target(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_ast_lookback_index(ast), ctx, reg, bind, userdata, out, err);
+    case CXPR_NODE_TERNARY:
+        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_ternary_condition(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_ast_ternary_true_branch(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_ast_ternary_false_branch(ast), ctx, reg, bind, userdata, out, err);
+    default:
+        return 1;
+    }
+}
+
+int cxpr_plan_bind_sources(
+    const cxpr_provider* provider,
+    const cxpr_ast* expr,
+    const cxpr_context* ctx,
+    cxpr_registry* reg,
+    const cxpr_plan_config* config,
+    cxpr_source_plan_bindings* out,
+    cxpr_error* err) {
+    cxpr_source_plan_bindings tmp = {0};
+    const cxpr_provider_source_spec* const* source_specs = NULL;
+    cxpr_scoped_source_spec* scoped_specs = NULL;
+    cxpr_scope_resolver resolver;
+    size_t source_count = 0u;
+    size_t scoped_count = 0u;
+    size_t i;
+
+    if (out) memset(out, 0, sizeof(*out));
+    if (!provider || !expr || !config || !config->bind || !out) return 0;
+
+    if (reg && config->resolve) {
+        source_specs = cxpr_provider_source_specs(provider, &source_count);
+        if (source_specs && source_count > 0u) {
+            scoped_specs = (cxpr_scoped_source_spec*)calloc(source_count, sizeof(*scoped_specs));
+            if (!scoped_specs) return 0;
+            for (i = 0u; i < source_count; ++i) {
+                const cxpr_provider_source_spec* source = source_specs[i];
+                if (!source || !source->name || source->name[0] == '\0' || !source->scope) continue;
+                scoped_specs[scoped_count].name = source->name;
+                scoped_specs[scoped_count].min_args = source->min_args;
+                scoped_specs[scoped_count].max_args = source->max_args;
+                scoped_specs[scoped_count].scope = source->scope;
+                scoped_count += 1u;
+            }
+            if (scoped_count > 0u) {
+                resolver.resolve = config->resolve;
+                resolver.userdata = config->userdata;
+                cxpr_scoped_source_functions_register(
+                    reg,
+                    scoped_specs,
+                    scoped_count,
+                    &resolver,
+                    NULL);
+            }
+            free(scoped_specs);
+        }
+    }
+
+    if (!cxpr_plan_bind_sources_walk(
+            provider,
+            expr,
+            ctx,
+            reg,
+            config->bind,
+            config->userdata,
+            &tmp,
+            err)) {
+        cxpr_free_source_plan_bindings(&tmp);
+        return 0;
+    }
+    *out = tmp;
+    return 1;
+}
+
+typedef struct {
+    const cxpr_source_handle_entry* table;
+    size_t table_count;
+} cxpr_source_plan_table_bind_ctx;
+
+static int cxpr_source_plan_scope_matches(const char* left, const char* right) {
+    const char* a = left ? left : "";
+    const char* b = right ? right : "";
+    return strcmp(a, b) == 0;
+}
+
+static int cxpr_source_plan_table_bind(
+    const cxpr_source_plan_node* node,
+    const double* bound_args,
+    size_t arg_count,
+    uint64_t* out_handle,
+    void* userdata) {
+    cxpr_source_plan_table_bind_ctx* ctx = (cxpr_source_plan_table_bind_ctx*)userdata;
+    size_t i;
+
+    (void)bound_args;
+    (void)arg_count;
+    if (!ctx || !node || !node->name || !out_handle) return 0;
+    for (i = 0u; i < ctx->table_count; ++i) {
+        const cxpr_source_handle_entry* entry = &ctx->table[i];
+        if (!entry->name || strcmp(entry->name, node->name) != 0) continue;
+        if (!cxpr_source_plan_scope_matches(entry->scope_value, node->scope_value)) continue;
+        *out_handle = entry->handle;
+        return 1;
+    }
+    return 0;
+}
+
+int cxpr_plan_bind_sources_from_table(
+    const cxpr_provider* provider,
+    const cxpr_ast* expr,
+    const cxpr_context* ctx,
+    cxpr_registry* reg,
+    const cxpr_source_handle_entry* table,
+    size_t table_count,
+    cxpr_source_plan_bindings* out,
+    cxpr_error* err) {
+    cxpr_source_plan_table_bind_ctx bind_ctx;
+    cxpr_plan_config config;
+
+    if (!table && table_count > 0u) {
+        if (out) memset(out, 0, sizeof(*out));
+        return 0;
+    }
+    bind_ctx.table = table;
+    bind_ctx.table_count = table_count;
+    memset(&config, 0, sizeof(config));
+    config.bind = cxpr_source_plan_table_bind;
+    config.userdata = &bind_ctx;
+    return cxpr_plan_bind_sources(
+        provider,
+        expr,
+        ctx,
+        reg,
+        &config,
+        out,
+        err);
 }

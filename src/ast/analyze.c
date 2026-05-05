@@ -6,6 +6,7 @@
 #include "internal.h"
 #include "registry/internal.h"
 #include "call/args.h"
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -21,6 +22,13 @@ static void cxpr_ast_set_error(cxpr_error* err, cxpr_error_code code, const char
     err->position = 0;
     err->line = 0;
     err->column = 0;
+}
+
+static const char* cxpr_ast_unknown_function_message(const char* name) {
+    static char message[256];
+    if (!name || name[0] == '\0') return "Unknown function";
+    snprintf(message, sizeof(message), "Unknown function '%s'", name);
+    return message;
 }
 
 static cxpr_expr_type cxpr_expr_type_from_value(cxpr_value_type type) {
@@ -79,7 +87,10 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                 if (!entry) {
                     out->has_unknown_functions = true;
                     out->first_unknown_function = ast->data.producer_access.name;
-                    cxpr_ast_set_error(state->err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+                    cxpr_ast_set_error(
+                        state->err,
+                        CXPR_ERR_UNKNOWN_FUNCTION,
+                        cxpr_ast_unknown_function_message(ast->data.producer_access.name));
                     *ok = false;
                     return CXPR_EXPR_UNKNOWN;
                 }
@@ -144,7 +155,10 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                 if (!entry) {
                     out->has_unknown_functions = true;
                     out->first_unknown_function = ast->data.function_call.name;
-                    cxpr_ast_set_error(state->err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+                    cxpr_ast_set_error(
+                        state->err,
+                        CXPR_ERR_UNKNOWN_FUNCTION,
+                        cxpr_ast_unknown_function_message(ast->data.function_call.name));
                     *ok = false;
                     return CXPR_EXPR_UNKNOWN;
                 }

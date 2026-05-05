@@ -186,7 +186,7 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
     reg->version++;
 }
 
-void cxpr_registry_add_ast_overlay(cxpr_registry* reg, const char* name,
+void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
                                    cxpr_ast_func_ptr func,
                                    size_t min_args, size_t max_args,
                                    void* userdata,
@@ -195,12 +195,12 @@ void cxpr_registry_add_ast_overlay(cxpr_registry* reg, const char* name,
 
     cxpr_func_entry* entry = cxpr_registry_find(reg, name);
     if (entry) {
-        if (entry->ast_func_overlay_userdata_free) {
-            entry->ast_func_overlay_userdata_free(entry->ast_func_overlay_userdata);
+        if (entry->ast_func_handler_userdata_free) {
+            entry->ast_func_handler_userdata_free(entry->ast_func_handler_userdata);
         }
-        entry->ast_func_overlay = func;
-        entry->ast_func_overlay_userdata = userdata;
-        entry->ast_func_overlay_userdata_free = free_userdata;
+        entry->ast_func_handler = func;
+        entry->ast_func_handler_userdata = userdata;
+        entry->ast_func_handler_userdata_free = free_userdata;
         if (min_args < entry->min_args) entry->min_args = min_args;
         if (max_args > entry->max_args) entry->max_args = max_args;
         reg->version++;
@@ -210,9 +210,9 @@ void cxpr_registry_add_ast_overlay(cxpr_registry* reg, const char* name,
     if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) return;
     entry = &reg->entries[reg->count++];
     cxpr_registry_prepare_entry(entry, name);
-    entry->ast_func_overlay = func;
-    entry->ast_func_overlay_userdata = userdata;
-    entry->ast_func_overlay_userdata_free = free_userdata;
+    entry->ast_func_handler = func;
+    entry->ast_func_handler_userdata = userdata;
+    entry->ast_func_handler_userdata_free = free_userdata;
     entry->min_args = min_args;
     entry->max_args = max_args;
     reg->version++;

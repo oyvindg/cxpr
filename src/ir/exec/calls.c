@@ -29,7 +29,7 @@ cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = "Wrong number of arguments";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     if (argc > CXPR_MAX_CALL_ARGS || entry->fields_per_arg > CXPR_MAX_PRODUCER_FIELDS) {
         return cxpr_ir_runtime_error(err, "Producer arity too large");
@@ -38,14 +38,14 @@ cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name
     if (resolved_cache_key) {
         existing = cxpr_context_get_cached_struct(ctx, resolved_cache_key);
         if (existing) {
-            return cxpr_fv_struct((cxpr_struct_value*)existing);
+            return cxpr_struct((cxpr_struct_value*)existing);
         }
     }
 
     for (size_t i = 0; i < argc; ++i) {
         if (!cxpr_ir_require_type(stack_args[i], CXPR_VALUE_NUMBER, err,
                                   "Producer arguments must be doubles")) {
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         args[i] = stack_args[i].d;
     }
@@ -60,14 +60,14 @@ cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name
                 err->code = CXPR_ERR_OUT_OF_MEMORY;
                 err->message = "Out of memory";
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
     }
 
     existing = cxpr_context_get_cached_struct(ctx, resolved_cache_key);
     if (existing) {
         free(cache_key_heap);
-        return cxpr_fv_struct((cxpr_struct_value*)existing);
+        return cxpr_struct((cxpr_struct_value*)existing);
     }
 
     entry->struct_producer(args, argc, outputs, entry->fields_per_arg, entry->userdata);
@@ -79,13 +79,13 @@ cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name
             err->code = CXPR_ERR_OUT_OF_MEMORY;
             err->message = "Out of memory";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     cxpr_context_set_cached_struct(mutable_ctx, resolved_cache_key, produced);
     cxpr_struct_value_free(produced);
     existing = cxpr_context_get_cached_struct(ctx, resolved_cache_key);
     free(cache_key_heap);
-    return cxpr_fv_struct((cxpr_struct_value*)existing);
+    return cxpr_struct((cxpr_struct_value*)existing);
 }
 
 cxpr_value cxpr_ir_call_producer(cxpr_func_entry* entry, const char* name,
@@ -107,7 +107,7 @@ cxpr_value cxpr_ir_call_producer_field_cached(cxpr_func_entry* entry,
     bool found = false;
 
     produced = cxpr_ir_call_producer_cached(entry, name, cache_key, ctx, stack_args, argc, err);
-    if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
     if (produced.type != CXPR_VALUE_STRUCT) {
         return cxpr_ir_runtime_error(err, "Field access requires struct operand");
     }
@@ -148,7 +148,7 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = "Wrong number of arguments";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     if (argc > CXPR_MAX_CALL_ARGS || entry->fields_per_arg > CXPR_MAX_PRODUCER_FIELDS) {
         return cxpr_ir_runtime_error(err, "Producer arity too large");
@@ -164,7 +164,7 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
                 err->code = CXPR_ERR_OUT_OF_MEMORY;
                 err->message = "Out of memory";
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         cxpr_context_set_cached_struct(mutable_ctx, cache_key, produced);
         cxpr_struct_value_free(produced);
@@ -190,7 +190,7 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = "Wrong number of arguments";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     for (size_t i = 0; i < argc; ++i) {
@@ -199,13 +199,13 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                 err->code = CXPR_ERR_TYPE_MISMATCH;
                 err->message = "Defined function arguments must be doubles";
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         locals[i] = args[i].d;
     }
 
     if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
-        return cxpr_fv_double(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
+        return cxpr_num(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
                                                        locals, argc, err));
     }
 
@@ -216,7 +216,7 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                 err->code = CXPR_ERR_OUT_OF_MEMORY;
                 err->message = "Out of memory";
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         for (size_t i = 0; i < argc; ++i) {
             cxpr_context_set(tmp, entry->defined_param_names[i], locals[i]);

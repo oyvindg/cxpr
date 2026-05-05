@@ -42,7 +42,7 @@ static cxpr_value pick_param_ast_fn(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_SYNTAX;
             err->message = "pick_param expects one $variable argument";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     bool found = false;
@@ -53,9 +53,9 @@ static cxpr_value pick_param_ast_fn(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
             err->message = "Unknown parameter";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
-    return cxpr_fv_double(value);
+    return cxpr_num(value);
 }
 
 static cxpr_value double_eval_ast_fn(const cxpr_ast* call_ast,
@@ -71,9 +71,9 @@ static cxpr_value double_eval_ast_fn(const cxpr_ast* call_ast,
 
     double value = 0.0;
     if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &value, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
-    return cxpr_fv_double(value * 2.0);
+    return cxpr_num(value * 2.0);
 }
 
 static int g_ast_userdata_free_count = 0;
@@ -95,9 +95,9 @@ static cxpr_value scale_eval_ast_fn(const cxpr_ast* call_ast,
     const int factor = userdata ? *(const int*)userdata : 1;
     double value = 0.0;
     if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &value, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
-    return cxpr_fv_double(value * (double)factor);
+    return cxpr_num(value * (double)factor);
 }
 
 static void test_ast_function_can_read_variable_argument(void) {
@@ -218,40 +218,40 @@ static cxpr_value mode_ast_fn(const cxpr_ast* call_ast,
     (void)reg;
     double v = 0.0;
     if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &v, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
-    return cxpr_fv_double(v + 100.0);
+    return cxpr_num(v + 100.0);
 }
 
 static cxpr_value mode_value_fn(const double* args, size_t argc, void* userdata) {
     (void)userdata;
     assert(argc == 1);
-    return cxpr_fv_double(args[0] + 1.0);
+    return cxpr_num(args[0] + 1.0);
 }
 
 static cxpr_value mode_typed_fn(const cxpr_value* args, size_t argc, void* userdata) {
     (void)userdata;
     assert(argc == 1);
     assert(args[0].type == CXPR_VALUE_NUMBER);
-    return cxpr_fv_double(args[0].d * 10.0);
+    return cxpr_num(args[0].d * 10.0);
 }
 
-static int g_mode_overlay_ast_calls = 0;
+static int g_mode_ast_handler_calls = 0;
 
-static cxpr_value mode_overlay_ast_fn(const cxpr_ast* call_ast,
+static cxpr_value mode_ast_handler_fn(const cxpr_ast* call_ast,
                                       const cxpr_context* ctx,
                                       const cxpr_registry* reg,
                                       void* userdata,
                                       cxpr_error* err) {
     (void)userdata;
-    ++g_mode_overlay_ast_calls;
+    ++g_mode_ast_handler_calls;
 
     assert(cxpr_ast_type(call_ast) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_ast_function_name(call_ast), "mode_tf") == 0);
 
     double v = 0.0;
     if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &v, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     if (cxpr_ast_function_argc(call_ast) == 2) {
@@ -261,30 +261,30 @@ static cxpr_value mode_overlay_ast_fn(const cxpr_ast* call_ast,
                 err->code = CXPR_ERR_TYPE_MISMATCH;
                 err->message = "mode_tf expects a trailing string timeframe";
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         if (strcmp(cxpr_ast_string_value(timeframe), "1h") == 0) {
-            return cxpr_fv_double(v + 1000.0);
+            return cxpr_num(v + 1000.0);
         }
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
             err->message = "Unsupported timeframe";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
-    return cxpr_fv_double(v + 1.0);
+    return cxpr_num(v + 1.0);
 }
 
 static cxpr_value source_pick_value_fn(const double* args, size_t argc, void* userdata) {
     (void)userdata;
     assert(argc == 1);
-    return cxpr_fv_double(args[0] + 1.0);
+    return cxpr_num(args[0] + 1.0);
 }
 
-static int g_source_pick_overlay_ast_calls = 0;
+static int g_source_pick_ast_handler_calls = 0;
 
-static cxpr_value source_pick_overlay_ast_fn(const cxpr_ast* call_ast,
+static cxpr_value source_pick_ast_handler_fn(const cxpr_ast* call_ast,
                                              const cxpr_context* ctx,
                                              const cxpr_registry* reg,
                                              void* userdata,
@@ -292,7 +292,7 @@ static cxpr_value source_pick_overlay_ast_fn(const cxpr_ast* call_ast,
     (void)ctx;
     (void)reg;
     (void)userdata;
-    ++g_source_pick_overlay_ast_calls;
+    ++g_source_pick_ast_handler_calls;
 
     assert(cxpr_ast_type(call_ast) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_ast_function_name(call_ast), "source_pick") == 0);
@@ -304,7 +304,7 @@ static cxpr_value source_pick_overlay_ast_fn(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_SYNTAX;
             err->message = "source_pick expects one identifier argument";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     if (strcmp(cxpr_ast_identifier_name(arg), "close") != 0) {
@@ -312,10 +312,10 @@ static cxpr_value source_pick_overlay_ast_fn(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
             err->message = "Unsupported source identifier";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
-    return cxpr_fv_double(42.0);
+    return cxpr_num(42.0);
 }
 
 static void trend_struct_producer(const double* args, size_t argc,
@@ -324,18 +324,18 @@ static void trend_struct_producer(const double* args, size_t argc,
     (void)userdata;
     assert(field_count == 1);
     assert(argc >= 1);
-    out[0] = cxpr_fv_double(args[0] + 10.0);
+    out[0] = cxpr_num(args[0] + 10.0);
 }
 
-static int g_trend_overlay_ast_calls = 0;
+static int g_trend_ast_handler_calls = 0;
 
-static cxpr_value trend_overlay_ast_fn(const cxpr_ast* call_ast,
+static cxpr_value trend_ast_handler_fn(const cxpr_ast* call_ast,
                                        const cxpr_context* ctx,
                                        const cxpr_registry* reg,
                                        void* userdata,
                                        cxpr_error* err) {
     (void)userdata;
-    ++g_trend_overlay_ast_calls;
+    ++g_trend_ast_handler_calls;
 
     assert(cxpr_ast_type(call_ast) == CXPR_NODE_PRODUCER_ACCESS);
     assert(strcmp(cxpr_ast_producer_name(call_ast), "trend_tf") == 0);
@@ -344,7 +344,7 @@ static cxpr_value trend_overlay_ast_fn(const cxpr_ast* call_ast,
 
     double v = 0.0;
     if (!cxpr_eval_ast_number(cxpr_ast_producer_arg(call_ast, 0), ctx, reg, &v, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     const cxpr_ast* timeframe = cxpr_ast_producer_arg(call_ast, 1);
@@ -353,16 +353,16 @@ static cxpr_value trend_overlay_ast_fn(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "trend_tf expects a trailing string timeframe";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     if (strcmp(cxpr_ast_string_value(timeframe), "1h") == 0) {
-        return cxpr_fv_double(v + 2000.0);
+        return cxpr_num(v + 2000.0);
     }
     if (err) {
         err->code = CXPR_ERR_SYNTAX;
         err->message = "Unsupported timeframe";
     }
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 static bool ir_program_has_opcode(const cxpr_ir_program* prog, cxpr_opcode opcode) {
@@ -441,7 +441,7 @@ static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
     printf("  ✓ test_registry_overwrite_ast_value_typed_ast_sequence\n");
 }
 
-static void test_ast_overlay_numeric_calls_compile_to_scalar_ir(void) {
+static void test_ast_handler_numeric_calls_compile_to_scalar_ir(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -450,14 +450,14 @@ static void test_ast_overlay_numeric_calls_compile_to_scalar_ir(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(2)");
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 3.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program ir = {0};
     assert(cxpr_ir_compile(ast, reg, &ir, &err));
@@ -467,11 +467,11 @@ static void test_ast_overlay_numeric_calls_compile_to_scalar_ir(void) {
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
 
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 3.0);
-    assert(g_mode_overlay_ast_calls == 0);
+    assert(g_mode_ast_handler_calls == 0);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -479,10 +479,10 @@ static void test_ast_overlay_numeric_calls_compile_to_scalar_ir(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_ast_overlay_numeric_calls_compile_to_scalar_ir\n");
+    printf("  ✓ test_ast_handler_numeric_calls_compile_to_scalar_ir\n");
 }
 
-static void test_ast_overlay_string_calls_fall_back_to_ast_in_ir(void) {
+static void test_ast_handler_string_calls_fall_back_to_ast_in_ir(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -491,14 +491,14 @@ static void test_ast_overlay_string_calls_fall_back_to_ast_in_ir(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(2, \"1h\") + 5");
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 1007.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program ir = {0};
     assert(cxpr_ir_compile(ast, reg, &ir, &err));
@@ -508,11 +508,11 @@ static void test_ast_overlay_string_calls_fall_back_to_ast_in_ir(void) {
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
 
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 1007.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -520,10 +520,10 @@ static void test_ast_overlay_string_calls_fall_back_to_ast_in_ir(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_ast_overlay_string_calls_fall_back_to_ast_in_ir\n");
+    printf("  ✓ test_ast_handler_string_calls_fall_back_to_ast_in_ir\n");
 }
 
-static void test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir(void) {
+static void test_ast_handler_identifier_calls_fall_back_to_ast_in_ir(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -532,14 +532,14 @@ static void test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "source_pick", source_pick_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "source_pick", source_pick_overlay_ast_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "source_pick", source_pick_ast_handler_fn, 1, 1, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "source_pick(close) + 5");
-    g_source_pick_overlay_ast_calls = 0;
+    g_source_pick_ast_handler_calls = 0;
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 47.0);
-    assert(g_source_pick_overlay_ast_calls == 1);
+    assert(g_source_pick_ast_handler_calls == 1);
 
     cxpr_ir_program ir = {0};
     assert(cxpr_ir_compile(ast, reg, &ir, &err));
@@ -549,11 +549,11 @@ static void test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir(void) {
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
 
-    g_source_pick_overlay_ast_calls = 0;
+    g_source_pick_ast_handler_calls = 0;
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 47.0);
-    assert(g_source_pick_overlay_ast_calls == 1);
+    assert(g_source_pick_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -561,10 +561,10 @@ static void test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir\n");
+    printf("  ✓ test_ast_handler_identifier_calls_fall_back_to_ast_in_ir\n");
 }
 
-static void test_expression_compile_supports_timeframe_overlay(void) {
+static void test_expression_compile_supports_timeframe_handler(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
@@ -575,25 +575,25 @@ static void test_expression_compile_supports_timeframe_overlay(void) {
     assert(evaluator != NULL);
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
     cxpr_context_set(ctx, "base", 2.0);
 
     assert(cxpr_expression_add(evaluator, "signal", "mode_tf(base, \"1h\") + 5", &err));
     assert(cxpr_expression_compile(evaluator, &err));
     assert(err.code == CXPR_OK);
 
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_expression_eval_all(evaluator, ctx, &err);
     assert(err.code == CXPR_OK);
     out = cxpr_expression_get_double(evaluator, "signal", &found);
     assert(found);
     ASSERT_DOUBLE_EQ(out, 1007.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_evaluator_free(evaluator);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    printf("  ✓ test_expression_compile_supports_timeframe_overlay\n");
+    printf("  ✓ test_expression_compile_supports_timeframe_handler\n");
 }
 
 static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
@@ -606,14 +606,14 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_struct(reg, "trend_tf", trend_struct_producer, 1, 2, fields, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "trend_tf", trend_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "trend_tf", trend_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "trend_tf(2, \"1h\").signal + 5");
-    g_trend_overlay_ast_calls = 0;
+    g_trend_ast_handler_calls = 0;
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 2007.0);
-    assert(g_trend_overlay_ast_calls == 1);
+    assert(g_trend_ast_handler_calls == 1);
 
     cxpr_ir_program ir = {0};
     assert(cxpr_ir_compile(ast, reg, &ir, &err));
@@ -623,11 +623,11 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
 
-    g_trend_overlay_ast_calls = 0;
+    g_trend_ast_handler_calls = 0;
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 2007.0);
-    assert(g_trend_overlay_ast_calls == 1);
+    assert(g_trend_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -639,10 +639,10 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
 }
 
 /**
- * Binary op arg containing an identifier triggers overlay passthrough.
+ * Binary op arg containing an identifier triggers handler passthrough.
  * mode_tf(close / 100) — BINARY_OP(IDENTIFIER, NUMBER) → CALL_AST.
  */
-static void test_overlay_passthrough_binary_op_with_identifier(void) {
+static void test_ast_handler_passthrough_binary_op_with_identifier(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -651,7 +651,7 @@ static void test_overlay_passthrough_binary_op_with_identifier(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(close / 100)");
 
@@ -661,13 +661,13 @@ static void test_overlay_passthrough_binary_op_with_identifier(void) {
     assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
 
     cxpr_context_set(ctx, "close", 100.0);
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 2.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -675,14 +675,14 @@ static void test_overlay_passthrough_binary_op_with_identifier(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_passthrough_binary_op_with_identifier\n");
+    printf("  ✓ test_ast_handler_passthrough_binary_op_with_identifier\n");
 }
 
 /**
- * Pure-constant binary op arg does NOT trigger overlay passthrough.
+ * Pure-constant binary op arg does NOT trigger handler passthrough.
  * mode_tf(2 + 3) — BINARY_OP(NUMBER, NUMBER) → CALL_FUNC, not CALL_AST.
  */
-static void test_overlay_no_passthrough_binary_op_constants_only(void) {
+static void test_ast_handler_no_passthrough_binary_op_constants_only(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -691,7 +691,7 @@ static void test_overlay_no_passthrough_binary_op_constants_only(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(2 + 3)");
 
@@ -700,13 +700,13 @@ static void test_overlay_no_passthrough_binary_op_constants_only(void) {
     assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
 
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 6.0);
-    assert(g_mode_overlay_ast_calls == 0);
+    assert(g_mode_ast_handler_calls == 0);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -714,14 +714,14 @@ static void test_overlay_no_passthrough_binary_op_constants_only(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_no_passthrough_binary_op_constants_only\n");
+    printf("  ✓ test_ast_handler_no_passthrough_binary_op_constants_only\n");
 }
 
 /**
- * Unary op arg containing an identifier triggers overlay passthrough.
+ * Unary op arg containing an identifier triggers handler passthrough.
  * mode_tf(-close) — UNARY_OP(IDENTIFIER) → CALL_AST.
  */
-static void test_overlay_passthrough_unary_op_with_identifier(void) {
+static void test_ast_handler_passthrough_unary_op_with_identifier(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -730,7 +730,7 @@ static void test_overlay_passthrough_unary_op_with_identifier(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(-close)");
 
@@ -740,13 +740,13 @@ static void test_overlay_passthrough_unary_op_with_identifier(void) {
     assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
 
     cxpr_context_set(ctx, "close", 5.0);
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, -4.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -754,21 +754,21 @@ static void test_overlay_passthrough_unary_op_with_identifier(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_passthrough_unary_op_with_identifier\n");
+    printf("  ✓ test_ast_handler_passthrough_unary_op_with_identifier\n");
 }
 
 /**
- * Lookback arg directly triggers overlay passthrough.
+ * Lookback arg directly triggers handler passthrough.
  * mode_tf(close[3]) — LOOKBACK → CALL_AST.
  */
-static void test_overlay_passthrough_lookback_arg(void) {
+static void test_ast_handler_passthrough_lookback_arg(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(close[3])");
 
@@ -781,14 +781,14 @@ static void test_overlay_passthrough_lookback_arg(void) {
     cxpr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_passthrough_lookback_arg\n");
+    printf("  ✓ test_ast_handler_passthrough_lookback_arg\n");
 }
 
 /**
- * Ternary arg containing an identifier triggers overlay passthrough.
+ * Ternary arg containing an identifier triggers handler passthrough.
  * mode_tf(x > 0 ? close : 0) — TERNARY(…, IDENTIFIER, …) → CALL_AST.
  */
-static void test_overlay_passthrough_ternary_with_identifier(void) {
+static void test_ast_handler_passthrough_ternary_with_identifier(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -797,7 +797,7 @@ static void test_overlay_passthrough_ternary_with_identifier(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(x > 0 ? close : 0)");
 
@@ -808,13 +808,13 @@ static void test_overlay_passthrough_ternary_with_identifier(void) {
 
     cxpr_context_set(ctx, "x", 1.0);
     cxpr_context_set(ctx, "close", 50.0);
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 51.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -822,14 +822,14 @@ static void test_overlay_passthrough_ternary_with_identifier(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_passthrough_ternary_with_identifier\n");
+    printf("  ✓ test_ast_handler_passthrough_ternary_with_identifier\n");
 }
 
 /**
  * Nested binary op: only the inner identifier triggers passthrough.
  * mode_tf((close + high) / 2) — deeply nested identifiers → CALL_AST.
  */
-static void test_overlay_passthrough_nested_binary_ops(void) {
+static void test_ast_handler_passthrough_nested_binary_ops(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -838,7 +838,7 @@ static void test_overlay_passthrough_nested_binary_ops(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf((close + high) / 2)");
 
@@ -848,13 +848,13 @@ static void test_overlay_passthrough_nested_binary_ops(void) {
 
     cxpr_context_set(ctx, "close", 100.0);
     cxpr_context_set(ctx, "high", 110.0);
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 106.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -862,14 +862,14 @@ static void test_overlay_passthrough_nested_binary_ops(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_passthrough_nested_binary_ops\n");
+    printf("  ✓ test_ast_handler_passthrough_nested_binary_ops\n");
 }
 
 /**
- * Function call arg triggers overlay passthrough (conservative — any FUNCTION_CALL in args).
+ * Function call arg triggers handler passthrough (conservative — any FUNCTION_CALL in args).
  * mode_tf(sqrt(close)) — inner arg is FUNCTION_CALL → CALL_AST.
  */
-static void test_overlay_passthrough_function_call_arg(void) {
+static void test_ast_handler_passthrough_function_call_arg(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -878,7 +878,7 @@ static void test_overlay_passthrough_function_call_arg(void) {
 
     cxpr_register_defaults(reg);
     cxpr_registry_add_value(reg, "mode_tf", mode_value_fn, 1, 1, NULL, NULL);
-    cxpr_registry_add_ast_overlay(reg, "mode_tf", mode_overlay_ast_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "mode_tf", mode_ast_handler_fn, 1, 2, NULL, NULL);
 
     cxpr_ast* ast = parse_or_die(p, "mode_tf(sqrt(close))");
 
@@ -887,13 +887,13 @@ static void test_overlay_passthrough_function_call_arg(void) {
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
 
     cxpr_context_set(ctx, "close", 16.0);
-    g_mode_overlay_ast_calls = 0;
+    g_mode_ast_handler_calls = 0;
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 5.0);
-    assert(g_mode_overlay_ast_calls == 1);
+    assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
     cxpr_program_free(prog);
@@ -901,7 +901,7 @@ static void test_overlay_passthrough_function_call_arg(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
-    printf("  ✓ test_overlay_passthrough_function_call_arg\n");
+    printf("  ✓ test_ast_handler_passthrough_function_call_arg\n");
 }
 
 int main(void) {
@@ -911,18 +911,18 @@ int main(void) {
     test_ast_function_compiles_via_ast_ir_opcode();
     test_ast_function_userdata_cleanup_on_overwrite_and_free();
     test_registry_overwrite_ast_value_typed_ast_sequence();
-    test_ast_overlay_numeric_calls_compile_to_scalar_ir();
-    test_ast_overlay_string_calls_fall_back_to_ast_in_ir();
-    test_ast_overlay_identifier_calls_fall_back_to_ast_in_ir();
-    test_expression_compile_supports_timeframe_overlay();
+    test_ast_handler_numeric_calls_compile_to_scalar_ir();
+    test_ast_handler_string_calls_fall_back_to_ast_in_ir();
+    test_ast_handler_identifier_calls_fall_back_to_ast_in_ir();
+    test_expression_compile_supports_timeframe_handler();
     test_producer_access_string_calls_fall_back_to_ast_in_ir();
-    test_overlay_passthrough_binary_op_with_identifier();
-    test_overlay_no_passthrough_binary_op_constants_only();
-    test_overlay_passthrough_unary_op_with_identifier();
-    test_overlay_passthrough_lookback_arg();
-    test_overlay_passthrough_ternary_with_identifier();
-    test_overlay_passthrough_nested_binary_ops();
-    test_overlay_passthrough_function_call_arg();
+    test_ast_handler_passthrough_binary_op_with_identifier();
+    test_ast_handler_no_passthrough_binary_op_constants_only();
+    test_ast_handler_passthrough_unary_op_with_identifier();
+    test_ast_handler_passthrough_lookback_arg();
+    test_ast_handler_passthrough_ternary_with_identifier();
+    test_ast_handler_passthrough_nested_binary_ops();
+    test_ast_handler_passthrough_function_call_arg();
     printf("All ast function tests passed!\n");
     return 0;
 }

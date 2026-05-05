@@ -295,7 +295,7 @@ static double fn_normalize(const double* a, size_t n, void* u) {
 /* Simplified cross_above: returns true if a > b */
 static cxpr_value fn_cross_above(const double* a, size_t n, void* u) {
     (void)n; (void)u;
-    return cxpr_fv_bool(a[0] > a[1]);
+    return cxpr_bool(a[0] > a[1]);
 }
 
 /* Simplified divergence: returns |a - b| / max(|a|, |b|) */

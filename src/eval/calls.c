@@ -7,7 +7,15 @@
 #include "call/args.h"
 #include "ir/internal.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+static const char* cxpr_eval_calls_unknown_function_message(const char* name) {
+    static char message[256];
+    if (!name || name[0] == '\0') return "Unknown function";
+    snprintf(message, sizeof(message), "Unknown function '%s'", name);
+    return message;
+}
 
 cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
                                      const char* field,
@@ -25,7 +33,7 @@ cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
     }
 
     produced = cxpr_eval_struct_result(entry, name, arg_nodes, argc, NULL, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
 
     result = cxpr_struct_get_field(produced, field, &found);
     if (!found) {
@@ -50,7 +58,7 @@ cxpr_value cxpr_eval_named_arg_error(cxpr_error* err, cxpr_error_code code,
         err->code = code;
         err->message = message;
     }
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 bool cxpr_eval_bind_call_args(const cxpr_ast* call_ast,
@@ -68,6 +76,11 @@ bool cxpr_eval_bind_call_args(const cxpr_ast* call_ast,
     return true;
 }
 
+static bool cxpr_eval_defined_overlay_direct_field(cxpr_func_entry* entry,
+                                                   const cxpr_ast* const* ordered_args,
+                                                   const cxpr_context* ctx,
+                                                   cxpr_value* out);
+
 cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
                                       const cxpr_ast* call_ast,
                                       const cxpr_context* ctx,
@@ -78,19 +91,26 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
     cxpr_context* tmp = NULL;
     double scalar_locals[CXPR_MAX_CALL_ARGS];
     bool scalar_only = (argc <= CXPR_MAX_CALL_ARGS);
-    bool needs_overlay_passthrough = false;
+    bool needs_catchor_passthrough = false;
 
     if (argc != entry->defined_param_count) {
         return cxpr_eval_error(err, CXPR_ERR_WRONG_ARITY, "Wrong number of arguments");
     }
     if (!cxpr_eval_bind_call_args(call_ast, entry, ordered_args, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     for (size_t i = 0; i < entry->defined_param_count; i++) {
         if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
             scalar_only = false;
             break;
+        }
+    }
+
+    if (!scalar_only) {
+        cxpr_value direct_value;
+        if (cxpr_eval_defined_overlay_direct_field(entry, ordered_args, ctx, &direct_value)) {
+            return direct_value;
         }
     }
 
@@ -101,20 +121,20 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
                 bool found = false;
                 (void)cxpr_context_get(ctx, arg->data.identifier.name, &found);
                 if (!found) {
-                    needs_overlay_passthrough = true;
+                    needs_catchor_passthrough = true;
                     break;
                 }
             }
         }
     }
 
-    if (scalar_only && !needs_overlay_passthrough) {
+    if (scalar_only && !needs_catchor_passthrough) {
         for (size_t i = 0; i < entry->defined_param_count; i++) {
             cxpr_value v = cxpr_eval_node(ordered_args[i], ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_require_type(v, CXPR_VALUE_NUMBER, err,
                                    "Defined function locals must be doubles")) {
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
             scalar_locals[i] = v.d;
         }
@@ -152,12 +172,12 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
                             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                                    "Unknown struct field");
                         }
-                        value = cxpr_fv_double(fallback);
+                        value = cxpr_num(fallback);
                     }
                     if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err,
                                            "Struct function arguments must be scalar doubles")) {
                         cxpr_context_free(tmp);
-                        return cxpr_fv_double(NAN);
+                        return cxpr_num(NAN);
                     }
 
                     snprintf(dst_key, sizeof(dst_key), "%s.%s", pname,
@@ -168,25 +188,25 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
                 cxpr_value value = cxpr_eval_node(arg, ctx, reg, err);
                 if (err && err->code != CXPR_OK) {
                     cxpr_context_free(tmp);
-                    return cxpr_fv_double(NAN);
+                    return cxpr_num(NAN);
                 }
                 if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err,
                                        "Defined function locals must be doubles")) {
                     cxpr_context_free(tmp);
-                    return cxpr_fv_double(NAN);
+                    return cxpr_num(NAN);
                 }
                 cxpr_context_set(tmp, pname, value.d);
             }
         }
     }
 
-    if (needs_overlay_passthrough) {
+    if (needs_catchor_passthrough) {
         return cxpr_eval_defined_with_overlay(entry, call_ast, ctx, reg, err);
     }
 
     if (scalar_only) {
         if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
-            return cxpr_fv_double(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
+            return cxpr_num(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
                                                            scalar_locals,
                                                            entry->defined_param_count, err));
         }
@@ -236,19 +256,84 @@ bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* s
     return copied;
 }
 
+static bool cxpr_eval_defined_overlay_direct_field(cxpr_func_entry* entry,
+                                                   const cxpr_ast* const* ordered_args,
+                                                   const cxpr_context* ctx,
+                                                   cxpr_value* out) {
+    const cxpr_ast* body;
+    const char* body_param;
+    const char* body_field;
+
+    if (!entry || !ordered_args || !ctx || !out) return false;
+    body = entry->defined_body;
+    if (!body) return false;
+    if (body->type == CXPR_NODE_FIELD_ACCESS) {
+        body_param = body->data.field_access.object;
+        body_field = body->data.field_access.field;
+    } else if (body->type == CXPR_NODE_CHAIN_ACCESS && body->data.chain_access.depth == 2) {
+        body_param = body->data.chain_access.path[0];
+        body_field = body->data.chain_access.path[1];
+    } else {
+        return false;
+    }
+
+    for (size_t i = 0; i < entry->defined_param_count; ++i) {
+        const cxpr_ast* arg = ordered_args[i];
+        const char* arg_name;
+        const cxpr_struct_value* s;
+        bool found = false;
+
+        if (strcmp(entry->defined_param_names[i], body_param) != 0) continue;
+        if (!arg || arg->type != CXPR_NODE_IDENTIFIER) return false;
+
+        arg_name = arg->data.identifier.name;
+        s = cxpr_context_get_struct(ctx, arg_name);
+        if (!s) s = cxpr_context_get_cached_struct(ctx, arg_name);
+        if (s) {
+            cxpr_value value = cxpr_struct_get_field(s, body_field, &found);
+            if (found) {
+                *out = value;
+                return true;
+            }
+        }
+
+        {
+            char key[256];
+            int written = snprintf(key, sizeof(key), "%s.%s", arg_name, body_field);
+            if (written > 0 && (size_t)written < sizeof(key)) {
+                double value = cxpr_context_get(ctx, key, &found);
+                if (found) {
+                    *out = cxpr_num(value);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    return false;
+}
+
 cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
                                           const cxpr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           cxpr_error* err) {
-    cxpr_context* tmp = cxpr_context_overlay_new(ctx);
+    cxpr_context* tmp;
     const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    cxpr_value direct_value;
 
-    if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
     if (!cxpr_eval_bind_call_args(call_ast, entry, ordered_args, err)) {
-        cxpr_context_free(tmp);
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
+
+    if (cxpr_eval_defined_overlay_direct_field(entry, ordered_args, ctx, &direct_value)) {
+        return direct_value;
+    }
+
+    tmp = cxpr_context_overlay_new(ctx);
+    if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
 
     for (size_t i = 0; i < entry->defined_param_count; i++) {
         const char* pname = entry->defined_param_names[i];
@@ -281,12 +366,12 @@ cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
             cxpr_value value = cxpr_eval_node(arg, ctx, reg, err);
             if (err && err->code != CXPR_OK) {
                 cxpr_context_free(tmp);
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
             if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err,
                                    "Defined function locals must be doubles")) {
                 cxpr_context_free(tmp);
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
             cxpr_context_set(tmp, pname, value.d);
         }
@@ -313,10 +398,13 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
     bool found = false;
 
     if (!entry || !entry->struct_producer) {
-        return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
+        return cxpr_eval_error(
+            err,
+            CXPR_ERR_UNKNOWN_FUNCTION,
+            cxpr_eval_calls_unknown_function_message(ast ? ast->data.producer_access.name : NULL));
     }
     if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     const_key = cxpr_eval_prepare_const_key_for_producer(ast,
@@ -345,7 +433,7 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
                                            ctx, reg, err);
     }
     free(const_key_heap);
-    if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
 
     if (ast->data.producer_access.cached_field_index_valid) {
         cxpr_value cached =

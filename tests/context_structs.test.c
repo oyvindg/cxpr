@@ -29,7 +29,7 @@ static void test_context_struct_storage_paths(void) {
     assert(field.d == 4.0);
 
     {
-        cxpr_value cached_values[] = {cxpr_fv_double(8.0), cxpr_fv_double(9.0)};
+        cxpr_value cached_values[] = {cxpr_num(8.0), cxpr_num(9.0)};
         owned_cached = cxpr_struct_value_new(fields, cached_values, 2);
         assert(owned_cached);
         cxpr_context_set_cached_struct(ctx, "cached_pose", owned_cached);
@@ -41,6 +41,14 @@ static void test_context_struct_storage_paths(void) {
     assert(cached->field_values[0].d == 8.0);
     cxpr_context_clear_cached_structs(ctx);
     assert(cxpr_context_get_cached_struct(ctx, "cached_pose") == NULL);
+
+    for (size_t i = 0; i < 40u; ++i) {
+        char name[32];
+        double grow_values[] = {(double)i, (double)i + 1.0};
+        snprintf(name, sizeof(name), "pose_%zu", i);
+        cxpr_context_set_fields(ctx, name, fields, grow_values, 2);
+        assert(cxpr_context_get_struct(ctx, name) != NULL);
+    }
 
     cxpr_context_free(ctx);
 }

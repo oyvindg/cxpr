@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
 #define CXPR_NAME_BUFFER_SIZE 256u
 
 typedef struct {
@@ -76,15 +75,15 @@ static void cxpr_provider_runtime_required_struct_adapter(
         const char* field_name =
             (ctx && i < ctx->field_count && ctx->field_names) ? ctx->field_names[i] : NULL;
         if (!ctx || !ctx->name || !field_name || field_name[0] == '\0') {
-            out[i] = cxpr_fv_double(NAN);
+            out[i] = cxpr_num(NAN);
             continue;
         }
         written = snprintf(full_name, sizeof(full_name), "%s.%s", ctx->name, field_name);
         if (written <= 0 || (size_t)written >= sizeof(full_name)) {
-            out[i] = cxpr_fv_double(NAN);
+            out[i] = cxpr_num(NAN);
             continue;
         }
-        out[i] = cxpr_fv_double(callback(full_name, args, argc, ctx->host_userdata));
+        out[i] = cxpr_num(callback(full_name, args, argc, ctx->host_userdata));
     }
 }
 

@@ -1,5 +1,6 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
@@ -7,6 +8,7 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
 double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err);
+cxpr_value cxpr_ir_runtime_error(cxpr_error* err, const char* message);
 
 static void test_ir_exec_api_wrappers(void) {
     cxpr_ir_instr code[] = {
@@ -30,8 +32,19 @@ static void test_ir_exec_api_wrappers(void) {
     assert(out == 12.0);
 }
 
+static void test_ir_runtime_error_helper(void) {
+    cxpr_error err = {0};
+    cxpr_value value = cxpr_ir_runtime_error(&err, "runtime helper test");
+
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(isnan(value.d));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+}
+
 int main(void) {
     test_ir_exec_api_wrappers();
+    test_ir_runtime_error_helper();
     printf("  \xE2\x9C\x93 ir_exec_api\n");
     return 0;
 }

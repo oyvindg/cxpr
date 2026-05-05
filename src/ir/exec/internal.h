@@ -17,6 +17,10 @@ cxpr_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
 /** @brief Load one dotted field-access value for an IR instruction. */
 cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry* reg,
                                     const cxpr_ir_instr* instr, cxpr_error* err);
+/** @brief Load one field from a borrowed root/field instruction pair. */
+cxpr_value cxpr_ir_load_named_field_value(const cxpr_context* ctx,
+                                          const cxpr_ir_instr* instr,
+                                          cxpr_error* err);
 /** @brief Load one multi-segment chain-access value for an IR instruction. */
 cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr* instr,
                                     cxpr_error* err);

@@ -44,12 +44,12 @@ static void test_ir_exec_lookup_helpers(void) {
     assert(err.code == CXPR_OK);
     assert(value.d == 3.0);
 
-    assert(cxpr_ir_push_squared(stack, &sp, cxpr_fv_double(3.0), &err));
+    assert(cxpr_ir_push_squared(stack, &sp, cxpr_num(3.0), &err));
     assert(stack[0].d == 9.0);
-    assert(cxpr_ir_push_squared(stack, &sp, cxpr_fv_double(4.0), &err));
+    assert(cxpr_ir_push_squared(stack, &sp, cxpr_num(4.0), &err));
     assert(cxpr_ir_pop2(stack, &sp, &a, &b, &err));
     assert(a.d == 9.0 && b.d == 16.0);
-    stack[0] = cxpr_fv_double(5.0);
+    stack[0] = cxpr_num(5.0);
     sp = 1;
     assert(cxpr_ir_pop1(stack, &sp, &a, &err));
     assert(a.d == 5.0);

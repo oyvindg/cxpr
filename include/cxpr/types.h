@@ -9,6 +9,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/** @brief Number of elements in a fixed-size C array. */
+#define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -70,7 +73,7 @@ struct cxpr_struct_value {
  * @param d Numeric payload.
  * @return Value tagged as `CXPR_VALUE_NUMBER`.
  */
-static inline cxpr_value cxpr_fv_double(double d) {
+static inline cxpr_value cxpr_num(double d) {
     return (cxpr_value){ .type = CXPR_VALUE_NUMBER, .d = d };
 }
 
@@ -79,7 +82,7 @@ static inline cxpr_value cxpr_fv_double(double d) {
  * @param b Boolean payload.
  * @return Value tagged as `CXPR_VALUE_BOOL`.
  */
-static inline cxpr_value cxpr_fv_bool(bool b) {
+static inline cxpr_value cxpr_bool(bool b) {
     return (cxpr_value){ .type = CXPR_VALUE_BOOL, .b = b };
 }
 
@@ -88,7 +91,7 @@ static inline cxpr_value cxpr_fv_bool(bool b) {
  * @param s Struct payload pointer.
  * @return Value tagged as `CXPR_VALUE_STRUCT`.
  */
-static inline cxpr_value cxpr_fv_struct(cxpr_struct_value* s) {
+static inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
     return (cxpr_value){ .type = CXPR_VALUE_STRUCT, .s = s };
 }
 

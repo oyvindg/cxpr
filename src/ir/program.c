@@ -80,6 +80,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_LOAD_PARAM_SQUARE: return "LOAD_PARAM_SQUARE";
     case CXPR_OP_LOAD_FIELD: return "LOAD_FIELD";
     case CXPR_OP_LOAD_FIELD_SQUARE: return "LOAD_FIELD_SQUARE";
+    case CXPR_OP_LOAD_NAMED_FIELD: return "LOAD_NAMED_FIELD";
     case CXPR_OP_LOAD_CHAIN: return "LOAD_CHAIN";
     case CXPR_OP_ADD: return "ADD";
     case CXPR_OP_SUB: return "SUB";
@@ -139,11 +140,11 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
 
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
-        *out = cxpr_fv_double(ast->data.number.value);
+        *out = cxpr_num(ast->data.number.value);
         return true;
 
     case CXPR_NODE_BOOL:
-        *out = cxpr_fv_bool(ast->data.boolean.value);
+        *out = cxpr_bool(ast->data.boolean.value);
         return true;
 
     case CXPR_NODE_CHAIN_ACCESS:
@@ -154,12 +155,12 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         if (!cxpr_ir_constant_typed_value(ast->data.unary_op.operand, reg, &left)) return false;
         if (ast->data.unary_op.op == CXPR_TOK_MINUS) {
             if (left.type != CXPR_VALUE_NUMBER) return false;
-            *out = cxpr_fv_double(-left.d);
+            *out = cxpr_num(-left.d);
             return true;
         }
         if (ast->data.unary_op.op == CXPR_TOK_NOT) {
             if (left.type != CXPR_VALUE_BOOL) return false;
-            *out = cxpr_fv_bool(!left.b);
+            *out = cxpr_bool(!left.b);
             return true;
         }
         return false;
@@ -198,38 +199,38 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         }
 
         switch (ast->data.binary_op.op) {
-        case CXPR_TOK_PLUS: *out = cxpr_fv_double(left.d + right.d); return true;
-        case CXPR_TOK_MINUS: *out = cxpr_fv_double(left.d - right.d); return true;
-        case CXPR_TOK_STAR: *out = cxpr_fv_double(left.d * right.d); return true;
+        case CXPR_TOK_PLUS: *out = cxpr_num(left.d + right.d); return true;
+        case CXPR_TOK_MINUS: *out = cxpr_num(left.d - right.d); return true;
+        case CXPR_TOK_STAR: *out = cxpr_num(left.d * right.d); return true;
         case CXPR_TOK_SLASH:
             if (right.d == 0.0) return false;
-            *out = cxpr_fv_double(left.d / right.d);
+            *out = cxpr_num(left.d / right.d);
             return true;
         case CXPR_TOK_PERCENT:
             if (right.d == 0.0) return false;
-            *out = cxpr_fv_double(fmod(left.d, right.d));
+            *out = cxpr_num(fmod(left.d, right.d));
             return true;
         case CXPR_TOK_POWER:
             numeric = pow(left.d, right.d);
             if (!isfinite(numeric)) return false;
-            *out = cxpr_fv_double(numeric);
+            *out = cxpr_num(numeric);
             return true;
         case CXPR_TOK_EQ:
             *out = left.type == CXPR_VALUE_NUMBER
-                       ? cxpr_fv_bool(left.d == right.d)
-                       : cxpr_fv_bool(left.b == right.b);
+                       ? cxpr_bool(left.d == right.d)
+                       : cxpr_bool(left.b == right.b);
             return true;
         case CXPR_TOK_NEQ:
             *out = left.type == CXPR_VALUE_NUMBER
-                       ? cxpr_fv_bool(left.d != right.d)
-                       : cxpr_fv_bool(left.b != right.b);
+                       ? cxpr_bool(left.d != right.d)
+                       : cxpr_bool(left.b != right.b);
             return true;
-        case CXPR_TOK_LT: *out = cxpr_fv_bool(left.d < right.d); return true;
-        case CXPR_TOK_LTE: *out = cxpr_fv_bool(left.d <= right.d); return true;
-        case CXPR_TOK_GT: *out = cxpr_fv_bool(left.d > right.d); return true;
-        case CXPR_TOK_GTE: *out = cxpr_fv_bool(left.d >= right.d); return true;
-        case CXPR_TOK_AND: *out = cxpr_fv_bool(left.b && right.b); return true;
-        case CXPR_TOK_OR: *out = cxpr_fv_bool(left.b || right.b); return true;
+        case CXPR_TOK_LT: *out = cxpr_bool(left.d < right.d); return true;
+        case CXPR_TOK_LTE: *out = cxpr_bool(left.d <= right.d); return true;
+        case CXPR_TOK_GT: *out = cxpr_bool(left.d > right.d); return true;
+        case CXPR_TOK_GTE: *out = cxpr_bool(left.d >= right.d); return true;
+        case CXPR_TOK_AND: *out = cxpr_bool(left.b && right.b); return true;
+        case CXPR_TOK_OR: *out = cxpr_bool(left.b || right.b); return true;
         default:
             return false;
         }
@@ -255,7 +256,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
 
         entry = cxpr_registry_find(reg, ast->data.function_call.name);
         if (!entry || !entry->sync_func || entry->value_func || entry->typed_func ||
-            entry->ast_func || entry->ast_func_overlay || entry->struct_producer ||
+            entry->ast_func || entry->ast_func_handler || entry->struct_producer ||
             entry->struct_fields || entry->defined_body ||
             argc < entry->min_args || argc > entry->max_args) {
             return false;
@@ -269,7 +270,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
 
         numeric = entry->sync_func(args, argc, entry->userdata);
         if (!isfinite(numeric)) return false;
-        *out = cxpr_fv_double(numeric);
+        *out = cxpr_num(numeric);
         return true;
     }
 
@@ -396,7 +397,7 @@ cxpr_value cxpr_ir_runtime_error(cxpr_error* err, const char* message) {
         err->code = CXPR_ERR_SYNTAX;
         err->message = message;
     }
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 bool cxpr_ir_stack_push(cxpr_value* stack, size_t* sp, cxpr_value value,
@@ -440,7 +441,7 @@ cxpr_value cxpr_ir_make_not_found(cxpr_error* err, const char* message) {
         err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
         err->message = message;
     }
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 static unsigned long cxpr_ir_lookup_version(const cxpr_context* ctx, bool param_lookup) {
@@ -616,8 +617,16 @@ bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
 
 cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
                            cxpr_error* err) {
+    cxpr_ast* owned_ast = NULL;
     (void)reg;
     if (err) *err = (cxpr_error){0};
+    if (!ast) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "NULL AST";
+        }
+        return NULL;
+    }
 
     cxpr_program* prog = (cxpr_program*)calloc(1, sizeof(cxpr_program));
     if (!prog) {
@@ -628,8 +637,20 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
         return NULL;
     }
 
-    prog->ast = ast;
-    if (!cxpr_ir_compile(ast, reg, &prog->ir, err)) {
+    owned_ast = cxpr_ast_clone(ast);
+    if (!owned_ast) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        free(prog);
+        return NULL;
+    }
+
+    prog->owned_ast = owned_ast;
+    prog->ast = owned_ast;
+    if (!cxpr_ir_compile(owned_ast, reg, &prog->ir, err)) {
+        cxpr_ast_free(owned_ast);
         free(prog);
         return NULL;
     }
@@ -640,6 +661,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
 void cxpr_program_free(cxpr_program* prog) {
     if (!prog) return;
     cxpr_ir_program_reset(&prog->ir);
+    cxpr_ast_free(prog->owned_ast);
     free(prog);
 }
 

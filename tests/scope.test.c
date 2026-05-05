@@ -6,10 +6,9 @@
 
 #include <cxpr/provider.h>
 #include <cxpr/cxpr.h>
+#include <cxpr/scope.h>
 
 /* Keep this test aligned with examples/scoped_sources.md and scoped_sources.c. */
-
-#define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
 
 typedef struct {
     double open;

@@ -5,6 +5,83 @@
 
 #include "../context/internal.h"
 #include "internal.h"
+#include "../eval/internal.h"
+#include "../limits.h"
+
+#include <stdio.h>
+
+static void cxpr_expression_wrap_compile_error(const cxpr_expression_entry* entry,
+                                               cxpr_error* err) {
+    static char message[512];
+    char detail[384];
+
+    if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
+    snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
+    snprintf(message, sizeof(message), "Expression '%s': %s", entry->name, detail);
+    err->message = message;
+}
+
+static bool cxpr_expression_entry_used_as_struct_prefix(
+    const cxpr_evaluator* evaluator,
+    size_t entry_index) {
+    const char* name;
+    size_t name_len;
+
+    if (!evaluator || entry_index >= evaluator->count) return false;
+    name = evaluator->expressions[entry_index].name;
+    if (!name) return false;
+    name_len = strlen(name);
+    if (name_len == 0u) return false;
+
+    for (size_t i = 0; i < evaluator->count; ++i) {
+        const char* refs[256];
+        size_t nrefs;
+
+        if (i == entry_index || !evaluator->expressions[i].ast) continue;
+        nrefs = cxpr_ast_references(evaluator->expressions[i].ast, refs, 256);
+        for (size_t r = 0; r < nrefs && r < 256; ++r) {
+            if (refs[r] &&
+                strncmp(refs[r], name, name_len) == 0 &&
+                refs[r][name_len] == '.') {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static int cxpr_expression_eval_struct_alias(
+    const cxpr_expression_entry* entry,
+    const cxpr_context* ctx,
+    const cxpr_registry* reg,
+    cxpr_value* out,
+    cxpr_error* err) {
+    cxpr_func_entry* fn;
+    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    const cxpr_struct_value* produced;
+
+    if (!entry || !entry->ast || !ctx || !reg || !out) return 0;
+    if (cxpr_ast_type(entry->ast) != CXPR_NODE_FUNCTION_CALL) return 0;
+
+    fn = cxpr_eval_cached_function_entry(entry->ast, reg);
+    if (!fn || !fn->struct_producer) return 0;
+    if (!cxpr_eval_bind_call_args(entry->ast, fn, ordered_args, err)) return -1;
+
+    produced = cxpr_eval_struct_result(
+        fn,
+        cxpr_ast_function_name(entry->ast),
+        ordered_args,
+        cxpr_ast_function_argc(entry->ast),
+        NULL,
+        ctx,
+        reg,
+        err);
+    if (err && err->code != CXPR_OK) return -1;
+    if (!produced) return -1;
+
+    *out = cxpr_struct((cxpr_struct_value*)produced);
+    return 1;
+}
 
 static bool cxpr_evaluator_grow(cxpr_evaluator* evaluator) {
     if (evaluator->capacity > SIZE_MAX / 2) return false;
@@ -79,6 +156,7 @@ bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {
         cxpr_program_free(entry->program);
         entry->program = cxpr_compile(entry->ast, evaluator->registry, err);
         if (!entry->program) {
+            cxpr_expression_wrap_compile_error(entry, err);
             evaluator->compiled = false;
             return false;
         }
@@ -123,7 +201,24 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         cxpr_error eval_err = {0};
         cxpr_value value = {0};
 
-        if (entry->program) {
+        if (cxpr_expression_entry_used_as_struct_prefix(evaluator, idx)) {
+            int struct_alias = cxpr_expression_eval_struct_alias(
+                entry,
+                ctx,
+                evaluator->registry,
+                &value,
+                &eval_err);
+            if (struct_alias < 0) {
+                cxpr_context_set_expression_scope(ctx, previous_scope);
+                if (err) *err = eval_err;
+                return;
+            }
+            if (struct_alias == 0 && entry->program) {
+                (void)cxpr_eval_program(entry->program, ctx, evaluator->registry, &value, &eval_err);
+            } else if (struct_alias == 0) {
+                (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
+            }
+        } else if (entry->program) {
             (void)cxpr_eval_program(entry->program, ctx, evaluator->registry, &value, &eval_err);
         } else {
             (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);

@@ -11,6 +11,7 @@
 #include <cxpr/version.h>
 #include <cxpr/types.h>
 #include <cxpr/ast.h>
+#include <cxpr/alias.h>
 #include <cxpr/context.h>
 #include <cxpr/registry.h>
 #include <cxpr/basket.h>
@@ -19,6 +20,5 @@
 #include <cxpr/provider.h>
 #include <cxpr/runtime_call.h>
 #include <cxpr/source_plan.h>
-#include <cxpr/scope.h>
 
 #endif /* CXPR_H */

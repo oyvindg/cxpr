@@ -48,7 +48,7 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
 
     if (!ctx || !name) {
         if (found) *found = false;
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
 
     if (ctx->expression_scope) {
@@ -63,7 +63,7 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         bool bool_value = cxpr_context_get_local_bool(ctx, name, &local_found);
         if (local_found) {
             if (found) *found = true;
-            return cxpr_fv_bool(bool_value);
+            return cxpr_bool(bool_value);
         }
     }
 
@@ -72,7 +72,7 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
                                                      name);
     if (entry) {
         if (found) *found = true;
-        return cxpr_fv_double(entry->value);
+        return cxpr_num(entry->value);
     }
 
     hash = cxpr_hash_string(name);
@@ -82,7 +82,7 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         cxpr_context_refresh_pointer_cache((cxpr_hashmap*)&ctx->variables,
                                            ((cxpr_context*)ctx)->variable_ptr_cache, name, entry);
         if (found) *found = true;
-        return cxpr_fv_double(entry->value);
+        return cxpr_num(entry->value);
     }
 
     {
@@ -92,13 +92,13 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         }
         if (struct_value) {
             if (found) *found = true;
-            return cxpr_fv_struct((cxpr_struct_value*)struct_value);
+            return cxpr_struct((cxpr_struct_value*)struct_value);
         }
     }
 
     if (ctx->parent) return cxpr_context_get_typed(ctx->parent, name, found);
     if (found) *found = false;
-    return cxpr_fv_double(0.0);
+    return cxpr_num(0.0);
 }
 
 cxpr_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
@@ -117,7 +117,7 @@ cxpr_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
 
     if (!s) {
         if (found) *found = false;
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
 
     for (i = 0; i < s->field_count; i++) {
@@ -128,7 +128,7 @@ cxpr_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
     }
 
     if (found) *found = false;
-    return cxpr_fv_double(0.0);
+    return cxpr_num(0.0);
 }
 
 void cxpr_context_set_fields(cxpr_context* ctx, const char* prefix,
@@ -151,7 +151,7 @@ void cxpr_context_set_fields(cxpr_context* ctx, const char* prefix,
     if (!typed_values) return;
 
     for (i = 0; i < count; i++) {
-        typed_values[i] = cxpr_fv_double(values[i]);
+        typed_values[i] = cxpr_num(values[i]);
     }
 
     struct_value = cxpr_struct_value_new(fields, typed_values, count);

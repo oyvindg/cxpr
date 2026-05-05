@@ -1,6 +1,6 @@
 # Scoped Sources
 
-This example shows the smallest useful host-facing `cxpr` setup:
+This example shows the legacy low-level runtime setup:
 
 - define one scope family, here `timeframe`
 - expose one scoped source, here `close`
@@ -20,7 +20,9 @@ The bridge core should not know how a host stores or fetches series data. It onl
 - preserve argument shape for parsing and validation
 - hand resolution back to the host at evaluation time
 
-That is what `cxpr_scoped_source_functions_register(...)` provides.
+That is what `cxpr_scoped_source_functions_register(...)` provides. New host integrations
+should generally prefer `cxpr_plan_bind_sources(...)` with `cxpr_plan_config`, which performs
+source-plan discovery and can register scoped source functions from provider metadata.
 
 ## Example
 

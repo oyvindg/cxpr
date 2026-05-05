@@ -109,6 +109,19 @@ static void test_deep_nesting_round_trip(void) {
     assert_round_trips(expr);
 }
 
+static void test_ast_dump_accepts_ast(void) {
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+
+    assert(parser);
+    ast = cxpr_parse(parser, "x + 1", &err);
+    assert(ast);
+    cxpr_ast_dump(ast, stdout);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(parser);
+}
+
 int main(void) {
     test_literals_round_trip();
     test_operator_precedence();
@@ -118,6 +131,7 @@ int main(void) {
     test_pipe_round_trip_desugars();
     test_special_numbers();
     test_deep_nesting_round_trip();
+    test_ast_dump_accepts_ast();
     printf("  \xE2\x9C\x93 ast_printer\n");
     return 0;
 }

@@ -21,6 +21,15 @@ const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast,
                                                      cxpr_error* err);
 const char* cxpr_build_struct_cache_key(const char* name, const double* args, size_t argc,
                                         char* local_buf, size_t local_cap, char** heap_buf);
+bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* src,
+                                        const char* src_prefix, const char* dst_prefix);
+cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
+                                          const cxpr_ast* call_ast,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          cxpr_error* err);
+cxpr_value cxpr_eval_named_arg_error(cxpr_error* err, cxpr_error_code code,
+                                     const char* message);
 
 static double sum3(const double* args, size_t argc, void* userdata) {
     (void)argc;
@@ -37,8 +46,8 @@ static void pair_producer(const double* args, size_t argc,
     (void)field_count;
     assert(argc == 2u);
     g_struct_call_count += 1;
-    out[0] = cxpr_fv_double(args[0] * 0.1);
-    out[1] = cxpr_fv_double(args[1] * 0.5);
+    out[0] = cxpr_num(args[0] * 0.1);
+    out[1] = cxpr_num(args[1] * 0.5);
 }
 
 static void test_eval_call_paths(void) {
@@ -201,10 +210,49 @@ static void test_prepare_const_key_with_param_args(void) {
     cxpr_parser_free(p);
 }
 
+static void test_defined_overlay_copies_prefixed_scalars(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_context* dst = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    cxpr_func_entry* entry;
+    cxpr_value value;
+    bool found = false;
+
+    assert(p && ctx && dst && reg);
+    assert(cxpr_registry_define_fn(reg, "pick(v) => v.x").code == CXPR_OK);
+    cxpr_context_set(ctx, "src.x", 42.0);
+    assert(cxpr_context_copy_prefixed_scalars(dst, ctx, "src", "copied"));
+    assert(cxpr_context_get(dst, "copied.x", &found) == 42.0 && found);
+
+    ast = cxpr_parse(p, "pick(src)", &err);
+    assert(ast);
+    entry = cxpr_registry_find(reg, "pick");
+    assert(entry);
+    value = cxpr_eval_defined_with_overlay(entry, ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(value.d == 42.0);
+
+    value = cxpr_eval_named_arg_error(&err, CXPR_ERR_SYNTAX, "named arg test");
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(isnan(value.d));
+    assert(err.code == CXPR_ERR_SYNTAX);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(dst);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+}
+
 int main(void) {
     test_eval_call_paths();
     test_named_param_producer_cache_paths();
     test_prepare_const_key_with_param_args();
+    test_defined_overlay_copies_prefixed_scalars();
     printf("  \xE2\x9C\x93 eval_calls\n");
     return 0;
 }

@@ -34,7 +34,7 @@ static double readme_clamp(double v, double lo, double hi) { return v < lo ? lo 
 static cxpr_value readme_within_limit(const double* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
-    return cxpr_fv_bool(args[0] < args[1]);
+    return cxpr_bool(args[0] < args[1]);
 }
 
 static void test_readme_quick_start(void) {
@@ -359,8 +359,8 @@ static void readme_quote2_producer(const double* args, size_t argc,
     (void)argc;
     (void)field_count;
     (void)userdata;
-    out[0] = cxpr_fv_double((args[0] + args[1]) / 2.0);  /* mid */
-    out[1] = cxpr_fv_double(args[1] - args[0]);          /* spread */
+    out[0] = cxpr_num((args[0] + args[1]) / 2.0);  /* mid */
+    out[1] = cxpr_num(args[1] - args[0]);          /* spread */
 }
 
 static void test_readme_formula_engine(void) {
@@ -707,9 +707,9 @@ static void readme_bb_producer(const double* args, size_t argc,
     double close = args[0], period = args[1], mult = args[2];
     double mid = close;
     double band = mult * period;
-    out[0] = cxpr_fv_double(mid + band);  /* upper */
-    out[1] = cxpr_fv_double(mid);         /* middle */
-    out[2] = cxpr_fv_double(mid - band);  /* lower */
+    out[0] = cxpr_num(mid + band);  /* upper */
+    out[1] = cxpr_num(mid);         /* middle */
+    out[2] = cxpr_num(mid - band);  /* lower */
 }
 
 static void test_readme_struct_producer(void) {

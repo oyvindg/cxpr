@@ -25,8 +25,8 @@ static void test_formula_point_producer(const double* args, size_t argc,
     (void)argc;
     (void)field_count;
     (void)userdata;
-    out[0] = cxpr_fv_double(args[0]);
-    out[1] = cxpr_fv_double(args[0] * 2.0);
+    out[0] = cxpr_num(args[0]);
+    out[1] = cxpr_num(args[0] * 2.0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

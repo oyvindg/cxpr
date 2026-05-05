@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+void cxpr_register_builtins(cxpr_registry* reg);
+
 static void test_registry_defaults_are_callable(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -23,11 +25,42 @@ static void test_registry_defaults_are_callable(void) {
     assert(err.code == CXPR_OK);
     assert(result.d == 3.0);
 
+    result = cxpr_registry_call_value(reg, "add", (double[]){3.0, 2.0}, 2, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.d == 5.0);
+
+    result = cxpr_registry_call_value(reg, "sub", (double[]){3.0, 2.0}, 2, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.d == 1.0);
+
+    result = cxpr_registry_call_value(reg, "mul", (double[]){3.0, 2.0}, 2, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.d == 6.0);
+
+    result = cxpr_registry_call_value(reg, "div", (double[]){3.0, 2.0}, 2, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.d == 1.5);
+
+    cxpr_registry_free(reg);
+}
+
+static void test_register_builtins_aliases_defaults(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_value result;
+
+    assert(reg);
+    cxpr_register_builtins(reg);
+    result = cxpr_registry_call_value(reg, "abs", (double[]){-4.0}, 1, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.type == CXPR_VALUE_NUMBER);
+    assert(result.d == 4.0);
     cxpr_registry_free(reg);
 }
 
 int main(void) {
     test_registry_defaults_are_callable();
+    test_register_builtins_aliases_defaults();
     printf("  \xE2\x9C\x93 registry_defaults\n");
     return 0;
 }

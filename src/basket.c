@@ -198,21 +198,21 @@ static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
             }
             numeric += results[i].d;
         }
-        return cxpr_fv_double(numeric / (double)count);
+        return cxpr_num(numeric / (double)count);
     }
 
     if (strcmp(fn, "any") == 0) {
         for (i = 0; i < count; ++i) {
-            if (cxpr_basket_value_truthy(results[i])) return cxpr_fv_bool(true);
+            if (cxpr_basket_value_truthy(results[i])) return cxpr_bool(true);
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     if (strcmp(fn, "all") == 0) {
         for (i = 0; i < count; ++i) {
-            if (!cxpr_basket_value_truthy(results[i])) return cxpr_fv_bool(false);
+            if (!cxpr_basket_value_truthy(results[i])) return cxpr_bool(false);
         }
-        return cxpr_fv_bool(true);
+        return cxpr_bool(true);
     }
 
     if (strcmp(fn, "min") == 0 || strcmp(fn, "max") == 0) {
@@ -228,7 +228,7 @@ static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
                 ? ((results[i].d < numeric) ? results[i].d : numeric)
                 : ((results[i].d > numeric) ? results[i].d : numeric);
         }
-        return cxpr_fv_double(numeric);
+        return cxpr_num(numeric);
     }
 
     return cxpr_basket_eval_error(err, "Unsupported basket builtin");
@@ -265,10 +265,10 @@ static bool cxpr_basket_eval_direct_args(const cxpr_ast* call_ast,
             double number = 0.0;
             if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, i), ctx, reg, &number, err)) {
                 free(values);
-                *out = cxpr_fv_double(cxpr_basket_nan());
+                *out = cxpr_num(cxpr_basket_nan());
                 return false;
             }
-            values[i] = cxpr_fv_double(number);
+            values[i] = cxpr_num(number);
         }
 
         *out = cxpr_basket_eval_folded_results(fn, values, argc, err);
@@ -327,7 +327,7 @@ static cxpr_value cxpr_basket_eval_error(cxpr_error* err, const char* message) {
         err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
         err->message = message;
     }
-    return cxpr_fv_double(cxpr_basket_nan());
+    return cxpr_num(cxpr_basket_nan());
 }
 
 static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
@@ -367,7 +367,7 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
         }
         bound_count = (double)binding.bound_count;
         cxpr_basket_role_binding_clear(&binding);
-        return cxpr_fv_double(bound_count);
+        return cxpr_num(bound_count);
     }
 
     {
@@ -380,12 +380,12 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
         ok = cxpr_basket_collect_free_roles(arg_ast, ctx, &free_roles, &free_role_count);
         if (!ok) {
             cxpr_basket_free_names(free_roles, free_role_count);
-            return cxpr_fv_double(cxpr_basket_nan());
+            return cxpr_num(cxpr_basket_nan());
         }
         if (free_role_count == 0) {
             ok = cxpr_eval_ast(arg_ast, ctx, reg, &result, err);
             cxpr_basket_free_names(free_roles, free_role_count);
-            if (!ok) return cxpr_fv_double(cxpr_basket_nan());
+            if (!ok) return cxpr_num(cxpr_basket_nan());
             return result;
         }
         if (free_role_count != 1) {
@@ -399,7 +399,7 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
         }
         if (binding.value_count == 0) {
             cxpr_basket_cleanup_expanded_call(NULL, &binding, free_roles, free_role_count);
-            return cxpr_fv_double(0.0);
+            return cxpr_num(0.0);
         }
 
         {
@@ -421,7 +421,7 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
                 cxpr_context_free(overlay);
                 if (!ok) {
                     cxpr_basket_cleanup_expanded_call(results, &binding, free_roles, free_role_count);
-                    return cxpr_fv_double(cxpr_basket_nan());
+                    return cxpr_num(cxpr_basket_nan());
                 }
             }
 

@@ -81,7 +81,7 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
 /** @brief Copy scalar bindings from one prefix namespace into another. */
 bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* src,
                                         const char* src_prefix, const char* dst_prefix);
-/** @brief Evaluate a defined function while honoring any AST overlay interception. */
+/** @brief Evaluate a defined function while honoring any AST handler catchion. */
 cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
                                           const cxpr_ast* call_ast,
                                           const cxpr_context* ctx,
@@ -94,6 +94,8 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
                                             cxpr_error* err);
 /** @brief Return a structural hash for one AST subtree. */
 unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast);
+/** @brief Return a cached structural hash for a function-call AST node. */
+unsigned long cxpr_eval_function_call_hash_cached(const cxpr_ast* ast);
 /** @brief Check structural AST equality for evaluation memoization. */
 bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs);
 /** @brief Return true when an AST can be memoized without bypassing runtime-aware hooks. */

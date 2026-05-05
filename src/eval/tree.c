@@ -5,15 +5,43 @@
 
 #include "internal.h"
 
+#include "../context/internal.h"
 #include "../core.h"
+#include "../expression/internal.h"
 #include "../limits.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const char* cxpr_eval_unknown_function_message(const char* name) {
+    static char message[256];
+    if (!name || name[0] == '\0') return "Unknown function";
+    snprintf(message, sizeof(message), "Unknown function '%s'", name);
+    return message;
+}
 
 cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, cxpr_error* err) {
     bool found = false;
+    if (ctx && ctx->expression_scope) {
+        cxpr_value scoped = cxpr_expression_lookup_typed_result(
+            ctx->expression_scope,
+            ast->data.field_access.full_key,
+            &found);
+        if (found) return scoped;
+
+        scoped = cxpr_expression_lookup_typed_result(
+            ctx->expression_scope,
+            ast->data.field_access.object,
+            &found);
+        if (found && scoped.type != CXPR_VALUE_STRUCT) {
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_IDENTIFIER,
+                "Expression-scope chain has no struct prefix");
+        }
+    }
     cxpr_value value =
         cxpr_context_get_field(ctx, ast->data.field_access.object, ast->data.field_access.field,
                                &found);
@@ -23,7 +51,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
             cxpr_context_get(ctx, ast->data.field_access.full_key, &found);
         if (found) {
             /* Deprecated flat-key fallback kept for backward compatibility. */
-            return cxpr_fv_double(fallback);
+            return cxpr_num(fallback);
         }
         {
             cxpr_func_entry* producer = cxpr_registry_find(reg, ast->data.field_access.object);
@@ -31,7 +59,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
                 value = cxpr_eval_struct_producer(producer, ast->data.field_access.object,
                                                   ast->data.field_access.field, NULL, 0,
                                                   ctx, reg, err);
-                if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+                if (err && err->code != CXPR_OK) return cxpr_num(NAN);
                 found = true;
             } else {
                 return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
@@ -44,7 +72,49 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
 
 cxpr_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_context* ctx,
                                   cxpr_error* err) {
-    const cxpr_struct_value* current = cxpr_context_get_struct(ctx, ast->data.chain_access.path[0]);
+    const cxpr_struct_value* current;
+    size_t start_index = 1u;
+
+    if (ctx && ctx->expression_scope) {
+        bool found = false;
+        bool scoped_prefix_found = false;
+        cxpr_value scoped = cxpr_expression_lookup_typed_result(
+            ctx->expression_scope,
+            ast->data.chain_access.full_key,
+            &found);
+        if (found) return scoped;
+
+        char prefix[512];
+        size_t offset = 0u;
+        for (size_t i = 0u; i + 1u < ast->data.chain_access.depth; ++i) {
+            const char* segment = ast->data.chain_access.path[i];
+            int written = snprintf(
+                prefix + offset,
+                sizeof(prefix) - offset,
+                i == 0u ? "%s" : ".%s",
+                segment ? segment : "");
+            if (written <= 0 || (size_t)written >= sizeof(prefix) - offset) break;
+            offset += (size_t)written;
+            scoped = cxpr_expression_lookup_typed_result(
+                ctx->expression_scope,
+                prefix,
+                &found);
+            if (found) scoped_prefix_found = true;
+            if (found && scoped.type == CXPR_VALUE_STRUCT) {
+                current = scoped.s;
+                start_index = i + 1u;
+                goto walk_fields;
+            }
+        }
+        if (scoped_prefix_found) {
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_IDENTIFIER,
+                "Expression-scope chain has no struct prefix");
+        }
+    }
+
+    current = cxpr_context_get_struct(ctx, ast->data.chain_access.path[0]);
     if (!current) {
         bool found = false;
         cxpr_value root = cxpr_context_get_typed(ctx, ast->data.chain_access.path[0], &found);
@@ -56,9 +126,10 @@ cxpr_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_context* ctx,
         return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown identifier");
     }
 
-    for (size_t i = 1; i < ast->data.chain_access.depth; i++) {
+walk_fields:
+    for (size_t i = start_index; i < ast->data.chain_access.depth; i++) {
         bool found = false;
-        cxpr_value value = cxpr_fv_double(0.0);
+        cxpr_value value = cxpr_num(0.0);
 
         for (size_t j = 0; j < current->field_count; j++) {
             if (strcmp(current->field_names[j], ast->data.chain_access.path[i]) == 0) {
@@ -127,10 +198,10 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
-        return cxpr_fv_double(ast->data.number.value);
+        return cxpr_num(ast->data.number.value);
 
     case CXPR_NODE_BOOL:
-        return cxpr_fv_bool(ast->data.boolean.value);
+        return cxpr_bool(ast->data.boolean.value);
 
     case CXPR_NODE_STRING:
         return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
@@ -148,13 +219,13 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     case CXPR_NODE_VARIABLE: {
         bool found = false;
         bool bool_value = cxpr_context_get_param_bool(ctx, ast->data.variable.name, &found);
-        if (found) return cxpr_fv_bool(bool_value);
+        if (found) return cxpr_bool(bool_value);
         double value = cxpr_context_get_param(ctx, ast->data.variable.name, &found);
         if (!found) {
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                    "Unknown parameter variable");
         }
-        return cxpr_fv_double(value);
+        return cxpr_num(value);
     }
 
     case CXPR_NODE_FIELD_ACCESS:
@@ -166,7 +237,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     case CXPR_NODE_LOOKBACK: {
         cxpr_value value;
         if (reg && reg->lookback_resolver) {
-            value = cxpr_fv_double(NAN);
+            value = cxpr_num(NAN);
             if (reg->lookback_resolver(ast->data.lookback.target,
                                        ast->data.lookback.index,
                                        ctx,
@@ -176,7 +247,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                                        err)) {
                 return value;
             }
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
         }
         return cxpr_eval_error(err, CXPR_ERR_SYNTAX,
                                "Native lookback requires a registry lookback resolver");
@@ -187,29 +258,29 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
         if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
             cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_require_type(left, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
 
-            if (op == CXPR_TOK_AND && !left.b) return cxpr_fv_bool(false);
-            if (op == CXPR_TOK_OR && left.b) return cxpr_fv_bool(true);
+            if (op == CXPR_TOK_AND && !left.b) return cxpr_bool(false);
+            if (op == CXPR_TOK_OR && left.b) return cxpr_bool(true);
 
             cxpr_value right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_require_type(right, CXPR_VALUE_BOOL, err,
                                    "Logical operators require bool")) {
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
-            return cxpr_fv_bool(op == CXPR_TOK_AND ? right.b : right.b);
+            return cxpr_bool(op == CXPR_TOK_AND ? right.b : right.b);
         }
 
         {
             cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
             cxpr_value right;
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
 
             switch (op) {
             case CXPR_TOK_PLUS:
@@ -222,19 +293,19 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                                        "Arithmetic requires double operands") ||
                     !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
                                        "Arithmetic requires double operands")) {
-                    return cxpr_fv_double(NAN);
+                    return cxpr_num(NAN);
                 }
                 if ((op == CXPR_TOK_SLASH || op == CXPR_TOK_PERCENT) && right.d == 0.0) {
                     return cxpr_eval_error(err, CXPR_ERR_DIVISION_BY_ZERO,
                                            op == CXPR_TOK_SLASH ? "Division by zero"
                                                                 : "Modulo by zero");
                 }
-                if (op == CXPR_TOK_PLUS) return cxpr_fv_double(left.d + right.d);
-                if (op == CXPR_TOK_MINUS) return cxpr_fv_double(left.d - right.d);
-                if (op == CXPR_TOK_STAR) return cxpr_fv_double(left.d * right.d);
-                if (op == CXPR_TOK_SLASH) return cxpr_fv_double(left.d / right.d);
-                if (op == CXPR_TOK_PERCENT) return cxpr_fv_double(fmod(left.d, right.d));
-                return cxpr_fv_double(pow(left.d, right.d));
+                if (op == CXPR_TOK_PLUS) return cxpr_num(left.d + right.d);
+                if (op == CXPR_TOK_MINUS) return cxpr_num(left.d - right.d);
+                if (op == CXPR_TOK_STAR) return cxpr_num(left.d * right.d);
+                if (op == CXPR_TOK_SLASH) return cxpr_num(left.d / right.d);
+                if (op == CXPR_TOK_PERCENT) return cxpr_num(fmod(left.d, right.d));
+                return cxpr_num(pow(left.d, right.d));
 
             case CXPR_TOK_LT:
             case CXPR_TOK_LTE:
@@ -244,12 +315,12 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                                        "Comparison requires double operands") ||
                     !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
                                        "Comparison requires double operands")) {
-                    return cxpr_fv_double(NAN);
+                    return cxpr_num(NAN);
                 }
-                if (op == CXPR_TOK_LT) return cxpr_fv_bool(left.d < right.d);
-                if (op == CXPR_TOK_LTE) return cxpr_fv_bool(left.d <= right.d);
-                if (op == CXPR_TOK_GT) return cxpr_fv_bool(left.d > right.d);
-                return cxpr_fv_bool(left.d >= right.d);
+                if (op == CXPR_TOK_LT) return cxpr_bool(left.d < right.d);
+                if (op == CXPR_TOK_LTE) return cxpr_bool(left.d <= right.d);
+                if (op == CXPR_TOK_GT) return cxpr_bool(left.d > right.d);
+                return cxpr_bool(left.d >= right.d);
 
             case CXPR_TOK_EQ:
             case CXPR_TOK_NEQ:
@@ -259,10 +330,10 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                                            "Equality requires matching scalar types");
                 }
                 if (left.type == CXPR_VALUE_NUMBER) {
-                    return cxpr_fv_bool(op == CXPR_TOK_EQ ? (left.d == right.d)
+                    return cxpr_bool(op == CXPR_TOK_EQ ? (left.d == right.d)
                                                           : (left.d != right.d));
                 }
-                return cxpr_fv_bool(op == CXPR_TOK_EQ ? (left.b == right.b)
+                return cxpr_bool(op == CXPR_TOK_EQ ? (left.b == right.b)
                                                       : (left.b != right.b));
 
             default:
@@ -273,21 +344,21 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
     case CXPR_NODE_UNARY_OP: {
         cxpr_value operand = cxpr_eval_node(ast->data.unary_op.operand, ctx, reg, err);
-        if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
 
         switch (ast->data.unary_op.op) {
         case CXPR_TOK_MINUS:
             if (!cxpr_require_type(operand, CXPR_VALUE_NUMBER, err,
                                    "Unary minus requires double")) {
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
-            return cxpr_fv_double(-operand.d);
+            return cxpr_num(-operand.d);
         case CXPR_TOK_NOT:
             if (!cxpr_require_type(operand, CXPR_VALUE_BOOL, err,
                                    "Logical not requires bool")) {
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
-            return cxpr_fv_bool(!operand.b);
+            return cxpr_bool(!operand.b);
         default:
             return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown unary operator");
         }
@@ -299,9 +370,14 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
 
-        if (!entry) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
-        if (entry->ast_func_overlay) {
-            return entry->ast_func_overlay(ast, ctx, reg, entry->ast_func_overlay_userdata, err);
+        if (!entry) {
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_FUNCTION,
+                cxpr_eval_unknown_function_message(ast->data.producer_access.name));
+        }
+        if (entry->ast_func_handler) {
+            return entry->ast_func_handler(ast, ctx, reg, entry->ast_func_handler_userdata, err);
         }
         if (entry->ast_func) {
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
@@ -316,7 +392,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                 const cxpr_struct_value* cached = cxpr_context_get_cached_struct(ctx, const_key);
                 if (cached) {
                     free(const_key_heap);
-                    return cxpr_fv_struct((cxpr_struct_value*)cached);
+                    return cxpr_struct((cxpr_struct_value*)cached);
                 }
             }
             {
@@ -326,19 +402,19 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                     cxpr_eval_struct_result(entry, name, direct_args, argc,
                                             const_key, ctx, reg, err);
                 free(const_key_heap);
-                if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-                return cxpr_fv_struct((cxpr_struct_value*)produced);
+                if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                return cxpr_struct((cxpr_struct_value*)produced);
             }
         }
         if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         if (entry->defined_body) return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         if (entry->struct_producer && !entry->sync_func && !entry->value_func) {
             const cxpr_struct_value* produced =
                 cxpr_eval_struct_result(entry, name, ordered_args, argc, NULL, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-            return cxpr_fv_struct((cxpr_struct_value*)produced);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+            return cxpr_struct((cxpr_struct_value*)produced);
         }
 
         if (entry->struct_fields && !entry->struct_producer && entry->sync_func) {
@@ -367,19 +443,19 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                     }
                     if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err,
                                            "Struct function arguments must be scalar doubles")) {
-                        return cxpr_fv_double(NAN);
+                        return cxpr_num(NAN);
                     }
                     args[out++] = value.d;
                 }
             }
 
-            return cxpr_fv_double(entry->sync_func(args, out, entry->userdata));
+            return cxpr_num(entry->sync_func(args, out, entry->userdata));
         }
 
         if (strcmp(name, "if") == 0 && argc == 3) {
             cxpr_value cond = cxpr_eval_node(ordered_args[0], ctx, reg, err);
             bool take_true;
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
 
             if (cond.type == CXPR_VALUE_BOOL) {
                 take_true = cond.b;
@@ -399,25 +475,25 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         }
 
         if (entry->native_kind == CXPR_NATIVE_KIND_NULLARY && argc == 0) {
-            return cxpr_fv_double(entry->native_scalar.nullary());
+            return cxpr_num(entry->native_scalar.nullary());
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_UNARY && argc == 1) {
             double a = cxpr_eval_scalar_arg(ordered_args[0], ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-            return cxpr_fv_double(entry->native_scalar.unary(a));
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+            return cxpr_num(entry->native_scalar.unary(a));
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_BINARY && argc == 2) {
             double a = cxpr_eval_scalar_arg(ordered_args[0], ctx, reg, err);
             double b = cxpr_eval_scalar_arg(ordered_args[1], ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-            return cxpr_fv_double(entry->native_scalar.binary(a, b));
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+            return cxpr_num(entry->native_scalar.binary(a, b));
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_TERNARY && argc == 3) {
             double a = cxpr_eval_scalar_arg(ordered_args[0], ctx, reg, err);
             double b = cxpr_eval_scalar_arg(ordered_args[1], ctx, reg, err);
             double c = cxpr_eval_scalar_arg(ordered_args[2], ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
-            return cxpr_fv_double(entry->native_scalar.ternary(a, b, c));
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+            return cxpr_num(entry->native_scalar.ternary(a, b, c));
         }
 
         {
@@ -427,7 +503,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
             }
             for (size_t i = 0; i < argc; i++) {
                 args[i] = cxpr_eval_node(ordered_args[i], ctx, reg, err);
-                if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+                if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             }
             return cxpr_registry_call_typed(reg, name, args, argc, err);
         }
@@ -435,23 +511,28 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
     case CXPR_NODE_PRODUCER_ACCESS: {
         cxpr_func_entry* entry = cxpr_eval_cached_producer_entry(ast, reg);
-        if (!entry) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown function");
-        if (entry->ast_func_overlay) {
-            return entry->ast_func_overlay(ast, ctx, reg, entry->ast_func_overlay_userdata, err);
+        if (!entry) {
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_FUNCTION,
+                cxpr_eval_unknown_function_message(ast->data.producer_access.name));
+        }
+        if (entry->ast_func_handler) {
+            return entry->ast_func_handler(ast, ctx, reg, entry->ast_func_handler_userdata, err);
         }
         {
             cxpr_value value = cxpr_eval_cached_producer_access(ast, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             return value;
         }
     }
 
     case CXPR_NODE_TERNARY: {
         cxpr_value condition = cxpr_eval_node(ast->data.ternary.condition, ctx, reg, err);
-        if (err && err->code != CXPR_OK) return cxpr_fv_double(NAN);
+        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
         if (!cxpr_require_type(condition, CXPR_VALUE_BOOL, err,
                                "Ternary condition must be bool")) {
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
 
         if (condition.b) {

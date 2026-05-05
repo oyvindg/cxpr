@@ -63,15 +63,15 @@ static cxpr_value ir_eval_typed(const char *expr,
 /* ── value constructors ──────────────────────────────────────────────── */
 
 static void test_fv_constructors(void) {
-    cxpr_value d = cxpr_fv_double(3.14);
+    cxpr_value d = cxpr_num(3.14);
     assert(d.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(d.d, 3.14);
 
-    cxpr_value bt = cxpr_fv_bool(true);
+    cxpr_value bt = cxpr_bool(true);
     assert(bt.type == CXPR_VALUE_BOOL);
     assert(bt.b == true);
 
-    cxpr_value bf = cxpr_fv_bool(false);
+    cxpr_value bf = cxpr_bool(false);
     assert(bf.type == CXPR_VALUE_BOOL);
     assert(bf.b == false);
 
@@ -82,7 +82,7 @@ static void test_fv_constructors(void) {
 
 static void test_struct_value_new_free(void) {
     const char *names[] = {"x", "y"};
-    cxpr_value vals[] = {cxpr_fv_double(1.0), cxpr_fv_double(2.0)};
+    cxpr_value vals[] = {cxpr_num(1.0), cxpr_num(2.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(names, vals, 2);
     assert(s != NULL);
     assert(s->field_count == 2);
@@ -97,7 +97,7 @@ static void test_struct_value_new_free(void) {
 
 static void test_struct_value_deep_copy(void) {
     const char *names[] = {"a"};
-    cxpr_value vals[] = {cxpr_fv_double(42.0)};
+    cxpr_value vals[] = {cxpr_num(42.0)};
     cxpr_struct_value *orig = cxpr_struct_value_new(names, vals, 1);
     assert(orig != NULL);
 
@@ -117,11 +117,11 @@ static void test_struct_value_deep_copy(void) {
 
 static void test_struct_value_nested_deep_copy(void) {
     const char *inner_names[] = {"z"};
-    cxpr_value inner_vals[] = {cxpr_fv_double(7.0)};
+    cxpr_value inner_vals[] = {cxpr_num(7.0)};
     cxpr_struct_value *inner = cxpr_struct_value_new(inner_names, inner_vals, 1);
 
     const char *outer_names[] = {"nested"};
-    cxpr_value outer_vals[] = {cxpr_fv_struct(inner)};
+    cxpr_value outer_vals[] = {cxpr_struct(inner)};
     cxpr_struct_value *outer = cxpr_struct_value_new(outer_names, outer_vals, 1);
     assert(outer != NULL);
     assert(outer->field_values[0].type == CXPR_VALUE_STRUCT);
@@ -230,7 +230,7 @@ static void test_struct_bool_field_equality(void) {
     cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
     const char *field_names[] = {"active"};
-    cxpr_value field_values[] = {cxpr_fv_bool(true)};
+    cxpr_value field_values[] = {cxpr_bool(true)};
     cxpr_struct_value *sensor = cxpr_struct_value_new(field_names, field_values, 1);
     cxpr_value r;
 

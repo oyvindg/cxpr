@@ -14,7 +14,7 @@ static bool test_direct_lookback_resolver(const cxpr_ast* target,
     (void)target;
     (void)userdata;
     if (!cxpr_eval_ast_number(index_ast, ctx, reg, &index, err)) return true;
-    *out_value = cxpr_fv_double(100.0 + index);
+    *out_value = cxpr_num(100.0 + index);
     return true;
 }
 

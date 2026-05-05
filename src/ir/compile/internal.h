@@ -43,16 +43,16 @@ bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
  * @return True when any reachable node is a string literal.
  */
 bool cxpr_ir_ast_contains_string_literal(const cxpr_ast* ast);
-/** @brief Check whether one AST argument must stay on AST-overlay evaluation.
+/** @brief Check whether one AST argument must stay on AST-catchor evaluation.
  * @param ast AST subtree to inspect.
- * @return True when runtime overlay passthrough is required.
+ * @return True when runtime handler passthrough is required.
  */
-bool cxpr_ir_arg_needs_overlay_passthrough(const cxpr_ast* ast);
-/** @brief Check whether a runtime call must fall back to AST overlay execution.
+bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_ast* ast);
+/** @brief Check whether a runtime call must fall back to AST handler execution.
  * @param ast Function-call or producer-call AST node.
- * @return True when any argument shape requires overlay passthrough.
+ * @return True when any argument shape requires handler passthrough.
  */
-bool cxpr_ir_runtime_call_needs_overlay_passthrough(const cxpr_ast* ast);
+bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_ast* ast);
 /** @brief Infer the scalar fast-path result kind for one AST subtree.
  * @param ast AST subtree to inspect.
  * @param reg Registry used to resolve function metadata.

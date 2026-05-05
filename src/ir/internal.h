@@ -32,6 +32,7 @@ typedef enum {
     CXPR_OP_LOAD_PARAM_SQUARE,
     CXPR_OP_LOAD_FIELD,
     CXPR_OP_LOAD_FIELD_SQUARE,
+    CXPR_OP_LOAD_NAMED_FIELD,
     CXPR_OP_LOAD_CHAIN,
     CXPR_OP_ADD,
     CXPR_OP_SUB,
@@ -77,6 +78,7 @@ typedef enum {
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
  * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
+ * - LOAD_NAMED_FIELD: borrowed root in name, borrowed field in aux_name, flat-key hash in hash
  * - CALL_PRODUCER_CONST_FIELD: cache key in name, field name in aux_name
  * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args
  * - CALL_AST: borrowed AST pointer in ast
@@ -128,6 +130,7 @@ typedef struct {
 struct cxpr_program {
     cxpr_ir_program ir;
     const cxpr_ast* ast;
+    cxpr_ast* owned_ast;
 };
 
 /** @brief One substitution frame used while inlining defined-function bodies into IR. */

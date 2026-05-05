@@ -571,6 +571,7 @@ static void test_analysis_unknown_function(void) {
 
     assert(!cxpr_analyze(ast, reg, &info, &err));
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
+    assert(strcmp(err.message, "Unknown function 'missing_fn'") == 0);
     assert(info.has_unknown_functions == true);
     assert(info.first_unknown_function != NULL);
     assert(strcmp(info.first_unknown_function, "missing_fn") == 0);

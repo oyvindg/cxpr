@@ -10,7 +10,7 @@ cxpr_value cxpr_eval_error(cxpr_error* err, cxpr_error_code code, const char* me
         err->code = code;
         err->message = message;
     }
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 bool cxpr_require_type(cxpr_value value, cxpr_value_type type,
@@ -24,7 +24,7 @@ bool cxpr_require_type(cxpr_value value, cxpr_value_type type,
 
 cxpr_value cxpr_struct_get_field(const cxpr_struct_value* value, const char* field, bool* found) {
     if (found) *found = false;
-    if (!value || !field) return cxpr_fv_double(NAN);
+    if (!value || !field) return cxpr_num(NAN);
 
     for (size_t i = 0; i < value->field_count; ++i) {
         if (strcmp(value->field_names[i], field) == 0) {
@@ -33,13 +33,13 @@ cxpr_value cxpr_struct_get_field(const cxpr_struct_value* value, const char* fie
         }
     }
 
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 cxpr_value cxpr_struct_get_field_by_index(const cxpr_struct_value* value, size_t index,
                                           bool* found) {
     if (found) *found = false;
-    if (!value || index >= value->field_count) return cxpr_fv_double(NAN);
+    if (!value || index >= value->field_count) return cxpr_num(NAN);
     if (found) *found = true;
     return value->field_values[index];
 }

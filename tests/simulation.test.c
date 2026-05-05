@@ -156,14 +156,14 @@ static double fn_ema_step(const double* args, size_t n, void* u) {
 static cxpr_value fn_cross_above(const double* args, size_t n, void* u) {
     (void)n; (void)u;
     /* current_fast > current_slow AND prev_fast <= prev_slow */
-    return cxpr_fv_bool(args[0] > args[1] && args[2] <= args[3]);
+    return cxpr_bool(args[0] > args[1] && args[2] <= args[3]);
 }
 
 /** @brief Cross below: cross_below(current_fast, current_slow, prev_fast, prev_slow) */
 static cxpr_value fn_cross_below(const double* args, size_t n, void* u) {
     (void)n; (void)u;
     /* current_fast < current_slow AND prev_fast >= prev_slow */
-    return cxpr_fv_bool(args[0] < args[1] && args[2] >= args[3]);
+    return cxpr_bool(args[0] < args[1] && args[2] >= args[3]);
 }
 
 /** @brief Percentage change: pct_change(current, previous) */

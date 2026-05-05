@@ -27,20 +27,20 @@ static void cxpr_struct_value_reset(cxpr_struct_value* s) {
 }
 
 static cxpr_value cxpr_value_clone(const cxpr_value* value) {
-    if (!value) return cxpr_fv_double(0.0);
+    if (!value) return cxpr_num(0.0);
 
     switch (value->type) {
     case CXPR_VALUE_NUMBER:
-        return cxpr_fv_double(value->d);
+        return cxpr_num(value->d);
     case CXPR_VALUE_BOOL:
-        return cxpr_fv_bool(value->b);
+        return cxpr_bool(value->b);
     case CXPR_VALUE_STRUCT:
-        return cxpr_fv_struct(cxpr_struct_value_new(
+        return cxpr_struct(cxpr_struct_value_new(
             value->s ? (const char* const*)value->s->field_names : NULL,
             value->s ? value->s->field_values : NULL,
             value->s ? value->s->field_count : 0));
     default:
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
 }
 

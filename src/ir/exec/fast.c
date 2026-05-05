@@ -130,6 +130,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         [CXPR_OP_LOAD_PARAM_SQUARE] = &&op_load_param_square,
         [CXPR_OP_LOAD_FIELD] = &&op_unsupported,
         [CXPR_OP_LOAD_FIELD_SQUARE] = &&op_unsupported,
+        [CXPR_OP_LOAD_NAMED_FIELD] = &&op_unsupported,
         [CXPR_OP_LOAD_CHAIN] = &&op_unsupported,
         [CXPR_OP_ADD] = &&op_add,
         [CXPR_OP_SUB] = &&op_sub,
@@ -408,7 +409,7 @@ op_call_func:
 op_call_defined: {
     cxpr_value result;
     for (size_t i = 0; i < instr->index; ++i) {
-        scalar_args[i] = cxpr_fv_double(stack[sp - instr->index + i]);
+        scalar_args[i] = cxpr_num(stack[sp - instr->index + i]);
     }
     result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
                                          scalar_args, instr->index, err);
@@ -496,6 +497,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         [CXPR_OP_LOAD_PARAM_SQUARE] = &&opb_load_param_square,
         [CXPR_OP_LOAD_FIELD] = &&opb_unsupported,
         [CXPR_OP_LOAD_FIELD_SQUARE] = &&opb_unsupported,
+        [CXPR_OP_LOAD_NAMED_FIELD] = &&opb_unsupported,
         [CXPR_OP_LOAD_CHAIN] = &&opb_unsupported,
         [CXPR_OP_ADD] = &&opb_add,
         [CXPR_OP_SUB] = &&opb_sub,
@@ -803,7 +805,7 @@ opb_call_func:
 opb_call_defined: {
     cxpr_value result;
     for (size_t i = 0; i < instr->index; ++i) {
-        scalar_args[i] = cxpr_fv_double(nstack[nsp - instr->index + i]);
+        scalar_args[i] = cxpr_num(nstack[nsp - instr->index + i]);
     }
     result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
                                          scalar_args, instr->index, err);

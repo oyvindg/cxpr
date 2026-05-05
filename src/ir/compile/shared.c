@@ -134,7 +134,7 @@ bool cxpr_ir_ast_contains_string_literal(const cxpr_ast* ast) {
     }
 }
 
-bool cxpr_ir_arg_needs_overlay_passthrough(const cxpr_ast* ast) {
+bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_ast* ast) {
     if (!ast) return false;
 
     switch (ast->type) {
@@ -146,20 +146,20 @@ bool cxpr_ir_arg_needs_overlay_passthrough(const cxpr_ast* ast) {
     case CXPR_NODE_LOOKBACK:
         return true;
     case CXPR_NODE_BINARY_OP:
-        return cxpr_ir_arg_needs_overlay_passthrough(ast->data.binary_op.left) ||
-               cxpr_ir_arg_needs_overlay_passthrough(ast->data.binary_op.right);
+        return cxpr_ir_arg_needs_catchor_passthrough(ast->data.binary_op.left) ||
+               cxpr_ir_arg_needs_catchor_passthrough(ast->data.binary_op.right);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_ir_arg_needs_overlay_passthrough(ast->data.unary_op.operand);
+        return cxpr_ir_arg_needs_catchor_passthrough(ast->data.unary_op.operand);
     case CXPR_NODE_TERNARY:
-        return cxpr_ir_arg_needs_overlay_passthrough(ast->data.ternary.condition) ||
-               cxpr_ir_arg_needs_overlay_passthrough(ast->data.ternary.true_branch) ||
-               cxpr_ir_arg_needs_overlay_passthrough(ast->data.ternary.false_branch);
+        return cxpr_ir_arg_needs_catchor_passthrough(ast->data.ternary.condition) ||
+               cxpr_ir_arg_needs_catchor_passthrough(ast->data.ternary.true_branch) ||
+               cxpr_ir_arg_needs_catchor_passthrough(ast->data.ternary.false_branch);
     default:
         return false;
     }
 }
 
-bool cxpr_ir_runtime_call_needs_overlay_passthrough(const cxpr_ast* ast) {
+bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_ast* ast) {
     size_t i;
 
     if (!ast) return false;
@@ -167,7 +167,7 @@ bool cxpr_ir_runtime_call_needs_overlay_passthrough(const cxpr_ast* ast) {
     switch (ast->type) {
     case CXPR_NODE_FUNCTION_CALL:
         for (i = 0; i < ast->data.function_call.argc; ++i) {
-            if (cxpr_ir_arg_needs_overlay_passthrough(ast->data.function_call.args[i])) {
+            if (cxpr_ir_arg_needs_catchor_passthrough(ast->data.function_call.args[i])) {
                 return true;
             }
         }
@@ -175,7 +175,7 @@ bool cxpr_ir_runtime_call_needs_overlay_passthrough(const cxpr_ast* ast) {
 
     case CXPR_NODE_PRODUCER_ACCESS:
         for (i = 0; i < ast->data.producer_access.argc; ++i) {
-            if (cxpr_ir_arg_needs_overlay_passthrough(ast->data.producer_access.args[i])) {
+            if (cxpr_ir_arg_needs_catchor_passthrough(ast->data.producer_access.args[i])) {
                 return true;
             }
         }

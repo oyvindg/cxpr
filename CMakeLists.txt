@@ -35,6 +35,7 @@ endif()
 option(CXPR_STRICT "Enable stricter compiler warnings and treat warnings as errors" OFF)
 option(CXPR_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
+option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
 
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
@@ -49,64 +50,24 @@ if((CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN) AND
     message(FATAL_ERROR "Sanitizers require a GCC/Clang-style compiler")
 endif()
 
+if(CXPR_ENABLE_COVERAGE AND NOT CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    message(FATAL_ERROR "Coverage requires a GCC/Clang-style compiler")
+endif()
+
+if(CXPR_ENABLE_COVERAGE)
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
 # ═══════════════════════════════════════════════════════════════════════════
 # C core library
 # ═══════════════════════════════════════════════════════════════════════════
-add_library(cxpr STATIC
-    src/lexer/lexer.c
-    src/parser/parser.c
-    src/parser/helpers.c
-    src/parser/expression.c
-    src/parser/primary.c
-    src/ast/construct.c
-    src/ast/free.c
-    src/ast/inspect.c
-    src/ast/printer.c
-    src/ast/references.c
-    src/ast/analyze.c
-    src/call/args.c
-    src/eval/helpers/base.c
-    src/eval/helpers/constants.c
-    src/eval/helpers/clone.c
-    src/eval/helpers/cache.c
-    src/eval/calls.c
-    src/eval/tree.c
-    src/eval/api.c
-    src/ir/program.c
-    src/ir/cache_key.c
-    src/ir/validate.c
-    src/ir/compile/shared.c
-    src/ir/compile/infer.c
-    src/ir/compile/node.c
-    src/ir/compile.c
-    src/ir/exec/lookup.c
-    src/ir/exec/calls.c
-    src/ir/exec/typed.c
-    src/ir/exec/fast.c
-    src/ir/exec/api.c
-    src/hashmap/hashmap.c
-    src/struct.c
-    src/context/cache.c
-    src/context/lifecycle.c
-    src/context/values.c
-    src/context/structs.c
-    src/context/slot.c
-    src/registry/helpers.c
-    src/registry/add.c
-    src/registry/defaults.c
-    src/registry/define.c
-    src/registry/call.c
-    src/provider/provider.c
-    src/provider/registry.c
-    src/source/canonical.c
-    src/source/plan.c
-    src/runtime/call.c
-    src/scope/source.c
-    src/timeseries.c
-    src/basket.c
-    src/expression/evaluator.c
-    src/expression/expression.c
+file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
+list(SORT CXPR_SOURCES)
+
+add_library(cxpr STATIC ${CXPR_SOURCES})
 add_library(cxpr::cxpr ALIAS cxpr)
 
 set_target_properties(cxpr PROPERTIES
@@ -168,6 +129,16 @@ endif()
 option(CXPR_BUILD_BENCHMARKS "Build cxpr benchmarks" ${PROJECT_IS_TOP_LEVEL})
 if(CXPR_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
+endif()
+
+if(CXPR_ENABLE_COVERAGE)
+    add_custom_target(cxpr_check_function_coverage
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_function_coverage.sh
+                ${CMAKE_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Checking that every cxpr function is executed by coverage tests"
+        VERBATIM
+    )
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

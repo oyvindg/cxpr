@@ -32,8 +32,8 @@ static void pair_producer(const double* args, size_t argc, cxpr_value* out, size
     (void)argc;
     (void)userdata;
     assert(field_count == 2);
-    out[0] = cxpr_fv_double(args[0] + args[1]);
-    out[1] = cxpr_fv_double(args[0] - args[1]);
+    out[0] = cxpr_num(args[0] + args[1]);
+    out[1] = cxpr_num(args[0] - args[1]);
 }
 
 static void test_ir_exec_call_helpers(void) {
@@ -41,7 +41,7 @@ static void test_ir_exec_call_helpers(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_func_entry entry = {0};
-    cxpr_value args[2] = {cxpr_fv_double(5.0), cxpr_fv_double(2.0)};
+    cxpr_value args[2] = {cxpr_num(5.0), cxpr_num(2.0)};
     cxpr_value value;
 
     assert(ctx && reg);

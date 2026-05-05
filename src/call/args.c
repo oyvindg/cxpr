@@ -125,8 +125,7 @@ bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
         return false;
     }
 
-    if (ast->type == CXPR_NODE_PRODUCER_ACCESS &&
-        cxpr_call_bind_named_window((const char* const*)arg_names, args, argc,
+    if (cxpr_call_bind_named_window((const char* const*)arg_names, args, argc,
                                     param_names, param_count, out_args)) {
         return true;
     }

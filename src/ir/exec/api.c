@@ -83,7 +83,7 @@ cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context*
             err->code = CXPR_ERR_SYNTAX;
             err->message = "NULL compiled program";
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     if (prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
         double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
@@ -94,15 +94,15 @@ cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context*
                 if (err) *err = typed_err;
                 return typed_value;
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
-        return cxpr_fv_double(fast_value);
+        return cxpr_num(fast_value);
     }
     if (prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
         if (!cxpr_ir_exec_bool_fast(&prog->ir, ctx, reg, NULL, 0, &bool_value, err)) {
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
-        return cxpr_fv_bool(bool_value);
+        return cxpr_bool(bool_value);
     }
     return cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, err);
 }

@@ -7,6 +7,14 @@
 #include "limits.h"
 
 #include <math.h>
+#include <stdio.h>
+
+static const char* cxpr_registry_unknown_function_message(const char* name) {
+    static char message[256];
+    if (!name || name[0] == '\0') return "Unknown function";
+    snprintf(message, sizeof(message), "Unknown function '%s'", name);
+    return message;
+}
 
 cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
                                     const cxpr_value* args, size_t argc, cxpr_error* err) {
@@ -16,12 +24,12 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
     if (!entry || (!entry->sync_func && !entry->value_func && !entry->typed_func)) {
         if (err) {
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-            err->message = "Unknown function";
+            err->message = cxpr_registry_unknown_function_message(name);
             err->position = 0;
             err->line = 0;
             err->column = 0;
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     if (argc < entry->min_args || argc > entry->max_args) {
@@ -32,7 +40,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
             err->line = 0;
             err->column = 0;
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     if (entry->arg_types) {
@@ -45,7 +53,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
                     err->line = 0;
                     err->column = 0;
                 }
-                return cxpr_fv_double(NAN);
+                return cxpr_num(NAN);
             }
         }
     }
@@ -63,7 +71,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
             err->line = 0;
             err->column = 0;
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     for (size_t i = 0; i < argc; ++i) {
@@ -75,7 +83,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
                 err->line = 0;
                 err->column = 0;
             }
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         scalar_args[i] = args[i].d;
     }
@@ -85,7 +93,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
         return entry->value_func(scalar_args, argc, entry->userdata);
     }
     if (err) *err = (cxpr_error){0};
-    return cxpr_fv_double(entry->sync_func(scalar_args, argc, entry->userdata));
+    return cxpr_num(entry->sync_func(scalar_args, argc, entry->userdata));
 }
 
 cxpr_value cxpr_registry_call_value(const cxpr_registry* reg, const char* name,
@@ -99,10 +107,10 @@ cxpr_value cxpr_registry_call_value(const cxpr_registry* reg, const char* name,
             err->line = 0;
             err->column = 0;
         }
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     for (size_t i = 0; i < argc; ++i) {
-        typed_args[i] = cxpr_fv_double(args[i]);
+        typed_args[i] = cxpr_num(args[i]);
     }
     return cxpr_registry_call_typed(reg, name, typed_args, argc, err);
 }

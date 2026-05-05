@@ -38,8 +38,37 @@ static void test_call_arg_binding_reorders_named_arguments(void) {
     cxpr_parser_free(parser);
 }
 
+static void test_call_arg_binding_reports_named_arg_error(void) {
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_ast* ast;
+    cxpr_error err = {0};
+    cxpr_func_entry* entry;
+    const char* params[] = {"slow", "fast"};
+    cxpr_error_code code = CXPR_OK;
+    const char* message = NULL;
+
+    assert(parser && reg);
+    cxpr_registry_add_binary(reg, "spread", fmax);
+    assert(cxpr_registry_set_param_names(reg, "spread", params, 2));
+
+    ast = cxpr_parse(parser, "spread(fast=9, nope=21)", &err);
+    assert(ast);
+    entry = cxpr_registry_find(reg, "spread");
+    assert(entry);
+
+    assert(!cxpr_call_bind_args(ast, entry, NULL, &code, &message));
+    assert(code == CXPR_ERR_SYNTAX);
+    assert(message != NULL);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_parser_free(parser);
+}
+
 int main(void) {
     test_call_arg_binding_reorders_named_arguments();
+    test_call_arg_binding_reports_named_arg_error();
     printf("  \xE2\x9C\x93 call_args\n");
     return 0;
 }

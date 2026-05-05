@@ -138,3 +138,7 @@ cxpr_ast* cxpr_eval_clone_ast(const cxpr_ast* ast) {
 
     return NULL;
 }
+
+cxpr_ast* cxpr_ast_clone(const cxpr_ast* ast) {
+    return cxpr_eval_clone_ast(ast);
+}

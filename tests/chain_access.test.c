@@ -53,19 +53,19 @@ static cxpr_value eval_typed_fails(const char *expr,
 static cxpr_context *make_nested_ctx(void) {
     /* deepest: {deep: 99.0} */
     const char *deep_names[] = {"deep"};
-    cxpr_value deep_vals[] = {cxpr_fv_double(99.0)};
+    cxpr_value deep_vals[] = {cxpr_num(99.0)};
     cxpr_struct_value *deep = cxpr_struct_value_new(deep_names, deep_vals, 1);
 
     /* inner: {value: 7.0, flag: true, sub: deep} */
     const char *inner_names[] = {"value", "flag", "sub"};
     cxpr_value inner_vals[] = {
-        cxpr_fv_double(7.0), cxpr_fv_bool(true), cxpr_fv_struct(deep)};
+        cxpr_num(7.0), cxpr_bool(true), cxpr_struct(deep)};
     cxpr_struct_value *inner = cxpr_struct_value_new(inner_names, inner_vals, 3);
     cxpr_struct_value_free(deep);
 
     /* outer: {inner: inner} */
     const char *outer_names[] = {"inner"};
-    cxpr_value outer_vals[] = {cxpr_fv_struct(inner)};
+    cxpr_value outer_vals[] = {cxpr_struct(inner)};
     cxpr_struct_value *outer = cxpr_struct_value_new(outer_names, outer_vals, 1);
     cxpr_struct_value_free(inner);
 

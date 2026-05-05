@@ -23,6 +23,11 @@ typedef enum {
     CXPR_TIMESERIES_WINDOW_LOWEST = -1
 } cxpr_timeseries_window_mode;
 
+typedef enum {
+    CXPR_TIMESERIES_NET_UP = 1,
+    CXPR_TIMESERIES_NET_DOWN = -1
+} cxpr_timeseries_net_mode;
+
 static cxpr_value cxpr_timeseries_call_error(
     const cxpr_ast* call_ast,
     cxpr_error* err) {
@@ -31,7 +36,7 @@ static cxpr_value cxpr_timeseries_call_error(
         err->message = "Time-series function expects a call AST";
     }
     (void)call_ast;
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 static int cxpr_timeseries_read_bars(
@@ -99,7 +104,7 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_SYNTAX;
             err->message = "Time-series function expects a call AST";
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     if (cxpr_ast_function_argc(call_ast) != 2) {
@@ -109,12 +114,12 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
                 ? "rising(...) expects value, lookback"
                 : "falling(...) expects value, lookback";
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     value_ast = cxpr_ast_function_arg(call_ast, 0);
     if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 2, &bars_ll, err)) {
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     for (long long i = 0; i < bars_ll - 1; ++i) {
@@ -122,16 +127,16 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
         double rhs = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &lhs, err) ||
             !cxpr_eval_ast_number_at_offset(value_ast, (double)(i + 1), ctx, reg, &rhs, err)) {
-            return cxpr_fv_bool(false);
+            return cxpr_bool(false);
         }
         if (mode == CXPR_TIMESERIES_TREND_RISING) {
-            if (!(lhs > rhs)) return cxpr_fv_bool(false);
+            if (!(lhs > rhs)) return cxpr_bool(false);
         } else {
-            if (!(lhs < rhs)) return cxpr_fv_bool(false);
+            if (!(lhs < rhs)) return cxpr_bool(false);
         }
     }
 
-    return cxpr_fv_bool(true);
+    return cxpr_bool(true);
 }
 
 static cxpr_value cxpr_timeseries_cross_eval(const cxpr_ast* call_ast,
@@ -151,7 +156,7 @@ static cxpr_value cxpr_timeseries_cross_eval(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_SYNTAX;
             err->message = "Time-series function expects a call AST";
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
     if (cxpr_ast_function_argc(call_ast) != 2) {
         if (err) {
@@ -160,7 +165,7 @@ static cxpr_value cxpr_timeseries_cross_eval(const cxpr_ast* call_ast,
                 ? "cross_above(...) expects left, right"
                 : "cross_below(...) expects left, right";
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     left_ast = cxpr_ast_function_arg(call_ast, 0);
@@ -169,13 +174,13 @@ static cxpr_value cxpr_timeseries_cross_eval(const cxpr_ast* call_ast,
         !cxpr_eval_ast_number_at_offset(right_ast, 0.0, ctx, reg, &right, err) ||
         !cxpr_eval_ast_number_at_offset(left_ast, 1.0, ctx, reg, &prev_left, err) ||
         !cxpr_eval_ast_number_at_offset(right_ast, 1.0, ctx, reg, &prev_right, err)) {
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     if (mode == CXPR_TIMESERIES_CROSS_ABOVE) {
-        return cxpr_fv_bool(prev_left <= prev_right && left > right);
+        return cxpr_bool(prev_left <= prev_right && left > right);
     }
-    return cxpr_fv_bool(prev_left >= prev_right && left < right);
+    return cxpr_bool(prev_left >= prev_right && left < right);
 }
 
 static cxpr_value cxpr_timeseries_delta(const cxpr_ast* call_ast,
@@ -194,13 +199,13 @@ static cxpr_value cxpr_timeseries_delta(const cxpr_ast* call_ast,
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
     if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
         !cxpr_eval_ast_number_at_offset(value_ast, (double)bars_ll, ctx, reg, &previous, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
-    return cxpr_fv_double(value - previous);
+    return cxpr_num(value - previous);
 }
 
 static cxpr_value cxpr_timeseries_roc(const cxpr_ast* call_ast,
@@ -219,14 +224,14 @@ static cxpr_value cxpr_timeseries_roc(const cxpr_ast* call_ast,
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
     if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
         !cxpr_eval_ast_number_at_offset(value_ast, (double)bars_ll, ctx, reg, &previous, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
-    if (previous == 0.0) return cxpr_fv_double(NAN);
-    return cxpr_fv_double((value - previous) / previous);
+    if (previous == 0.0) return cxpr_num(NAN);
+    return cxpr_num((value - previous) / previous);
 }
 
 static cxpr_value cxpr_timeseries_window_eval(const cxpr_ast* call_ast,
@@ -243,13 +248,13 @@ static cxpr_value cxpr_timeseries_window_eval(const cxpr_ast* call_ast,
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
     if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
 
     for (long long i = 0; i < bars_ll; ++i) {
         double value = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
-            return cxpr_fv_double(NAN);
+            return cxpr_num(NAN);
         }
         if (i == 0 ||
             (mode == CXPR_TIMESERIES_WINDOW_HIGHEST && value > out) ||
@@ -257,7 +262,7 @@ static cxpr_value cxpr_timeseries_window_eval(const cxpr_ast* call_ast,
             out = value;
         }
     }
-    return cxpr_fv_double(out);
+    return cxpr_num(out);
 }
 
 static cxpr_value cxpr_timeseries_cross_above(const cxpr_ast* call_ast,
@@ -322,17 +327,126 @@ static cxpr_value cxpr_timeseries_falling(const cxpr_ast* call_ast,
         call_ast, ctx, reg, CXPR_TIMESERIES_TREND_FALLING, err);
 }
 
+static cxpr_value cxpr_timeseries_net_eval(const cxpr_ast* call_ast,
+                                           const cxpr_context* ctx,
+                                           const cxpr_registry* reg,
+                                           cxpr_timeseries_net_mode mode,
+                                           cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    long long bars_ll;
+    double value = 0.0;
+    double previous = 0.0;
+
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "Time-series function expects a call AST";
+        }
+        return cxpr_bool(false);
+    }
+    if (cxpr_ast_function_argc(call_ast) != 2) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = mode == CXPR_TIMESERIES_NET_UP
+                ? "net_up(...) expects value, bars"
+                : "net_down(...) expects value, bars";
+        }
+        return cxpr_bool(false);
+    }
+
+    value_ast = cxpr_ast_function_arg(call_ast, 0);
+    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+        return cxpr_bool(false);
+    }
+    if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
+        !cxpr_eval_ast_number_at_offset(value_ast, (double)bars_ll, ctx, reg, &previous, err)) {
+        return cxpr_bool(false);
+    }
+    if (!isfinite(value) || !isfinite(previous)) return cxpr_bool(false);
+    if (mode == CXPR_TIMESERIES_NET_UP) {
+        return cxpr_bool(value > previous);
+    }
+    return cxpr_bool(value < previous);
+}
+
+static cxpr_value cxpr_timeseries_net_up(const cxpr_ast* call_ast,
+                                         const cxpr_context* ctx,
+                                         const cxpr_registry* reg,
+                                         void* userdata,
+                                         cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_net_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_NET_UP, err);
+}
+
+static cxpr_value cxpr_timeseries_net_down(const cxpr_ast* call_ast,
+                                           const cxpr_context* ctx,
+                                           const cxpr_registry* reg,
+                                           void* userdata,
+                                           cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_net_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_NET_DOWN, err);
+}
+
+/** @brief Native implementation for `repeat(condition, bars)`. */
+static cxpr_value cxpr_timeseries_repeat(const cxpr_ast* call_ast,
+                                         const cxpr_context* ctx,
+                                         const cxpr_registry* reg,
+                                         void* userdata,
+                                         cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    long long bars_ll;
+
+    (void)userdata;
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    if (cxpr_ast_function_argc(call_ast) != 2) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "repeat(...) expects condition, bars";
+        }
+        return cxpr_bool(false);
+    }
+    value_ast = cxpr_ast_function_arg(call_ast, 0);
+    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+        return cxpr_bool(false);
+    }
+    for (long long i = 0; i < bars_ll; ++i) {
+        bool value = false;
+        if (!cxpr_eval_ast_bool_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
+            return cxpr_bool(false);
+        }
+        if (!value) return cxpr_bool(false);
+    }
+    return cxpr_bool(true);
+}
+
 /**
  * @brief Register built-in native time-series predicates.
  * @param reg Destination registry.
  */
 void cxpr_register_timeseries_builtins(cxpr_registry* reg) {
+    static const char* const value_bars_params[] = {"value", "bars"};
+
     if (!reg) return;
 
     cxpr_registry_add_timeseries(reg, "rising", cxpr_timeseries_rising, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "rising", value_bars_params, 2u);
     cxpr_registry_add_timeseries(reg, "falling", cxpr_timeseries_falling, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "falling", value_bars_params, 2u);
+    cxpr_registry_add_timeseries(reg, "net_up", cxpr_timeseries_net_up, 2, 2,
+                                 CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "net_up", value_bars_params, 2u);
+    cxpr_registry_add_timeseries(reg, "net_down", cxpr_timeseries_net_down, 2, 2,
+                                 CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "net_down", value_bars_params, 2u);
+    cxpr_registry_add_timeseries(reg, "repeat", cxpr_timeseries_repeat, 2, 2,
+                                 CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "repeat", value_bars_params, 2u);
     cxpr_registry_add_timeseries(reg, "cross_above", cxpr_timeseries_cross_above, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_timeseries(reg, "cross_below", cxpr_timeseries_cross_below, 2, 2,

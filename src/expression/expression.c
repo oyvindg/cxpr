@@ -30,19 +30,19 @@ void cxpr_expression_result_dispose(cxpr_value* value) {
     if (value->type == CXPR_VALUE_STRUCT) {
         cxpr_struct_value_free(value->s);
     }
-    *value = cxpr_fv_double(0.0);
+    *value = cxpr_num(0.0);
 }
 
 cxpr_value cxpr_expression_result_clone(const cxpr_value* value, cxpr_error* err) {
     cxpr_struct_value* copy;
 
-    if (!value) return cxpr_fv_double(0.0);
+    if (!value) return cxpr_num(0.0);
 
     switch (value->type) {
     case CXPR_VALUE_NUMBER:
-        return cxpr_fv_double(value->d);
+        return cxpr_num(value->d);
     case CXPR_VALUE_BOOL:
-        return cxpr_fv_bool(value->b);
+        return cxpr_bool(value->b);
     case CXPR_VALUE_STRUCT:
         copy = cxpr_struct_value_new(
             value->s ? (const char* const*)value->s->field_names : NULL,
@@ -52,9 +52,9 @@ cxpr_value cxpr_expression_result_clone(const cxpr_value* value, cxpr_error* err
             err->code = CXPR_ERR_OUT_OF_MEMORY;
             err->message = "Out of memory";
         }
-        return cxpr_fv_struct(copy);
+        return cxpr_struct(copy);
     default:
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
 }
 
@@ -64,13 +64,13 @@ cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
 
     if (!evaluator || !name) {
         if (found) *found = false;
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
 
     idx = cxpr_expression_find(evaluator, name);
     if (idx == (size_t)-1 || !evaluator->expressions[idx].evaluated) {
         if (found) *found = false;
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
 
     if (found) *found = true;
@@ -286,7 +286,7 @@ bool cxpr_expression_add(cxpr_evaluator* evaluator, const char* name,
     entry->expression = cxpr_strdup(expression);
     entry->ast = ast;
     entry->program = NULL;
-    entry->result = cxpr_fv_double(0.0);
+    entry->result = cxpr_num(0.0);
     entry->evaluated = false;
 
     /* Invalidate compilation */
@@ -394,7 +394,7 @@ bool cxpr_analyze_expressions(const cxpr_expression_def* defs, size_t count,
  * @param[in] evaluator  Expression evaluator
  * @param[in] name    Expression name
  * @param[out] found  Set to true if found (can be NULL)
- * @return Expression result, or cxpr_fv_double(0.0) if not found/evaluated
+ * @return Expression result, or cxpr_num(0.0) if not found/evaluated
  */
 cxpr_value cxpr_expression_get(const cxpr_evaluator* evaluator, const char* name, bool* found) {
     return cxpr_expression_lookup_typed_result(evaluator, name, found);

@@ -44,6 +44,22 @@ static double cxpr_lerp(double a, double b, double t) {
     return a + (b - a) * t;
 }
 
+static double cxpr_add(double a, double b) {
+    return a + b;
+}
+
+static double cxpr_sub(double a, double b) {
+    return a - b;
+}
+
+static double cxpr_mul(double a, double b) {
+    return a * b;
+}
+
+static double cxpr_div(double a, double b) {
+    return a / b;
+}
+
 static double cxpr_smoothstep(double x, double e0, double e1) {
     if (e0 == e1) return (x >= e1) ? 1.0 : 0.0;
     const double t = cxpr_clamp((x - e0) / (e1 - e0), 0.0, 1.0);
@@ -116,6 +132,10 @@ void cxpr_register_defaults(cxpr_registry* reg) {
     cxpr_registry_add(reg, "max", cxpr_max, 1, 8, NULL, NULL);
     cxpr_registry_add_ternary(reg, "clamp", cxpr_clamp);
     cxpr_registry_add_unary(reg, "sign", cxpr_sign);
+    cxpr_registry_add_binary(reg, "add", cxpr_add);
+    cxpr_registry_add_binary(reg, "sub", cxpr_sub);
+    cxpr_registry_add_binary(reg, "mul", cxpr_mul);
+    cxpr_registry_add_binary(reg, "div", cxpr_div);
     cxpr_registry_add_ternary(reg, "lerp", cxpr_lerp);
     cxpr_registry_add_ternary(reg, "smoothstep", cxpr_smoothstep);
     cxpr_registry_add_ternary(reg, "sigmoid", cxpr_sigmoid);

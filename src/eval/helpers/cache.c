@@ -7,6 +7,15 @@
 #include "context/state.h"
 #include "limits.h"
 
+#include <stdio.h>
+
+static const char* cxpr_eval_cache_unknown_function_message(const char* name) {
+    static char message[256];
+    if (!name || name[0] == '\0') return "Unknown function";
+    snprintf(message, sizeof(message), "Unknown function '%s'", name);
+    return message;
+}
+
 static unsigned long cxpr_eval_hash_mix(unsigned long hash, unsigned long value) {
     hash ^= value + 0x9e3779b9UL + (hash << 6) + (hash >> 2);
     return hash;
@@ -208,7 +217,7 @@ bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry =
             reg ? cxpr_registry_find(reg, ast->data.function_call.name) : NULL;
-        if (!entry || entry->ast_func_overlay || entry->ast_func) return false;
+        if (!entry || entry->ast_func_handler || entry->ast_func) return false;
         if (entry->struct_producer && !entry->sync_func && !entry->value_func) return false;
         return true;
     }
@@ -296,7 +305,7 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     if (!entry || !entry->struct_producer || !name) {
         if (err) {
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-            err->message = "Unknown function";
+            err->message = cxpr_eval_cache_unknown_function_message(name);
         }
         return NULL;
     }

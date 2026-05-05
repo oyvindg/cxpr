@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include "../src/hashmap/internal.h"
 
+bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name, bool* found);
+
 static void test_context_value_paths(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_context_entry vars[] = {{"a", 1.0}, {"b", 2.0}, {NULL, 0.0}};
@@ -16,6 +18,7 @@ static void test_context_value_paths(void) {
     cxpr_context_set_prehashed(ctx, "c", cxpr_hash_string("c"), 3.0);
     cxpr_context_set_param_prehashed(ctx, "mult", cxpr_hash_string("mult"), 4.0);
     cxpr_context_set_bool(ctx, "flag", true);
+    cxpr_context_set_param_bool(ctx, "enabled", true);
 
     assert(cxpr_context_get(ctx, "a", &found) == 1.0 && found);
     assert(cxpr_context_get(ctx, "c", &found) == 3.0 && found);
@@ -33,6 +36,8 @@ static void test_context_value_paths(void) {
     assert(value.b == true);
     assert(cxpr_context_get(ctx, "flag", &found) == 1.0 && found);
     assert(cxpr_context_get_bool(ctx, "flag", &found) == true && found);
+    assert(cxpr_context_get_param_bool(ctx, "enabled", &found) == true && found);
+    assert(cxpr_context_get_local_param_bool(ctx, "enabled", &found) == true && found);
 
     cxpr_context_set(ctx, "flag", 5.0);
     value = cxpr_context_get_typed(ctx, "flag", &found);

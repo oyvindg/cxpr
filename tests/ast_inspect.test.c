@@ -23,10 +23,12 @@ static void test_public_ast_inspection_helpers(void) {
     cxpr_ast* predicate;
     cxpr_ast* scalar_call;
     cxpr_ast* cross_call;
+    cxpr_ast* bool_ternary;
 
     predicate = parse_expr("rsi(14) > 70");
     scalar_call = parse_expr("ema(14)");
     cross_call = parse_expr("cross_above(ema(14), sma(50))");
+    bool_ternary = parse_expr("rsi > 50 ? close > open : volume > 0");
 
     assert(binary);
     assert(unary);
@@ -34,6 +36,7 @@ static void test_public_ast_inspection_helpers(void) {
     assert(predicate);
     assert(scalar_call);
     assert(cross_call);
+    assert(bool_ternary);
 
     assert(cxpr_ast_operator(binary) == CXPR_TOK_PLUS);
     assert(cxpr_ast_type(cxpr_ast_left(binary)) == CXPR_NODE_IDENTIFIER);
@@ -45,7 +48,9 @@ static void test_public_ast_inspection_helpers(void) {
     assert(cxpr_ast_is_boolean_expression(predicate));
     assert(!cxpr_ast_is_boolean_expression(scalar_call));
     assert(cxpr_ast_is_boolean_expression(cross_call));
+    assert(cxpr_ast_is_boolean_expression(bool_ternary));
 
+    cxpr_ast_free(bool_ternary);
     cxpr_ast_free(cross_call);
     cxpr_ast_free(scalar_call);
     cxpr_ast_free(predicate);

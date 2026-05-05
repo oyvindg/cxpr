@@ -103,6 +103,7 @@ struct cxpr_context {
     unsigned long params_version;
     const struct cxpr_context* parent;
     const struct cxpr_evaluator* expression_scope;
+    struct cxpr_context* overlay_cache_next;
 };
 
 #endif /* CXPR_CONTEXT_STATE_H */

@@ -6,8 +6,6 @@
 
 #include <cxpr/provider.h>
 
-#define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
-
 static const cxpr_provider_fn_spec* const* test_provider_fn_specs(
     const void* userdata,
     size_t* count) {
@@ -351,6 +349,45 @@ static const cxpr_provider kExprProvider = {
     },
 };
 
+static double host_provider_scalar(const char* name,
+                                   const double* args,
+                                   size_t argc,
+                                   void* userdata) {
+    (void)userdata;
+    if (strcmp(name, "close") == 0 && argc == 0u) return 101.5;
+    if (strcmp(name, "high") == 0 && argc == 0u) return 105.0;
+    if (strcmp(name, "low") == 0 && argc == 0u) return 99.0;
+    if (strcmp(name, "ema") == 0 && argc == 1u) return args[0] * 2.0;
+    if (strcmp(name, "atr") == 0 && argc == 1u) return args[0] + 0.5;
+    return NAN;
+}
+
+static void test_provider_host_runtime_supplies_expression_data(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_host_config host = {
+        .runtime_required_scalar = host_provider_scalar,
+        .userdata = NULL,
+    };
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    double out = 0.0;
+
+    assert(reg && ctx && parser);
+    cxpr_register_provider_signatures(reg, &kExprProvider, &host);
+    ast = cxpr_parse(parser, "ema(10) + close() + atr(3)", &err);
+    assert(ast != NULL);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(fabs(out - 125.0) < 1e-12);
+
+    cxpr_ast_free(ast);
+    cxpr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+}
+
 static void test_provider_registration_helpers_are_directly_covered(void) {
     cxpr_registry* reg = cxpr_registry_new();
     const cxpr_provider_fn_spec* ema = cxpr_provider_fn_spec_find(&kExprProvider, "ema");
@@ -373,6 +410,24 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(cxpr_registry_lookup(reg, "ema", &min_args, &max_args) != 0);
     assert(min_args == 1u);
     assert(max_args == 2u);
+
+    {
+        cxpr_parser* parser = cxpr_parser_new();
+        cxpr_context* ctx = cxpr_context_new();
+        cxpr_error err = {0};
+        cxpr_ast* ast;
+        double out = 0.0;
+
+        assert(parser != NULL);
+        assert(ctx != NULL);
+        ast = cxpr_parse(parser, "ema(10)", &err);
+        assert(ast != NULL);
+        assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+        assert(isnan(out));
+        cxpr_ast_free(ast);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+    }
 
     cxpr_registry_free(reg);
 }
@@ -644,9 +699,34 @@ static void test_source_plan_smoothing_with_selector_and_lookback(void) {
     cxpr_parser_free(parser);
 }
 
+static void test_source_plan_smoothing_with_named_source_arg(void) {
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    cxpr_source_plan_ast plan;
+    int ok;
+
+    assert(parser != NULL);
+    ast = cxpr_parse(parser, "ema(source=close, period=10)", &err);
+    assert(ast != NULL);
+
+    memset(&plan, 0, sizeof(plan));
+    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, ast, &plan);
+    if (ok == 0) abort();
+    if (plan.root.kind != CXPR_SOURCE_PLAN_SMOOTHING) abort();
+    if (plan.root.arg_count != 1u || plan.root.arg_slots[0] != 0u) abort();
+    if (plan.arg_count != 1u) abort();
+
+    cxpr_free_source_plan_ast(&plan);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(parser);
+}
+
 int main(void) {
     test_provider_helpers_support_generic_series_scopes();
     printf("  ✓ cxpr provider generic scope helpers\n");
+    test_provider_host_runtime_supplies_expression_data();
+    printf("  ✓ cxpr provider host runtime data\n");
     test_provider_registration_helpers_are_directly_covered();
     printf("  ✓ cxpr provider registration helpers\n");
     test_runtime_call_helpers_are_directly_covered();
@@ -667,5 +747,7 @@ int main(void) {
     printf("  ✓ source_plan: FIELD with selector and lookback (close(\"abc\")[7])\n");
     test_source_plan_smoothing_with_selector_and_lookback();
     printf("  ✓ source_plan: SMOOTHING with selector and lookback (ema(close(\"abc\"), 10)[7])\n");
+    test_source_plan_smoothing_with_named_source_arg();
+    printf("  ✓ source_plan: SMOOTHING with named source arg\n");
     return 0;
 }

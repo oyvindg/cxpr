@@ -3,8 +3,7 @@
 
 #include <cxpr/provider.h>
 #include <cxpr/cxpr.h>
-
-#define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
+#include <cxpr/scope.h>
 
 typedef struct {
     double close;

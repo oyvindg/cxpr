@@ -124,7 +124,7 @@ static cxpr_value strictly_rising_fn(const cxpr_ast* call_ast,
     long long bars = 0;
 
     if (!cxpr_eval_ast_number(bars_ast, ctx, reg, &bars_value, err)) {
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     bars = (long long)llround(bars_value);
@@ -133,7 +133,7 @@ static cxpr_value strictly_rising_fn(const cxpr_ast* call_ast,
             err->code = CXPR_ERR_SYNTAX;
             err->message = "strictly_rising(...) requires integer bars >= 2";
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
     for (long long i = 0; i < bars - 1; ++i) {
@@ -141,12 +141,12 @@ static cxpr_value strictly_rising_fn(const cxpr_ast* call_ast,
         double rhs = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &lhs, err) ||
             !cxpr_eval_ast_number_at_offset(value_ast, (double)(i + 1), ctx, reg, &rhs, err)) {
-            return cxpr_fv_bool(false);
+            return cxpr_bool(false);
         }
-        if (!(lhs > rhs)) return cxpr_fv_bool(false);
+        if (!(lhs > rhs)) return cxpr_bool(false);
     }
 
-    return cxpr_fv_bool(true);
+    return cxpr_bool(true);
 }
 
 static void test_eval_ast_at_offset_reuses_lookback_resolver(void) {
@@ -232,6 +232,12 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     }
     cxpr_ast_free(ast);
 
+    ast = parse_or_die(parser, "rising(value=close, bars=3)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out);
+    cxpr_ast_free(ast);
+
     ast = parse_or_die(parser, "falling(close, 3)");
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
@@ -264,6 +270,59 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_rising_and_falling_use_native_timeseries_eval\n");
+}
+
+static void test_timeseries_builtin_reports_bad_arity(void) {
+    static const double close_series[] = {10.0, 11.0, 12.0};
+    static const double base_series[] = {0.0, 0.0, 0.0};
+    test_series_env env = {
+        .close = close_series,
+        .base = base_series,
+        .length = 3,
+        .current_index = 2,
+    };
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    bool out = false;
+
+    assert(parser);
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, &env, NULL);
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+
+    ast = parse_or_die(parser, "delta(close)");
+    assert(!cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.message != NULL);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_timeseries_builtin_reports_bad_arity\n");
+}
+
+static void test_timeseries_builtin_rejects_non_call_ast_directly(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_func_entry* entry;
+    cxpr_error err = {0};
+    cxpr_value value;
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    entry = cxpr_registry_find(reg, "delta");
+    assert(entry != NULL);
+    assert(entry->ast_func != NULL);
+    value = entry->ast_func(NULL, NULL, reg, NULL, &err);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(isnan(value.d));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    cxpr_registry_free(reg);
+    printf("  \xE2\x9C\x93 test_timeseries_builtin_rejects_non_call_ast_directly\n");
 }
 
 static void test_registered_timeseries_function_uses_same_api(void) {
@@ -464,6 +523,8 @@ int main(void) {
     printf("Running timeseries tests...\n");
     test_eval_ast_at_offset_reuses_lookback_resolver();
     test_builtin_rising_and_falling_use_native_timeseries_eval();
+    test_timeseries_builtin_reports_bad_arity();
+    test_timeseries_builtin_rejects_non_call_ast_directly();
     test_registered_timeseries_function_uses_same_api();
     test_builtin_cross_above_and_below_use_lookback();
     test_builtin_delta_and_roc_use_lookback();

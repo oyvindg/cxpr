@@ -40,7 +40,7 @@ static bool cxpr_eval_ast_auto_compile_safe(const cxpr_ast* ast, const cxpr_regi
             ast->data.function_call.argc > entry->max_args) {
             return false;
         }
-        if (entry->ast_func_overlay || entry->ast_func || entry->struct_producer ||
+        if (entry->ast_func_handler || entry->ast_func || entry->struct_producer ||
             entry->struct_fields || entry->value_func || entry->typed_func ||
             (entry->sync_func && entry->native_kind == CXPR_NATIVE_KIND_NONE &&
              !entry->defined_body)) {
@@ -110,7 +110,7 @@ static bool cxpr_eval_function_call_memoable_cached(const cxpr_ast* ast,
 
     mutable_ast = (cxpr_ast*)ast;
     mutable_ast->data.function_call.cached_memoable =
-        entry && !entry->ast_func_overlay && !entry->ast_func &&
+        entry && !entry->ast_func_handler && !entry->ast_func &&
         !(entry->struct_producer && !entry->sync_func && !entry->value_func);
     mutable_ast->data.function_call.cached_memoable_valid = true;
     mutable_ast->data.function_call.cached_memoable_registry = reg;
@@ -118,7 +118,7 @@ static bool cxpr_eval_function_call_memoable_cached(const cxpr_ast* ast,
     return mutable_ast->data.function_call.cached_memoable;
 }
 
-static unsigned long cxpr_eval_function_call_hash_cached(const cxpr_ast* ast) {
+unsigned long cxpr_eval_function_call_hash_cached(const cxpr_ast* ast) {
     cxpr_ast* mutable_ast;
 
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return 0u;
@@ -371,6 +371,30 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
                                           : ast->data.ternary.false_branch,
                                      ctx, reg, out, err);
 
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        cxpr_func_entry* producer_entry = cxpr_eval_cached_producer_entry(ast, reg);
+        if (!producer_entry || !producer_entry->struct_producer || producer_entry->ast_func_handler) {
+            return false;
+        }
+        if (cxpr_ast_call_uses_named_args(ast)) return false;
+        {
+            cxpr_value result = cxpr_eval_cached_producer_access(ast, ctx, reg, err);
+            if (err && err->code != CXPR_OK) {
+                *out = NAN;
+                return true;
+            }
+            if (result.type == CXPR_VALUE_NUMBER) {
+                *out = result.d;
+                return true;
+            }
+            if (result.type == CXPR_VALUE_BOOL) {
+                *out = result.b ? 1.0 : 0.0;
+                return true;
+            }
+        }
+        return false;
+    }
+
     case CXPR_NODE_FUNCTION_CALL: {
         const char* name = ast->data.function_call.name;
         const size_t argc = ast->data.function_call.argc;
@@ -384,7 +408,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
 
         if (argc > CXPR_MAX_CALL_ARGS || cxpr_ast_call_uses_named_args(ast)) return false;
         entry = cxpr_eval_cached_function_entry(ast, reg);
-        if (!entry || entry->ast_func_overlay || entry->ast_func || entry->struct_producer ||
+        if (!entry || entry->ast_func_handler || entry->ast_func || entry->struct_producer ||
             entry->struct_fields || entry->value_func || entry->typed_func) {
             return false;
         }
@@ -430,7 +454,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
             }
             *out = cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg, args, argc, err);
             if (!(err && err->code != CXPR_OK) && should_memo) {
-                (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+                (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
             }
             return true;
         }
@@ -445,33 +469,33 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
 
         if (entry->native_kind == CXPR_NATIVE_KIND_NONE && entry->sync_func) {
             *out = entry->sync_func(args, argc, entry->userdata);
-            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
             return true;
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_NULLARY && argc == 0) {
             *out = entry->native_scalar.nullary();
-            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
             return true;
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_UNARY && argc == 1) {
             *out = entry->native_scalar.unary(args[0]);
-            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
             return true;
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_BINARY && argc == 2) {
             *out = entry->native_scalar.binary(args[0], args[1]);
-            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
             return true;
         }
         if (entry->native_kind == CXPR_NATIVE_KIND_TERNARY && argc == 3) {
             *out = entry->native_scalar.ternary(args[0], args[1], args[2]);
-            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+            if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
             return true;
         }
         if (strcmp(name, "if") == 0 && argc == 3) return false;
         if (!entry->sync_func) return false;
         *out = entry->sync_func(args, argc, entry->userdata);
-        if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_fv_double(*out));
+        if (should_memo) (void)cxpr_eval_memo_set(ctx, ast, memo_hash, cxpr_num(*out));
         return true;
     }
 
