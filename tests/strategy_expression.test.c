@@ -9,10 +9,10 @@
 #include <string.h>
 #include "cxpr_test_internal.h"
 
-static cxpr_value test_cross_above_strategy(const double* args, size_t argc, void* ud) {
+static cxpr_value test_cross_above_strategy(const cxpr_value* args, size_t argc, void* ud) {
     (void)ud;
     assert(argc == 2);
-    return cxpr_bool(args[0] > args[1]);
+    return cxpr_bool(args[0].d > args[1].d);
 }
 
 static void test_macd_strategy_producer(const double* args, size_t argc,

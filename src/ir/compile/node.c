@@ -84,7 +84,18 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     }
 
     if (cxpr_ir_constant_typed_value(ast, reg, &constant)) {
-        if (constant.type != CXPR_VALUE_NUMBER && constant.type != CXPR_VALUE_BOOL) return false;
+        if (constant.type != CXPR_VALUE_NUMBER && constant.type != CXPR_VALUE_BOOL &&
+            constant.type != CXPR_VALUE_STRING) {
+            return false;
+        }
+        if (constant.type == CXPR_VALUE_STRING) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_PUSH_STRING,
+                                    .name = constant.str,
+                                },
+                                err);
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = constant.type == CXPR_VALUE_BOOL
@@ -113,6 +124,14 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                 .op = CXPR_OP_PUSH_BOOL,
                                 .value = ast->data.boolean.value ? 1.0 : 0.0,
                                 .name = NULL,
+                            },
+                            err);
+
+    case CXPR_NODE_STRING:
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_PUSH_STRING,
+                                .name = ast->data.string.value,
                             },
                             err);
 

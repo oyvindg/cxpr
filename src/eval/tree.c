@@ -5,10 +5,10 @@
 
 #include "internal.h"
 
-#include "../context/internal.h"
-#include "../core.h"
-#include "../expression/internal.h"
-#include "../limits.h"
+#include "context/internal.h" // IWYU pragma: keep
+#include "core.h"
+#include "expression/internal.h"
+#include "limits.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -192,6 +192,175 @@ static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_ast* ast,
     return mutable_ast->data.function_call.cached_const_key;
 }
 
+static bool cxpr_eval_values_equal(cxpr_value left, cxpr_value right, bool* out) {
+    if (!out || left.type != right.type) return false;
+
+    switch (left.type) {
+    case CXPR_VALUE_NUMBER:
+        *out = left.d == right.d;
+        return true;
+    case CXPR_VALUE_BOOL:
+        *out = left.b == right.b;
+        return true;
+    case CXPR_VALUE_STRING:
+        *out = strcmp(left.str, right.str) == 0;
+        return true;
+    case CXPR_VALUE_NULL:
+        *out = true;
+        return true;
+    case CXPR_VALUE_TIMESTAMP:
+    case CXPR_VALUE_DURATION:
+        *out = left.i64 == right.i64;
+        return true;
+    default:
+        return false;
+    }
+}
+
+static cxpr_value cxpr_eval_arithmetic_op(int op, cxpr_value left, cxpr_value right,
+                                          cxpr_error* err) {
+    if (!cxpr_require_type(left, CXPR_VALUE_NUMBER, err,
+                           "Arithmetic requires double operands") ||
+        !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
+                           "Arithmetic requires double operands")) {
+        return cxpr_num(NAN);
+    }
+    if ((op == CXPR_TOK_SLASH || op == CXPR_TOK_PERCENT) && right.d == 0.0) {
+        return cxpr_eval_error(err, CXPR_ERR_DIVISION_BY_ZERO,
+                               op == CXPR_TOK_SLASH ? "Division by zero"
+                                                    : "Modulo by zero");
+    }
+
+    switch (op) {
+    case CXPR_TOK_PLUS: return cxpr_num(left.d + right.d);
+    case CXPR_TOK_MINUS: return cxpr_num(left.d - right.d);
+    case CXPR_TOK_STAR: return cxpr_num(left.d * right.d);
+    case CXPR_TOK_SLASH: return cxpr_num(left.d / right.d);
+    case CXPR_TOK_PERCENT: return cxpr_num(fmod(left.d, right.d));
+    default: return cxpr_num(pow(left.d, right.d));
+    }
+}
+
+static cxpr_value cxpr_eval_comparison_op(int op, cxpr_value left, cxpr_value right,
+                                          cxpr_error* err) {
+    if (!cxpr_require_type(left, CXPR_VALUE_NUMBER, err,
+                           "Comparison requires double operands") ||
+        !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
+                           "Comparison requires double operands")) {
+        return cxpr_num(NAN);
+    }
+
+    switch (op) {
+    case CXPR_TOK_LT: return cxpr_bool(left.d < right.d);
+    case CXPR_TOK_LTE: return cxpr_bool(left.d <= right.d);
+    case CXPR_TOK_GT: return cxpr_bool(left.d > right.d);
+    default: return cxpr_bool(left.d >= right.d);
+    }
+}
+
+static cxpr_value cxpr_eval_equality_op(int op, cxpr_value left, cxpr_value right,
+                                        cxpr_error* err) {
+    bool equal = false;
+
+    if (!cxpr_eval_values_equal(left, right, &equal)) {
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "Equality requires matching scalar types");
+    }
+    return cxpr_bool(op == CXPR_TOK_EQ ? equal : !equal);
+}
+
+static cxpr_value cxpr_eval_binary_values(int op, cxpr_value left, cxpr_value right,
+                                          cxpr_error* err) {
+    switch (op) {
+    case CXPR_TOK_PLUS:
+    case CXPR_TOK_MINUS:
+    case CXPR_TOK_STAR:
+    case CXPR_TOK_SLASH:
+    case CXPR_TOK_PERCENT:
+    case CXPR_TOK_POWER:
+        return cxpr_eval_arithmetic_op(op, left, right, err);
+
+    case CXPR_TOK_LT:
+    case CXPR_TOK_LTE:
+    case CXPR_TOK_GT:
+    case CXPR_TOK_GTE:
+        return cxpr_eval_comparison_op(op, left, right, err);
+
+    case CXPR_TOK_EQ:
+    case CXPR_TOK_NEQ:
+        return cxpr_eval_equality_op(op, left, right, err);
+
+    default:
+        return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown binary operator");
+    }
+}
+
+static cxpr_value cxpr_eval_binary_op(const cxpr_ast* ast, const cxpr_context* ctx,
+                                      const cxpr_registry* reg, cxpr_error* err) {
+    int op = ast->data.binary_op.op;
+    cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
+    cxpr_value right;
+
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+
+    if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
+        if (!cxpr_require_type(left, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
+            return cxpr_num(NAN);
+        }
+        if (op == CXPR_TOK_AND && !left.b) return cxpr_bool(false);
+        if (op == CXPR_TOK_OR && left.b) return cxpr_bool(true);
+    }
+
+    right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+
+    if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
+        if (!cxpr_require_type(right, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
+            return cxpr_num(NAN);
+        }
+        return cxpr_bool(right.b);
+    }
+
+    return cxpr_eval_binary_values(op, left, right, err);
+}
+
+static cxpr_value cxpr_eval_unary_op(const cxpr_ast* ast, const cxpr_context* ctx,
+                                     const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_value operand = cxpr_eval_node(ast->data.unary_op.operand, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+
+    switch (ast->data.unary_op.op) {
+    case CXPR_TOK_MINUS:
+        if (!cxpr_require_type(operand, CXPR_VALUE_NUMBER, err,
+                               "Unary minus requires double")) {
+            return cxpr_num(NAN);
+        }
+        return cxpr_num(-operand.d);
+    case CXPR_TOK_NOT:
+        if (!cxpr_require_type(operand, CXPR_VALUE_BOOL, err,
+                               "Logical not requires bool")) {
+            return cxpr_num(NAN);
+        }
+        return cxpr_bool(!operand.b);
+    default:
+        return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown unary operator");
+    }
+}
+
+static cxpr_value cxpr_eval_ternary_op(const cxpr_ast* ast, const cxpr_context* ctx,
+                                       const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_value condition = cxpr_eval_node(ast->data.ternary.condition, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (!cxpr_require_type(condition, CXPR_VALUE_BOOL, err,
+                           "Ternary condition must be bool")) {
+        return cxpr_num(NAN);
+    }
+
+    return cxpr_eval_node(condition.b ? ast->data.ternary.true_branch
+                                      : ast->data.ternary.false_branch,
+                          ctx, reg, err);
+}
+
 static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_context* ctx,
                                           const cxpr_registry* reg, cxpr_error* err) {
     if (!ast) return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "NULL AST node");
@@ -204,8 +373,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         return cxpr_bool(ast->data.boolean.value);
 
     case CXPR_NODE_STRING:
-        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
-                               "String literal cannot be evaluated as a value");
+        return cxpr_string(ast->data.string.value);
 
     case CXPR_NODE_IDENTIFIER: {
         bool found = false;
@@ -220,6 +388,9 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         bool found = false;
         bool bool_value = cxpr_context_get_param_bool(ctx, ast->data.variable.name, &found);
         if (found) return cxpr_bool(bool_value);
+        const char* string_value =
+            cxpr_context_get_param_string(ctx, ast->data.variable.name, &found);
+        if (found) return cxpr_string(string_value);
         double value = cxpr_context_get_param(ctx, ast->data.variable.name, &found);
         if (!found) {
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -253,116 +424,11 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                                "Native lookback requires a registry lookback resolver");
     }
 
-    case CXPR_NODE_BINARY_OP: {
-        int op = ast->data.binary_op.op;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_eval_binary_op(ast, ctx, reg, err);
 
-        if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
-            cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_require_type(left, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
-                return cxpr_num(NAN);
-            }
-
-            if (op == CXPR_TOK_AND && !left.b) return cxpr_bool(false);
-            if (op == CXPR_TOK_OR && left.b) return cxpr_bool(true);
-
-            cxpr_value right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_require_type(right, CXPR_VALUE_BOOL, err,
-                                   "Logical operators require bool")) {
-                return cxpr_num(NAN);
-            }
-            return cxpr_bool(op == CXPR_TOK_AND ? right.b : right.b);
-        }
-
-        {
-            cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
-            cxpr_value right;
-            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-
-            switch (op) {
-            case CXPR_TOK_PLUS:
-            case CXPR_TOK_MINUS:
-            case CXPR_TOK_STAR:
-            case CXPR_TOK_SLASH:
-            case CXPR_TOK_PERCENT:
-            case CXPR_TOK_POWER:
-                if (!cxpr_require_type(left, CXPR_VALUE_NUMBER, err,
-                                       "Arithmetic requires double operands") ||
-                    !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
-                                       "Arithmetic requires double operands")) {
-                    return cxpr_num(NAN);
-                }
-                if ((op == CXPR_TOK_SLASH || op == CXPR_TOK_PERCENT) && right.d == 0.0) {
-                    return cxpr_eval_error(err, CXPR_ERR_DIVISION_BY_ZERO,
-                                           op == CXPR_TOK_SLASH ? "Division by zero"
-                                                                : "Modulo by zero");
-                }
-                if (op == CXPR_TOK_PLUS) return cxpr_num(left.d + right.d);
-                if (op == CXPR_TOK_MINUS) return cxpr_num(left.d - right.d);
-                if (op == CXPR_TOK_STAR) return cxpr_num(left.d * right.d);
-                if (op == CXPR_TOK_SLASH) return cxpr_num(left.d / right.d);
-                if (op == CXPR_TOK_PERCENT) return cxpr_num(fmod(left.d, right.d));
-                return cxpr_num(pow(left.d, right.d));
-
-            case CXPR_TOK_LT:
-            case CXPR_TOK_LTE:
-            case CXPR_TOK_GT:
-            case CXPR_TOK_GTE:
-                if (!cxpr_require_type(left, CXPR_VALUE_NUMBER, err,
-                                       "Comparison requires double operands") ||
-                    !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
-                                       "Comparison requires double operands")) {
-                    return cxpr_num(NAN);
-                }
-                if (op == CXPR_TOK_LT) return cxpr_bool(left.d < right.d);
-                if (op == CXPR_TOK_LTE) return cxpr_bool(left.d <= right.d);
-                if (op == CXPR_TOK_GT) return cxpr_bool(left.d > right.d);
-                return cxpr_bool(left.d >= right.d);
-
-            case CXPR_TOK_EQ:
-            case CXPR_TOK_NEQ:
-                if (left.type != right.type ||
-                    (left.type != CXPR_VALUE_NUMBER && left.type != CXPR_VALUE_BOOL)) {
-                    return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
-                                           "Equality requires matching scalar types");
-                }
-                if (left.type == CXPR_VALUE_NUMBER) {
-                    return cxpr_bool(op == CXPR_TOK_EQ ? (left.d == right.d)
-                                                          : (left.d != right.d));
-                }
-                return cxpr_bool(op == CXPR_TOK_EQ ? (left.b == right.b)
-                                                      : (left.b != right.b));
-
-            default:
-                return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown binary operator");
-            }
-        }
-    }
-
-    case CXPR_NODE_UNARY_OP: {
-        cxpr_value operand = cxpr_eval_node(ast->data.unary_op.operand, ctx, reg, err);
-        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-
-        switch (ast->data.unary_op.op) {
-        case CXPR_TOK_MINUS:
-            if (!cxpr_require_type(operand, CXPR_VALUE_NUMBER, err,
-                                   "Unary minus requires double")) {
-                return cxpr_num(NAN);
-            }
-            return cxpr_num(-operand.d);
-        case CXPR_TOK_NOT:
-            if (!cxpr_require_type(operand, CXPR_VALUE_BOOL, err,
-                                   "Logical not requires bool")) {
-                return cxpr_num(NAN);
-            }
-            return cxpr_bool(!operand.b);
-        default:
-            return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown unary operator");
-        }
-    }
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_eval_unary_op(ast, ctx, reg, err);
 
     case CXPR_NODE_FUNCTION_CALL: {
         const char* name = ast->data.function_call.name;
@@ -527,19 +593,8 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         }
     }
 
-    case CXPR_NODE_TERNARY: {
-        cxpr_value condition = cxpr_eval_node(ast->data.ternary.condition, ctx, reg, err);
-        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-        if (!cxpr_require_type(condition, CXPR_VALUE_BOOL, err,
-                               "Ternary condition must be bool")) {
-            return cxpr_num(NAN);
-        }
-
-        if (condition.b) {
-            return cxpr_eval_node(ast->data.ternary.true_branch, ctx, reg, err);
-        }
-        return cxpr_eval_node(ast->data.ternary.false_branch, ctx, reg, err);
-    }
+    case CXPR_NODE_TERNARY:
+        return cxpr_eval_ternary_op(ast, ctx, reg, err);
     }
 
     return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown AST node type");

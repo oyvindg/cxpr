@@ -72,6 +72,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
     case CXPR_OP_PUSH_BOOL: return "PUSH_BOOL";
+    case CXPR_OP_PUSH_STRING: return "PUSH_STRING";
     case CXPR_OP_LOAD_LOCAL: return "LOAD_LOCAL";
     case CXPR_OP_LOAD_LOCAL_SQUARE: return "LOAD_LOCAL_SQUARE";
     case CXPR_OP_LOAD_VAR: return "LOAD_VAR";
@@ -147,6 +148,10 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         *out = cxpr_bool(ast->data.boolean.value);
         return true;
 
+    case CXPR_NODE_STRING:
+        *out = cxpr_string(ast->data.string.value);
+        return true;
+
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_LOOKBACK:
         return false;
@@ -190,7 +195,8 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         case CXPR_TOK_EQ:
         case CXPR_TOK_NEQ:
             if (left.type != right.type ||
-                (left.type != CXPR_VALUE_NUMBER && left.type != CXPR_VALUE_BOOL)) {
+                (left.type != CXPR_VALUE_NUMBER && left.type != CXPR_VALUE_BOOL &&
+                 left.type != CXPR_VALUE_STRING)) {
                 return false;
             }
             break;
@@ -218,12 +224,16 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         case CXPR_TOK_EQ:
             *out = left.type == CXPR_VALUE_NUMBER
                        ? cxpr_bool(left.d == right.d)
-                       : cxpr_bool(left.b == right.b);
+                       : left.type == CXPR_VALUE_BOOL
+                             ? cxpr_bool(left.b == right.b)
+                             : cxpr_bool(strcmp(left.str, right.str) == 0);
             return true;
         case CXPR_TOK_NEQ:
             *out = left.type == CXPR_VALUE_NUMBER
                        ? cxpr_bool(left.d != right.d)
-                       : cxpr_bool(left.b != right.b);
+                       : left.type == CXPR_VALUE_BOOL
+                             ? cxpr_bool(left.b != right.b)
+                             : cxpr_bool(strcmp(left.str, right.str) != 0);
             return true;
         case CXPR_TOK_LT: *out = cxpr_bool(left.d < right.d); return true;
         case CXPR_TOK_LTE: *out = cxpr_bool(left.d <= right.d); return true;
@@ -681,6 +691,7 @@ void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
         if (instr->aux_name) fprintf(stream, " aux=%s", instr->aux_name);
         if (instr->func) fprintf(stream, " argc=%zu func=%s", instr->index, instr->func->name);
         else if (instr->op == CXPR_OP_PUSH_CONST) fprintf(stream, " value=%.17g", instr->value);
+        else if (instr->op == CXPR_OP_PUSH_STRING) fprintf(stream, " value=\"%s\"", instr->name ? instr->name : "");
         else if (instr->op == CXPR_OP_JUMP || instr->op == CXPR_OP_JUMP_IF_FALSE ||
                  instr->op == CXPR_OP_JUMP_IF_TRUE || instr->op == CXPR_OP_LOAD_LOCAL ||
                  instr->op == CXPR_OP_LOAD_LOCAL_SQUARE) {

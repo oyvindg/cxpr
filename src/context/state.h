@@ -37,6 +37,19 @@ typedef struct {
     size_t count;
 } cxpr_bool_map;
 
+/** @brief One owned named string binding stored in an internal string map. */
+typedef struct {
+    char* name;
+    char* value;
+} cxpr_string_map_entry;
+
+/** @brief Internal dynamic array of named string bindings. */
+typedef struct {
+    cxpr_string_map_entry* entries;
+    size_t capacity;
+    size_t count;
+} cxpr_string_map;
+
 /** @brief Initialize one empty internal struct map. */
 void cxpr_struct_map_init(cxpr_struct_map* map);
 /** @brief Free all storage owned by one internal struct map. */
@@ -92,6 +105,8 @@ struct cxpr_context {
     cxpr_hashmap params;
     cxpr_bool_map bools;
     cxpr_bool_map bool_params;
+    cxpr_string_map strings;
+    cxpr_string_map string_params;
     cxpr_struct_map structs;
     cxpr_struct_map cached_structs;
     cxpr_eval_memo eval_memo;

@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /** @brief Number of elements in a fixed-size C array. */
 #define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
@@ -30,6 +31,8 @@ typedef struct cxpr_program cxpr_program;
 typedef struct cxpr_evaluator cxpr_evaluator;
 /** @brief Opaque/public struct-value handle. */
 typedef struct cxpr_struct_value cxpr_struct_value;
+/** @brief Opaque/public array-value handle. */
+typedef struct cxpr_array_value cxpr_array_value;
 
 /** @brief Error codes returned by cxpr APIs. */
 typedef enum {
@@ -48,7 +51,12 @@ typedef enum {
 typedef enum {
     CXPR_VALUE_NUMBER = 0,
     CXPR_VALUE_BOOL = 1,
-    CXPR_VALUE_STRUCT = 2
+    CXPR_VALUE_STRUCT = 2,
+    CXPR_VALUE_STRING = 3,
+    CXPR_VALUE_NULL = 4,
+    CXPR_VALUE_TIMESTAMP = 5,
+    CXPR_VALUE_DURATION = 6,
+    CXPR_VALUE_ARRAY = 7
 } cxpr_value_type;
 
 /** @brief Typed runtime value used by evaluation and struct fields. */
@@ -58,6 +66,9 @@ typedef struct cxpr_value {
         double d;
         bool b;
         cxpr_struct_value* s;
+        const char* str;
+        int64_t i64;
+        cxpr_array_value* a;
     };
 } cxpr_value;
 
@@ -66,6 +77,12 @@ struct cxpr_struct_value {
     const char** field_names;
     cxpr_value* field_values;
     size_t field_count;
+};
+
+/** @brief Owned ordered collection of typed values. */
+struct cxpr_array_value {
+    cxpr_value* values;
+    size_t count;
 };
 
 /**
@@ -96,6 +113,66 @@ static inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
 }
 
 /**
+ * @brief Construct a string `cxpr_value`.
+ * @param str String payload pointer. The pointer is borrowed by the value.
+ * @return Value tagged as `CXPR_VALUE_STRING`.
+ */
+static inline cxpr_value cxpr_string(const char* str) {
+    return (cxpr_value){ .type = CXPR_VALUE_STRING, .str = str ? str : "" };
+}
+
+/**
+ * @brief Construct a null `cxpr_value`.
+ * @return Value tagged as `CXPR_VALUE_NULL`.
+ */
+static inline cxpr_value cxpr_null(void) {
+    return (cxpr_value){ .type = CXPR_VALUE_NULL, .i64 = 0 };
+}
+
+/**
+ * @brief Construct a timestamp `cxpr_value`.
+ * @param unix_ns Timestamp payload as Unix nanoseconds.
+ * @return Value tagged as `CXPR_VALUE_TIMESTAMP`.
+ */
+static inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
+    return (cxpr_value){ .type = CXPR_VALUE_TIMESTAMP, .i64 = unix_ns };
+}
+
+/**
+ * @brief Construct a duration `cxpr_value`.
+ * @param nanoseconds Duration payload in nanoseconds.
+ * @return Value tagged as `CXPR_VALUE_DURATION`.
+ */
+static inline cxpr_value cxpr_duration(int64_t nanoseconds) {
+    return (cxpr_value){ .type = CXPR_VALUE_DURATION, .i64 = nanoseconds };
+}
+
+/**
+ * @brief Construct an array `cxpr_value`.
+ * @param a Array payload pointer.
+ * @return Value tagged as `CXPR_VALUE_ARRAY`.
+ */
+static inline cxpr_value cxpr_array(cxpr_array_value* a) {
+    return (cxpr_value){ .type = CXPR_VALUE_ARRAY, .a = a };
+}
+
+/**
+ * @brief Deep-clone a typed value.
+ *
+ * Strings are copied and owned by the returned value. Structs are deep-copied.
+ * Use `cxpr_value_free` on cloned values that may own nested storage.
+ *
+ * @param value Source value.
+ * @return Deep copy, or zero-like value on allocation failure.
+ */
+cxpr_value cxpr_value_clone(const cxpr_value* value);
+/**
+ * @brief Free storage owned by a typed value and reset it to zero.
+ * @param value Value to clear. May be NULL.
+ */
+void cxpr_value_free(cxpr_value* value);
+
+/**
  * @brief Allocate a deep-copied struct value.
  * @param field_names Field-name array.
  * @param field_values Field-value array parallel to `field_names`.
@@ -110,6 +187,19 @@ cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
  * @param s Struct value to free. May be NULL.
  */
 void cxpr_struct_value_free(cxpr_struct_value* s);
+
+/**
+ * @brief Allocate a deep-copied array value.
+ * @param values Value array to copy.
+ * @param count Number of values.
+ * @return Newly allocated array value, or NULL on allocation failure.
+ */
+cxpr_array_value* cxpr_array_value_new(const cxpr_value* values, size_t count);
+/**
+ * @brief Free an array value and any nested owned storage.
+ * @param a Array value to free. May be NULL.
+ */
+void cxpr_array_value_free(cxpr_array_value* a);
 
 /** @brief Error payload filled by APIs that can fail. */
 typedef struct cxpr_error {

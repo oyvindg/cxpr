@@ -205,6 +205,17 @@ static void test_not(void) {
     assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
     assert(cxpr_ast_type(cxpr_ast_operand(ast)) == CXPR_NODE_IDENTIFIER);
     cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "not(x == y)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
+    assert(cxpr_ast_type(cxpr_ast_operand(ast)) == CXPR_NODE_BINARY_OP);
+    cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "not (x == y)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
+    assert(cxpr_ast_type(cxpr_ast_operand(ast)) == CXPR_NODE_BINARY_OP);
+    cxpr_ast_free(ast);
+
     cxpr_parser_free(p);
     printf("  ✓ test_not\n");
 }

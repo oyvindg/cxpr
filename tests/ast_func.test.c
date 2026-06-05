@@ -223,10 +223,11 @@ static cxpr_value mode_ast_fn(const cxpr_ast* call_ast,
     return cxpr_num(v + 100.0);
 }
 
-static cxpr_value mode_value_fn(const double* args, size_t argc, void* userdata) {
+static cxpr_value mode_value_fn(const cxpr_value* args, size_t argc, void* userdata) {
     (void)userdata;
     assert(argc == 1);
-    return cxpr_num(args[0] + 1.0);
+    assert(args[0].type == CXPR_VALUE_NUMBER);
+    return cxpr_num(args[0].d + 1.0);
 }
 
 static cxpr_value mode_typed_fn(const cxpr_value* args, size_t argc, void* userdata) {
@@ -276,10 +277,11 @@ static cxpr_value mode_ast_handler_fn(const cxpr_ast* call_ast,
     return cxpr_num(v + 1.0);
 }
 
-static cxpr_value source_pick_value_fn(const double* args, size_t argc, void* userdata) {
+static cxpr_value source_pick_value_fn(const cxpr_value* args, size_t argc, void* userdata) {
     (void)userdata;
     assert(argc == 1);
-    return cxpr_num(args[0] + 1.0);
+    assert(args[0].type == CXPR_VALUE_NUMBER);
+    return cxpr_num(args[0].d + 1.0);
 }
 
 static int g_source_pick_ast_handler_calls = 0;

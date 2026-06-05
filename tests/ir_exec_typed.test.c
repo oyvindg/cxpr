@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                               const cxpr_registry* reg, const double* locals,
@@ -20,8 +21,23 @@ static void test_ir_exec_typed_bool_path(void) {
     assert(out.b == false);
 }
 
+static void test_ir_exec_typed_string_literal(void) {
+    cxpr_ir_instr code[] = {
+        {.op = CXPR_OP_PUSH_STRING, .name = "1h"},
+        {.op = CXPR_OP_RETURN}
+    };
+    cxpr_ir_program program = {.code = code, .count = 2};
+    cxpr_error err = {0};
+    cxpr_value out = cxpr_ir_exec_typed(&program, NULL, NULL, NULL, 0, &err);
+
+    assert(err.code == CXPR_OK);
+    assert(out.type == CXPR_VALUE_STRING);
+    assert(strcmp(out.str, "1h") == 0);
+}
+
 int main(void) {
     test_ir_exec_typed_bool_path();
+    test_ir_exec_typed_string_literal();
     printf("  \xE2\x9C\x93 ir_exec_typed\n");
     return 0;
 }

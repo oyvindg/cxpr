@@ -70,6 +70,13 @@ void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
  */
 void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value);
 /**
+ * @brief Set a string runtime variable.
+ * @param ctx Destination context.
+ * @param name Variable name.
+ * @param value String value to copy and store.
+ */
+void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* value);
+/**
  * @brief Look up a numeric runtime variable.
  * @param ctx Context to query.
  * @param name Variable name.
@@ -85,6 +92,14 @@ double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found);
  * @return Variable value, or `false` on miss.
  */
 bool cxpr_context_get_bool(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up a string runtime variable.
+ * @param ctx Context to query.
+ * @param name Variable name.
+ * @param found Optional success flag output.
+ * @return Borrowed string value, or NULL on miss.
+ */
+const char* cxpr_context_get_string(const cxpr_context* ctx, const char* name, bool* found);
 
 /**
  * @brief Set a numeric `$param`.
@@ -115,6 +130,13 @@ void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
  * @param value Boolean value to store.
  */
 void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value);
+/**
+ * @brief Set a string `$param`.
+ * @param ctx Destination context.
+ * @param name Parameter name without `$`.
+ * @param value String value to copy and store.
+ */
+void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const char* value);
 
 /** @brief Pre-bound variable slot for hot-loop writes. */
 typedef struct {
@@ -166,6 +188,14 @@ double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* f
  * @return Parameter value, or `false` on miss.
  */
 bool cxpr_context_get_param_bool(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up a string `$param`.
+ * @param ctx Context to query.
+ * @param name Parameter name without `$`.
+ * @param found Optional success flag output.
+ * @return Borrowed string value, or NULL on miss.
+ */
+const char* cxpr_context_get_param_string(const cxpr_context* ctx, const char* name, bool* found);
 /**
  * @brief Look up one binding as a typed cxpr value.
  * @param ctx Context to query.

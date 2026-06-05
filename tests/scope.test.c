@@ -70,17 +70,17 @@ static void assert_registered_arity(const cxpr_registry* reg,
 
 static void test_scoped_source_functions_register_registers_scoped_family(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    static const cxpr_provider_scope_spec kSelectorScope = {
+    static const cxpr_provider_scope_spec selector_scope = {
         "selector",
         1,
     };
     static const cxpr_scoped_source_spec families[] = {
-        {"open", 0u, 1u, &kSelectorScope},
-        {"high", 0u, 1u, &kSelectorScope},
-        {"low", 0u, 1u, &kSelectorScope},
-        {"close", 0u, 1u, &kSelectorScope},
-        {"volume", 0u, 1u, &kSelectorScope},
-        {"timestamp", 0u, 1u, &kSelectorScope},
+        {"open", 0u, 1u, &selector_scope},
+        {"high", 0u, 1u, &selector_scope},
+        {"low", 0u, 1u, &selector_scope},
+        {"close", 0u, 1u, &selector_scope},
+        {"volume", 0u, 1u, &selector_scope},
+        {"timestamp", 0u, 1u, &selector_scope},
     };
     static const scope_test_values values = {
         101.5,

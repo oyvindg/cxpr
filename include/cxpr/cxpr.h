@@ -13,6 +13,7 @@
 #include <cxpr/ast.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
+#include <cxpr/ir_view.h>
 #include <cxpr/registry.h>
 #include <cxpr/basket.h>
 #include <cxpr/evaluator.h>

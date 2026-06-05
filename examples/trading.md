@@ -54,10 +54,10 @@ Direct expressions can stay inline when no dependency graph is needed. If you re
 #include <cxpr/cxpr.h>
 #include <stdio.h>
 
-static cxpr_value fn_cross_below(const double* args, size_t argc, void* userdata) {
+static cxpr_value fn_cross_below(const cxpr_value* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
-    return cxpr_bool(args[2] >= args[3] && args[0] < args[1]);
+    return cxpr_bool(args[2].d >= args[3].d && args[0].d < args[1].d);
 }
 
 int main(void) {

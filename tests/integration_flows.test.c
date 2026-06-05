@@ -9,7 +9,7 @@ typedef struct {
     size_t calls;
 } host_state;
 
-static const cxpr_provider_scope_spec kFlowScope = {
+static const cxpr_provider_scope_spec flow_scope = {
     "selector",
     1,
 };
@@ -17,41 +17,41 @@ static const cxpr_provider_scope_spec kFlowScope = {
 static const cxpr_provider_fn_spec* const* flow_provider_fn_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_param_descriptor kEmaParams[] = {{"period"}};
-    static const cxpr_provider_param_descriptor kAtrParams[] = {{"period"}};
-    static const cxpr_provider_fn_spec kEma = {
+    static const cxpr_provider_param_descriptor ema_params[] = {{"period"}};
+    static const cxpr_provider_param_descriptor atr_params[] = {{"period"}};
+    static const cxpr_provider_fn_spec ema = {
         .name = "ema",
         .min_args = 1u,
         .max_args = 1u,
         .source_min_args = 1u,
         .source_max_args = 1u,
-        .params = kEmaParams,
-        .param_count = CXPR_ARRAY_COUNT(kEmaParams),
+        .params = ema_params,
+        .param_count = CXPR_ARRAY_COUNT(ema_params),
         .fields = NULL,
         .field_count = 0u,
         .primary_field_index = -1,
         .flags = CXPR_PROVIDER_FN_SOURCE_INPUT,
-        .scope = &kFlowScope,
+        .scope = &flow_scope,
     };
-    static const cxpr_provider_fn_spec kAtr = {
+    static const cxpr_provider_fn_spec atr = {
         .name = "atr",
         .min_args = 1u,
         .max_args = 1u,
         .source_min_args = 0u,
         .source_max_args = 0u,
-        .params = kAtrParams,
-        .param_count = CXPR_ARRAY_COUNT(kAtrParams),
+        .params = atr_params,
+        .param_count = CXPR_ARRAY_COUNT(atr_params),
         .fields = NULL,
         .field_count = 0u,
         .primary_field_index = -1,
         .flags = 0u,
         .scope = NULL,
     };
-    static const cxpr_provider_fn_spec* const kSpecs[] = {&kEma, &kAtr};
+    static const cxpr_provider_fn_spec* const specs[] = {&ema, &atr};
 
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_fn_spec* flow_provider_fn_spec_find(
@@ -70,14 +70,14 @@ static const cxpr_provider_fn_spec* flow_provider_fn_spec_find(
 static const cxpr_provider_source_spec* const* flow_provider_source_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_source_spec kClose = {"close", 0u, 1u, &kFlowScope};
-    static const cxpr_provider_source_spec kHigh = {"high", 0u, 1u, &kFlowScope};
-    static const cxpr_provider_source_spec kLow = {"low", 0u, 1u, &kFlowScope};
-    static const cxpr_provider_source_spec* const kSpecs[] = {&kClose, &kHigh, &kLow};
+    static const cxpr_provider_source_spec close = {"close", 0u, 1u, &flow_scope};
+    static const cxpr_provider_source_spec high = {"high", 0u, 1u, &flow_scope};
+    static const cxpr_provider_source_spec low = {"low", 0u, 1u, &flow_scope};
+    static const cxpr_provider_source_spec* const specs[] = {&close, &high, &low};
 
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_source_spec* flow_provider_source_spec_find(
@@ -94,7 +94,7 @@ static const cxpr_provider_source_spec* flow_provider_source_spec_find(
     return NULL;
 }
 
-static const cxpr_provider kFlowProvider = {
+static const cxpr_provider flow_provider = {
     "integration-flow",
     NULL,
     &(const cxpr_provider_vtable){
@@ -140,7 +140,7 @@ static void test_provider_evaluator_strategy_flow(void) {
 
     assert(reg != NULL);
     assert(ctx != NULL);
-    cxpr_register_provider_signatures(reg, &kFlowProvider, &host);
+    cxpr_register_provider_signatures(reg, &flow_provider, &host);
 
     evaluator = cxpr_evaluator_new(reg);
     assert(evaluator != NULL);

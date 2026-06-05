@@ -9,34 +9,34 @@
 static const cxpr_provider_fn_spec* const* test_provider_fn_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_param_descriptor kConsumerParams[] = {
+    static const cxpr_provider_param_descriptor consumer_params[] = {
         {"period"},
     };
-    static const cxpr_provider_scope_spec kScope = {
+    static const cxpr_provider_scope_spec scope = {
         "resolution",
         1,
     };
-    static const cxpr_provider_fn_spec kConsumer = {
+    static const cxpr_provider_fn_spec consumer = {
         .name = "moving_average",
         .min_args = 1u,
         .max_args = 1u,
         .source_min_args = 1u,
         .source_max_args = 1u,
-        .params = kConsumerParams,
+        .params = consumer_params,
         .param_count = 1u,
         .fields = NULL,
         .field_count = 0u,
         .primary_field_index = -1,
         .flags = CXPR_PROVIDER_FN_SOURCE_INPUT,
-        .scope = &kScope,
+        .scope = &scope,
     };
-    static const cxpr_provider_fn_spec* const kSpecs[] = {
-        &kConsumer,
+    static const cxpr_provider_fn_spec* const specs[] = {
+        &consumer,
     };
 
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_fn_spec* test_provider_fn_spec_find(
@@ -55,23 +55,23 @@ static const cxpr_provider_fn_spec* test_provider_fn_spec_find(
 static const cxpr_provider_source_spec* const* test_provider_source_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_scope_spec kScope = {
+    static const cxpr_provider_scope_spec scope = {
         "resolution",
         1,
     };
-    static const cxpr_provider_source_spec kSource = {
+    static const cxpr_provider_source_spec source = {
         "temperature",
         0u,
         1u,
-        &kScope,
+        &scope,
     };
-    static const cxpr_provider_source_spec* const kSpecs[] = {
-        &kSource,
+    static const cxpr_provider_source_spec* const specs[] = {
+        &source,
     };
 
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_source_spec* test_provider_source_spec_find(
@@ -89,34 +89,34 @@ static const cxpr_provider_source_spec* test_provider_source_spec_find(
 }
 
 static void test_provider_helpers_support_generic_series_scopes(void) {
-    static const cxpr_provider_vtable kVtable = {
+    static const cxpr_provider_vtable vtable = {
         .fn_specs = test_provider_fn_specs,
         .fn_spec_find = test_provider_fn_spec_find,
         .source_specs = test_provider_source_specs,
         .source_spec_find = test_provider_source_spec_find,
         .expr_param_spec_for = NULL,
     };
-    static const cxpr_provider kProvider = {
+    static const cxpr_provider provider = {
         "generic-metrics",
         NULL,
-        &kVtable,
+        &vtable,
     };
     size_t fn_count = 0u;
     size_t source_count = 0u;
     const cxpr_provider_fn_spec* fn;
     const cxpr_provider_source_spec* source;
 
-    if (cxpr_provider_is_valid(&kProvider) == 0) abort();
-    if (cxpr_provider_fn_specs(&kProvider, &fn_count) == NULL || fn_count != 1u) abort();
-    if (cxpr_provider_source_specs(&kProvider, &source_count) == NULL ||
+    if (cxpr_provider_is_valid(&provider) == 0) abort();
+    if (cxpr_provider_fn_specs(&provider, &fn_count) == NULL || fn_count != 1u) abort();
+    if (cxpr_provider_source_specs(&provider, &source_count) == NULL ||
         source_count != 1u) {
         abort();
     }
 
-    fn = cxpr_provider_fn_spec_find(&kProvider, "moving_average");
+    fn = cxpr_provider_fn_spec_find(&provider, "moving_average");
     if (!fn || !fn->scope || strcmp(fn->scope->param_name, "resolution") != 0) abort();
 
-    source = cxpr_provider_source_spec_find(&kProvider, "temperature");
+    source = cxpr_provider_source_spec_find(&provider, "temperature");
     if (!source || !source->scope || strcmp(source->scope->param_name, "resolution") != 0) abort();
 
 }
@@ -142,31 +142,31 @@ static double test_runtime_required_scalar(
 static const cxpr_provider_fn_spec* const* test_record_provider_fn_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_param_descriptor kParams[] = {
+    static const cxpr_provider_param_descriptor params[] = {
         {"fast"},
         {"slow"},
     };
-    static const cxpr_provider_field_descriptor kFields[] = {
+    static const cxpr_provider_field_descriptor fields[] = {
         {"value"},
         {"signal"},
     };
-    static const cxpr_provider_fn_spec kRecordFn = {
+    static const cxpr_provider_fn_spec record_fn = {
         .name = "record_fn",
         .min_args = 1u,
         .max_args = 2u,
-        .params = kParams,
-        .param_count = CXPR_ARRAY_COUNT(kParams),
-        .fields = kFields,
-        .field_count = CXPR_ARRAY_COUNT(kFields),
+        .params = params,
+        .param_count = CXPR_ARRAY_COUNT(params),
+        .fields = fields,
+        .field_count = CXPR_ARRAY_COUNT(fields),
         .primary_field_index = 0,
         .flags = CXPR_PROVIDER_FN_RECORD_OUTPUT,
     };
-    static const cxpr_provider_fn_spec* const kSpecs[] = {
-        &kRecordFn,
+    static const cxpr_provider_fn_spec* const specs[] = {
+        &record_fn,
     };
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_fn_spec* test_record_provider_fn_spec_find(
@@ -183,17 +183,17 @@ static const cxpr_provider_fn_spec* test_record_provider_fn_spec_find(
 }
 
 static void test_provider_signatures_register_record_output_struct_producer(void) {
-    static const cxpr_provider_vtable kVtable = {
+    static const cxpr_provider_vtable vtable = {
         .fn_specs = test_record_provider_fn_specs,
         .fn_spec_find = test_record_provider_fn_spec_find,
         .source_specs = test_provider_source_specs,
         .source_spec_find = test_provider_source_spec_find,
         .expr_param_spec_for = NULL,
     };
-    static const cxpr_provider kProvider = {
+    static const cxpr_provider provider = {
         "record-test",
         NULL,
-        &kVtable,
+        &vtable,
     };
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_parser* parser = cxpr_parser_new();
@@ -209,7 +209,7 @@ static void test_provider_signatures_register_record_output_struct_producer(void
 
     cxpr_register_provider_signatures(
         reg,
-        &kProvider,
+        &provider,
         &(const cxpr_host_config){
             .runtime_required_scalar = test_runtime_required_scalar,
         });
@@ -232,7 +232,7 @@ static void test_provider_signatures_register_record_output_struct_producer(void
  * Source-plan EXPRESSION node test fixtures
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-static const cxpr_provider_scope_spec kExprScope = {
+static const cxpr_provider_scope_spec expr_scope = {
     "selector",
     1,
 };
@@ -240,29 +240,29 @@ static const cxpr_provider_scope_spec kExprScope = {
 static const cxpr_provider_fn_spec* const* expr_provider_fn_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_param_descriptor kEmaParams[] = {{"period"}};
-    static const cxpr_provider_param_descriptor kAtrParams[] = {{"period"}};
-    static const cxpr_provider_fn_spec kEma = {
+    static const cxpr_provider_param_descriptor ema_params[] = {{"period"}};
+    static const cxpr_provider_param_descriptor atr_params[] = {{"period"}};
+    static const cxpr_provider_fn_spec ema = {
         .name = "ema",
         .min_args = 1u,
         .max_args = 1u,
         .source_min_args = 1u,
         .source_max_args = 1u,
-        .params = kEmaParams,
+        .params = ema_params,
         .param_count = 1u,
         .fields = NULL,
         .field_count = 0u,
         .primary_field_index = -1,
         .flags = CXPR_PROVIDER_FN_SOURCE_INPUT,
-        .scope = &kExprScope,
+        .scope = &expr_scope,
     };
-    static const cxpr_provider_fn_spec kAtr = {
+    static const cxpr_provider_fn_spec atr = {
         .name = "atr",
         .min_args = 1u,
         .max_args = 1u,
         .source_min_args = 0u,
         .source_max_args = 0u,
-        .params = kAtrParams,
+        .params = atr_params,
         .param_count = 1u,
         .fields = NULL,
         .field_count = 0u,
@@ -270,11 +270,11 @@ static const cxpr_provider_fn_spec* const* expr_provider_fn_specs(
         .flags = 0u,
         .scope = NULL,
     };
-    static const cxpr_provider_fn_spec* const kSpecs[] = {&kEma, &kAtr};
+    static const cxpr_provider_fn_spec* const specs[] = {&ema, &atr};
 
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_fn_spec* expr_provider_fn_spec_find(
@@ -292,13 +292,13 @@ static const cxpr_provider_fn_spec* expr_provider_fn_spec_find(
 static const cxpr_provider_source_spec* const* expr_provider_source_specs(
     const void* userdata,
     size_t* count) {
-    static const cxpr_provider_source_spec kClose = {"close", 0u, 1u, &kExprScope};
-    static const cxpr_provider_source_spec kHigh  = {"high",  0u, 1u, &kExprScope};
-    static const cxpr_provider_source_spec kLow   = {"low",   0u, 1u, &kExprScope};
-    static const cxpr_provider_source_spec* const kSpecs[] = {&kClose, &kHigh, &kLow};
+    static const cxpr_provider_source_spec close = {"close", 0u, 1u, &expr_scope};
+    static const cxpr_provider_source_spec high  = {"high",  0u, 1u, &expr_scope};
+    static const cxpr_provider_source_spec low   = {"low",   0u, 1u, &expr_scope};
+    static const cxpr_provider_source_spec* const specs[] = {&close, &high, &low};
     (void)userdata;
-    if (count) *count = CXPR_ARRAY_COUNT(kSpecs);
-    return kSpecs;
+    if (count) *count = CXPR_ARRAY_COUNT(specs);
+    return specs;
 }
 
 static const cxpr_provider_source_spec* expr_provider_source_spec_find(
@@ -318,18 +318,18 @@ static int expr_provider_expr_param_spec_for(
     const void* userdata,
     const char* name,
     cxpr_expr_param_spec* out) {
-    static const char* const kEmaNames[] = {"source", "period"};
-    static const cxpr_expr_arg_kind kEmaKinds[] = {
+    static const char* const ema_names[] = {"source", "period"};
+    static const cxpr_expr_arg_kind ema_kinds[] = {
         CXPR_EXPR_ARG_SCALAR_SOURCE,
         CXPR_EXPR_ARG_NUMERIC,
     };
     (void)userdata;
     if (!name || !out || strcmp(name, "ema") != 0) return 0;
     *out = (cxpr_expr_param_spec){
-        .names = kEmaNames,
+        .names = ema_names,
         .defaults = NULL,
-        .kinds = kEmaKinds,
-        .count = CXPR_ARRAY_COUNT(kEmaNames),
+        .kinds = ema_kinds,
+        .count = CXPR_ARRAY_COUNT(ema_names),
         .min_count = 2u,
         .lookback_sugar_name = NULL,
         .has_timeframe_param = 0,
@@ -337,7 +337,7 @@ static int expr_provider_expr_param_spec_for(
     return 1;
 }
 
-static const cxpr_provider kExprProvider = {
+static const cxpr_provider expr_provider = {
     "expr-test",
     NULL,
     &(const cxpr_provider_vtable){
@@ -375,7 +375,7 @@ static void test_provider_host_runtime_supplies_expression_data(void) {
     double out = 0.0;
 
     assert(reg && ctx && parser);
-    cxpr_register_provider_signatures(reg, &kExprProvider, &host);
+    cxpr_register_provider_signatures(reg, &expr_provider, &host);
     ast = cxpr_parse(parser, "ema(10) + close() + atr(3)", &err);
     assert(ast != NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
@@ -390,7 +390,7 @@ static void test_provider_host_runtime_supplies_expression_data(void) {
 
 static void test_provider_registration_helpers_are_directly_covered(void) {
     cxpr_registry* reg = cxpr_registry_new();
-    const cxpr_provider_fn_spec* ema = cxpr_provider_fn_spec_find(&kExprProvider, "ema");
+    const cxpr_provider_fn_spec* ema = cxpr_provider_fn_spec_find(&expr_provider, "ema");
     cxpr_expr_param_spec expr_spec = {0};
     size_t min_args = 0u;
     size_t max_args = 0u;
@@ -401,7 +401,7 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(min_args == 1u);
     assert(max_args == 2u);
 
-    assert(cxpr_provider_expr_param_spec_for(&kExprProvider, "ema", &expr_spec) != 0);
+    assert(cxpr_provider_expr_param_spec_for(&expr_provider, "ema", &expr_spec) != 0);
     assert(expr_spec.count == 2u);
     assert(expr_spec.kinds[0] == CXPR_EXPR_ARG_SCALAR_SOURCE);
     assert(expr_spec.kinds[1] == CXPR_EXPR_ARG_NUMERIC);
@@ -454,17 +454,17 @@ static void test_runtime_call_helpers_are_directly_covered(void) {
     assert(strcmp(call.name, "ema") == 0);
 
     memset(&call, 0, sizeof(call));
-    assert(cxpr_parse_runtime_call_provider(&kExprProvider, ast, &call) != 0);
+    assert(cxpr_parse_runtime_call_provider(&expr_provider, ast, &call) != 0);
     assert(call.scope_value != NULL && strcmp(call.scope_value, "daily") == 0);
     assert(call.value_arg_count == 1u);
 
-    source_arg = cxpr_provider_runtime_call_arg(&kExprProvider, ast, 0u);
+    source_arg = cxpr_provider_runtime_call_arg(&expr_provider, ast, 0u);
     assert(source_arg != NULL);
     assert(cxpr_ast_type(source_arg) == CXPR_NODE_IDENTIFIER);
     assert(strcmp(cxpr_ast_identifier_name(source_arg), "close") == 0);
 
     assert(cxpr_provider_eval_runtime_call_number_args(
-        &kExprProvider,
+        &expr_provider,
         ast,
         1u,
         ctx,
@@ -491,7 +491,7 @@ static void test_resolve_expression_scope(void) {
 
     ast = cxpr_parse(parser, "ema(close, period=10, selector=\"daily\") > close", &err);
     assert(ast != NULL);
-    if (!cxpr_resolve_expression_scope(&kExprProvider, ast, &scope)) abort();
+    if (!cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     if (strcmp(scope.scope_name, "selector") != 0) abort();
     if (strcmp(scope.scope_value, "daily") != 0) abort();
     if (scope.origin == NULL) abort();
@@ -499,19 +499,19 @@ static void test_resolve_expression_scope(void) {
 
     ast = cxpr_parse(parser, "high(\"weekly\") > low", &err);
     assert(ast != NULL);
-    if (!cxpr_resolve_expression_scope(&kExprProvider, ast, &scope)) abort();
+    if (!cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     if (strcmp(scope.scope_name, "selector") != 0) abort();
     if (strcmp(scope.scope_value, "weekly") != 0) abort();
     cxpr_ast_free(ast);
 
     ast = cxpr_parse(parser, "foo(\"daily\")", &err);
     assert(ast != NULL);
-    if (cxpr_resolve_expression_scope(&kExprProvider, ast, &scope)) abort();
+    if (cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     cxpr_ast_free(ast);
 
     ast = cxpr_parse(parser, "close > 10 ? \"daily\" : \"weekly\"", &err);
     assert(ast != NULL);
-    if (cxpr_resolve_expression_scope(&kExprProvider, ast, &scope)) abort();
+    if (cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     cxpr_ast_free(ast);
 
     cxpr_parser_free(parser);
@@ -535,7 +535,7 @@ static void test_source_plan_expression_binary_op(void) {
     assert(cxpr_ast_type(source_arg) == CXPR_NODE_BINARY_OP);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, source_arg, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, source_arg, &plan);
     if (ok == 0) abort();
     assert(plan.root.kind == CXPR_SOURCE_PLAN_EXPRESSION);
     assert(plan.root.expression_ast == source_arg);
@@ -561,7 +561,7 @@ static void test_source_plan_expression_via_smoothing(void) {
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, ast, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, ast, &plan);
     if (ok == 0) abort();
     assert(plan.root.kind == CXPR_SOURCE_PLAN_SMOOTHING);
     assert(strcmp(plan.root.name, "ema") == 0);
@@ -592,7 +592,7 @@ static void test_source_plan_expression_with_lookback(void) {
     assert(cxpr_ast_type(source_arg) == CXPR_NODE_BINARY_OP);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, source_arg, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, source_arg, &plan);
     if (ok == 0) abort();
     assert(plan.root.kind == CXPR_SOURCE_PLAN_EXPRESSION);
     assert(plan.canonical != NULL);
@@ -616,7 +616,7 @@ static void test_source_plan_expression_simple_binary(void) {
     assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, ast, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, ast, &plan);
     if (ok == 0) abort();
     assert(plan.root.kind == CXPR_SOURCE_PLAN_EXPRESSION);
     assert(plan.canonical != NULL);
@@ -642,7 +642,7 @@ static void test_source_plan_field_with_selector_and_lookback(void) {
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, ast, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, ast, &plan);
     if (ok == 0) abort();
     if (plan.root.kind != CXPR_SOURCE_PLAN_FIELD) abort();
     if (strcmp(plan.root.name, "close") != 0) abort();
@@ -674,7 +674,7 @@ static void test_source_plan_smoothing_with_selector_and_lookback(void) {
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, ast, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, ast, &plan);
     if (ok == 0) abort();
     if (plan.root.kind != CXPR_SOURCE_PLAN_SMOOTHING) abort();
     if (strcmp(plan.root.name, "ema") != 0) abort();
@@ -711,7 +711,7 @@ static void test_source_plan_smoothing_with_named_source_arg(void) {
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
-    ok = cxpr_parse_provider_source_plan_ast(&kExprProvider, ast, &plan);
+    ok = cxpr_parse_provider_source_plan_ast(&expr_provider, ast, &plan);
     if (ok == 0) abort();
     if (plan.root.kind != CXPR_SOURCE_PLAN_SMOOTHING) abort();
     if (plan.root.arg_count != 1u || plan.root.arg_slots[0] != 0u) abort();

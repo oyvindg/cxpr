@@ -231,11 +231,16 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
 
         if (value.type != CXPR_VALUE_NUMBER &&
             value.type != CXPR_VALUE_BOOL &&
-            value.type != CXPR_VALUE_STRUCT) {
+            value.type != CXPR_VALUE_STRUCT &&
+            value.type != CXPR_VALUE_STRING &&
+            value.type != CXPR_VALUE_NULL &&
+            value.type != CXPR_VALUE_TIMESTAMP &&
+            value.type != CXPR_VALUE_DURATION &&
+            value.type != CXPR_VALUE_ARRAY) {
             cxpr_context_set_expression_scope(ctx, previous_scope);
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
-                err->message = "Expression result must be double, bool, or struct";
+                err->message = "Expression result has unsupported value type";
             }
             return;
         }

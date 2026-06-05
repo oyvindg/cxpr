@@ -4,6 +4,11 @@
 #include <string.h>
 
 static double twice(double x) { return x * 2.0; }
+static double add2(const double* args, size_t argc, void* userdata) {
+    (void)argc;
+    (void)userdata;
+    return args[0] + args[1];
+}
 
 static void test_registry_add_paths(void) {
     cxpr_registry* reg = cxpr_registry_new();
@@ -21,6 +26,14 @@ static void test_registry_add_paths(void) {
     assert(entry->max_args == 1);
     assert(entry->param_name_count == 1);
     assert(strcmp(entry->param_names[0], "value") == 0);
+
+    cxpr_registry_add_numeric(reg, "add2", add2, 2, 2, NULL, NULL);
+    entry = cxpr_registry_find(reg, "add2");
+    assert(entry);
+    assert(entry->sync_func == add2);
+    assert(entry->native_kind == CXPR_NATIVE_KIND_NONE);
+    assert(entry->return_type == CXPR_VALUE_NUMBER);
+    assert(entry->has_return_type);
 
     cxpr_registry_free(reg);
 }

@@ -63,6 +63,11 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
         return entry->typed_func(args, argc, entry->userdata);
     }
 
+    if (entry->value_func) {
+        if (err) *err = (cxpr_error){0};
+        return entry->value_func(args, argc, entry->userdata);
+    }
+
     if (argc > CXPR_MAX_CALL_ARGS) {
         if (err) {
             err->code = CXPR_ERR_WRONG_ARITY;
@@ -78,7 +83,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
         if (args[i].type != CXPR_VALUE_NUMBER) {
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
-                err->message = "Function arguments must be doubles";
+                err->message = "Function arguments must be numbers";
                 err->position = 0;
                 err->line = 0;
                 err->column = 0;
@@ -88,10 +93,6 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
         scalar_args[i] = args[i].d;
     }
 
-    if (entry->value_func) {
-        if (err) *err = (cxpr_error){0};
-        return entry->value_func(scalar_args, argc, entry->userdata);
-    }
     if (err) *err = (cxpr_error){0};
     return cxpr_num(entry->sync_func(scalar_args, argc, entry->userdata));
 }

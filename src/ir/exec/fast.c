@@ -122,6 +122,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
     static void* dispatch[] = {
         [CXPR_OP_PUSH_CONST] = &&op_push_const,
         [CXPR_OP_PUSH_BOOL] = &&op_push_bool,
+        [CXPR_OP_PUSH_STRING] = &&op_unsupported,
         [CXPR_OP_LOAD_LOCAL] = &&op_load_local,
         [CXPR_OP_LOAD_LOCAL_SQUARE] = &&op_load_local_square,
         [CXPR_OP_LOAD_VAR] = &&op_load_var,
@@ -398,7 +399,11 @@ op_call_func:
     }
     sp -= instr->index;
     if (instr->func->value_func) {
-        cxpr_value value_result = instr->func->value_func(&stack[sp], instr->index, instr->func->userdata);
+        for (size_t i = 0; i < instr->index; ++i) {
+            scalar_args[i] = cxpr_num(stack[sp + i]);
+        }
+        cxpr_value value_result = instr->func->value_func(
+            scalar_args, instr->index, instr->func->userdata);
         if (value_result.type == CXPR_VALUE_NUMBER) stack[sp++] = value_result.d;
         else if (value_result.type == CXPR_VALUE_BOOL) stack[sp++] = value_result.b ? 1.0 : 0.0;
         else return cxpr_ir_runtime_error(err, "Function did not evaluate to scalar").d;
@@ -489,6 +494,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
     static void* dispatch[] = {
         [CXPR_OP_PUSH_CONST] = &&opb_push_const,
         [CXPR_OP_PUSH_BOOL] = &&opb_push_bool,
+        [CXPR_OP_PUSH_STRING] = &&opb_unsupported,
         [CXPR_OP_LOAD_LOCAL] = &&opb_load_local,
         [CXPR_OP_LOAD_LOCAL_SQUARE] = &&opb_load_local_square,
         [CXPR_OP_LOAD_VAR] = &&opb_load_var,
@@ -790,8 +796,11 @@ opb_call_func:
     }
     nsp -= instr->index;
     if (instr->func->value_func) {
+        for (size_t i = 0; i < instr->index; ++i) {
+            scalar_args[i] = cxpr_num(nstack[nsp + i]);
+        }
         cxpr_value value_result =
-            instr->func->value_func(&nstack[nsp], instr->index, instr->func->userdata);
+            instr->func->value_func(scalar_args, instr->index, instr->func->userdata);
         if (value_result.type == CXPR_VALUE_BOOL) bstack[bsp++] = value_result.b;
         else if (value_result.type == CXPR_VALUE_NUMBER) nstack[nsp++] = value_result.d;
         else {

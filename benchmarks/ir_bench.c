@@ -62,10 +62,10 @@ static void bench_macd(const double* args, size_t argc,
     out[2] = cxpr_num(out[0].d - out[1].d);
 }
 
-static cxpr_value bench_tf_value_fn(const double* args, size_t argc, void* userdata) {
+static cxpr_value bench_tf_value_fn(const cxpr_value* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
-    return cxpr_num(args[0] + 1.0);
+    return cxpr_num(args[0].d + 1.0);
 }
 
 static cxpr_value bench_tf_ast_handler_fn(const cxpr_ast* call_ast,

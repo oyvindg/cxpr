@@ -49,9 +49,9 @@ static void cxpr_registry_replace_entry(cxpr_func_entry* entry) {
     entry->userdata_free = NULL;
 }
 
-void cxpr_registry_add(cxpr_registry* reg, const char* name,
-                       cxpr_func_ptr func, size_t min_args, size_t max_args,
-                       void* userdata, cxpr_userdata_free_fn free_userdata) {
+void cxpr_registry_add_numeric(cxpr_registry* reg, const char* name,
+                               cxpr_func_ptr func, size_t min_args, size_t max_args,
+                               void* userdata, cxpr_userdata_free_fn free_userdata) {
     if (!reg || !name || !func) return;
 
     cxpr_func_entry* existing = cxpr_registry_find(reg, name);
@@ -79,6 +79,12 @@ void cxpr_registry_add(cxpr_registry* reg, const char* name,
     entry->userdata = userdata;
     entry->userdata_free = free_userdata;
     reg->version++;
+}
+
+void cxpr_registry_add(cxpr_registry* reg, const char* name,
+                       cxpr_func_ptr func, size_t min_args, size_t max_args,
+                       void* userdata, cxpr_userdata_free_fn free_userdata) {
+    cxpr_registry_add_numeric(reg, name, func, min_args, max_args, userdata, free_userdata);
 }
 
 void cxpr_registry_add_value(cxpr_registry* reg, const char* name,

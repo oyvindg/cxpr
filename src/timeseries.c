@@ -3,7 +3,7 @@
  * @brief Native time-series helpers and builtins for cxpr.
  */
 
-#include "registry/internal.h"
+#include "registry/internal.h" // IWYU pragma: keep
 #include <cxpr/ast.h>
 #include <math.h>
 #include <string.h>
@@ -39,16 +39,16 @@ static cxpr_value cxpr_timeseries_call_error(
     return cxpr_num(NAN);
 }
 
-static int cxpr_timeseries_read_bars(
+static int cxpr_timeseries_read_samples(
     const cxpr_ast* call_ast,
     const cxpr_context* ctx,
     const cxpr_registry* reg,
-    long long min_bars,
-    long long* out_bars,
+    long long min_samples,
+    long long* out_samples,
     cxpr_error* err) {
-    const cxpr_ast* bars_ast;
-    double bars_value = 0.0;
-    long long bars_ll;
+    const cxpr_ast* samples_ast;
+    double samples_value = 0.0;
+    long long samples_ll;
 
     if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
         if (err) {
@@ -60,25 +60,25 @@ static int cxpr_timeseries_read_bars(
     if (cxpr_ast_function_argc(call_ast) != 2) {
         if (err) {
             err->code = CXPR_ERR_WRONG_ARITY;
-            err->message = "Time-series function expects value, bars";
+            err->message = "Time-series function expects value, samples";
         }
         return 0;
     }
 
-    bars_ast = cxpr_ast_function_arg(call_ast, 1);
-    if (!cxpr_eval_ast_number(bars_ast, ctx, reg, &bars_value, err)) return 0;
+    samples_ast = cxpr_ast_function_arg(call_ast, 1);
+    if (!cxpr_eval_ast_number(samples_ast, ctx, reg, &samples_value, err)) return 0;
 
-    bars_ll = (long long)llround(bars_value);
-    if (!isfinite(bars_value) || fabs(bars_value - (double)bars_ll) > 1e-9 ||
-        bars_ll < min_bars) {
+    samples_ll = (long long)llround(samples_value);
+    if (!isfinite(samples_value) || fabs(samples_value - (double)samples_ll) > 1e-9 ||
+        samples_ll < min_samples) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
-            err->message = "Time-series bars must be an integer above the minimum";
+            err->message = "Time-series samples must be an integer above the minimum";
         }
         return 0;
     }
 
-    if (out_bars) *out_bars = bars_ll;
+    if (out_samples) *out_samples = samples_ll;
     return 1;
 }
 
@@ -97,7 +97,7 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
                                              cxpr_timeseries_trend_mode mode,
                                              cxpr_error* err) {
     const cxpr_ast* value_ast;
-    long long bars_ll;
+    long long samples_ll;
 
     if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
         if (err) {
@@ -111,18 +111,18 @@ static cxpr_value cxpr_timeseries_trend_eval(const cxpr_ast* call_ast,
         if (err) {
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = mode == CXPR_TIMESERIES_TREND_RISING
-                ? "rising(...) expects value, lookback"
-                : "falling(...) expects value, lookback";
+                ? "rising(...) expects value, samples"
+                : "falling(...) expects value, samples";
         }
         return cxpr_bool(false);
     }
 
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 2, &bars_ll, err)) {
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 2, &samples_ll, err)) {
         return cxpr_bool(false);
     }
 
-    for (long long i = 0; i < bars_ll - 1; ++i) {
+    for (long long i = 0; i < samples_ll - 1; ++i) {
         double lhs = 0.0;
         double rhs = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &lhs, err) ||
@@ -189,7 +189,7 @@ static cxpr_value cxpr_timeseries_delta(const cxpr_ast* call_ast,
                                         void* userdata,
                                         cxpr_error* err) {
     const cxpr_ast* value_ast;
-    long long bars_ll;
+    long long samples_ll;
     double value = 0.0;
     double previous = 0.0;
 
@@ -198,11 +198,11 @@ static cxpr_value cxpr_timeseries_delta(const cxpr_ast* call_ast,
         return cxpr_timeseries_call_error(call_ast, err);
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
         return cxpr_num(NAN);
     }
     if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
-        !cxpr_eval_ast_number_at_offset(value_ast, (double)bars_ll, ctx, reg, &previous, err)) {
+        !cxpr_eval_ast_number_at_offset(value_ast, (double)samples_ll, ctx, reg, &previous, err)) {
         return cxpr_num(NAN);
     }
     return cxpr_num(value - previous);
@@ -214,7 +214,7 @@ static cxpr_value cxpr_timeseries_roc(const cxpr_ast* call_ast,
                                       void* userdata,
                                       cxpr_error* err) {
     const cxpr_ast* value_ast;
-    long long bars_ll;
+    long long samples_ll;
     double value = 0.0;
     double previous = 0.0;
 
@@ -223,11 +223,11 @@ static cxpr_value cxpr_timeseries_roc(const cxpr_ast* call_ast,
         return cxpr_timeseries_call_error(call_ast, err);
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
         return cxpr_num(NAN);
     }
     if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
-        !cxpr_eval_ast_number_at_offset(value_ast, (double)bars_ll, ctx, reg, &previous, err)) {
+        !cxpr_eval_ast_number_at_offset(value_ast, (double)samples_ll, ctx, reg, &previous, err)) {
         return cxpr_num(NAN);
     }
     if (previous == 0.0) return cxpr_num(NAN);
@@ -240,18 +240,18 @@ static cxpr_value cxpr_timeseries_window_eval(const cxpr_ast* call_ast,
                                               cxpr_timeseries_window_mode mode,
                                               cxpr_error* err) {
     const cxpr_ast* value_ast;
-    long long bars_ll;
+    long long samples_ll;
     double out = 0.0;
 
     if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
         return cxpr_timeseries_call_error(call_ast, err);
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
         return cxpr_num(NAN);
     }
 
-    for (long long i = 0; i < bars_ll; ++i) {
+    for (long long i = 0; i < samples_ll; ++i) {
         double value = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
             return cxpr_num(NAN);
@@ -305,7 +305,7 @@ static cxpr_value cxpr_timeseries_lowest(const cxpr_ast* call_ast,
         call_ast, ctx, reg, CXPR_TIMESERIES_WINDOW_LOWEST, err);
 }
 
-/** @brief Native implementation for `rising(value, lookback)`. */
+/** @brief Native implementation for `rising(value, samples)`. */
 static cxpr_value cxpr_timeseries_rising(const cxpr_ast* call_ast,
                                          const cxpr_context* ctx,
                                          const cxpr_registry* reg,
@@ -316,7 +316,7 @@ static cxpr_value cxpr_timeseries_rising(const cxpr_ast* call_ast,
         call_ast, ctx, reg, CXPR_TIMESERIES_TREND_RISING, err);
 }
 
-/** @brief Native implementation for `falling(value, lookback)`. */
+/** @brief Native implementation for `falling(value, samples)`. */
 static cxpr_value cxpr_timeseries_falling(const cxpr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
@@ -333,7 +333,7 @@ static cxpr_value cxpr_timeseries_net_eval(const cxpr_ast* call_ast,
                                            cxpr_timeseries_net_mode mode,
                                            cxpr_error* err) {
     const cxpr_ast* value_ast;
-    long long bars_ll;
+    long long samples_ll;
     double value = 0.0;
     double previous = 0.0;
 
@@ -348,18 +348,18 @@ static cxpr_value cxpr_timeseries_net_eval(const cxpr_ast* call_ast,
         if (err) {
             err->code = CXPR_ERR_WRONG_ARITY;
             err->message = mode == CXPR_TIMESERIES_NET_UP
-                ? "net_up(...) expects value, bars"
-                : "net_down(...) expects value, bars";
+                ? "net_up(...) expects value, samples"
+                : "net_down(...) expects value, samples";
         }
         return cxpr_bool(false);
     }
 
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
         return cxpr_bool(false);
     }
     if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
-        !cxpr_eval_ast_number_at_offset(value_ast, (double)bars_ll, ctx, reg, &previous, err)) {
+        !cxpr_eval_ast_number_at_offset(value_ast, (double)samples_ll, ctx, reg, &previous, err)) {
         return cxpr_bool(false);
     }
     if (!isfinite(value) || !isfinite(previous)) return cxpr_bool(false);
@@ -389,14 +389,14 @@ static cxpr_value cxpr_timeseries_net_down(const cxpr_ast* call_ast,
         call_ast, ctx, reg, CXPR_TIMESERIES_NET_DOWN, err);
 }
 
-/** @brief Native implementation for `repeat(condition, bars)`. */
+/** @brief Native implementation for `repeat(condition, samples)`. */
 static cxpr_value cxpr_timeseries_repeat(const cxpr_ast* call_ast,
                                          const cxpr_context* ctx,
                                          const cxpr_registry* reg,
                                          void* userdata,
                                          cxpr_error* err) {
     const cxpr_ast* value_ast;
-    long long bars_ll;
+    long long samples_ll;
 
     (void)userdata;
     if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
@@ -405,15 +405,15 @@ static cxpr_value cxpr_timeseries_repeat(const cxpr_ast* call_ast,
     if (cxpr_ast_function_argc(call_ast) != 2) {
         if (err) {
             err->code = CXPR_ERR_WRONG_ARITY;
-            err->message = "repeat(...) expects condition, bars";
+            err->message = "repeat(...) expects condition, samples";
         }
         return cxpr_bool(false);
     }
     value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_bars(call_ast, ctx, reg, 1, &bars_ll, err)) {
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
         return cxpr_bool(false);
     }
-    for (long long i = 0; i < bars_ll; ++i) {
+    for (long long i = 0; i < samples_ll; ++i) {
         bool value = false;
         if (!cxpr_eval_ast_bool_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
             return cxpr_bool(false);
@@ -423,48 +423,149 @@ static cxpr_value cxpr_timeseries_repeat(const cxpr_ast* call_ast,
     return cxpr_bool(true);
 }
 
+static int cxpr_timeseries_read_overlap_bars(const cxpr_ast* call_ast,
+                                             const cxpr_context* ctx,
+                                             const cxpr_registry* reg,
+                                             long long* out_bars,
+                                             cxpr_error* err) {
+    const size_t argc = cxpr_ast_function_argc(call_ast);
+    const cxpr_ast* bars_ast;
+    double bars_value = 0.0;
+    long long bars_ll;
+
+    if (!out_bars) return 0;
+    *out_bars = 0;
+    if (argc == 2u) return 1;
+    if (argc != 3u) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "overlaps(...) expects left, right[, bars]";
+        }
+        return 0;
+    }
+
+    bars_ast = cxpr_ast_function_arg(call_ast, 2);
+    if (!cxpr_eval_ast_number(bars_ast, ctx, reg, &bars_value, err)) return 0;
+
+    bars_ll = (long long)llround(bars_value);
+    if (!isfinite(bars_value) || fabs(bars_value - (double)bars_ll) > 1e-9 ||
+        bars_ll < 0) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "overlaps(...) bars must be an integer >= 0";
+        }
+        return 0;
+    }
+
+    *out_bars = bars_ll;
+    return 1;
+}
+
+static cxpr_value cxpr_timeseries_overlap_eval(const cxpr_ast* call_ast,
+                                               const cxpr_context* ctx,
+                                               const cxpr_registry* reg,
+                                               cxpr_error* err) {
+    const cxpr_ast* left_ast;
+    const cxpr_ast* right_ast;
+    long long bars_ll;
+    bool left_seen = false;
+    bool right_seen = false;
+
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    if (!cxpr_timeseries_read_overlap_bars(call_ast, ctx, reg, &bars_ll, err)) {
+        return cxpr_bool(false);
+    }
+
+    left_ast = cxpr_ast_function_arg(call_ast, 0);
+    right_ast = cxpr_ast_function_arg(call_ast, 1);
+    for (long long i = 0; i <= bars_ll; ++i) {
+        bool left_value = false;
+        bool right_value = false;
+
+        if (!left_seen &&
+            !cxpr_eval_ast_bool_at_offset(left_ast, (double)i, ctx, reg, &left_value, err)) {
+            return cxpr_bool(false);
+        }
+        if (!right_seen &&
+            !cxpr_eval_ast_bool_at_offset(right_ast, (double)i, ctx, reg, &right_value, err)) {
+            return cxpr_bool(false);
+        }
+        left_seen = left_seen || left_value;
+        right_seen = right_seen || right_value;
+        if (left_seen && right_seen) return cxpr_bool(true);
+    }
+    return cxpr_bool(false);
+}
+
+static cxpr_value cxpr_timeseries_overlaps(const cxpr_ast* call_ast,
+                                           const cxpr_context* ctx,
+                                           const cxpr_registry* reg,
+                                           void* userdata,
+                                           cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_overlap_eval(call_ast, ctx, reg, err);
+}
+
 /**
  * @brief Register built-in native time-series predicates.
  * @param reg Destination registry.
  */
-void cxpr_register_timeseries_builtins(cxpr_registry* reg) {
-    static const char* const value_bars_params[] = {"value", "bars"};
+void cxpr_register_timeseries(cxpr_registry* reg) {
+    static const char* const value_samples_params[] = {"value", "samples"};
+    static const char* const overlap_params[] = {"left", "right", "bars"};
 
     if (!reg) return;
 
     cxpr_registry_add_timeseries(reg, "rising", cxpr_timeseries_rising, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "rising", value_bars_params, 2u);
+    cxpr_registry_set_param_names(reg, "rising", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "falling", cxpr_timeseries_falling, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "falling", value_bars_params, 2u);
+    cxpr_registry_set_param_names(reg, "falling", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "net_up", cxpr_timeseries_net_up, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "net_up", value_bars_params, 2u);
+    cxpr_registry_set_param_names(reg, "net_up", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "net_down", cxpr_timeseries_net_down, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "net_down", value_bars_params, 2u);
+    cxpr_registry_set_param_names(reg, "net_down", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "repeat", cxpr_timeseries_repeat, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "repeat", value_bars_params, 2u);
+    cxpr_registry_set_param_names(reg, "repeat", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "overlaps", cxpr_timeseries_overlaps, 2, 3,
+                                 CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "overlaps", overlap_params, 3u);
+    cxpr_registry_add_timeseries(reg, "signal_overlaps", cxpr_timeseries_overlaps, 2, 3,
+                                 CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "signal_overlaps", overlap_params, 3u);
     cxpr_registry_add_timeseries(reg, "cross_above", cxpr_timeseries_cross_above, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_timeseries(reg, "cross_below", cxpr_timeseries_cross_below, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_timeseries(reg, "delta", cxpr_timeseries_delta, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "delta", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "roc", cxpr_timeseries_roc, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "roc", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "highest", cxpr_timeseries_highest, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "highest", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "lowest", cxpr_timeseries_lowest, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "lowest", value_samples_params, 2u);
 }
 
 bool cxpr_timeseries_is_builtin(const char* name) {
     if (!name) return false;
     return strcmp(name, "rising") == 0 ||
            strcmp(name, "falling") == 0 ||
+           strcmp(name, "net_up") == 0 ||
+           strcmp(name, "net_down") == 0 ||
+           strcmp(name, "repeat") == 0 ||
+           strcmp(name, "overlaps") == 0 ||
+           strcmp(name, "signal_overlaps") == 0 ||
            strcmp(name, "cross_above") == 0 ||
            strcmp(name, "cross_below") == 0 ||
            strcmp(name, "delta") == 0 ||

@@ -2,8 +2,6 @@
 #include <assert.h>
 #include <stdio.h>
 
-void cxpr_register_builtins(cxpr_registry* reg);
-
 static void test_registry_defaults_are_callable(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -44,23 +42,39 @@ static void test_registry_defaults_are_callable(void) {
     cxpr_registry_free(reg);
 }
 
-static void test_register_builtins_aliases_defaults(void) {
+static void test_register_math_without_timeseries(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_value result;
 
     assert(reg);
-    cxpr_register_builtins(reg);
-    result = cxpr_registry_call_value(reg, "abs", (double[]){-4.0}, 1, &err);
+    cxpr_register_math(reg);
+
+    result = cxpr_registry_call_value(reg, "sqrt", (double[]){16.0}, 1, &err);
     assert(err.code == CXPR_OK);
     assert(result.type == CXPR_VALUE_NUMBER);
     assert(result.d == 4.0);
+    assert(cxpr_registry_find(reg, "rising") == NULL);
+
+    cxpr_registry_free(reg);
+}
+
+static void test_register_timeseries_without_math(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+
+    assert(reg);
+    cxpr_register_timeseries(reg);
+
+    assert(cxpr_registry_find(reg, "rising") != NULL);
+    assert(cxpr_registry_find(reg, "sqrt") == NULL);
+
     cxpr_registry_free(reg);
 }
 
 int main(void) {
     test_registry_defaults_are_callable();
-    test_register_builtins_aliases_defaults();
+    test_register_math_without_timeseries();
+    test_register_timeseries_without_math();
     printf("  \xE2\x9C\x93 registry_defaults\n");
     return 0;
 }

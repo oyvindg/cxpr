@@ -114,10 +114,10 @@ static double clamp(double v, double lo, double hi) {
 }
 
 // within_limit returns true when the first argument is below the second.
-static cxpr_value within_limit(const double* args, size_t argc, void* userdata) {
+static cxpr_value within_limit(const cxpr_value* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
-    return cxpr_bool(args[0] < args[1]);
+    return cxpr_bool(args[0].d < args[1].d);
 }
 
 int main(void) {
@@ -232,15 +232,25 @@ Supported language features:
 
 ## Values, Structs, and Contexts
 
-Runtime values are typed as `CXPR_VALUE_NUMBER`, `CXPR_VALUE_BOOL`, or
-`CXPR_VALUE_STRUCT`. Use `cxpr_num`, `cxpr_bool`, and
-`cxpr_struct` when returning typed values from callbacks.
+Runtime values are typed as `CXPR_VALUE_NUMBER`, `CXPR_VALUE_BOOL`,
+`CXPR_VALUE_STRING`, `CXPR_VALUE_NULL`, `CXPR_VALUE_TIMESTAMP`,
+`CXPR_VALUE_DURATION`, `CXPR_VALUE_ARRAY`, or `CXPR_VALUE_STRUCT`. Use
+`cxpr_num`, `cxpr_bool`, `cxpr_string`, `cxpr_null`, `cxpr_timestamp`,
+`cxpr_duration`, `cxpr_array`, and `cxpr_struct` when returning typed values
+from callbacks.
+
+Equality supports matching scalar operands across number, bool, string, null,
+timestamp, and duration values, so ordinary boolean logic can include checks
+such as `region == "EU"`. Cross-type equality still fails with a type mismatch.
+Arrays are transport values for callbacks and structs; array literals and deep
+array equality are not part of the expression language yet.
 
 Contexts hold normal variables, `$params`, and named struct values:
 
 ```c
 cxpr_context_set(ctx, "close", 101.5);
 cxpr_context_set_bool(ctx, "market_open", true);
+cxpr_context_set_string(ctx, "region", "EU");
 cxpr_context_set_param(ctx, "threshold", 0.8);
 
 const char* fields[] = {"bid", "ask"};
@@ -431,10 +441,12 @@ err = cxpr_registry_define_fn(reg, "hyp2(a, b) => sqrt(sq(a) + sq(b))");
 
 The registry has several callback tiers:
 
-- `cxpr_registry_add`, `cxpr_registry_add_unary`, `cxpr_registry_add_binary`,
-  `cxpr_registry_add_ternary`, and `cxpr_registry_add_nullary` register scalar numeric callbacks.
-- `cxpr_registry_add_value` registers callbacks that return a typed `cxpr_value`.
-- `cxpr_registry_add_typed` accepts typed arguments and declares a typed return value.
+- `cxpr_registry_add_numeric`, `cxpr_registry_add_unary`, `cxpr_registry_add_binary`,
+  `cxpr_registry_add_ternary`, and `cxpr_registry_add_nullary` register scalar numeric callbacks
+  eligible for the double fast path. `cxpr_registry_add` remains as a compatibility alias.
+- `cxpr_registry_add_value` registers callbacks that accept `cxpr_value` arguments and return a
+  typed `cxpr_value`.
+- `cxpr_registry_add_typed` adds argument type validation and declares a typed return value.
 - `cxpr_registry_add_ast` receives the original call AST and can evaluate arguments itself.
 - `cxpr_registry_add_ast_handler` layers an AST-level dispatch on top of an existing entry
   without replacing its scalar or struct-producer callbacks (see below).
@@ -806,6 +818,12 @@ collection helpers:
 - `cxpr_ast_to_string` and `cxpr_ast_dump` render parsed trees.
 - `cxpr_ast_references`, `cxpr_ast_variables_used`, and `cxpr_ast_functions_used` collect names.
 - `cxpr_ast_producer_fields_used` reports record-field dependencies.
+- `cxpr_ast_contains_reference` and `cxpr_ast_contains_variable` test whether a subtree uses a
+  specific runtime reference or `$param`.
+- `cxpr_ast_call_arg_contexts_for_reference` and `cxpr_ast_call_arg_contexts_for_variable`
+  trace which function or producer calls receive that reference/param anywhere inside their
+  argument subtrees. Hosts can use this to infer chart/source context without hand-parsing
+  expression strings.
 - `cxpr_analyze` and `cxpr_analyze_expr` validate expression shape against a registry.
 
 ```c
@@ -829,6 +847,29 @@ size_t p = cxpr_ast_variables_used(ast, params, 8); // limit
 const char* fns[8];
 size_t f = cxpr_ast_functions_used(ast, fns, 8);    // (none here)
 ```
+
+Trace a reference or parameter into function-call arguments:
+
+```c
+cxpr_ast* ast = cxpr_parse(
+    parser,
+    "supertrend(period=10, mult=ema(atr_pct, $atr_baseline)).value",
+    &err);
+
+const char* contexts[8];
+size_t n = cxpr_ast_call_arg_contexts_for_variable(
+    ast, "atr_baseline", contexts, 8);
+// contexts contains "supertrend" and "ema".
+
+n = cxpr_ast_call_arg_contexts_for_reference(ast, "atr_pct", contexts, 8);
+// contexts again contains "supertrend" and "ema".
+```
+
+When a host maps function names to chart panes or source domains, this gives a stable rule:
+inherit a function context only when the traced reference/param resolves to one unambiguous
+host context. If the same alias or parameter flows into multiple consumers, for example both
+`supertrend(...)` and `macd(...)`, the host should treat that as ambiguous and keep its default
+placement unless it creates separate context-specific outputs.
 
 ## Examples
 

@@ -537,9 +537,9 @@ static void test_wrong_arity(void) {
     printf("  ✓ test_wrong_arity\n");
 }
 
-static cxpr_value test_cross_above(const double* args, size_t argc, void* ud) {
+static cxpr_value test_cross_above(const cxpr_value* args, size_t argc, void* ud) {
     (void)argc; (void)ud;
-    return cxpr_bool(args[0] > args[1]);
+    return cxpr_bool(args[0].d > args[1].d);
 }
 
 static int g_userdata_free_count = 0;

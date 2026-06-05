@@ -12,6 +12,25 @@
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
 
+static cxpr_value return_null_value(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)args;
+    (void)argc;
+    (void)userdata;
+    return cxpr_null();
+}
+
+static cxpr_value return_timestamp_value(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)args;
+    (void)argc;
+    return cxpr_timestamp((int64_t)(intptr_t)userdata);
+}
+
+static cxpr_value return_duration_value(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)args;
+    (void)argc;
+    return cxpr_duration((int64_t)(intptr_t)userdata);
+}
+
 static void test_program_compile_and_eval(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -125,6 +144,75 @@ static void test_program_eval_root_bool_param(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
     printf("  ✓ test_program_eval_root_bool_param\n");
+}
+
+static void test_program_eval_string_equality(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "region == \"EU\"", &err);
+    cxpr_program* prog;
+    bool result;
+
+    assert(ast);
+    cxpr_context_set_string(ctx, "region", "EU");
+
+    prog = cxpr_compile(ast, reg, &err);
+    assert(prog);
+    assert(err.code == CXPR_OK);
+
+    result = cxpr_test_eval_program_bool(prog, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    assert(result == true);
+
+    cxpr_context_set_string(ctx, "region", "US");
+    result = cxpr_test_eval_program_bool(prog, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    assert(result == false);
+
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_program_eval_string_equality\n");
+}
+
+static void test_program_eval_extended_scalar_equality(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(
+        p,
+        "null_a() == null_b() and ts_a() == ts_b() and dur_a() != dur_b()",
+        &err);
+    cxpr_program* prog;
+    bool result;
+
+    assert(ast);
+    cxpr_registry_add_value(reg, "null_a", return_null_value, 0, 0, NULL, NULL);
+    cxpr_registry_add_value(reg, "null_b", return_null_value, 0, 0, NULL, NULL);
+    cxpr_registry_add_value(reg, "ts_a", return_timestamp_value, 0, 0, (void*)(intptr_t)1000, NULL);
+    cxpr_registry_add_value(reg, "ts_b", return_timestamp_value, 0, 0, (void*)(intptr_t)1000, NULL);
+    cxpr_registry_add_value(reg, "dur_a", return_duration_value, 0, 0, (void*)(intptr_t)60, NULL);
+    cxpr_registry_add_value(reg, "dur_b", return_duration_value, 0, 0, (void*)(intptr_t)30, NULL);
+
+    prog = cxpr_compile(ast, reg, &err);
+    assert(prog);
+    assert(err.code == CXPR_OK);
+
+    result = cxpr_test_eval_program_bool(prog, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    assert(result == true);
+
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_program_eval_extended_scalar_equality\n");
 }
 
 static void test_program_eval_out_api(void) {
@@ -291,6 +379,8 @@ int main(void) {
     test_program_eval_bool();
     test_program_eval_bool_param();
     test_program_eval_root_bool_param();
+    test_program_eval_string_equality();
+    test_program_eval_extended_scalar_equality();
     test_program_eval_out_api();
     test_program_eval_number_rejects_bool_result();
     test_program_if_requires_bool_condition();

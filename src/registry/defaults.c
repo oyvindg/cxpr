@@ -125,7 +125,7 @@ double cxpr_max(const double* args, size_t argc, void* userdata) {
     return cxpr_max_n(args, argc);
 }
 
-void cxpr_register_defaults(cxpr_registry* reg) {
+void cxpr_register_math(cxpr_registry* reg) {
     if (!reg) return;
 
     cxpr_registry_add(reg, "min", cxpr_min, 1, 8, NULL, NULL);
@@ -174,9 +174,10 @@ void cxpr_register_defaults(cxpr_registry* reg) {
     cxpr_registry_add_nullary(reg, "inf", cxpr_inf);
 
     cxpr_registry_add_ternary(reg, "if", cxpr_if);
-    cxpr_register_timeseries_builtins(reg);
 }
 
-void cxpr_register_builtins(cxpr_registry* reg) {
-    cxpr_register_defaults(reg);
+void cxpr_register_defaults(cxpr_registry* reg) {
+    if (!reg) return;
+    cxpr_register_math(reg);
+    cxpr_register_timeseries(reg);
 }

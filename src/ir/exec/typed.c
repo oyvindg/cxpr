@@ -36,6 +36,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 return cxpr_num(NAN);
             }
             break;
+        case CXPR_OP_PUSH_STRING:
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_string(instr->name),
+                                    CXPR_IR_STACK_CAPACITY, err)) {
+                return cxpr_num(NAN);
+            }
+            break;
         case CXPR_OP_LOAD_LOCAL:
             if (instr->index >= local_count) {
                 return cxpr_ir_runtime_error(err, "Unknown local variable");
@@ -78,9 +84,14 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 if (found) {
                     result = cxpr_bool(bool_value);
                 } else {
-                    result = cxpr_num(cxpr_ir_lookup_cached_scalar(
-                        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
-                        &found));
+                    const char* string_value = cxpr_context_get_param_string(ctx, instr->name, &found);
+                    if (found) {
+                        result = cxpr_string(string_value);
+                    } else {
+                        result = cxpr_num(cxpr_ir_lookup_cached_scalar(
+                            ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                            &found));
+                    }
                 }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
             }
@@ -176,17 +187,27 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             case CXPR_OP_CMP_EQ:
             case CXPR_OP_CMP_NEQ:
                 if (a.type != b.type ||
-                    (a.type != CXPR_VALUE_NUMBER && a.type != CXPR_VALUE_BOOL)) {
+                    (a.type != CXPR_VALUE_NUMBER && a.type != CXPR_VALUE_BOOL &&
+                     a.type != CXPR_VALUE_STRING && a.type != CXPR_VALUE_NULL &&
+                     a.type != CXPR_VALUE_TIMESTAMP && a.type != CXPR_VALUE_DURATION)) {
                     if (err) {
                         err->code = CXPR_ERR_TYPE_MISMATCH;
-                        err->message = "Equality requires matching double/bool operands";
+                        err->message = "Equality requires matching scalar operands";
                     }
                     return cxpr_num(NAN);
                 }
                 if (a.type == CXPR_VALUE_NUMBER) {
                     result = cxpr_bool(instr->op == CXPR_OP_CMP_EQ ? (a.d == b.d) : (a.d != b.d));
-                } else {
+                } else if (a.type == CXPR_VALUE_BOOL) {
                     result = cxpr_bool(instr->op == CXPR_OP_CMP_EQ ? (a.b == b.b) : (a.b != b.b));
+                } else if (a.type == CXPR_VALUE_STRING) {
+                    result = cxpr_bool(instr->op == CXPR_OP_CMP_EQ
+                                           ? (strcmp(a.str, b.str) == 0)
+                                           : (strcmp(a.str, b.str) != 0));
+                } else if (a.type == CXPR_VALUE_NULL) {
+                    result = cxpr_bool(instr->op == CXPR_OP_CMP_EQ);
+                } else {
+                    result = cxpr_bool(instr->op == CXPR_OP_CMP_EQ ? (a.i64 == b.i64) : (a.i64 != b.i64));
                 }
                 break;
             default:

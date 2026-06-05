@@ -31,10 +31,10 @@
 
 static double readme_deg2rad(double d)                     { return d * READMETEST_PI / 180.0; }
 static double readme_clamp(double v, double lo, double hi) { return v < lo ? lo : v > hi ? hi : v; }
-static cxpr_value readme_within_limit(const double* args, size_t argc, void* userdata) {
+static cxpr_value readme_within_limit(const cxpr_value* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
-    return cxpr_bool(args[0] < args[1]);
+    return cxpr_bool(args[0].d < args[1].d);
 }
 
 static void test_readme_quick_start(void) {

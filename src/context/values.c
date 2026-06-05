@@ -66,6 +66,82 @@ static bool cxpr_bool_map_get(const cxpr_bool_map* map, const char* name, bool* 
     return false;
 }
 
+static cxpr_string_map_entry* cxpr_string_map_find(cxpr_string_map* map, const char* name) {
+    if (!map || !name) return NULL;
+    for (size_t i = 0u; i < map->count; ++i) {
+        if (strcmp(map->entries[i].name, name) == 0) return &map->entries[i];
+    }
+    return NULL;
+}
+
+static bool cxpr_string_map_set(cxpr_string_map* map, const char* name, const char* value) {
+    cxpr_string_map_entry* entry;
+    cxpr_string_map_entry* grown;
+    char* value_copy;
+    size_t new_capacity;
+
+    if (!map || !name) return false;
+    value_copy = cxpr_strdup(value ? value : "");
+    if (!value_copy) return false;
+
+    entry = cxpr_string_map_find(map, name);
+    if (entry) {
+        free(entry->value);
+        entry->value = value_copy;
+        return true;
+    }
+
+    if (map->count == map->capacity) {
+        new_capacity = map->capacity == 0u ? 8u : map->capacity * 2u;
+        grown = (cxpr_string_map_entry*)realloc(
+            map->entries, new_capacity * sizeof(cxpr_string_map_entry));
+        if (!grown) {
+            free(value_copy);
+            return false;
+        }
+        map->entries = grown;
+        map->capacity = new_capacity;
+    }
+
+    map->entries[map->count].name = cxpr_strdup(name);
+    if (!map->entries[map->count].name) {
+        free(value_copy);
+        return false;
+    }
+    map->entries[map->count].value = value_copy;
+    map->count++;
+    return true;
+}
+
+static void cxpr_string_map_remove(cxpr_string_map* map, const char* name) {
+    if (!map || !name) return;
+    for (size_t i = 0u; i < map->count; ++i) {
+        if (strcmp(map->entries[i].name, name) == 0) {
+            free(map->entries[i].name);
+            free(map->entries[i].value);
+            if (i + 1u < map->count) {
+                memmove(&map->entries[i], &map->entries[i + 1u],
+                        (map->count - i - 1u) * sizeof(cxpr_string_map_entry));
+            }
+            map->count--;
+            return;
+        }
+    }
+}
+
+static const char* cxpr_string_map_get(const cxpr_string_map* map, const char* name,
+                                       bool* found) {
+    if (found) *found = false;
+    if (!map || !name) return NULL;
+    for (size_t i = 0u; i < map->count; ++i) {
+        if (strcmp(map->entries[i].name, name) == 0) {
+            if (found) *found = true;
+            return map->entries[i].value;
+        }
+    }
+    return NULL;
+}
+
 static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
                                     cxpr_context_entry_cache* cache,
                                     cxpr_context_entry_cache* ptr_cache,
@@ -100,6 +176,7 @@ static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
 void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
                                 unsigned long hash, double value) {
     if (ctx && name) cxpr_bool_map_remove(&ctx->bools, name);
+    if (ctx && name) cxpr_string_map_remove(&ctx->strings, name);
     cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
                             ctx->variable_ptr_cache, &ctx->variables_version,
                             name, hash, value);
@@ -112,7 +189,14 @@ void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
 
 void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
+    cxpr_string_map_remove(&ctx->strings, name);
     if (cxpr_bool_map_set(&ctx->bools, name, value)) ctx->variables_version++;
+}
+
+void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* value) {
+    if (!ctx || !name) return;
+    cxpr_bool_map_remove(&ctx->bools, name);
+    if (cxpr_string_map_set(&ctx->strings, name, value)) ctx->variables_version++;
 }
 
 void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries) {
@@ -163,6 +247,25 @@ bool cxpr_context_get_bool(const cxpr_context* ctx, const char* name, bool* foun
     return false;
 }
 
+const char* cxpr_context_get_string(const cxpr_context* ctx, const char* name, bool* found) {
+    bool local_found = false;
+    const char* value;
+
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return NULL;
+    }
+
+    value = cxpr_string_map_get(&ctx->strings, name, &local_found);
+    if (local_found) {
+        if (found) *found = true;
+        return value;
+    }
+    if (ctx->parent) return cxpr_context_get_string(ctx->parent, name, found);
+    if (found) *found = false;
+    return NULL;
+}
+
 bool cxpr_context_get_local_bool(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx || !name) {
         if (found) *found = false;
@@ -171,9 +274,18 @@ bool cxpr_context_get_local_bool(const cxpr_context* ctx, const char* name, bool
     return cxpr_bool_map_get(&ctx->bools, name, found);
 }
 
+const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* name, bool* found) {
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return NULL;
+    }
+    return cxpr_string_map_get(&ctx->strings, name, found);
+}
+
 void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
                                       unsigned long hash, double value) {
     if (ctx && name) cxpr_bool_map_remove(&ctx->bool_params, name);
+    if (ctx && name) cxpr_string_map_remove(&ctx->string_params, name);
     cxpr_context_set_hashed(ctx, &ctx->params, ctx->param_cache,
                             ctx->param_ptr_cache, &ctx->params_version,
                             name, hash, value);
@@ -196,7 +308,14 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
 
 void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
+    cxpr_string_map_remove(&ctx->string_params, name);
     if (cxpr_bool_map_set(&ctx->bool_params, name, value)) ctx->params_version++;
+}
+
+void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const char* value) {
+    if (!ctx || !name) return;
+    cxpr_bool_map_remove(&ctx->bool_params, name);
+    if (cxpr_string_map_set(&ctx->string_params, name, value)) ctx->params_version++;
 }
 
 bool cxpr_context_get_param_bool(const cxpr_context* ctx, const char* name, bool* found) {
@@ -218,12 +337,40 @@ bool cxpr_context_get_param_bool(const cxpr_context* ctx, const char* name, bool
     return false;
 }
 
+const char* cxpr_context_get_param_string(const cxpr_context* ctx, const char* name, bool* found) {
+    bool local_found = false;
+    const char* value;
+
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return NULL;
+    }
+
+    value = cxpr_string_map_get(&ctx->string_params, name, &local_found);
+    if (local_found) {
+        if (found) *found = true;
+        return value;
+    }
+    if (ctx->parent) return cxpr_context_get_param_string(ctx->parent, name, found);
+    if (found) *found = false;
+    return NULL;
+}
+
 bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx || !name) {
         if (found) *found = false;
         return false;
     }
     return cxpr_bool_map_get(&ctx->bool_params, name, found);
+}
+
+const char* cxpr_context_get_local_param_string(const cxpr_context* ctx, const char* name,
+                                                bool* found) {
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return NULL;
+    }
+    return cxpr_string_map_get(&ctx->string_params, name, found);
 }
 
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found) {

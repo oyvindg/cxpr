@@ -165,7 +165,8 @@ static cxpr_ast* cxpr_alias_make_field_from_expanded(cxpr_ast* expanded, const c
             arg_names = cxpr_alias_clone_arg_names(
                 expanded->data.function_call.arg_names,
                 expanded->data.function_call.argc);
-            if (expanded->data.function_call.arg_names && !arg_names) {
+            if (expanded->data.function_call.argc > 0u &&
+                expanded->data.function_call.arg_names && !arg_names) {
                 for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) cxpr_ast_free(args[i]);
                 free(args);
                 return NULL;
@@ -342,25 +343,31 @@ static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_as
             return cxpr_ast_new_unary_op(ast->data.unary_op.op, operand);
         }
         case CXPR_NODE_FUNCTION_CALL:
+        {
+            cxpr_ast* out_call;
             args = cxpr_alias_expand_args(ctx, ast->data.function_call.args, ast->data.function_call.argc);
-            if (ast->data.function_call.argc > 0u && !args) return NULL;
+            if (ast->data.function_call.argc > 0u && !args) {
+                return NULL;
+            }
             arg_names = cxpr_alias_clone_arg_names(ast->data.function_call.arg_names, ast->data.function_call.argc);
-            if (ast->data.function_call.arg_names && !arg_names) {
+            if (ast->data.function_call.argc > 0u && ast->data.function_call.arg_names && !arg_names) {
                 for (size_t i = 0u; i < ast->data.function_call.argc; ++i) cxpr_ast_free(args[i]);
                 free(args);
                 cxpr_alias_set_error(ctx, "Out of memory", 0u);
                 return NULL;
             }
-            return cxpr_ast_new_function_call_named(
+            out_call = cxpr_ast_new_function_call_named(
                 ast->data.function_call.name,
                 args,
                 arg_names,
                 ast->data.function_call.argc);
+            return out_call;
+        }
         case CXPR_NODE_PRODUCER_ACCESS:
             args = cxpr_alias_expand_args(ctx, ast->data.producer_access.args, ast->data.producer_access.argc);
             if (ast->data.producer_access.argc > 0u && !args) return NULL;
             arg_names = cxpr_alias_clone_arg_names(ast->data.producer_access.arg_names, ast->data.producer_access.argc);
-            if (ast->data.producer_access.arg_names && !arg_names) {
+            if (ast->data.producer_access.argc > 0u && ast->data.producer_access.arg_names && !arg_names) {
                 for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) cxpr_ast_free(args[i]);
                 free(args);
                 cxpr_alias_set_error(ctx, "Out of memory", 0u);

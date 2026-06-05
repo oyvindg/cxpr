@@ -14,7 +14,7 @@
 typedef struct cxpr_func_entry {
     char* name;               /**< Function name, owned */
     cxpr_func_ptr sync_func;    /**< Scalar function pointer */
-    cxpr_value_func_ptr value_func; /**< Numeric-in, typed-out function pointer */
+    cxpr_value_func_ptr value_func; /**< Typed-value function pointer */
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
     cxpr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
@@ -97,8 +97,6 @@ cxpr_func_entry* cxpr_registry_find(const cxpr_registry* reg, const char* name);
 /** @brief Return the canonical parameter-name array for one registry entry. */
 const char* const* cxpr_registry_entry_param_names(const cxpr_func_entry* entry,
                                                    size_t* count);
-/** @brief Register internal time-series builtins on a registry. */
-void cxpr_register_timeseries_builtins(cxpr_registry* reg);
 /** @brief Grow the registry entry array. */
 bool cxpr_registry_grow(cxpr_registry* reg);
 /** @brief Reset one entry to a clean zero-initialized state. */

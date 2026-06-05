@@ -28,19 +28,19 @@ int main(void) {
     cxpr_error err = {0};
     size_t min_args = 0u;
     size_t max_args = 0u;
-    static const cxpr_provider_scope_spec kScope = {
+    static const cxpr_provider_scope_spec scope = {
         "selector",
         1,
     };
-    static const cxpr_scoped_source_spec kSources[] = {
-        {"close", 0u, 1u, &kScope},
+    static const cxpr_scoped_source_spec sources[] = {
+        {"close", 0u, 1u, &scope},
     };
-    static const example_values kValues = {
+    static const example_values values = {
         103.75,
     };
     const cxpr_scope_resolver resolver = {
         .resolve = example_resolve,
-        .userdata = (void*)&kValues,
+        .userdata = (void*)&values,
     };
     const double args[] = {7.0};
     double value = 0.0;
@@ -48,7 +48,7 @@ int main(void) {
     if (!reg) return 1;
 
     cxpr_scoped_source_functions_register(
-        reg, kSources, CXPR_ARRAY_COUNT(kSources), &resolver, NULL);
+        reg, sources, CXPR_ARRAY_COUNT(sources), &resolver, NULL);
 
     if (!cxpr_registry_lookup(reg, "close", &min_args, &max_args) ||
         min_args != 0u ||

@@ -44,6 +44,7 @@ cxpr_token cxpr_lexer_peek(cxpr_lexer* lexer);
 typedef enum {
     CXPR_OP_PUSH_CONST,
     CXPR_OP_PUSH_BOOL,
+    CXPR_OP_PUSH_STRING,
     CXPR_OP_LOAD_LOCAL,
     CXPR_OP_LOAD_LOCAL_SQUARE,
     CXPR_OP_LOAD_VAR,

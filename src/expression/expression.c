@@ -26,36 +26,22 @@ bool cxpr_expression_reference_matches_name(const char* reference, const char* n
 }
 
 void cxpr_expression_result_dispose(cxpr_value* value) {
-    if (!value) return;
-    if (value->type == CXPR_VALUE_STRUCT) {
-        cxpr_struct_value_free(value->s);
-    }
-    *value = cxpr_num(0.0);
+    cxpr_value_free(value);
 }
 
 cxpr_value cxpr_expression_result_clone(const cxpr_value* value, cxpr_error* err) {
-    cxpr_struct_value* copy;
+    cxpr_value copy;
 
     if (!value) return cxpr_num(0.0);
 
-    switch (value->type) {
-    case CXPR_VALUE_NUMBER:
-        return cxpr_num(value->d);
-    case CXPR_VALUE_BOOL:
-        return cxpr_bool(value->b);
-    case CXPR_VALUE_STRUCT:
-        copy = cxpr_struct_value_new(
-            value->s ? (const char* const*)value->s->field_names : NULL,
-            value->s ? value->s->field_values : NULL,
-            value->s ? value->s->field_count : 0);
-        if (!copy && value->s && err) {
-            err->code = CXPR_ERR_OUT_OF_MEMORY;
-            err->message = "Out of memory";
-        }
-        return cxpr_struct(copy);
-    default:
-        return cxpr_num(0.0);
+    copy = cxpr_value_clone(value);
+    if (((value->type == CXPR_VALUE_STRUCT && value->s && !copy.s) ||
+         (value->type == CXPR_VALUE_STRING && value->str && !copy.str) ||
+         (value->type == CXPR_VALUE_ARRAY && value->a && !copy.a)) && err) {
+        err->code = CXPR_ERR_OUT_OF_MEMORY;
+        err->message = "Out of memory";
     }
+    return copy;
 }
 
 cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,

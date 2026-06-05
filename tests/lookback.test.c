@@ -3,6 +3,12 @@
 #include <stdio.h>
 #include <string.h>
 
+typedef struct {
+    const cxpr_ast* expected_target;
+    const cxpr_ast* expected_index;
+    size_t calls;
+} test_direct_lookback_env;
+
 static bool test_direct_lookback_resolver(const cxpr_ast* target,
                                           const cxpr_ast* index_ast,
                                           const cxpr_context* ctx,
@@ -10,9 +16,13 @@ static bool test_direct_lookback_resolver(const cxpr_ast* target,
                                           void* userdata,
                                           cxpr_value* out_value,
                                           cxpr_error* err) {
+    test_direct_lookback_env* env = (test_direct_lookback_env*)userdata;
     double index = 0.0;
-    (void)target;
-    (void)userdata;
+    if (env) {
+        if (env->expected_target) assert(target == env->expected_target);
+        if (env->expected_index) assert(index_ast == env->expected_index);
+        env->calls++;
+    }
     if (!cxpr_eval_ast_number(index_ast, ctx, reg, &index, err)) return true;
     *out_value = cxpr_num(100.0 + index);
     return true;
@@ -72,7 +82,7 @@ static void test_named_arg_indicator_field_lookback_parses_as_native_node(void) 
 static void test_aggregate_lookback_wraps_aggregate_call(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, "avg(z_score($primary, $pair, 60))[1]", &err);
+    cxpr_ast* ast = cxpr_parse(parser, "avg(zscore($primary, $pair, 60))[1]", &err);
     assert(ast != NULL && err.code == CXPR_OK);
     assert(cxpr_ast_type(ast) == CXPR_NODE_LOOKBACK);
     assert(cxpr_ast_type(cxpr_ast_lookback_target(ast)) == CXPR_NODE_FUNCTION_CALL);
@@ -107,27 +117,32 @@ static void test_eval_ast_at_lookback_and_offset_call_public_wrappers(void) {
     cxpr_ast* target;
     cxpr_ast* index;
     cxpr_value value = {0};
+    test_direct_lookback_env env = {0};
 
     assert(parser != NULL);
     assert(ctx != NULL);
     assert(reg != NULL);
-    cxpr_registry_set_lookback_resolver(reg, test_direct_lookback_resolver, NULL, NULL);
+    cxpr_registry_set_lookback_resolver(reg, test_direct_lookback_resolver, &env, NULL);
 
     target = cxpr_parse(parser, "close", &err);
     assert(target != NULL);
     index = cxpr_ast_new_number(3.0);
     assert(index != NULL);
 
+    env.expected_target = target;
+    env.expected_index = index;
     assert(cxpr_eval_ast_at_lookback(target, index, ctx, reg, &value, &err));
     assert(err.code == CXPR_OK);
     assert(value.type == CXPR_VALUE_NUMBER);
     assert(value.d == 103.0);
 
     value = (cxpr_value){0};
-    assert(cxpr_eval_ast_at_offset(target, 5.0, ctx, reg, &value, &err));
+    env.expected_index = NULL;
+    assert(cxpr_eval_at_offset(target, 5.0, ctx, reg, &value, &err));
     assert(err.code == CXPR_OK);
     assert(value.type == CXPR_VALUE_NUMBER);
     assert(value.d == 105.0);
+    assert(env.calls == 2u);
 
     cxpr_ast_free(index);
     cxpr_ast_free(target);

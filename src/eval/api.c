@@ -609,11 +609,6 @@ bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
                                const cxpr_registry* reg,
                                cxpr_value* out_value,
                                cxpr_error* err) {
-    cxpr_ast* target_copy = NULL;
-    cxpr_ast* index_copy = NULL;
-    cxpr_ast* lookback_ast = NULL;
-    bool ok = false;
-
     if (!out_value) {
         if (err) {
             *err = (cxpr_error){0};
@@ -631,44 +626,30 @@ bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
         return false;
     }
 
-    target_copy = cxpr_eval_clone_ast(ast);
-    index_copy = cxpr_eval_clone_ast(index_ast);
-    if (!target_copy || !index_copy) {
-        cxpr_ast_free(target_copy);
-        cxpr_ast_free(index_copy);
-        if (err) {
-            *err = (cxpr_error){0};
-            err->code = CXPR_ERR_OUT_OF_MEMORY;
-            err->message = "Out of memory";
+    if (reg && reg->lookback_resolver) {
+        *out_value = cxpr_num(NAN);
+        if (reg->lookback_resolver(ast, index_ast, ctx, reg, reg->lookback_userdata,
+                                   out_value, err)) {
+            return !(err && err->code != CXPR_OK);
         }
-        return false;
+        if (err && err->code != CXPR_OK) return false;
     }
 
-    lookback_ast = cxpr_ast_new_lookback(target_copy, index_copy);
-    if (!lookback_ast) {
-        cxpr_ast_free(target_copy);
-        cxpr_ast_free(index_copy);
-        if (err) {
-            *err = (cxpr_error){0};
-            err->code = CXPR_ERR_OUT_OF_MEMORY;
-            err->message = "Out of memory";
-        }
-        return false;
+    if (err) {
+        *err = (cxpr_error){0};
+        err->code = CXPR_ERR_SYNTAX;
+        err->message = "Native lookback requires a registry lookback resolver";
     }
-
-    ok = cxpr_eval_ast(lookback_ast, ctx, reg, out_value, err);
-    cxpr_ast_free(lookback_ast);
-    return ok;
+    return false;
 }
 
-bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
-                             double lookback,
-                             const cxpr_context* ctx,
-                             const cxpr_registry* reg,
-                             cxpr_value* out_value,
-                             cxpr_error* err) {
-    cxpr_ast* index_ast = NULL;
-    bool ok = false;
+bool cxpr_eval_at_offset(const cxpr_ast* ast,
+                         double lookback,
+                         const cxpr_context* ctx,
+                         const cxpr_registry* reg,
+                         cxpr_value* out_value,
+                         cxpr_error* err) {
+    cxpr_ast index_ast = {0};
 
     if (!out_value) {
         if (err) {
@@ -687,19 +668,18 @@ bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
         return false;
     }
 
-    index_ast = cxpr_ast_new_number(lookback);
-    if (!index_ast) {
-        if (err) {
-            *err = (cxpr_error){0};
-            err->code = CXPR_ERR_OUT_OF_MEMORY;
-            err->message = "Out of memory";
-        }
-        return false;
-    }
+    index_ast.type = CXPR_NODE_NUMBER;
+    index_ast.data.number.value = lookback;
+    return cxpr_eval_ast_at_lookback(ast, &index_ast, ctx, reg, out_value, err);
+}
 
-    ok = cxpr_eval_ast_at_lookback(ast, index_ast, ctx, reg, out_value, err);
-    cxpr_ast_free(index_ast);
-    return ok;
+bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
+                             double lookback,
+                             const cxpr_context* ctx,
+                             const cxpr_registry* reg,
+                             cxpr_value* out_value,
+                             cxpr_error* err) {
+    return cxpr_eval_at_offset(ast, lookback, ctx, reg, out_value, err);
 }
 
 bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,

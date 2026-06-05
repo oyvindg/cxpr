@@ -19,6 +19,16 @@ static void cxpr_context_destroy_storage(cxpr_context* ctx) {
     free(ctx->bools.entries);
     for (size_t i = 0u; i < ctx->bool_params.count; ++i) free(ctx->bool_params.entries[i].name);
     free(ctx->bool_params.entries);
+    for (size_t i = 0u; i < ctx->strings.count; ++i) {
+        free(ctx->strings.entries[i].name);
+        free(ctx->strings.entries[i].value);
+    }
+    free(ctx->strings.entries);
+    for (size_t i = 0u; i < ctx->string_params.count; ++i) {
+        free(ctx->string_params.entries[i].name);
+        free(ctx->string_params.entries[i].value);
+    }
+    free(ctx->string_params.entries);
     cxpr_struct_map_destroy(&ctx->structs);
     cxpr_struct_map_destroy(&ctx->cached_structs);
     free(ctx->eval_memo.entries);
@@ -46,6 +56,10 @@ static bool cxpr_context_can_cache_empty_overlay(const cxpr_context* ctx) {
            ctx->bool_params.count == 0u &&
            ctx->bools.entries == NULL &&
            ctx->bool_params.entries == NULL &&
+           ctx->strings.count == 0u &&
+           ctx->string_params.count == 0u &&
+           ctx->strings.entries == NULL &&
+           ctx->string_params.entries == NULL &&
            ctx->structs.count == 0u &&
            ctx->cached_structs.count == 0u &&
            ctx->structs.entries == NULL &&
@@ -77,6 +91,12 @@ cxpr_context* cxpr_context_new(void) {
     ctx->bool_params.entries = NULL;
     ctx->bool_params.capacity = 0u;
     ctx->bool_params.count = 0u;
+    ctx->strings.entries = NULL;
+    ctx->strings.capacity = 0u;
+    ctx->strings.count = 0u;
+    ctx->string_params.entries = NULL;
+    ctx->string_params.capacity = 0u;
+    ctx->string_params.count = 0u;
     cxpr_struct_map_init(&ctx->structs);
     cxpr_struct_map_init(&ctx->cached_structs);
     ctx->eval_memo.entries = NULL;
@@ -207,6 +227,51 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
             clone->bool_params.count++;
         }
     }
+    if (ctx->strings.count > 0u) {
+        clone->strings.entries =
+            (cxpr_string_map_entry*)calloc(ctx->strings.count, sizeof(cxpr_string_map_entry));
+        if (!clone->strings.entries) {
+            cxpr_context_free(clone);
+            free(var_clone);
+            free(param_clone);
+            return NULL;
+        }
+        clone->strings.capacity = ctx->strings.count;
+        for (size_t i = 0u; i < ctx->strings.count; ++i) {
+            clone->strings.entries[i].name = cxpr_strdup(ctx->strings.entries[i].name);
+            clone->strings.entries[i].value = cxpr_strdup(ctx->strings.entries[i].value);
+            if (!clone->strings.entries[i].name || !clone->strings.entries[i].value) {
+                cxpr_context_free(clone);
+                free(var_clone);
+                free(param_clone);
+                return NULL;
+            }
+            clone->strings.count++;
+        }
+    }
+    if (ctx->string_params.count > 0u) {
+        clone->string_params.entries =
+            (cxpr_string_map_entry*)calloc(ctx->string_params.count, sizeof(cxpr_string_map_entry));
+        if (!clone->string_params.entries) {
+            cxpr_context_free(clone);
+            free(var_clone);
+            free(param_clone);
+            return NULL;
+        }
+        clone->string_params.capacity = ctx->string_params.count;
+        for (size_t i = 0u; i < ctx->string_params.count; ++i) {
+            clone->string_params.entries[i].name = cxpr_strdup(ctx->string_params.entries[i].name);
+            clone->string_params.entries[i].value = cxpr_strdup(ctx->string_params.entries[i].value);
+            if (!clone->string_params.entries[i].name ||
+                !clone->string_params.entries[i].value) {
+                cxpr_context_free(clone);
+                free(var_clone);
+                free(param_clone);
+                return NULL;
+            }
+            clone->string_params.count++;
+        }
+    }
     clone->variables_version = ctx->variables_version;
     clone->params_version = ctx->params_version;
     clone->eval_memo.entries = NULL;
@@ -229,6 +294,16 @@ void cxpr_context_clear(cxpr_context* ctx) {
     ctx->bools.count = 0u;
     for (size_t i = 0u; i < ctx->bool_params.count; ++i) free(ctx->bool_params.entries[i].name);
     ctx->bool_params.count = 0u;
+    for (size_t i = 0u; i < ctx->strings.count; ++i) {
+        free(ctx->strings.entries[i].name);
+        free(ctx->strings.entries[i].value);
+    }
+    ctx->strings.count = 0u;
+    for (size_t i = 0u; i < ctx->string_params.count; ++i) {
+        free(ctx->string_params.entries[i].name);
+        free(ctx->string_params.entries[i].value);
+    }
+    ctx->string_params.count = 0u;
     cxpr_struct_map_clear(&ctx->structs);
     cxpr_struct_map_clear(&ctx->cached_structs);
     ctx->eval_memo.count = 0u;

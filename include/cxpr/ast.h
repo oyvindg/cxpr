@@ -519,6 +519,44 @@ size_t cxpr_ast_producer_fields_used(const cxpr_ast* ast,
  */
 size_t cxpr_ast_variables_used(const cxpr_ast* ast, const char** names, size_t max_names);
 /**
+ * @brief Return whether an AST contains a runtime reference.
+ * @param ast AST to inspect.
+ * @param name Reference name, e.g. `close` or `macd.line`.
+ * @return True when @p name appears as a runtime reference in @p ast.
+ */
+bool cxpr_ast_contains_reference(const cxpr_ast* ast, const char* name);
+/**
+ * @brief Return whether an AST contains a `$param` variable.
+ * @param ast AST to inspect.
+ * @param name Parameter name without `$`.
+ * @return True when @p name appears as a parameter variable in @p ast.
+ */
+bool cxpr_ast_contains_variable(const cxpr_ast* ast, const char* name);
+/**
+ * @brief Collect function/producer names whose argument subtree contains a reference.
+ * @param ast AST to inspect.
+ * @param reference Reference name to trace, e.g. `atr_baseline_pct`.
+ * @param names Output array for borrowed function or producer names.
+ * @param max_names Maximum number of names to write to `names`.
+ * @return Number of unique function/producer contexts written or available.
+ */
+size_t cxpr_ast_call_arg_contexts_for_reference(const cxpr_ast* ast,
+                                                const char* reference,
+                                                const char** names,
+                                                size_t max_names);
+/**
+ * @brief Collect function/producer names whose argument subtree contains a `$param`.
+ * @param ast AST to inspect.
+ * @param variable Parameter name without `$`.
+ * @param names Output array for borrowed function or producer names.
+ * @param max_names Maximum number of names to write to `names`.
+ * @return Number of unique function/producer contexts written or available.
+ */
+size_t cxpr_ast_call_arg_contexts_for_variable(const cxpr_ast* ast,
+                                               const char* variable,
+                                               const char** names,
+                                               size_t max_names);
+/**
  * @brief Perform structural and registry-backed semantic analysis on an AST.
  * @param ast AST to inspect.
  * @param reg Optional registry used to resolve functions and expressions.
@@ -608,6 +646,23 @@ bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
                              const cxpr_registry* reg,
                              cxpr_value* out_value,
                              cxpr_error* err);
+/**
+ * @brief Evaluate an AST at one numeric lookback offset without constructing
+ *        a temporary lookback AST.
+ * @param ast Target AST to evaluate.
+ * @param lookback Non-negative lookback offset.
+ * @param ctx Runtime context providing variables and params.
+ * @param reg Function registry with a lookback resolver.
+ * @param out_value Output value on success.
+ * @param err Optional error output.
+ * @return True on success, false on evaluation failure.
+ */
+bool cxpr_eval_at_offset(const cxpr_ast* ast,
+                         double lookback,
+                         const cxpr_context* ctx,
+                         const cxpr_registry* reg,
+                         cxpr_value* out_value,
+                         cxpr_error* err);
 /**
  * @brief Evaluate an AST to a number at one numeric lookback offset.
  * @param ast Target AST to evaluate.

@@ -16,6 +16,13 @@ static void cxpr_call_bind_set_error(cxpr_error_code* out_code,
     if (out_message) *out_message = message;
 }
 
+static bool cxpr_call_param_name_matches(const char* param_name, const char* arg_name) {
+    if (!param_name || !arg_name) return false;
+    if (strcmp(param_name, arg_name) == 0) return true;
+    if (strcmp(param_name, "value") == 0 && strcmp(arg_name, "condition") == 0) return true;
+    return strcmp(param_name, "samples") == 0 && strcmp(arg_name, "bars") == 0;
+}
+
 static bool cxpr_call_bind_named_window(const char* const* arg_names,
                                         const cxpr_ast* const* args,
                                         size_t argc,
@@ -46,7 +53,7 @@ static bool cxpr_call_bind_named_window(const char* const* arg_names,
             {
                 size_t match = argc;
                 for (size_t j = 0; j < argc; ++j) {
-                    if (strcmp(param_names[window_start + j], arg_name) == 0) {
+                    if (cxpr_call_param_name_matches(param_names[window_start + j], arg_name)) {
                         match = j;
                         break;
                     }
@@ -153,7 +160,7 @@ bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
         {
             size_t match = param_count;
             for (size_t j = 0; j < param_count; ++j) {
-                if (strcmp(param_names[j], arg_name) == 0) {
+                if (cxpr_call_param_name_matches(param_names[j], arg_name)) {
                     match = j;
                     break;
                 }

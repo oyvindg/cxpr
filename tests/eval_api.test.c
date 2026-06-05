@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_eval_api_wrappers(void) {
     cxpr_parser* p = cxpr_parser_new();
@@ -34,6 +35,34 @@ static void test_eval_api_wrappers(void) {
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
     cxpr_ast_free(ast);
+    ast = cxpr_parse(p, "\"1h\"", &err);
+    assert(ast);
+    assert(cxpr_eval_ast(ast, ctx, reg, &value, &err));
+    assert(err.code == CXPR_OK);
+    assert(value.type == CXPR_VALUE_STRING);
+    assert(strcmp(value.str, "1h") == 0);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "\"1h\" == \"1h\"", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &boolean, &err));
+    assert(boolean);
+    cxpr_ast_free(ast);
+
+    cxpr_context_set_string(ctx, "symbol", "AAPL");
+    ast = cxpr_parse(p, "symbol == \"AAPL\"", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &boolean, &err));
+    assert(boolean);
+    cxpr_ast_free(ast);
+
+    cxpr_context_set_param_string(ctx, "tf", "1h");
+    ast = cxpr_parse(p, "$tf == \"1h\"", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &boolean, &err));
+    assert(boolean);
+    cxpr_ast_free(ast);
+
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
