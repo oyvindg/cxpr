@@ -9,6 +9,12 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      CC: ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,10 +25,16 @@ jobs:
         run: cmake --build --preset default --parallel
 
       - name: Test
-        run: cmake --build build --target test
+        run: ctest --preset default
 
   strict:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      CC: ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,3 +74,22 @@ jobs:
 
       - name: Test
         run: ctest --preset ubsan
+
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      UBSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset fuzz
+
+      - name: Build
+        run: cmake --build --preset fuzz --parallel
+
+      - name: Smoke-run parser fuzzer
+        run: >
+          ./build-fuzz/fuzz/cxpr_fuzz_parse
+          -max_total_time=30 -print_final_stats=1
+          build-fuzz/fuzz/corpus
