@@ -210,9 +210,31 @@ const char* cxpr_error_string(cxpr_error_code code) {
     case CXPR_ERR_WRONG_ARITY:         return "Wrong number of arguments";
     case CXPR_ERR_DIVISION_BY_ZERO:    return "Division by zero";
     case CXPR_ERR_CIRCULAR_DEPENDENCY: return "Circular dependency";
+    case CXPR_ERR_TYPE_MISMATCH:       return "Type mismatch";
     case CXPR_ERR_OUT_OF_MEMORY:       return "Out of memory";
     default:                         return "Unknown error";
     }
+}
+
+size_t cxpr_error_format(const cxpr_error* err, char* buffer, size_t size) {
+    const char* code_str;
+    const char* message;
+    int written;
+
+    if (!err || err->code == CXPR_OK) {
+        return (size_t)snprintf(buffer, size, "no error");
+    }
+
+    code_str = cxpr_error_string(err->code);
+    message = err->message ? err->message : code_str;
+
+    if (err->line != 0u || err->column != 0u || err->position != 0u) {
+        written = snprintf(buffer, size, "%s at %zu:%zu: %s",
+                           code_str, err->line, err->column, message);
+    } else {
+        written = snprintf(buffer, size, "%s: %s", code_str, message);
+    }
+    return written < 0 ? 0u : (size_t)written;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

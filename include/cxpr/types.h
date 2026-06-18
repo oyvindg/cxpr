@@ -201,7 +201,15 @@ cxpr_array_value* cxpr_array_value_new(const cxpr_value* values, size_t count);
  */
 void cxpr_array_value_free(cxpr_array_value* a);
 
-/** @brief Error payload filled by APIs that can fail. */
+/**
+ * @brief Error payload filled by APIs that can fail.
+ *
+ * `message` is always owned by `cxpr` — it points either to a static string
+ * literal or to a thread-local scratch buffer that is overwritten by the next
+ * failing call on the same thread. It is never heap-allocated; never `free` it.
+ * Treat it as valid only until the next `cxpr` call on that thread, and copy it
+ * (or use `cxpr_error_format`) if you need to retain it.
+ */
 typedef struct cxpr_error {
     cxpr_error_code code;
     const char* message;
@@ -216,6 +224,22 @@ typedef struct cxpr_error {
  * @return Static string description for `code`.
  */
 const char* cxpr_error_string(cxpr_error_code code);
+/**
+ * @brief Format a complete, human-readable description of an error.
+ *
+ * Writes `"<code> at <line>:<column>: <message>"` (omitting the position when
+ * the error carries none) into `buffer`, always NUL-terminating when `size` is
+ * non-zero. The output is self-contained and safe to retain, unlike the
+ * borrowed `cxpr_error.message` pointer.
+ *
+ * @param err Error to describe. A NULL or `CXPR_OK` error yields "no error".
+ * @param buffer Destination buffer. May be NULL only when `size` is 0.
+ * @param size Capacity of `buffer` in bytes.
+ * @return Number of characters that the full description would occupy,
+ *         excluding the NUL terminator (as `snprintf` does), so a return value
+ *         `>= size` indicates truncation.
+ */
+size_t cxpr_error_format(const cxpr_error* err, char* buffer, size_t size);
 /**
  * @brief Compute the internal key hash used by cxpr maps.
  * @param str NUL-terminated key string.

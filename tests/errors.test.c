@@ -34,8 +34,54 @@ static void test_error_strings(void) {
     assert(strcmp(cxpr_error_string(CXPR_ERR_WRONG_ARITY), "Wrong number of arguments") == 0);
     assert(strcmp(cxpr_error_string(CXPR_ERR_DIVISION_BY_ZERO), "Division by zero") == 0);
     assert(strcmp(cxpr_error_string(CXPR_ERR_CIRCULAR_DEPENDENCY), "Circular dependency") == 0);
+    assert(strcmp(cxpr_error_string(CXPR_ERR_TYPE_MISMATCH), "Type mismatch") == 0);
     assert(strcmp(cxpr_error_string(CXPR_ERR_OUT_OF_MEMORY), "Out of memory") == 0);
     printf("  ✓ test_error_strings\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Test: cxpr_error_format
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_error_format(void) {
+    char buf[256];
+    size_t n;
+
+    /* No-error / NULL cases yield "no error". */
+    n = cxpr_error_format(NULL, buf, sizeof(buf));
+    assert(strcmp(buf, "no error") == 0);
+    assert(n == strlen("no error"));
+    cxpr_error ok = {0};
+    cxpr_error_format(&ok, buf, sizeof(buf));
+    assert(strcmp(buf, "no error") == 0);
+
+    /* Positioned error includes "code at line:column: message". */
+    cxpr_error pos = { CXPR_ERR_SYNTAX, "Expected ')'", 6u, 1u, 7u };
+    cxpr_error_format(&pos, buf, sizeof(buf));
+    assert(strcmp(buf, "Syntax error at 1:7: Expected ')'") == 0);
+
+    /* Error without position omits the location. */
+    cxpr_error nopos = { CXPR_ERR_TYPE_MISMATCH, "bad operand", 0u, 0u, 0u };
+    cxpr_error_format(&nopos, buf, sizeof(buf));
+    assert(strcmp(buf, "Type mismatch: bad operand") == 0);
+
+    /* NULL message falls back to the code string. */
+    cxpr_error nomsg = { CXPR_ERR_DIVISION_BY_ZERO, NULL, 0u, 0u, 0u };
+    cxpr_error_format(&nomsg, buf, sizeof(buf));
+    assert(strcmp(buf, "Division by zero: Division by zero") == 0);
+
+    /* Return value reports the full length even when truncated; output stays
+     * NUL-terminated within the provided capacity. */
+    char small[8];
+    n = cxpr_error_format(&pos, small, sizeof(small));
+    assert(n == strlen("Syntax error at 1:7: Expected ')'"));
+    assert(strlen(small) == sizeof(small) - 1u);
+
+    /* Size 0 with NULL buffer is allowed and still reports the length. */
+    n = cxpr_error_format(&nopos, NULL, 0u);
+    assert(n == strlen("Type mismatch: bad operand"));
+
+    printf("  ✓ test_error_format\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -378,6 +424,7 @@ int main(void) {
     printf("Running error tests...\n");
 
     test_error_strings();
+    test_error_format();
 
     /* Parse errors */
     test_parse_error_empty();
