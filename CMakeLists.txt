@@ -131,6 +131,14 @@ if(CXPR_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif()
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Fuzzers (libFuzzer; Clang only)
+# ═══════════════════════════════════════════════════════════════════════════
+option(CXPR_BUILD_FUZZERS "Build cxpr libFuzzer targets (requires Clang)" OFF)
+if(CXPR_BUILD_FUZZERS)
+    add_subdirectory(fuzz)
+endif()
+
 if(CXPR_ENABLE_COVERAGE)
     add_custom_target(cxpr_check_function_coverage
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_function_coverage.sh
