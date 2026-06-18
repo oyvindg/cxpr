@@ -4,6 +4,7 @@
  */
 
 #include "internal.h"
+#include <cxpr/ir_view.h>
 #include <stdio.h>
 
 static size_t cxpr_expression_find(const cxpr_evaluator* evaluator, const char* name) {
@@ -76,6 +77,30 @@ static bool cxpr_expression_depends_on(const cxpr_evaluator* evaluator, size_t e
         if (cxpr_expression_reference_matches_name(refs[i], dep_name)) return true;
     }
     return false;
+}
+
+static size_t cxpr_expression_instruction_count_at(
+    const cxpr_evaluator* evaluator,
+    size_t idx) {
+    if (!evaluator || idx >= evaluator->count) return 0u;
+    return cxpr_ir_view_count(evaluator->expressions[idx].program);
+}
+
+static size_t cxpr_expression_dependency_instruction_count_at(
+    const cxpr_evaluator* evaluator,
+    size_t idx,
+    unsigned char* visited) {
+    size_t total;
+
+    if (!evaluator || !visited || idx >= evaluator->count || visited[idx]) return 0u;
+    visited[idx] = 1u;
+    total = cxpr_expression_instruction_count_at(evaluator, idx);
+    for (size_t i = 0; i < evaluator->count; ++i) {
+        if (i != idx && cxpr_expression_depends_on(evaluator, idx, i)) {
+            total += cxpr_expression_dependency_instruction_count_at(evaluator, i, visited);
+        }
+    }
+    return total;
 }
 
 static bool cxpr_expression_dfs_cycle(const cxpr_evaluator* evaluator,
@@ -426,6 +451,62 @@ bool cxpr_expression_get_bool(const cxpr_evaluator* evaluator, const char* name,
         return false;
     }
     return value.b;
+}
+
+const cxpr_program* cxpr_expression_program(const cxpr_evaluator* evaluator,
+                                            const char* name,
+                                            bool* found) {
+    size_t idx;
+
+    if (found) *found = false;
+    if (!evaluator || !name) return NULL;
+    idx = cxpr_expression_find(evaluator, name);
+    if (idx >= evaluator->count) return NULL;
+    if (found) *found = true;
+    return evaluator->expressions[idx].program;
+}
+
+size_t cxpr_expression_instruction_count(const cxpr_evaluator* evaluator,
+                                         const char* name,
+                                         bool* found) {
+    size_t idx;
+
+    if (found) *found = false;
+    if (!evaluator || !name) return 0u;
+    idx = cxpr_expression_find(evaluator, name);
+    if (idx >= evaluator->count) return 0u;
+    if (found) *found = true;
+    return cxpr_expression_instruction_count_at(evaluator, idx);
+}
+
+size_t cxpr_expression_dependency_instruction_count(const cxpr_evaluator* evaluator,
+                                                    const char* name,
+                                                    bool* found) {
+    unsigned char* visited;
+    size_t idx;
+    size_t total;
+
+    if (found) *found = false;
+    if (!evaluator || !name) return 0u;
+    idx = cxpr_expression_find(evaluator, name);
+    if (idx >= evaluator->count) return 0u;
+    if (found) *found = true;
+    if (evaluator->count == 0u) return 0u;
+    visited = (unsigned char*)calloc(evaluator->count, sizeof(*visited));
+    if (!visited) return cxpr_expression_instruction_count_at(evaluator, idx);
+    total = cxpr_expression_dependency_instruction_count_at(evaluator, idx, visited);
+    free(visited);
+    return total;
+}
+
+size_t cxpr_expression_total_instruction_count(const cxpr_evaluator* evaluator) {
+    size_t total = 0u;
+
+    if (!evaluator) return 0u;
+    for (size_t i = 0; i < evaluator->count; ++i) {
+        total += cxpr_expression_instruction_count_at(evaluator, i);
+    }
+    return total;
 }
 
 /**

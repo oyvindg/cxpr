@@ -94,6 +94,58 @@ double cxpr_expression_get_double(const cxpr_evaluator* evaluator, const char* n
  */
 bool cxpr_expression_get_bool(const cxpr_evaluator* evaluator, const char* name, bool* found);
 /**
+ * @brief Return the compiled program for one named expression.
+ *
+ * The returned program is borrowed from the evaluator and owned by it: do not
+ * free it, and do not use it after the evaluator is freed or recompiled.
+ *
+ * @param evaluator Compiled expression evaluator.
+ * @param name Expression name.
+ * @param found Optional flag set when the expression exists.
+ * @return Borrowed compiled program, or NULL when absent or not compiled.
+ */
+const cxpr_program* cxpr_expression_program(const cxpr_evaluator* evaluator,
+                                            const char* name,
+                                            bool* found);
+/**
+ * @brief Return the compiled IR instruction count for one named expression.
+ * @param evaluator Compiled expression evaluator.
+ * @param name Expression name.
+ * @param found Optional flag set when the expression exists.
+ * @return Instruction count for this expression only, or 0 on miss/uncompiled.
+ */
+size_t cxpr_expression_instruction_count(const cxpr_evaluator* evaluator,
+                                         const char* name,
+                                         bool* found);
+/**
+ * @brief Return compiled IR instructions for one expression plus named dependencies.
+ *
+ * Walks the dependency closure of `name` and counts each reachable expression's
+ * program once, so an expression shared by several dependencies is not
+ * double-counted. This differs from `cxpr_expression_total_instruction_count`,
+ * which sums every expression's own program independently; the two coincide
+ * only for an expression with no named dependencies.
+ *
+ * @param evaluator Compiled expression evaluator.
+ * @param name Expression name.
+ * @param found Optional flag set when the expression exists.
+ * @return De-duplicated instruction count for the dependency closure.
+ */
+size_t cxpr_expression_dependency_instruction_count(const cxpr_evaluator* evaluator,
+                                                    const char* name,
+                                                    bool* found);
+/**
+ * @brief Return the total compiled IR instruction count for the evaluator batch.
+ *
+ * Sums each registered expression's own program length with no de-duplication
+ * across shared dependencies; see `cxpr_expression_dependency_instruction_count`
+ * for the de-duplicated per-closure variant.
+ *
+ * @param evaluator Compiled expression evaluator.
+ * @return Sum of instruction counts for all registered expressions.
+ */
+size_t cxpr_expression_total_instruction_count(const cxpr_evaluator* evaluator);
+/**
  * @brief Return expression names in evaluation order.
  * @param evaluator Compiled expression evaluator.
  * @param names Output array for expression names.
