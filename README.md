@@ -16,6 +16,28 @@ bar-by-bar materialization outside the expression engine.
 
 No external dependencies. C11 required.
 
+## Contents
+
+- [What The Library Provides](#what-the-library-provides)
+- [Core Concepts](#core-concepts)
+- [Building and Testing](#building-and-testing)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Expression Language](#expression-language)
+- [Values, Structs, and Contexts](#values-structs-and-contexts)
+- [Context Overlays](#context-overlays)
+- [Slot Binding](#slot-binding)
+- [Lookback Evaluation](#lookback-evaluation)
+- [Custom Functions](#custom-functions)
+- [Providers and Host-Backed Sources](#providers-and-host-backed-sources)
+- [Source Plans and Scoped Sources](#source-plans-and-scoped-sources)
+- [Expression Evaluator](#expression-evaluator)
+- [Errors](#errors)
+- [Concurrency](#concurrency)
+- [Analysis](#analysis)
+- [Examples](#examples)
+- [Benchmark](#benchmark)
+
 ## What The Library Provides
 
 - A parser that turns expression strings into an AST
@@ -28,6 +50,7 @@ No external dependencies. C11 required.
 - Provider metadata for host-backed functions, named arguments, record fields, scoped series, and direct sources
 - Runtime-call and source-plan helpers for host integrations that materialize series data outside `cxpr`
 - Structured errors with source position information
+- Thread-safe for per-thread evaluation: immutable registries/programs shared, contexts per thread (see [Concurrency](#concurrency))
 
 Use `cxpr` when you need an embeddable expression evaluator in plain C without bringing in a scripting runtime.
 
@@ -53,13 +76,13 @@ ctest --preset default          # run tests
 
 Additional presets:
 
-| Preset     | Purpose                                                      |
-| ---------- | ------------------------------------------------------------ |
-| `strict`   | Strict compiler warnings (`-Werror`)                         |
-| `asan`     | AddressSanitizer (Debug)                                     |
-| `ubsan`    | UndefinedBehaviorSanitizer (Debug)                           |
-| `coverage` | Coverage instrumentation (Debug)                             |
-| `fuzz`     | libFuzzer targets with ASan/UBSan (Clang only)               |
+| Preset     | Purpose                                        |
+| ---------- | ---------------------------------------------- |
+| `strict`   | Strict compiler warnings (`-Werror`)           |
+| `asan`     | AddressSanitizer (Debug)                       |
+| `ubsan`    | UndefinedBehaviorSanitizer (Debug)             |
+| `coverage` | Coverage instrumentation (Debug)               |
+| `fuzz`     | libFuzzer targets with ASan/UBSan (Clang only) |
 
 The `fuzz` preset builds a libFuzzer harness that drives untrusted input through
 the full parse → compile → evaluate pipeline:
@@ -145,7 +168,7 @@ int main(void) {
 
     // 3. Populate runtime data.
     // angle_deg is a normal context variable referenced as angle_deg in expressions.
-    cxpr_context_set(ctx, "angle_deg", 120.0);
+    cxpr_context_set(ctx, "angle_deg", 30.0);
 
     // limit is a parameter referenced as $limit in expressions.
     cxpr_context_set_param(ctx, "limit", 1.2);
