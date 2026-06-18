@@ -12,7 +12,7 @@
 
 static void cxpr_expression_wrap_compile_error(const cxpr_expression_entry* entry,
                                                cxpr_error* err) {
-    static char message[512];
+    static CXPR_THREAD_LOCAL char message[512];
     char detail[384];
 
     if (!entry || !entry->name || !err || err->code == CXPR_OK) return;

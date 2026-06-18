@@ -4,12 +4,20 @@
  */
 
 #include "internal.h"
+#include "core.h"
 
 #define CXPR_OVERLAY_CONTEXT_CACHE_MAX 64u
 
-static cxpr_context* cxpr_overlay_context_cache = NULL;
-static size_t cxpr_overlay_context_cache_count = 0u;
-static bool cxpr_overlay_context_cache_atexit_registered = false;
+/*
+ * The empty-overlay reuse cache is thread-local: each thread keeps its own
+ * free list so concurrent overlay create/free (which happens implicitly during
+ * evaluation of scoped-source and producer calls) never races. The atexit hook
+ * only reclaims the registering thread's cache; worker threads should call
+ * cxpr_thread_cleanup() before exiting to release theirs.
+ */
+static CXPR_THREAD_LOCAL cxpr_context* cxpr_overlay_context_cache = NULL;
+static CXPR_THREAD_LOCAL size_t cxpr_overlay_context_cache_count = 0u;
+static CXPR_THREAD_LOCAL bool cxpr_overlay_context_cache_atexit_registered = false;
 
 static void cxpr_context_destroy_storage(cxpr_context* ctx) {
     if (!ctx) return;
@@ -78,6 +86,10 @@ static void cxpr_context_overlay_cache_destroy(void) {
         cxpr_overlay_context_cache = next;
     }
     cxpr_overlay_context_cache_count = 0u;
+}
+
+void cxpr_thread_cleanup(void) {
+    cxpr_context_overlay_cache_destroy();
 }
 
 cxpr_context* cxpr_context_new(void) {

@@ -4,6 +4,7 @@
  */
 
 #include "internal.h"
+#include "core.h"
 #include "registry/internal.h"
 #include "call/args.h"
 #include <stdio.h>
@@ -25,7 +26,7 @@ static void cxpr_ast_set_error(cxpr_error* err, cxpr_error_code code, const char
 }
 
 static const char* cxpr_ast_unknown_function_message(const char* name) {
-    static char message[256];
+    static CXPR_THREAD_LOCAL char message[256];
     if (!name || name[0] == '\0') return "Unknown function";
     snprintf(message, sizeof(message), "Unknown function '%s'", name);
     return message;

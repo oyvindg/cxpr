@@ -10,7 +10,7 @@
 #include <stdio.h>
 
 static const char* cxpr_eval_cache_unknown_function_message(const char* name) {
-    static char message[256];
+    static CXPR_THREAD_LOCAL char message[256];
     if (!name || name[0] == '\0') return "Unknown function";
     snprintf(message, sizeof(message), "Unknown function '%s'", name);
     return message;

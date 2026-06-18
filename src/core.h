@@ -12,6 +12,21 @@
 #include <string.h>
 
 /**
+ * @brief Thread-local storage qualifier for cxpr's internal per-thread state.
+ *
+ * cxpr keeps two pieces of mutable state outside of caller-owned handles: the
+ * empty-overlay reuse cache and the scratch buffers used to format error
+ * messages. Both are made thread-local so that independent threads, each using
+ * their own registry/context/program, never race on them. See the Concurrency
+ * section of the README for the full threading contract.
+ */
+#if defined(_MSC_VER)
+#define CXPR_THREAD_LOCAL __declspec(thread)
+#else
+#define CXPR_THREAD_LOCAL _Thread_local
+#endif
+
+/**
  * @brief Duplicate a NUL-terminated string using cxpr's allocator conventions.
  * @param s Source string to copy.
  * @return Newly allocated copy, or NULL when `s` is NULL or allocation fails.
