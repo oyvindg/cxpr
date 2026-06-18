@@ -53,11 +53,22 @@ ctest --preset default          # run tests
 
 Additional presets:
 
-| Preset   | Purpose                              |
-| -------- | ------------------------------------ |
-| `strict` | Strict compiler warnings (`-Werror`) |
-| `asan`   | AddressSanitizer (Debug)             |
-| `ubsan`  | UndefinedBehaviorSanitizer (Debug)   |
+| Preset     | Purpose                                                      |
+| ---------- | ------------------------------------------------------------ |
+| `strict`   | Strict compiler warnings (`-Werror`)                         |
+| `asan`     | AddressSanitizer (Debug)                                     |
+| `ubsan`    | UndefinedBehaviorSanitizer (Debug)                           |
+| `coverage` | Coverage instrumentation (Debug)                             |
+| `fuzz`     | libFuzzer targets with ASan/UBSan (Clang only)               |
+
+The `fuzz` preset builds a libFuzzer harness that drives untrusted input through
+the full parse → compile → evaluate pipeline:
+
+```bash
+cmake --preset fuzz                 # configure (needs clang)
+cmake --build --preset fuzz         # build
+./build-fuzz/fuzz/cxpr_fuzz_parse build-fuzz/fuzz/corpus   # run
+```
 
 ## Installation
 
@@ -800,6 +811,48 @@ ignore). On failure, `err.code` is one of:
 | `CXPR_ERR_OUT_OF_MEMORY`       | Allocation failure                     |
 
 `err.message`, `err.line`, `err.column`, and `err.position` give further detail.
+
+`err.message` always points to storage owned by `cxpr` — either a static string literal or a
+thread-local scratch buffer reused for the next failing call **on the same thread**. It is
+never heap-allocated and must not be freed. Treat it as valid only until the next `cxpr` call
+on that thread: copy it (or format it with `cxpr_error_format`) if you need to retain it.
+
+`cxpr_error_format` renders a complete, human-readable line including the code, source
+position, and message into a caller-owned buffer:
+
+```c
+cxpr_error err = {0};
+if (!cxpr_evaluator_compile(evaluator, &err)) {
+    char buf[256];
+    cxpr_error_format(&err, buf, sizeof(buf));
+    fprintf(stderr, "%s\n", buf);   // e.g. "Syntax error at 1:7: Expected ')'"
+}
+```
+
+## Concurrency
+
+`cxpr` has no global mutable state and acquires no locks. The threading contract is
+*per-thread isolation*:
+
+- **Immutable-after-build handles are shareable.** A `cxpr_registry`, parsed `cxpr_ast`, and
+  compiled `cxpr_program` are not modified during evaluation (the eval entry points take them
+  as `const`). Once fully built and no longer being mutated, the same instances may be read
+  concurrently from many threads.
+- **Mutable handles are not shared.** A `cxpr_context` is updated during evaluation (it caches
+  intermediate results), and a `cxpr_evaluator` holds per-batch state. Give each thread its
+  own context and evaluator. Building one set and cloning per thread (`cxpr_context_clone`) is
+  fine.
+- **Internal per-thread state is already isolated.** The empty-overlay reuse cache and the
+  error-message scratch buffers are thread-local, so concurrent evaluation on separate
+  contexts never races on them.
+
+This makes the common optimizer pattern safe: build a registry and compile programs once on
+the main thread, then fan out across worker threads where each thread owns its context and
+evaluates against the shared, read-only registry/programs.
+
+A worker thread that runs many evaluations and then exits can call `cxpr_thread_cleanup()`
+just before exiting to release its thread-local overlay cache immediately. This is optional —
+it never affects correctness, only how promptly that memory is reclaimed.
 
 ## Analysis
 
