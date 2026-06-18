@@ -10,6 +10,17 @@
 #error "cxpr fast IR executor requires GCC/Clang computed goto support"
 #endif
 
+/*
+ * This executor is built on computed goto (the "labels as values" extension):
+ * a jump table of `&&label` addresses dispatched with `goto *target`. That is a
+ * deliberate, GCC/Clang-only design choice for a tight bytecode loop, but it is
+ * not ISO C, so -Wpedantic flags it. Silence that one diagnostic for this file;
+ * all other strict warnings remain in force.
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
 static inline double cxpr_ir_exec_lookup_scalar_fast(const cxpr_context* ctx,
                                                      const cxpr_ir_instr* instr,
                                                      cxpr_ir_lookup_cache* cache,
@@ -408,7 +419,8 @@ op_call_func:
         else if (value_result.type == CXPR_VALUE_BOOL) stack[sp++] = value_result.b ? 1.0 : 0.0;
         else return cxpr_ir_runtime_error(err, "Function did not evaluate to scalar").d;
     } else {
-        stack[sp++] = instr->func->sync_func(&stack[sp], instr->index, instr->func->userdata);
+        double call_result = instr->func->sync_func(&stack[sp], instr->index, instr->func->userdata);
+        stack[sp++] = call_result;
     }
     CXPR_FAST_NEXT();
 op_call_defined: {
@@ -808,7 +820,8 @@ opb_call_func:
             return false;
         }
     } else {
-        nstack[nsp++] = instr->func->sync_func(&nstack[nsp], instr->index, instr->func->userdata);
+        double call_result = instr->func->sync_func(&nstack[nsp], instr->index, instr->func->userdata);
+        nstack[nsp++] = call_result;
     }
     CXPR_BOOL_FAST_NEXT();
 opb_call_defined: {
