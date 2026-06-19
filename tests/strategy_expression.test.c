@@ -285,25 +285,40 @@ static void test_named_in_square_brackets(void) {
     cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "macd.signal", 15.0);
 
-    ast = cxpr_parse(p, "macd.signal in [min=10, max=20]", &err);
+    ast = cxpr_parse(p, "macd.signal within [min=10, max=20]", &err);
     assert(ast != NULL);
     assert(err.code == CXPR_OK);
     assert(cxpr_test_eval_ast(ast, ctx, reg, &err).b == true);
     assert(err.code == CXPR_OK);
     cxpr_ast_free(ast);
 
-    ast = cxpr_parse(p, "macd.signal not in [max=20, min=10]", &err);
+    ast = cxpr_parse(p, "macd.signal not within [max=20, min=10]", &err);
     assert(ast != NULL);
     assert(err.code == CXPR_OK);
     assert(cxpr_test_eval_ast(ast, ctx, reg, &err).b == false);
     assert(err.code == CXPR_OK);
     cxpr_ast_free(ast);
 
-    ast = cxpr_parse(p, "macd.signal not in (min=10, max=20)", &err);
+    ast = cxpr_parse(p, "macd.signal not within (min=10, max=20)", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
     assert(strstr(err.message, "Expected '['") != NULL);
+
+    /* Set membership: macd.signal is one of the listed values. */
+    ast = cxpr_parse(p, "macd.signal in [10, 15, 20]", &err);
+    assert(ast != NULL);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_test_eval_ast(ast, ctx, reg, &err).b == true); /* 15 is listed */
+    assert(err.code == CXPR_OK);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "macd.signal in [10, 20]", &err);
+    assert(ast != NULL);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_test_eval_ast(ast, ctx, reg, &err).b == false); /* 15 not listed */
+    assert(err.code == CXPR_OK);
+    cxpr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);

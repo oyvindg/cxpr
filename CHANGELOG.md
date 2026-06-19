@@ -5,6 +5,46 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-06-19
+
+### Changed
+
+- **Breaking:** `x in [a, b, …]` is now **set membership** (desugars to
+  `x == a or x == b or …`), not interval membership. Interval/range checks move
+  to the new `within` keyword: `x within [lo, hi]` (inclusive, continuous)
+  replaces the old `x in [lo, hi]`, and keeps the inclusive/exclusive and named
+  `min=`/`max=` bound forms. Migrate any `in [lo, hi]` range checks to
+  `within [lo, hi]`.
+- README Quick Start / Custom Functions / pipe examples now demonstrate a
+  genuinely custom helper (`ema_alpha`) instead of `deg2rad`, which the new
+  built-in `radians` makes redundant.
+
+### Added
+
+- `within` interval operator and `not within`, plus `in`/`not in` set membership
+  over a bracketed list of any equality-comparable scalars (numbers, strings,
+  enum-like identifiers). Both are pure parse-time desugaring — no new runtime
+  array values — so the IR and evaluator are unchanged. `CXPR_TOK_WITHIN` is a
+  new token.
+
+- Timestamp/duration value algebra: `+`, `-`, `*`, `/` and the ordering
+  comparisons (`< <= > >=`) now operate on `CXPR_VALUE_TIMESTAMP` and
+  `CXPR_VALUE_DURATION` operands with full type checking — `timestamp - timestamp
+  -> duration`, `timestamp ± duration -> timestamp`, `duration ± duration`,
+  `duration * number`, `duration / number`, `duration / duration -> number`, and
+  ordering of two timestamps or two durations. Implemented once in a shared
+  helper (`cxpr_value_binary_op`) and applied by both the tree-walk evaluator and
+  the typed IR executor so the two engines cannot diverge. Values arrive through
+  struct fields and typed callbacks; the double-only numeric fast path is
+  unchanged.
+- Null handling built-ins: `coalesce(a, b, …)` returns the first non-null
+  argument (1–8 args) and `is_null(x)` returns a boolean, making
+  `CXPR_VALUE_NULL` (e.g. missing host-backed series data) usable instead of
+  fatal.
+- Math built-ins in `cxpr_register_defaults`: `hypot`, `radians`, `degrees`,
+  `mod`, `copysign`, `log1p`, `expm1`, and the boolean predicates `isnan` and
+  `isfinite`.
+
 ## [1.1.0] - 2026-06-19
 
 ### Added
@@ -95,6 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Initial tagged releases. Detailed per-version history predates this changelog;
 see the Git tags `v1.0.0`–`v1.0.4` for the corresponding commits.
 
+[2.0.0]: https://github.com/oyvindg/cxpr/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/oyvindg/cxpr/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/oyvindg/cxpr/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/oyvindg/cxpr/compare/v1.0.2...v1.0.3

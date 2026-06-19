@@ -20,16 +20,16 @@
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Quick Start
  *
- *   cxpr_context_set(ctx, "angle_deg", 120.0);
- *   cxpr_context_set_param(ctx, "limit", 1.2);
- *   cxpr_registry_add_unary(reg, "deg2rad", readme_deg2rad);
+ *   cxpr_context_set(ctx, "period", 3.0);
+ *   cxpr_context_set_param(ctx, "limit", 0.4);
+ *   cxpr_registry_add_unary(reg, "ema_alpha", readme_ema_alpha);
  *   cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
  *   cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
  *   cxpr_ast* ast = cxpr_parse(parser,
- *       "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)", &err);
+ *       "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-static double readme_deg2rad(double d)                     { return d * READMETEST_PI / 180.0; }
+static double readme_ema_alpha(double period)             { return 2.0 / (period + 1.0); }
 static double readme_clamp(double v, double lo, double hi) { return v < lo ? lo : v > hi ? hi : v; }
 static cxpr_value readme_within_limit(const cxpr_value* args, size_t argc, void* userdata) {
     (void)argc;
@@ -43,28 +43,28 @@ static void test_readme_quick_start(void) {
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
 
-    cxpr_context_set(ctx, "angle_deg", 30.0);
-    cxpr_context_set_param(ctx, "limit", 1.2);
-    cxpr_registry_add_unary(reg, "deg2rad", readme_deg2rad);
+    cxpr_context_set(ctx, "period", 9.0);
+    cxpr_context_set_param(ctx, "limit", 0.4);
+    cxpr_registry_add_unary(reg, "ema_alpha", readme_ema_alpha);
     cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
     cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
 
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(parser,
-        "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)", &err);
+        "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
     assert(ast);
     assert(err.code == CXPR_OK);
 
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     assert(result.type == CXPR_VALUE_BOOL);
-    assert(result.b == true); /* 30deg ~= 0.52rad < 1.2 */
+    assert(result.b == true); /* ema_alpha(9) = 0.2 < 0.4 */
 
-    cxpr_context_set(ctx, "angle_deg", 120.0);
+    cxpr_context_set(ctx, "period", 3.0);
     result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     assert(result.type == CXPR_VALUE_BOOL);
-    assert(result.b == false); /* clamp(pi*120/180, 0, 1.57) = 1.57 >= 1.2 */
+    assert(result.b == false); /* ema_alpha(3) = 0.5 >= 0.4 */
 
     cxpr_ast_free(ast);
     cxpr_parser_free(parser);
@@ -89,20 +89,20 @@ static void test_readme_ir_path(void) {
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_registry_add_unary(reg, "deg2rad", readme_deg2rad);
+    cxpr_registry_add_unary(reg, "ema_alpha", readme_ema_alpha);
     cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
     cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
 
     cxpr_ast* ast = cxpr_parse(parser,
-        "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)", &err);
+        "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
     assert(ast);
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
     assert(prog);
     assert(err.code == CXPR_OK);
 
-    cxpr_context_set_param(ctx, "limit", 1.2);
+    cxpr_context_set_param(ctx, "limit", 0.4);
 
-    cxpr_context_set(ctx, "angle_deg", 30.0);
+    cxpr_context_set(ctx, "period", 9.0);
     cxpr_value ast_result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     cxpr_value ir_result  = cxpr_test_eval_program(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
@@ -111,7 +111,7 @@ static void test_readme_ir_path(void) {
     assert(ast_result.b == true);
     assert(ir_result.b  == ast_result.b);
 
-    cxpr_context_set(ctx, "angle_deg", 120.0);
+    cxpr_context_set(ctx, "period", 3.0);
     ast_result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     ir_result  = cxpr_test_eval_program(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
@@ -131,7 +131,7 @@ static void test_readme_ir_path(void) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Custom C functions — convenience wrappers
  *
- *   cxpr_registry_add_unary(reg, "deg2rad", deg2rad);
+ *   cxpr_registry_add_unary(reg, "ema_alpha", ema_alpha);
  *   cxpr_registry_add_ternary(reg, "clamp", clamp);
  *   cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -144,7 +144,7 @@ static void test_readme_custom_c_functions(void) {
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
 
-    cxpr_registry_add_unary(reg,   "deg2rad",      readme_deg2rad);
+    cxpr_registry_add_unary(reg,   "ema_alpha",    readme_ema_alpha);
     cxpr_registry_add_ternary(reg, "clamp",        readme_clamp);
     cxpr_registry_add_value(reg,   "within_limit", readme_within_limit, 2, 2, NULL, NULL);
     cxpr_registry_add_nullary(reg, "rand_uniform", readme_rand_uniform);
@@ -160,7 +160,7 @@ static void test_readme_custom_c_functions(void) {
     _r; \
 })
 
-    ASSERT_APPROX(EVAL_DOUBLE("deg2rad(180)"), READMETEST_PI);
+    ASSERT_APPROX(EVAL_DOUBLE("ema_alpha(3)"), 0.5);
     ASSERT_APPROX(EVAL_DOUBLE("clamp(15, 0, 10)"), 10.0);
     ASSERT_APPROX(EVAL_DOUBLE("clamp(-5, 0, 10)"),  0.0);
     ASSERT_APPROX(EVAL_DOUBLE("clamp(5, 0, 10)"),   5.0);
@@ -627,9 +627,9 @@ static void test_readme_domain_physics(void) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Pipe expressions — forward pipe desugars to nested calls
  *
- *   "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)"
+ *   "period |> ema_alpha |> clamp(0.0, 1.0) |> within_limit($limit)"
  *   desugars to:
- *   "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)"
+ *   "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)"
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_pipe_expressions(void) {
@@ -638,22 +638,22 @@ static void test_readme_pipe_expressions(void) {
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
 
-    cxpr_registry_add_unary(reg, "deg2rad", readme_deg2rad);
+    cxpr_registry_add_unary(reg, "ema_alpha", readme_ema_alpha);
     cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
     cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
 
-    cxpr_context_set(ctx, "angle_deg", 30.0);
-    cxpr_context_set_param(ctx, "limit", 1.2);
+    cxpr_context_set(ctx, "period", 9.0);
+    cxpr_context_set_param(ctx, "limit", 0.4);
     cxpr_error err = {0};
 
     /* Pipe form from the README. */
     cxpr_ast* pipe_ast = cxpr_parse(parser,
-        "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)", &err);
+        "period |> ema_alpha |> clamp(0.0, 1.0) |> within_limit($limit)", &err);
     assert(pipe_ast);
 
     /* Nested form from the Quick Start section — semantically identical. */
     cxpr_ast* nested_ast = cxpr_parse(parser,
-        "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)", &err);
+        "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
     assert(nested_ast);
 
     /* Both forms must agree. */
@@ -664,11 +664,11 @@ static void test_readme_pipe_expressions(void) {
 
     assert(pipe_result.type == CXPR_VALUE_BOOL);
     assert(nested_result.type == CXPR_VALUE_BOOL);
-    assert(pipe_result.b == true);            /* 30deg ~= 0.52rad < 1.2 */
+    assert(pipe_result.b == true);            /* ema_alpha(9) = 0.2 < 0.4 */
     assert(pipe_result.b == nested_result.b);
 
-    /* Flip angle to 120 degrees — result changes for both forms. */
-    cxpr_context_set(ctx, "angle_deg", 120.0);
+    /* Flip period to 3 — smoothing factor rises to 0.5, result changes. */
+    cxpr_context_set(ctx, "period", 3.0);
     pipe_result   = cxpr_test_eval_ast(pipe_ast, ctx, reg, &err);
     nested_result = cxpr_test_eval_ast(nested_ast, ctx, reg, &err);
     assert(pipe_result.b == false);

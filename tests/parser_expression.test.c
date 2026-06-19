@@ -15,10 +15,25 @@ static void test_parser_expression_forms(void) {
     assert(cxpr_ast_function_argc(ast) == 3);
     cxpr_ast_free(ast);
 
-    ast = cxpr_parse(p, "score in [10, 20]", &err);
+    /* `within [lo, hi]` is interval membership: desugars to lo <= x <= hi (AND). */
+    ast = cxpr_parse(p, "score within [10, 20]", &err);
     assert(ast);
     assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
     assert(cxpr_ast_operator(ast) == CXPR_TOK_AND);
+    cxpr_ast_free(ast);
+
+    /* `in [a, b, c]` is set membership: desugars to an OR-chain of equalities. */
+    ast = cxpr_parse(p, "score in [10, 20, 30]", &err);
+    assert(ast);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_ast_operator(ast) == CXPR_TOK_OR);
+    cxpr_ast_free(ast);
+
+    /* `not in [...]` wraps the OR-chain in a logical NOT. */
+    ast = cxpr_parse(p, "score not in [10, 20]", &err);
+    assert(ast);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
+    assert(cxpr_ast_operator(ast) == CXPR_TOK_NOT);
     cxpr_ast_free(ast);
 
     ast = cxpr_parse(p, "a ? b : c", &err);

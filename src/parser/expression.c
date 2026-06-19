@@ -24,6 +24,8 @@ static bool cxpr_parse_interval(cxpr_parser* p,
                                 cxpr_ast** out_max,
                                 bool* out_include_min,
                                 bool* out_include_max);
+static cxpr_ast* cxpr_parse_set_membership(cxpr_parser* p, cxpr_ast* left, bool negated);
+static cxpr_ast* cxpr_parse_within(cxpr_parser* p, cxpr_ast* left, bool negated);
 
 cxpr_ast* cxpr_parse_expression(cxpr_parser* p) { return cxpr_parse_pipe(p); }
 
@@ -126,69 +128,159 @@ static cxpr_ast* cxpr_parse_relational(cxpr_parser* p) {
         if (!right || p->had_error) { cxpr_ast_free(left); cxpr_ast_free(right); return NULL; }
         return cxpr_ast_new_binary_op(op, left, right);
     }
-    if ((cxpr_parser_check(p, CXPR_TOK_NOT) && cxpr_parser_peek_next(p).type == CXPR_TOK_IN) ||
-        cxpr_parser_check(p, CXPR_TOK_IN)) {
+    if ((cxpr_parser_check(p, CXPR_TOK_NOT) &&
+         cxpr_parser_peek_next(p).type == CXPR_TOK_WITHIN) ||
+        cxpr_parser_check(p, CXPR_TOK_WITHIN)) {
         bool negated = false;
-        bool include_min = false;
-        bool include_max = false;
-        int lo_op;
-        int hi_op;
-        cxpr_ast* left_clone = NULL;
-        cxpr_ast* lower = NULL;
-        cxpr_ast* upper = NULL;
-        cxpr_ast* lo_cmp = NULL;
-        cxpr_ast* hi_cmp = NULL;
-        cxpr_ast* both = NULL;
-        cxpr_ast* out = NULL;
-
         if (cxpr_parser_check(p, CXPR_TOK_NOT)) {
             negated = true;
             cxpr_parser_advance(p);
         }
-        cxpr_parser_advance(p);
-        if (!cxpr_parse_interval(p, &lower, &upper, &include_min, &include_max)) {
-            cxpr_ast_free(left);
+        cxpr_parser_advance(p); /* consume 'within' */
+        return cxpr_parse_within(p, left, negated);
+    }
+    if ((cxpr_parser_check(p, CXPR_TOK_NOT) &&
+         cxpr_parser_peek_next(p).type == CXPR_TOK_IN) ||
+        cxpr_parser_check(p, CXPR_TOK_IN)) {
+        bool negated = false;
+        if (cxpr_parser_check(p, CXPR_TOK_NOT)) {
+            negated = true;
+            cxpr_parser_advance(p);
+        }
+        cxpr_parser_advance(p); /* consume 'in' */
+        return cxpr_parse_set_membership(p, left, negated);
+    }
+    return left;
+}
+
+/* `x within [lo, hi]` -> `lo <= x <= hi` (interval membership). Supports
+ * inclusive/exclusive bounds and named `min=`/`max=` bounds via the shared
+ * interval parser. `left` is consumed. */
+static cxpr_ast* cxpr_parse_within(cxpr_parser* p, cxpr_ast* left, bool negated) {
+    bool include_min = false;
+    bool include_max = false;
+    int lo_op;
+    int hi_op;
+    cxpr_ast* left_clone = NULL;
+    cxpr_ast* lower = NULL;
+    cxpr_ast* upper = NULL;
+    cxpr_ast* lo_cmp = NULL;
+    cxpr_ast* hi_cmp = NULL;
+    cxpr_ast* both = NULL;
+    cxpr_ast* out = NULL;
+
+    if (!cxpr_parse_interval(p, &lower, &upper, &include_min, &include_max)) {
+        cxpr_ast_free(left);
+        return NULL;
+    }
+    left_clone = cxpr_parser_clone_ast(left);
+    if (!left_clone) {
+        cxpr_ast_free(left);
+        cxpr_ast_free(lower);
+        cxpr_ast_free(upper);
+        p->had_error = true;
+        p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+        p->last_error.message = "Out of memory";
+        p->last_error.position = p->current.position;
+        p->last_error.line = p->current.line;
+        p->last_error.column = p->current.column;
+        return NULL;
+    }
+    lo_op = include_min ? CXPR_TOK_GTE : CXPR_TOK_GT;
+    hi_op = include_max ? CXPR_TOK_LTE : CXPR_TOK_LT;
+    lo_cmp = cxpr_ast_new_binary_op(lo_op, left, lower);
+    hi_cmp = cxpr_ast_new_binary_op(hi_op, left_clone, upper);
+    if (!lo_cmp || !hi_cmp) {
+        cxpr_ast_free(lo_cmp);
+        cxpr_ast_free(hi_cmp);
+        return NULL;
+    }
+    both = cxpr_ast_new_binary_op(CXPR_TOK_AND, lo_cmp, hi_cmp);
+    if (!both) {
+        cxpr_ast_free(lo_cmp);
+        cxpr_ast_free(hi_cmp);
+        return NULL;
+    }
+    if (negated) {
+        out = cxpr_ast_new_unary_op(CXPR_TOK_NOT, both);
+        if (!out) {
+            cxpr_ast_free(both);
             return NULL;
         }
+        return out;
+    }
+    return both;
+}
+
+/* `x in [a, b, c]` -> `(x == a) or (x == b) or (x == c)` (set membership).
+ * `x not in [...]` negates the whole chain. Requires at least one element.
+ * `left` is consumed. */
+static cxpr_ast* cxpr_parse_set_membership(cxpr_parser* p, cxpr_ast* left, bool negated) {
+    cxpr_ast* chain = NULL;
+    cxpr_ast* elem = NULL;
+    cxpr_ast* left_clone = NULL;
+    cxpr_ast* cmp = NULL;
+
+    if (!cxpr_parser_match(p, CXPR_TOK_LBRACKET)) {
+        cxpr_parser_set_error(p, "Expected '[' to start set after 'in'");
+        cxpr_ast_free(left);
+        return NULL;
+    }
+    if (cxpr_parser_check(p, CXPR_TOK_RBRACKET)) {
+        cxpr_parser_set_error(p, "Set membership requires at least one element");
+        cxpr_ast_free(left);
+        return NULL;
+    }
+
+    do {
+        elem = cxpr_parse_expression(p);
+        if (!elem || p->had_error) goto fail;
         left_clone = cxpr_parser_clone_ast(left);
         if (!left_clone) {
-            cxpr_ast_free(left);
-            cxpr_ast_free(lower);
-            cxpr_ast_free(upper);
             p->had_error = true;
             p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
             p->last_error.message = "Out of memory";
             p->last_error.position = p->current.position;
             p->last_error.line = p->current.line;
             p->last_error.column = p->current.column;
+            goto fail;
+        }
+        cmp = cxpr_ast_new_binary_op(CXPR_TOK_EQ, left_clone, elem);
+        if (!cmp) goto fail;
+        left_clone = NULL;
+        elem = NULL;
+        if (!chain) {
+            chain = cmp;
+        } else {
+            cxpr_ast* joined = cxpr_ast_new_binary_op(CXPR_TOK_OR, chain, cmp);
+            if (!joined) goto fail;
+            chain = joined;
+        }
+        cmp = NULL;
+    } while (cxpr_parser_match(p, CXPR_TOK_COMMA));
+
+    if (!cxpr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected ']' to close set")) goto fail;
+
+    cxpr_ast_free(left); /* every element used its own clone */
+    left = NULL;
+
+    if (negated) {
+        cxpr_ast* out = cxpr_ast_new_unary_op(CXPR_TOK_NOT, chain);
+        if (!out) {
+            cxpr_ast_free(chain);
             return NULL;
         }
-        lo_op = include_min ? CXPR_TOK_GTE : CXPR_TOK_GT;
-        hi_op = include_max ? CXPR_TOK_LTE : CXPR_TOK_LT;
-        lo_cmp = cxpr_ast_new_binary_op(lo_op, left, lower);
-        hi_cmp = cxpr_ast_new_binary_op(hi_op, left_clone, upper);
-        if (!lo_cmp || !hi_cmp) {
-            cxpr_ast_free(lo_cmp);
-            cxpr_ast_free(hi_cmp);
-            return NULL;
-        }
-        both = cxpr_ast_new_binary_op(CXPR_TOK_AND, lo_cmp, hi_cmp);
-        if (!both) {
-            cxpr_ast_free(lo_cmp);
-            cxpr_ast_free(hi_cmp);
-            return NULL;
-        }
-        if (negated) {
-            out = cxpr_ast_new_unary_op(CXPR_TOK_NOT, both);
-            if (!out) {
-                cxpr_ast_free(both);
-                return NULL;
-            }
-            return out;
-        }
-        return both;
+        return out;
     }
-    return left;
+    return chain;
+
+fail:
+    cxpr_ast_free(left);
+    cxpr_ast_free(left_clone);
+    cxpr_ast_free(elem);
+    cxpr_ast_free(cmp);
+    cxpr_ast_free(chain);
+    return NULL;
 }
 
 static cxpr_ast* cxpr_parse_arithmetic(cxpr_parser* p) {
@@ -265,7 +357,7 @@ static bool cxpr_parse_interval(cxpr_parser* p,
     *out_include_max = true;
 
     if (!cxpr_parser_match(p, CXPR_TOK_LBRACKET)) {
-        cxpr_parser_set_error(p, "Expected '[' to start interval after 'in'");
+        cxpr_parser_set_error(p, "Expected '[' to start interval after 'within'");
         return false;
     }
 
