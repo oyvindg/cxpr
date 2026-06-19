@@ -47,6 +47,16 @@ static void parse_fail(cxpr_parser* p, const char* expr) {
     cxpr_ast_free(ast);
 }
 
+static void parse_fail_message(cxpr_parser* p, const char* expr, const char* message) {
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    assert(ast == NULL);
+    assert(err.code != CXPR_OK);
+    assert(err.message != NULL);
+    assert(strcmp(err.message, message) == 0);
+    cxpr_ast_free(ast);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: simple parsing
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -730,6 +740,18 @@ static void test_syntax_errors(void) {
     printf("  ✓ test_syntax_errors\n");
 }
 
+static void test_implicit_multiplication_error(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    const char* message = "Implicit multiplication is not supported; use '*' explicitly";
+
+    parse_fail_message(p, "8/2(2*2)", message);
+    parse_fail_message(p, "2x", message);
+    parse_fail_message(p, "(a + b)c", message);
+
+    cxpr_parser_free(p);
+    printf("  ✓ test_implicit_multiplication_error\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: power right-associativity
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -820,6 +842,7 @@ int main(void) {
 
     /* Errors */
     test_syntax_errors();
+    test_implicit_multiplication_error();
 
     printf("All parser tests passed!\n");
     return 0;

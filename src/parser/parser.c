@@ -43,6 +43,21 @@ bool cxpr_parser_expect(cxpr_parser* p, cxpr_token_type type, const char* messag
     return false;
 }
 
+static bool cxpr_parser_token_starts_primary(cxpr_token_type type) {
+    switch (type) {
+        case CXPR_TOK_NUMBER:
+        case CXPR_TOK_IDENTIFIER:
+        case CXPR_TOK_VARIABLE:
+        case CXPR_TOK_STRING:
+        case CXPR_TOK_TRUE:
+        case CXPR_TOK_FALSE:
+        case CXPR_TOK_LPAREN:
+            return true;
+        default:
+            return false;
+    }
+}
+
 cxpr_parser* cxpr_parser_new(void) {
     return (cxpr_parser*)calloc(1, sizeof(cxpr_parser));
 }
@@ -81,7 +96,9 @@ cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err) {
     if (!cxpr_parser_check(p, CXPR_TOK_EOF)) {
         p->had_error = true;
         p->last_error.code = CXPR_ERR_SYNTAX;
-        p->last_error.message = "Unexpected token after expression";
+        p->last_error.message = cxpr_parser_token_starts_primary(p->current.type)
+                                    ? "Implicit multiplication is not supported; use '*' explicitly"
+                                    : "Unexpected token after expression";
         p->last_error.position = p->current.position;
         p->last_error.line = p->current.line;
         p->last_error.column = p->current.column;

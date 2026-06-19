@@ -177,6 +177,15 @@ static void test_power_before_mul(void) {
     printf("  ✓ test_power_before_mul\n");
 }
 
+static void test_power_negative_exponent(void) {
+    /* 2^-2 = 2^(-2) = 0.25 */
+    ASSERT_DOUBLE_EQ(eval_expr("2^-2"), 0.25);
+    ASSERT_DOUBLE_EQ(eval_expr("2^ -2"), 0.25);
+    /* Power remains right-associative: 2^-2^2 = 2^(-(2^2)) = 1/16 */
+    ASSERT_DOUBLE_EQ(eval_expr("2^-2^2"), 0.0625);
+    printf("  ✓ test_power_negative_exponent\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Comparison vs arithmetic
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -187,6 +196,23 @@ static void test_comparison_after_arithmetic(void) {
     /* 2 + 3 > 10 should be (2+3) > 10 = false */
     assert(eval_bool_expr("2 + 3 > 10") == false);
     printf("  ✓ test_comparison_after_arithmetic\n");
+}
+
+static void test_chained_relational_comparisons(void) {
+    assert(eval_bool_expr("1 < 2 < 3") == true);
+    assert(eval_bool_expr("1 < 3 < 2") == false);
+    assert(eval_bool_expr("3 > 2 > 1") == true);
+    assert(eval_bool_expr("1 <= 1 < 2") == true);
+    assert(eval_bool_expr("1 <= 1 > 2") == false);
+    assert(eval_bool_expr_ctx(
+        "1 < x < 10",
+        (const char*[]){"x", NULL},
+        (double[]){5}) == true);
+    assert(eval_bool_expr_ctx(
+        "1 < x < 10",
+        (const char*[]){"x", NULL},
+        (double[]){11}) == false);
+    printf("  ✓ test_chained_relational_comparisons\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -220,7 +246,7 @@ static void test_not_precedence(void) {
 static void test_unary_minus_precedence(void) {
     /* Power binds tighter than unary minus (standard math convention):
        Grammar: unary → ("-"|"+") unary | power
-                power → primary [ ("^"|"**") power ]
+                power → primary [ ("^"|"**") unary ]
        So -x^n is always parsed as -(x^n), never (-x)^n */
 
     /* -2^2 = -(2^2) = -4 */
@@ -349,7 +375,9 @@ int main(void) {
     test_modulo_same_as_mul();
     test_power_right_associative();
     test_power_before_mul();
+    test_power_negative_exponent();
     test_comparison_after_arithmetic();
+    test_chained_relational_comparisons();
     test_and_before_or();
     test_not_precedence();
     test_unary_minus_precedence();
