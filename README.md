@@ -3,16 +3,24 @@
 [![CI](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml/badge.svg)](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`cxpr` is a C11 library for runtime expression evaluation. Given an expression string such as
-`"rsi < 30 and volume > $min_volume"`, it parses it into an AST, evaluates it against a
-context of variables and parameters, and optionally compiles it to an IR for repeated
-execution without re-parsing.
+`cxpr` is a C11 library for runtime expression evaluation. Given an expression string, it
+parses it into an AST, evaluates it against a context of variables and parameters, and
+optionally compiles it to an IR for repeated execution without re-parsing. It is
+domain-agnostic — the same engine drives rules across very different fields:
+
+```text
+sqrt(vx^2 + vy^2) > $max_speed              # physics / robotics
+latency_ms within [0, $budget_ms]           # systems / SLOs
+rsi < 30 and volume > $min_volume            # trading
+```
 
 It supports numbers, booleans, struct-like values, custom C callbacks, and
 expression-defined functions. A named-expression evaluator manages sets of interdependent
 expressions with automatic topological ordering and cycle detection. Host integrations can
 also expose provider metadata, scoped sources, runtime-resolved series, and source plans for
-bar-by-bar materialization outside the expression engine.
+step-by-step materialization (e.g. per simulation tick or per market bar) outside the
+expression engine. See [examples/](examples) for runnable physics, robotics, and trading
+programs.
 
 No external dependencies. C11 required.
 
@@ -318,9 +326,9 @@ It desugars to `lo <= x and x <= hi`, and supports named and exclusive-style
 bounds.
 
 ```text
-rsi within [30, 70]                 # 30 <= rsi and rsi <= 70
-rsi within [min=30, max=70]         # named bounds, order-independent
-price not within [support, resistance]
+temperature within [18, 24]            # 18 <= temperature and temperature <= 24
+temperature within [min=18, max=24]    # named bounds, order-independent
+latency_ms not within [0, $budget_ms]
 ```
 
 > Migration note (2.0.0): earlier releases used `x in [lo, hi]` for intervals.
@@ -481,16 +489,16 @@ For hot loops, prefer the bulk and stable-binding update paths:
 
 `CXPR_VALUE_TIMESTAMP` (Unix nanoseconds) and `CXPR_VALUE_DURATION` (nanoseconds)
 participate in a closed, type-checked algebra. Values flow in from struct fields
-and typed callbacks — for example a `bar.time` field or a host `now()` function —
-and the engine reasons about them directly instead of forcing every host to
-unpack raw nanoseconds:
+and typed callbacks — for example an `event.time` field or a host `now()`
+function — and the engine reasons about them directly instead of forcing every
+host to unpack raw nanoseconds:
 
 ```text
-bar.time - entry.time            # timestamp - timestamp  -> duration
-bar.time + $cooldown             # timestamp + duration    -> timestamp
-$cooldown * 2                    # duration  * number      -> duration
-hold_time / bar_interval         # duration  / duration    -> number (ratio)
-bar.time >= session_open         # ordering of two timestamps -> bool
+event.time - request.start       # timestamp - timestamp  -> duration
+event.time + $retry_after        # timestamp + duration    -> timestamp
+$timeout * 2                     # duration  * number      -> duration
+elapsed / sample_interval        # duration  / duration    -> number (ratio)
+event.time >= window_start       # ordering of two timestamps -> bool
 ```
 
 The full set of valid operations:
@@ -515,15 +523,15 @@ their performance.
 
 ## Null Handling
 
-`CXPR_VALUE_NULL` represents missing data — a common case for host-backed series
-that have no value for a given bar. Two built-ins make `null` usable instead of
-fatal:
+`CXPR_VALUE_NULL` represents missing data — a common case for optional fields or
+host-backed series that have no value at a given step. Two built-ins make `null`
+usable instead of fatal:
 
 ```text
-coalesce(close[1], close)        # first non-null argument (1-8 args)
-coalesce(volume, 0)              # fall back to 0 when volume is missing
-is_null(macd().signal)           # true when the value is null
-coalesce(rsi, 50) < 30           # neutral default before using rsi
+coalesce(reading, prev_reading)  # first non-null argument (1-8 args)
+coalesce(config.timeout, 30)     # fall back to a default when unset
+is_null(sensor.value)            # true when the value is null
+coalesce(close[1], close)        # series: last bar missing -> use current
 ```
 
 `coalesce(a, b, …)` returns its first non-null argument (or `null` if all are
@@ -544,16 +552,17 @@ bindings changed without copying the entire context. Typical use cases:
 - **Expression-defined functions** — `cxpr` internally creates an overlay to bind function
   parameters (`sq(x) => x * x`) so they shadow, but do not overwrite, the caller's variables.
 - **Scenario evaluation** — test different `$param` values against the same base context.
-- **Basket iteration** — evaluate one symbol at a time, overlaying per-symbol data while the
-  shared market context stays in the parent.
-- **Bar-by-bar evaluation** — in a loop over time-series bars, create an overlay per bar with
-  bar-specific fields (e.g. open, high, low, close, volume) while shared parameters and
-  configuration stay in the parent.
+- **Per-element iteration** — evaluate one item at a time (a simulation particle, a basket
+  symbol), overlaying per-item data while the shared context stays in the parent.
+- **Per-step evaluation** — in a loop over discrete steps (simulation ticks, animation frames,
+  time-series bars), create an overlay per step with step-specific fields while shared
+  constants, parameters, and configuration stay in the parent.
 - **Source remapping** — map a struct prefix like `src.x` into a function parameter like `v.x`.
 
 Context overlays are an evaluation primitive, not expression syntax. They do not select a
-timeframe or scope by themselves. Hosts that expose scoped data should represent that in the
-expression language through scoped source or indicator calls, for example:
+rate or scope by themselves. Hosts that expose scoped data (different sampling rates,
+timeframes, or coordinate frames) should represent that in the expression language through
+scoped source or indicator calls — for example a finance host selecting a timeframe:
 
 ```text
 close("1d")
@@ -562,50 +571,50 @@ close(timeframe="1d")
 ema(close, 14, timeframe="1d")
 ```
 
-The host may then use context overlays internally while materializing those scoped series.
-For example, a trading host may keep the primary timeframe's bar fields in a base context
-and evaluate daily indicator bars in child contexts so daily `close`, `volume`, etc. do not
-overwrite the primary values.
+The host may then use context overlays internally while materializing those scoped series,
+keeping the primary stream's fields in a base context and evaluating the secondary stream in
+child contexts so its values do not overwrite the primary ones.
 
-**Shared context — works when everything uses the same timeframe:**
+The example below is a simulation: the base context holds shared constants and the current
+step's state, and a finer-grained sub-step integration runs in overlays.
+
+**Shared context — works when everything advances at the same rate:**
 
 ```c
-// ctx holds 1h bar data set by the framework (close=hourly close, etc.).
-for (size_t i = 0; i < bar_count_1h; i++) {
-    cxpr_context_set(ctx, "close",     bars_1h[i].close);
-    cxpr_context_set(ctx, "volume",    bars_1h[i].volume);
-    cxpr_context_set(ctx, "bar_index", (double)i);
+// ctx holds the current step state set by the integrator (position, velocity).
+for (size_t i = 0; i < step_count; i++) {
+    cxpr_context_set(ctx, "position",   state[i].position);
+    cxpr_context_set(ctx, "velocity",   state[i].velocity);
+    cxpr_context_set(ctx, "step_index", (double)i);
 
-    cxpr_eval_ast(indicator_ast, ctx, reg, &out, &err);
+    cxpr_eval_ast(energy_ast, ctx, reg, &out, &err);
     series[i] = out.d;
 }
-// Simple and fast. But if a second indicator now needs to materialize against
-// daily bars, writing bars_1d[j].close into the same ctx overwrites the hourly
-// close. After that loop finishes, the hourly close in ctx is gone — any later
-// indicator that expects hourly data silently reads the last daily value.
+// Simple and fast. But if a second pass now refines each step with sub-steps,
+// writing sub_state[j].position into the same ctx overwrites the step position.
+// After that loop finishes, the step position in ctx is gone — any later
+// computation that expects step-level state silently reads the last sub-step value.
 ```
 
-**Overlay — daily bars shadow the hourly base without destroying it:**
+**Overlay — sub-steps shadow the step state without destroying it:**
 
 ```c
-// base holds 1h bar data and shared state (role bindings, params, series refs).
-// The parsed expression chose the daily timeframe; overlays only isolate bindings.
-for (size_t j = 0; j < bar_count_1d; j++) {
-    cxpr_context* bar_ctx = cxpr_context_overlay_new(base);
-    cxpr_context_set(bar_ctx, "close",     bars_1d[j].close);
-    cxpr_context_set(bar_ctx, "volume",    bars_1d[j].volume);
-    cxpr_context_set(bar_ctx, "bar_index", (double)j);
+// base holds shared constants/params and the current step state.
+for (size_t j = 0; j < substep_count; j++) {
+    cxpr_context* sub_ctx = cxpr_context_overlay_new(base);
+    cxpr_context_set(sub_ctx, "position",   sub_state[j].position);
+    cxpr_context_set(sub_ctx, "velocity",   sub_state[j].velocity);
+    cxpr_context_set(sub_ctx, "step_index", (double)j);
 
-    // Reads role bindings and params from base.
-    // Daily close/volume/bar_index stay in bar_ctx.
-    cxpr_eval_ast(daily_indicator_ast, bar_ctx, reg, &out, &err);
-    daily_series[j] = out.d;
+    // Reads shared constants and params from base.
+    // Sub-step position/velocity/step_index stay in sub_ctx.
+    cxpr_eval_ast(refined_ast, sub_ctx, reg, &out, &err);
+    refined_series[j] = out.d;
 
-    cxpr_context_free(bar_ctx); // recycled — daily bar state discarded
+    cxpr_context_free(sub_ctx); // recycled — sub-step state discarded
 }
-// base still holds the hourly close. The next indicator that materializes
-// hourly data — or another indicator on a weekly timeframe — sees the
-// original base values intact.
+// base still holds the step-level state. The next pass that needs step-level
+// values — or another computation on a coarser cadence — sees the base intact.
 ```
 
 ### When to use overlays vs. alternatives

@@ -726,6 +726,10 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){ .op = CXPR_OP_MOD, .value = 0.0, .name = NULL },
                                 err);
+        case CXPR_TOK_POWER:
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){ .op = CXPR_OP_POW, .value = 0.0, .name = NULL },
+                                err);
         case CXPR_TOK_EQ:
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){ .op = CXPR_OP_CMP_EQ, .value = 0.0, .name = NULL },

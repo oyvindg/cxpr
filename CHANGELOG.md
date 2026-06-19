@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-06-19
+
+### Fixed
+
+- The `^`/`**` power operator now compiles in the IR, so it works on runtime
+  (non-constant) operands in both the compiled-program path (`cxpr_compile`) and
+  the named-expression evaluator (`cxpr_evaluator_compile`) — previously only
+  constant power expressions (`2^3`) survived, via constant folding, while
+  `x^2` was rejected. All three engines (tree-walk, compiled, evaluator) now
+  agree. The runtime executors already supported `CXPR_OP_POW`; the compiler
+  simply never emitted it.
+
+### Added
+
+- `examples/scientific.md` (+ test): the named-expression evaluator resolving an
+  interdependent formula set in topological order across general relativity,
+  special relativity, quantum mechanics, and chemical kinetics.
+
+### Changed
+
+- README made more domain-neutral: the intro and the Timestamps, Null Handling,
+  Sets/Intervals, and Context Overlays sections now lead with cross-domain
+  examples instead of trading-specific ones (trading remains one illustration
+  among several).
+
 ## [2.0.0] - 2026-06-19
 
 ### Changed
@@ -135,6 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Initial tagged releases. Detailed per-version history predates this changelog;
 see the Git tags `v1.0.0`–`v1.0.4` for the corresponding commits.
 
+[2.0.1]: https://github.com/oyvindg/cxpr/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/oyvindg/cxpr/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/oyvindg/cxpr/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/oyvindg/cxpr/compare/v1.0.3...v1.0.4
