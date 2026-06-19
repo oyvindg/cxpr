@@ -5,17 +5,44 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-06-19
 
 ### Added
 
-- IR views and scoped references (`cxpr/ir_view.h`): inspect compiled programs
-  without executing them.
+- Provider metadata for host-backed inventories (`cxpr/provider.h`,
+  `cxpr/runtime_call.h`, `cxpr/scope.h`): describe host functions and direct
+  sources, preserve named arguments, declare record fields, and decode
+  scoped/partitioned series; register provider signatures at parse time and turn
+  call ASTs into host-neutral runtime-call views.
+- Source planning for host-owned data (`cxpr/source_plan.h`):
+  `cxpr_plan_bind_sources` and `cxpr_plan_bind_sources_from_table` own the AST
+  walk, numeric-argument evaluation, per-leaf host binding, and scoped-source
+  registration so hosts materialize series bar-by-bar.
+- IR views (`cxpr/ir_view.h`): inspect a compiled program's opcodes, result
+  kind, and instruction count without executing it.
 - Compiled-program introspection on the expression evaluator:
   `cxpr_expression_program`, `cxpr_expression_instruction_count`,
   `cxpr_expression_dependency_instruction_count`, and
   `cxpr_expression_total_instruction_count`. The dependency variant counts each
   reachable program once; the total variant sums every program independently.
+- Alias expansion (`cxpr/alias.h`): `cxpr_expand_aliases` rewrites an expression
+  string before parsing.
+- Typed context accessors (`cxpr/context.h`): boolean and string variables and
+  `$params` (`cxpr_context_set_bool`/`set_string`/`get_bool`/`get_string` and
+  the `_param_` variants), plus per-evaluation cached structs
+  (`cxpr_context_set_cached_struct`, `cxpr_context_get_cached_struct`,
+  `cxpr_context_clear_cached_structs`).
+- AST inspection and analysis (`cxpr/ast.h`): `cxpr_ast_clone`,
+  `cxpr_ast_to_string`/`cxpr_ast_dump`, producer-field and reference/variable
+  collection, call-argument context tracing
+  (`cxpr_ast_call_arg_contexts_for_reference`/`_for_variable`),
+  `cxpr_ast_is_boolean_expression`, and offset-relative evaluation.
+- Registry: `cxpr_registry_add_numeric` for the scalar double fast path (with
+  `cxpr_registry_add` kept as a backward-compatible alias) and
+  `cxpr_registry_add_ast_handler` to layer AST-level dispatch on an existing
+  function without replacing its scalar/struct callbacks.
+- Expression language: named call arguments (`close(timeframe="1d")`) preserved
+  through the AST/provider path, and string literals as named-argument values.
 - `cxpr_error_format` — render a complete `"<code> at <line>:<column>: <message>"`
   description into a caller-owned buffer, with `snprintf`-style truncation
   semantics. Output is self-contained and safe to retain.
@@ -68,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Initial tagged releases. Detailed per-version history predates this changelog;
 see the Git tags `v1.0.0`–`v1.0.4` for the corresponding commits.
 
-[1.1.0]: https://github.com/oyvindg/cxpr/compare/v1.0.4...HEAD
+[1.1.0]: https://github.com/oyvindg/cxpr/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/oyvindg/cxpr/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/oyvindg/cxpr/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/oyvindg/cxpr/compare/v1.0.1...v1.0.2
