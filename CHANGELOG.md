@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed memory leaks on parser error paths: when a sub-parse allocated AST nodes
+  and then hit an invalid token, the just-parsed node was leaked while unwinding.
+  Affected the binary/unary/ternary/pipe productions and the call-argument,
+  parenthesised-group, and lookback paths. Found by the new fuzzer.
 - Fixed undefined behavior in the fast scalar and boolean IR executors: the
   stack pointer was read and modified without an intervening sequence point when
   invoking a synchronous function (`stack[sp++] = f(&stack[sp], ...)`), which
