@@ -346,6 +346,51 @@ static void test_error_position(void) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * Test: parse errors mid-production must not leak partial AST nodes
+ *
+ * Each input parses far enough to allocate one or more AST nodes, then hits an
+ * invalid byte (0xA0) or premature end. The parser must free every partial node
+ * before returning NULL. Run under the asan preset, a regression here surfaces
+ * as a LeakSanitizer failure. Found originally by the libFuzzer harness.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_parse_error_no_partial_leak(void) {
+    /* BAD isolates the invalid 0xA0 byte so the next character is not folded
+     * into the hex escape. */
+#define BAD "\xA0"
+    static const char* const cases[] = {
+        "rsi < 30 and volume" BAD "z",  /* binary right operand */
+        "a or b" BAD "z",               /* logical-or right */
+        "a == b" BAD "z",               /* equality right */
+        "a + b" BAD "z",                /* arithmetic right */
+        "a * b" BAD "z",                /* term right */
+        "a ^ b" BAD "z",                /* power right */
+        "not a" BAD,                    /* not operand */
+        "-a" BAD,                       /* unary operand */
+        "a ? b" BAD "z : d",            /* ternary true branch */
+        "a ? b : c" BAD "z",            /* ternary false branch */
+        "x |> f" BAD,                   /* pipe stage */
+        "clamp(a, b" BAD,               /* call argument */
+        "f(x=" BAD,                     /* named-argument value */
+        "macd(12, 26).hist" BAD,        /* producer field access */
+        "close[" BAD,                   /* lookback offset */
+        "x in [1, 2" BAD,               /* interval bound */
+        "(a + b" BAD,                   /* parenthesised group */
+    };
+#undef BAD
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        cxpr_parser* p = cxpr_parser_new();
+        cxpr_error err = {0};
+        cxpr_ast* ast = cxpr_parse(p, cases[i], &err);
+        assert(ast == NULL);
+        assert(err.code != CXPR_OK);
+        cxpr_parser_free(p);
+    }
+    printf("  ✓ test_parse_error_no_partial_leak\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * Test: expression evaluator errors
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -444,6 +489,7 @@ int main(void) {
 
     /* Error position tracking */
     test_error_position();
+    test_parse_error_no_partial_leak();
 
     /* Expression evaluator errors */
     test_formula_parse_error();

@@ -26,6 +26,7 @@ static bool cxpr_parse_call_argument(cxpr_parser* p, cxpr_ast** out_arg, char** 
     arg = cxpr_parse_expression(p);
     if (!arg || p->had_error) {
         free(name);
+        cxpr_ast_free(arg);
         return false;
     }
     *out_arg = arg;
@@ -186,7 +187,7 @@ fail_call:
         }
     } else if (cxpr_parser_match(p, CXPR_TOK_LPAREN)) {
         node = cxpr_parse_expression(p);
-        if (!node || p->had_error) return NULL;
+        if (!node || p->had_error) { cxpr_ast_free(node); return NULL; }
         if (!cxpr_parser_expect(p, CXPR_TOK_RPAREN, "Expected closing ')'")) {
             cxpr_ast_free(node);
             return NULL;
@@ -265,6 +266,7 @@ primary_done:
         cxpr_ast* index_expr = cxpr_parse_expression(p);
         if (!index_expr || p->had_error) {
             cxpr_ast_free(node);
+            cxpr_ast_free(index_expr);
             return NULL;
         }
         if (!cxpr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after lookback expression")) {
