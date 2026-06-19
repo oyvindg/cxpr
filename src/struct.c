@@ -3,9 +3,8 @@
  * @brief Typed struct storage support for cxpr contexts.
  */
 
-#include "internal.h"
-
-static cxpr_value cxpr_value_clone(const cxpr_value* value);
+#include "context/state.h"
+#include "core.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Typed struct values
@@ -15,9 +14,7 @@ static void cxpr_struct_value_reset(cxpr_struct_value* s) {
     if (!s) return;
     for (size_t i = 0; i < s->field_count; i++) {
         free((char*)s->field_names[i]);
-        if (s->field_values[i].type == CXPR_VALUE_STRUCT) {
-            cxpr_struct_value_free(s->field_values[i].s);
-        }
+        cxpr_value_free(&s->field_values[i]);
     }
     free(s->field_names);
     free(s->field_values);
@@ -26,22 +23,56 @@ static void cxpr_struct_value_reset(cxpr_struct_value* s) {
     s->field_count = 0;
 }
 
-static cxpr_value cxpr_value_clone(const cxpr_value* value) {
-    if (!value) return cxpr_fv_double(0.0);
+static int cxpr_value_clone_failed(const cxpr_value* source, const cxpr_value* clone) {
+    if (!source || !clone) return 0;
+    if (source->type == CXPR_VALUE_STRUCT && source->s && !clone->s) return 1;
+    if (source->type == CXPR_VALUE_STRING && source->str && !clone->str) return 1;
+    if (source->type == CXPR_VALUE_ARRAY && source->a && !clone->a) return 1;
+    return 0;
+}
+
+cxpr_value cxpr_value_clone(const cxpr_value* value) {
+    char* string_copy;
+
+    if (!value) return cxpr_num(0.0);
 
     switch (value->type) {
     case CXPR_VALUE_NUMBER:
-        return cxpr_fv_double(value->d);
+        return cxpr_num(value->d);
     case CXPR_VALUE_BOOL:
-        return cxpr_fv_bool(value->b);
+        return cxpr_bool(value->b);
     case CXPR_VALUE_STRUCT:
-        return cxpr_fv_struct(cxpr_struct_value_new(
+        return cxpr_struct(cxpr_struct_value_new(
             value->s ? (const char* const*)value->s->field_names : NULL,
             value->s ? value->s->field_values : NULL,
             value->s ? value->s->field_count : 0));
+    case CXPR_VALUE_STRING:
+        string_copy = cxpr_strdup(value->str ? value->str : "");
+        if (!string_copy) return (cxpr_value){ .type = CXPR_VALUE_STRING, .str = NULL };
+        return (cxpr_value){ .type = CXPR_VALUE_STRING, .str = string_copy };
+    case CXPR_VALUE_NULL:
+        return cxpr_null();
+    case CXPR_VALUE_TIMESTAMP:
+        return cxpr_timestamp(value->i64);
+    case CXPR_VALUE_DURATION:
+        return cxpr_duration(value->i64);
+    case CXPR_VALUE_ARRAY:
+        return cxpr_array(value->a ? cxpr_array_value_new(value->a->values, value->a->count) : NULL);
     default:
-        return cxpr_fv_double(0.0);
+        return cxpr_num(0.0);
     }
+}
+
+void cxpr_value_free(cxpr_value* value) {
+    if (!value) return;
+    if (value->type == CXPR_VALUE_STRUCT) {
+        cxpr_struct_value_free(value->s);
+    } else if (value->type == CXPR_VALUE_STRING) {
+        free((char*)value->str);
+    } else if (value->type == CXPR_VALUE_ARRAY) {
+        cxpr_array_value_free(value->a);
+    }
+    *value = cxpr_num(0.0);
 }
 
 cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
@@ -67,8 +98,7 @@ cxpr_struct_value* cxpr_struct_value_new(const char* const* field_names,
             return NULL;
         }
         s->field_values[i] = cxpr_value_clone(&field_values[i]);
-        if (field_values[i].type == CXPR_VALUE_STRUCT && field_values[i].s &&
-            !s->field_values[i].s) {
+        if (cxpr_value_clone_failed(&field_values[i], &s->field_values[i])) {
             cxpr_struct_value_free(s);
             return NULL;
         }
@@ -81,6 +111,43 @@ void cxpr_struct_value_free(cxpr_struct_value* s) {
     if (!s) return;
     cxpr_struct_value_reset(s);
     free(s);
+}
+
+cxpr_array_value* cxpr_array_value_new(const cxpr_value* values, size_t count) {
+    cxpr_array_value* a = (cxpr_array_value*)calloc(1, sizeof(cxpr_array_value));
+    if (!a) return NULL;
+
+    a->count = count;
+    if (count == 0) return a;
+    if (!values) {
+        cxpr_array_value_free(a);
+        return NULL;
+    }
+
+    a->values = (cxpr_value*)calloc(count, sizeof(cxpr_value));
+    if (!a->values) {
+        cxpr_array_value_free(a);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        a->values[i] = cxpr_value_clone(&values[i]);
+        if (cxpr_value_clone_failed(&values[i], &a->values[i])) {
+            cxpr_array_value_free(a);
+            return NULL;
+        }
+    }
+
+    return a;
+}
+
+void cxpr_array_value_free(cxpr_array_value* a) {
+    if (!a) return;
+    for (size_t i = 0; i < a->count; i++) {
+        cxpr_value_free(&a->values[i]);
+    }
+    free(a->values);
+    free(a);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

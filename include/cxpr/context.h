@@ -36,6 +36,18 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx);
 cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
 
 /**
+ * @brief Release the calling thread's internal per-thread caches.
+ *
+ * cxpr maintains a thread-local empty-overlay reuse cache that is populated
+ * implicitly during evaluation. A long-lived process that spawns and joins
+ * many worker threads should call this from each worker just before it exits
+ * to avoid retaining that thread's cache until process exit. It is optional,
+ * idempotent, and never required for correctness — only for promptly
+ * reclaiming memory on threads that will not run further cxpr evaluations.
+ */
+void cxpr_thread_cleanup(void);
+
+/**
  * @brief Set a numeric runtime variable.
  * @param ctx Destination context.
  * @param name Variable name.
@@ -63,6 +75,20 @@ void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries
 void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
                                 unsigned long hash, double value);
 /**
+ * @brief Set a boolean runtime variable.
+ * @param ctx Destination context.
+ * @param name Variable name.
+ * @param value Boolean value to store.
+ */
+void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value);
+/**
+ * @brief Set a string runtime variable.
+ * @param ctx Destination context.
+ * @param name Variable name.
+ * @param value String value to copy and store.
+ */
+void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* value);
+/**
  * @brief Look up a numeric runtime variable.
  * @param ctx Context to query.
  * @param name Variable name.
@@ -70,6 +96,22 @@ void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
  * @return Variable value, or `0.0` on miss.
  */
 double cxpr_context_get(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up a boolean runtime variable.
+ * @param ctx Context to query.
+ * @param name Variable name.
+ * @param found Optional success flag output.
+ * @return Variable value, or `false` on miss.
+ */
+bool cxpr_context_get_bool(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up a string runtime variable.
+ * @param ctx Context to query.
+ * @param name Variable name.
+ * @param found Optional success flag output.
+ * @return Borrowed string value, or NULL on miss.
+ */
+const char* cxpr_context_get_string(const cxpr_context* ctx, const char* name, bool* found);
 
 /**
  * @brief Set a numeric `$param`.
@@ -93,6 +135,20 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
  */
 void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
                                       unsigned long hash, double value);
+/**
+ * @brief Set a boolean `$param`.
+ * @param ctx Destination context.
+ * @param name Parameter name without `$`.
+ * @param value Boolean value to store.
+ */
+void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value);
+/**
+ * @brief Set a string `$param`.
+ * @param ctx Destination context.
+ * @param name Parameter name without `$`.
+ * @param value String value to copy and store.
+ */
+void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const char* value);
 
 /** @brief Pre-bound variable slot for hot-loop writes. */
 typedef struct {
@@ -137,6 +193,22 @@ double cxpr_context_slot_get(const cxpr_context_slot* slot);
  */
 double cxpr_context_get_param(const cxpr_context* ctx, const char* name, bool* found);
 /**
+ * @brief Look up a boolean `$param`.
+ * @param ctx Context to query.
+ * @param name Parameter name without `$`.
+ * @param found Optional success flag output.
+ * @return Parameter value, or `false` on miss.
+ */
+bool cxpr_context_get_param_bool(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up a string `$param`.
+ * @param ctx Context to query.
+ * @param name Parameter name without `$`.
+ * @param found Optional success flag output.
+ * @return Borrowed string value, or NULL on miss.
+ */
+const char* cxpr_context_get_param_string(const cxpr_context* ctx, const char* name, bool* found);
+/**
  * @brief Look up one binding as a typed cxpr value.
  * @param ctx Context to query.
  * @param name Binding name.
@@ -154,6 +226,26 @@ void cxpr_context_clear(cxpr_context* ctx);
  * @param ctx Context to clear cached structs from.
  */
 void cxpr_context_clear_cached_structs(cxpr_context* ctx);
+/**
+ * @brief Store a cached producer struct result on a context.
+ *
+ * Cached structs are cleared by cxpr_context_clear_cached_structs() (which
+ * the evaluator calls at the start of each evaluation pass).
+ *
+ * @param ctx Destination context.
+ * @param name Cache key (typically "indicator(arg1,arg2,...)").
+ * @param value Struct value to deep-copy into the cache.
+ */
+void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
+                                    const cxpr_struct_value* value);
+/**
+ * @brief Look up a cached producer struct result from a context.
+ * @param ctx Context to query.
+ * @param name Cache key.
+ * @return Borrowed struct pointer, or NULL on miss.
+ */
+const cxpr_struct_value* cxpr_context_get_cached_struct(const cxpr_context* ctx,
+                                                        const char* name);
 
 /**
  * @brief Store a named struct value in the context.

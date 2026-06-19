@@ -44,6 +44,32 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CXPR_ENABLE_UBSAN": "ON"
       }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CXPR_ENABLE_COVERAGE": "ON",
+        "CXPR_STRICT": "OFF",
+        "CXPR_BUILD_BENCHMARKS": "OFF"
+      }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "Fuzzers (libFuzzer + ASan/UBSan, Clang)",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-fuzz",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CXPR_BUILD_FUZZERS": "ON",
+        "CXPR_ENABLE_ASAN": "ON",
+        "CXPR_ENABLE_UBSAN": "ON",
+        "CXPR_BUILD_BENCHMARKS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -62,6 +88,14 @@
     {
       "name": "ubsan",
       "configurePreset": "ubsan"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz"
     }
   ],
   "testPresets": [
@@ -92,6 +126,13 @@
     {
       "name": "ubsan",
       "configurePreset": "ubsan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
       "output": {
         "outputOnFailure": true
       }

@@ -34,8 +34,54 @@ static void test_error_strings(void) {
     assert(strcmp(cxpr_error_string(CXPR_ERR_WRONG_ARITY), "Wrong number of arguments") == 0);
     assert(strcmp(cxpr_error_string(CXPR_ERR_DIVISION_BY_ZERO), "Division by zero") == 0);
     assert(strcmp(cxpr_error_string(CXPR_ERR_CIRCULAR_DEPENDENCY), "Circular dependency") == 0);
+    assert(strcmp(cxpr_error_string(CXPR_ERR_TYPE_MISMATCH), "Type mismatch") == 0);
     assert(strcmp(cxpr_error_string(CXPR_ERR_OUT_OF_MEMORY), "Out of memory") == 0);
     printf("  ✓ test_error_strings\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Test: cxpr_error_format
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_error_format(void) {
+    char buf[256];
+    size_t n;
+
+    /* No-error / NULL cases yield "no error". */
+    n = cxpr_error_format(NULL, buf, sizeof(buf));
+    assert(strcmp(buf, "no error") == 0);
+    assert(n == strlen("no error"));
+    cxpr_error ok = {0};
+    cxpr_error_format(&ok, buf, sizeof(buf));
+    assert(strcmp(buf, "no error") == 0);
+
+    /* Positioned error includes "code at line:column: message". */
+    cxpr_error pos = { CXPR_ERR_SYNTAX, "Expected ')'", 6u, 1u, 7u };
+    cxpr_error_format(&pos, buf, sizeof(buf));
+    assert(strcmp(buf, "Syntax error at 1:7: Expected ')'") == 0);
+
+    /* Error without position omits the location. */
+    cxpr_error nopos = { CXPR_ERR_TYPE_MISMATCH, "bad operand", 0u, 0u, 0u };
+    cxpr_error_format(&nopos, buf, sizeof(buf));
+    assert(strcmp(buf, "Type mismatch: bad operand") == 0);
+
+    /* NULL message falls back to the code string. */
+    cxpr_error nomsg = { CXPR_ERR_DIVISION_BY_ZERO, NULL, 0u, 0u, 0u };
+    cxpr_error_format(&nomsg, buf, sizeof(buf));
+    assert(strcmp(buf, "Division by zero: Division by zero") == 0);
+
+    /* Return value reports the full length even when truncated; output stays
+     * NUL-terminated within the provided capacity. */
+    char small[8];
+    n = cxpr_error_format(&pos, small, sizeof(small));
+    assert(n == strlen("Syntax error at 1:7: Expected ')'"));
+    assert(strlen(small) == sizeof(small) - 1u);
+
+    /* Size 0 with NULL buffer is allowed and still reports the length. */
+    n = cxpr_error_format(&nopos, NULL, 0u);
+    assert(n == strlen("Type mismatch: bad operand"));
+
+    printf("  ✓ test_error_format\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -300,6 +346,51 @@ static void test_error_position(void) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * Test: parse errors mid-production must not leak partial AST nodes
+ *
+ * Each input parses far enough to allocate one or more AST nodes, then hits an
+ * invalid byte (0xA0) or premature end. The parser must free every partial node
+ * before returning NULL. Run under the asan preset, a regression here surfaces
+ * as a LeakSanitizer failure. Found originally by the libFuzzer harness.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_parse_error_no_partial_leak(void) {
+    /* BAD isolates the invalid 0xA0 byte so the next character is not folded
+     * into the hex escape. */
+#define BAD "\xA0"
+    static const char* const cases[] = {
+        "rsi < 30 and volume" BAD "z",  /* binary right operand */
+        "a or b" BAD "z",               /* logical-or right */
+        "a == b" BAD "z",               /* equality right */
+        "a + b" BAD "z",                /* arithmetic right */
+        "a * b" BAD "z",                /* term right */
+        "a ^ b" BAD "z",                /* power right */
+        "not a" BAD,                    /* not operand */
+        "-a" BAD,                       /* unary operand */
+        "a ? b" BAD "z : d",            /* ternary true branch */
+        "a ? b : c" BAD "z",            /* ternary false branch */
+        "x |> f" BAD,                   /* pipe stage */
+        "clamp(a, b" BAD,               /* call argument */
+        "f(x=" BAD,                     /* named-argument value */
+        "macd(12, 26).hist" BAD,        /* producer field access */
+        "close[" BAD,                   /* lookback offset */
+        "x in [1, 2" BAD,               /* interval bound */
+        "(a + b" BAD,                   /* parenthesised group */
+    };
+#undef BAD
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        cxpr_parser* p = cxpr_parser_new();
+        cxpr_error err = {0};
+        cxpr_ast* ast = cxpr_parse(p, cases[i], &err);
+        assert(ast == NULL);
+        assert(err.code != CXPR_OK);
+        cxpr_parser_free(p);
+    }
+    printf("  ✓ test_parse_error_no_partial_leak\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * Test: expression evaluator errors
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -378,6 +469,7 @@ int main(void) {
     printf("Running error tests...\n");
 
     test_error_strings();
+    test_error_format();
 
     /* Parse errors */
     test_parse_error_empty();
@@ -397,6 +489,7 @@ int main(void) {
 
     /* Error position tracking */
     test_error_position();
+    test_parse_error_no_partial_leak();
 
     /* Expression evaluator errors */
     test_formula_parse_error();

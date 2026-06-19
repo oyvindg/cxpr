@@ -104,6 +104,12 @@ cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err);
  */
 void cxpr_ast_free(cxpr_ast* ast);
 /**
+ * @brief Deep-clone an AST and all owned descendants.
+ * @param ast AST to clone. May be NULL.
+ * @return Newly allocated AST clone, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_clone(const cxpr_ast* ast);
+/**
  * @brief Construct a numeric literal node.
  * @param value Literal numeric value.
  * @return Newly allocated AST node, or NULL on allocation failure.
@@ -252,6 +258,11 @@ typedef struct {
     bool has_unknown_functions;          /**< True if registry-backed analysis found unresolved calls. */
     const char* first_unknown_function;  /**< First unresolved function/producer name, or NULL if none. */
 } cxpr_analysis;
+
+typedef struct {
+    const char* producer_name;           /**< Producer/function name, e.g. `ichimoku`. */
+    const char* field_name;              /**< Selected field name, e.g. `senkouA`. */
+} cxpr_producer_field_ref;
 
 /**
  * @brief Return the node kind for an AST node.
@@ -439,6 +450,36 @@ const cxpr_ast* cxpr_ast_ternary_true_branch(const cxpr_ast* ast);
  */
 const cxpr_ast* cxpr_ast_ternary_false_branch(const cxpr_ast* ast);
 
+/**
+ * @brief Return whether the AST root is a boolean-valued predicate expression.
+ * @param ast Root AST to inspect.
+ * @return `true` for comparisons, logical expressions, boolean literals,
+ *         boolean unary operators, ternaries with boolean branches, and
+ *         boolean-style calls such as `cross_above(...)`.
+ */
+bool cxpr_ast_is_boolean_expression(const cxpr_ast* ast);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * AST Source Rendering API
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Render an AST to an allocated expression string.
+ * @param ast AST to render.
+ * @return Newly allocated NUL-terminated string, or NULL on allocation failure.
+ *         Caller must free the returned string.
+ *
+ * The output is valid cxpr source that can be parsed back into an equivalent
+ * AST. Parentheses are inserted only where needed to preserve semantics.
+ */
+char* cxpr_ast_to_string(const cxpr_ast* ast);
+/**
+ * @brief Write an AST rendering to a FILE stream.
+ * @param ast AST to render.
+ * @param out Output stream.
+ */
+void cxpr_ast_dump(const cxpr_ast* ast, FILE* out);
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * AST Reference Extraction API
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -460,6 +501,16 @@ size_t cxpr_ast_references(const cxpr_ast* ast, const char** names, size_t max_n
  */
 size_t cxpr_ast_functions_used(const cxpr_ast* ast, const char** names, size_t max_names);
 /**
+ * @brief Collect unique producer field accesses used by an AST.
+ * @param ast AST to inspect.
+ * @param refs Output array for borrowed `(producer, field)` pairs.
+ * @param max_refs Maximum number of pairs to write to `refs`.
+ * @return Number of unique producer-field pairs written or available.
+ */
+size_t cxpr_ast_producer_fields_used(const cxpr_ast* ast,
+                                     cxpr_producer_field_ref* refs,
+                                     size_t max_refs);
+/**
  * @brief Collect unique `$param` names used by an AST.
  * @param ast AST to inspect.
  * @param names Output array for borrowed parameter names.
@@ -467,6 +518,44 @@ size_t cxpr_ast_functions_used(const cxpr_ast* ast, const char** names, size_t m
  * @return Number of unique parameter names written or available.
  */
 size_t cxpr_ast_variables_used(const cxpr_ast* ast, const char** names, size_t max_names);
+/**
+ * @brief Return whether an AST contains a runtime reference.
+ * @param ast AST to inspect.
+ * @param name Reference name, e.g. `close` or `macd.line`.
+ * @return True when @p name appears as a runtime reference in @p ast.
+ */
+bool cxpr_ast_contains_reference(const cxpr_ast* ast, const char* name);
+/**
+ * @brief Return whether an AST contains a `$param` variable.
+ * @param ast AST to inspect.
+ * @param name Parameter name without `$`.
+ * @return True when @p name appears as a parameter variable in @p ast.
+ */
+bool cxpr_ast_contains_variable(const cxpr_ast* ast, const char* name);
+/**
+ * @brief Collect function/producer names whose argument subtree contains a reference.
+ * @param ast AST to inspect.
+ * @param reference Reference name to trace, e.g. `atr_baseline_pct`.
+ * @param names Output array for borrowed function or producer names.
+ * @param max_names Maximum number of names to write to `names`.
+ * @return Number of unique function/producer contexts written or available.
+ */
+size_t cxpr_ast_call_arg_contexts_for_reference(const cxpr_ast* ast,
+                                                const char* reference,
+                                                const char** names,
+                                                size_t max_names);
+/**
+ * @brief Collect function/producer names whose argument subtree contains a `$param`.
+ * @param ast AST to inspect.
+ * @param variable Parameter name without `$`.
+ * @param names Output array for borrowed function or producer names.
+ * @param max_names Maximum number of names to write to `names`.
+ * @return Number of unique function/producer contexts written or available.
+ */
+size_t cxpr_ast_call_arg_contexts_for_variable(const cxpr_ast* ast,
+                                               const char* variable,
+                                               const char** names,
+                                               size_t max_names);
 /**
  * @brief Perform structural and registry-backed semantic analysis on an AST.
  * @param ast AST to inspect.
@@ -557,6 +646,23 @@ bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
                              const cxpr_registry* reg,
                              cxpr_value* out_value,
                              cxpr_error* err);
+/**
+ * @brief Evaluate an AST at one numeric lookback offset without constructing
+ *        a temporary lookback AST.
+ * @param ast Target AST to evaluate.
+ * @param lookback Non-negative lookback offset.
+ * @param ctx Runtime context providing variables and params.
+ * @param reg Function registry with a lookback resolver.
+ * @param out_value Output value on success.
+ * @param err Optional error output.
+ * @return True on success, false on evaluation failure.
+ */
+bool cxpr_eval_at_offset(const cxpr_ast* ast,
+                         double lookback,
+                         const cxpr_context* ctx,
+                         const cxpr_registry* reg,
+                         cxpr_value* out_value,
+                         cxpr_error* err);
 /**
  * @brief Evaluate an AST to a number at one numeric lookback offset.
  * @param ast Target AST to evaluate.

@@ -13,7 +13,6 @@
 
 #include <cxpr/cxpr.h>
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -26,8 +25,8 @@ static void test_formula_point_producer(const double* args, size_t argc,
     (void)argc;
     (void)field_count;
     (void)userdata;
-    out[0] = cxpr_fv_double(args[0]);
-    out[1] = cxpr_fv_double(args[0] * 2.0);
+    out[0] = cxpr_num(args[0]);
+    out[1] = cxpr_num(args[0] * 2.0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -40,15 +39,26 @@ static void test_single_formula(void) {
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
+    const cxpr_program* program;
+    bool found;
+    double val;
 
     cxpr_context_set(ctx, "x", 10.0);
     assert(cxpr_expression_add(evaluator, "result", "x + 1", &err));
     assert(cxpr_evaluator_compile(evaluator, &err));
+    program = cxpr_expression_program(evaluator, "result", &found);
+    assert(found);
+    assert(program != NULL);
+    assert(cxpr_ir_view_count(program) > 0u);
+    assert(cxpr_expression_instruction_count(evaluator, "result", &found) == cxpr_ir_view_count(program));
+    assert(found);
+    assert(cxpr_expression_dependency_instruction_count(evaluator, "result", &found) == cxpr_ir_view_count(program));
+    assert(found);
+    assert(cxpr_expression_total_instruction_count(evaluator) == cxpr_ir_view_count(program));
     cxpr_evaluator_eval(evaluator, ctx, &err);
     assert(err.code == CXPR_OK);
 
-    bool found;
-    double val = cxpr_expression_get_double(evaluator, "result", &found);
+    val = cxpr_expression_get_double(evaluator, "result", &found);
     assert(found);
     ASSERT_DOUBLE_EQ(val, 11.0);
 

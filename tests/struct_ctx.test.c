@@ -8,10 +8,8 @@
  */
 #include <cxpr/cxpr.h>
 #include <assert.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
 #include "cxpr_test_internal.h"
 
 #define EPSILON 1e-10
@@ -55,7 +53,7 @@ static void test_double_field(void) {
 
     const char *names[] = {"x", "y", "z"};
     cxpr_value vals[] = {
-        cxpr_fv_double(1.0), cxpr_fv_double(2.0), cxpr_fv_double(3.0)};
+        cxpr_num(1.0), cxpr_num(2.0), cxpr_num(3.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(names, vals, 3);
     cxpr_context_set_struct(ctx, "pos", s);
     cxpr_struct_value_free(s);
@@ -83,7 +81,7 @@ static void test_bool_field(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *names[] = {"active", "value"};
-    cxpr_value vals[] = {cxpr_fv_bool(true), cxpr_fv_double(5.0)};
+    cxpr_value vals[] = {cxpr_bool(true), cxpr_num(5.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(names, vals, 2);
     cxpr_context_set_struct(ctx, "sensor", s);
     cxpr_struct_value_free(s);
@@ -113,11 +111,11 @@ static void test_nested_struct_field(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *inner_names[] = {"z"};
-    cxpr_value inner_vals[] = {cxpr_fv_double(9.0)};
+    cxpr_value inner_vals[] = {cxpr_num(9.0)};
     cxpr_struct_value *inner = cxpr_struct_value_new(inner_names, inner_vals, 1);
 
     const char *outer_names[] = {"inner"};
-    cxpr_value outer_vals[] = {cxpr_fv_struct(inner)};
+    cxpr_value outer_vals[] = {cxpr_struct(inner)};
     cxpr_struct_value *outer = cxpr_struct_value_new(outer_names, outer_vals, 1);
     cxpr_struct_value_free(inner);
 
@@ -146,12 +144,12 @@ static void test_set_struct_replaces(void) {
 
     const char *names[] = {"v"};
 
-    cxpr_value vals1[] = {cxpr_fv_double(1.0)};
+    cxpr_value vals1[] = {cxpr_num(1.0)};
     cxpr_struct_value *s1 = cxpr_struct_value_new(names, vals1, 1);
     cxpr_context_set_struct(ctx, "obj", s1);
     cxpr_struct_value_free(s1);
 
-    cxpr_value vals2[] = {cxpr_fv_double(99.0)};
+    cxpr_value vals2[] = {cxpr_num(99.0)};
     cxpr_struct_value *s2 = cxpr_struct_value_new(names, vals2, 1);
     cxpr_context_set_struct(ctx, "obj", s2);
     cxpr_struct_value_free(s2);
@@ -173,7 +171,7 @@ static void test_context_clear(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *names[] = {"v"};
-    cxpr_value vals[] = {cxpr_fv_double(1.0)};
+    cxpr_value vals[] = {cxpr_num(1.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(names, vals, 1);
     cxpr_context_set_struct(ctx, "obj", s);
     cxpr_struct_value_free(s);
@@ -194,7 +192,7 @@ static void test_context_clone(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     const char *names[] = {"v"};
-    cxpr_value vals[] = {cxpr_fv_double(5.0)};
+    cxpr_value vals[] = {cxpr_num(5.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(names, vals, 1);
     cxpr_context_set_struct(ctx, "obj", s);
     cxpr_struct_value_free(s);
@@ -202,7 +200,7 @@ static void test_context_clone(void) {
     cxpr_context *clone = cxpr_context_clone(ctx);
 
     /* overwrite in original — clone must be unaffected */
-    cxpr_value vals2[] = {cxpr_fv_double(99.0)};
+    cxpr_value vals2[] = {cxpr_num(99.0)};
     cxpr_struct_value *s2 = cxpr_struct_value_new(names, vals2, 1);
     cxpr_context_set_struct(ctx, "obj", s2);
     cxpr_struct_value_free(s2);
@@ -225,7 +223,7 @@ static void test_parent_walk(void) {
     cxpr_context *parent = cxpr_context_new();
 
     const char *names[] = {"v"};
-    cxpr_value vals[] = {cxpr_fv_double(42.0)};
+    cxpr_value vals[] = {cxpr_num(42.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(names, vals, 1);
     cxpr_context_set_struct(parent, "obj", s);
     cxpr_struct_value_free(s);

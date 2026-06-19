@@ -17,7 +17,6 @@
 #include "cxpr_test_internal.h"
 #include <assert.h>
 #include <stdio.h>
-#include <math.h>
 #include <string.h>
 
 #define EPSILON 1e-10
@@ -104,6 +103,15 @@ static void test_comparison_operators(void) {
     assert(cxpr_lexer_next(&lex).type == CXPR_TOK_GTE);
     assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EOF);
     printf("  ✓ test_comparison_operators\n");
+}
+
+static void test_assign_vs_eq_tokens(void) {
+    cxpr_lexer lex;
+    cxpr_lexer_init(&lex, "= ==");
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_ASSIGN);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EQ);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EOF);
+    printf("  ✓ test_assign_vs_eq_tokens\n");
 }
 
 static void test_logical_operators(void) {
@@ -334,6 +342,25 @@ static void test_dotted_variable(void) {
     printf("  ✓ test_dotted_variable\n");
 }
 
+static void test_string_literals(void) {
+    cxpr_lexer lex;
+    cxpr_token tok;
+
+    cxpr_lexer_init(&lex, "\"1h\" '1d'");
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_STRING);
+    assert(tok.length == 2 && memcmp(tok.start, "1h", 2) == 0);
+
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_STRING);
+    assert(tok.length == 2 && memcmp(tok.start, "1d", 2) == 0);
+
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_EOF);
+
+    printf("  ✓ test_string_literals\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: position tracking
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -513,6 +540,7 @@ int main(void) {
     /* Operators */
     test_arithmetic_operators();
     test_comparison_operators();
+    test_assign_vs_eq_tokens();
     test_logical_operators();
     test_power_double_star();
     test_pipe_operator();
@@ -535,6 +563,9 @@ int main(void) {
     /* Variables */
     test_variables();
     test_dotted_variable();
+
+    /* Strings */
+    test_string_literals();
 
     /* Position */
     test_position_tracking();

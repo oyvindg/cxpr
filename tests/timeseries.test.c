@@ -119,34 +119,34 @@ static cxpr_value strictly_rising_fn(const cxpr_ast* call_ast,
     assert(cxpr_ast_function_argc(call_ast) == 2);
 
     const cxpr_ast* value_ast = cxpr_ast_function_arg(call_ast, 0);
-    const cxpr_ast* bars_ast = cxpr_ast_function_arg(call_ast, 1);
-    double bars_value = 0.0;
-    long long bars = 0;
+    const cxpr_ast* samples_ast = cxpr_ast_function_arg(call_ast, 1);
+    double samples_value = 0.0;
+    long long samples = 0;
 
-    if (!cxpr_eval_ast_number(bars_ast, ctx, reg, &bars_value, err)) {
-        return cxpr_fv_bool(false);
+    if (!cxpr_eval_ast_number(samples_ast, ctx, reg, &samples_value, err)) {
+        return cxpr_bool(false);
     }
 
-    bars = (long long)llround(bars_value);
-    if (!isfinite(bars_value) || fabs(bars_value - (double)bars) > 1e-9 || bars < 2) {
+    samples = (long long)llround(samples_value);
+    if (!isfinite(samples_value) || fabs(samples_value - (double)samples) > 1e-9 || samples < 2) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
-            err->message = "strictly_rising(...) requires integer bars >= 2";
+            err->message = "strictly_rising(...) requires integer samples >= 2";
         }
-        return cxpr_fv_bool(false);
+        return cxpr_bool(false);
     }
 
-    for (long long i = 0; i < bars - 1; ++i) {
+    for (long long i = 0; i < samples - 1; ++i) {
         double lhs = 0.0;
         double rhs = 0.0;
         if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &lhs, err) ||
             !cxpr_eval_ast_number_at_offset(value_ast, (double)(i + 1), ctx, reg, &rhs, err)) {
-            return cxpr_fv_bool(false);
+            return cxpr_bool(false);
         }
-        if (!(lhs > rhs)) return cxpr_fv_bool(false);
+        if (!(lhs > rhs)) return cxpr_bool(false);
     }
 
-    return cxpr_fv_bool(true);
+    return cxpr_bool(true);
 }
 
 static void test_eval_ast_at_offset_reuses_lookback_resolver(void) {
@@ -218,6 +218,30 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out);
+    {
+        cxpr_ir_program ir = {0};
+        cxpr_program* prog;
+        assert(cxpr_ir_compile(ast, reg, &ir, &err));
+        prog = cxpr_compile(ast, reg, &err);
+        assert(prog != NULL);
+        assert(cxpr_eval_program_bool(prog, ctx, reg, &out, &err));
+        assert(err.code == CXPR_OK);
+        assert(out);
+        cxpr_program_free(prog);
+        cxpr_ir_program_reset(&ir);
+    }
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "rising(value=close, samples=3)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out);
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "rising(value=close, bars=3)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out);
     cxpr_ast_free(ast);
 
     ast = parse_or_die(parser, "falling(close, 3)");
@@ -252,6 +276,101 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_rising_and_falling_use_native_timeseries_eval\n");
+}
+
+static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
+    static const double close_series[] = {10.0, 11.0, 12.0, 11.0, 10.0};
+    static const double base_series[] = {9.0, 10.0, 11.0, 10.5, 10.5};
+    test_series_env env = {
+        .close = close_series,
+        .base = base_series,
+        .length = 5,
+        .current_index = 3,
+    };
+
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    bool out = false;
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, &env, NULL);
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+    cxpr_context_set(ctx, "base", base_series[env.current_index]);
+
+    cxpr_ast* ast = parse_or_die(parser, "repeat(condition=close > base, bars=3)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out);
+    cxpr_ast_free(ast);
+
+    env.current_index = 4;
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+    cxpr_context_set(ctx, "base", base_series[env.current_index]);
+    ast = parse_or_die(parser, "repeat(condition=close > base, bars=3)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(!out);
+    cxpr_ast_free(ast);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_builtin_repeat_accepts_condition_and_bars_named_args\n");
+}
+
+static void test_timeseries_builtin_reports_bad_arity(void) {
+    static const double close_series[] = {10.0, 11.0, 12.0};
+    static const double base_series[] = {0.0, 0.0, 0.0};
+    test_series_env env = {
+        .close = close_series,
+        .base = base_series,
+        .length = 3,
+        .current_index = 2,
+    };
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    bool out = false;
+
+    assert(parser);
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, &env, NULL);
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+
+    ast = parse_or_die(parser, "delta(close)");
+    assert(!cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.message != NULL);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_timeseries_builtin_reports_bad_arity\n");
+}
+
+static void test_timeseries_builtin_rejects_non_call_ast_directly(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_func_entry* entry;
+    cxpr_error err = {0};
+    cxpr_value value;
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    entry = cxpr_registry_find(reg, "delta");
+    assert(entry != NULL);
+    assert(entry->ast_func != NULL);
+    value = entry->ast_func(NULL, NULL, reg, NULL, &err);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(isnan(value.d));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    cxpr_registry_free(reg);
+    printf("  \xE2\x9C\x93 test_timeseries_builtin_rejects_non_call_ast_directly\n");
 }
 
 static void test_registered_timeseries_function_uses_same_api(void) {
@@ -290,11 +409,185 @@ static void test_registered_timeseries_function_uses_same_api(void) {
     printf("  \xE2\x9C\x93 test_registered_timeseries_function_uses_same_api\n");
 }
 
+static void test_builtin_cross_above_and_below_use_lookback(void) {
+    static const double cross_up_close[] = {8.0, 9.0, 10.0, 12.0, 13.0};
+    static const double cross_up_base[] = {10.0, 10.0, 10.0, 10.0, 10.0};
+    static const double cross_down_close[] = {13.0, 12.0, 11.0, 9.0, 8.0};
+    static const double cross_down_base[] = {10.0, 10.0, 10.0, 10.0, 10.0};
+    test_series_env env = {
+        .close = cross_up_close,
+        .base = cross_up_base,
+        .length = 5,
+        .current_index = 3,
+    };
+
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    bool out = false;
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, &env, NULL);
+    cxpr_context_set(ctx, "close", cross_up_close[env.current_index]);
+    cxpr_context_set(ctx, "base", cross_up_base[env.current_index]);
+
+    cxpr_ast* ast = parse_or_die(parser, "cross_above(close, base)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out);
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "cross_below(close, base)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(!out);
+    cxpr_ast_free(ast);
+
+    env.close = cross_down_close;
+    env.base = cross_down_base;
+    cxpr_context_set(ctx, "close", cross_down_close[env.current_index]);
+    cxpr_context_set(ctx, "base", cross_down_base[env.current_index]);
+
+    ast = parse_or_die(parser, "cross_below(close, base)");
+    assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out);
+    cxpr_ast_free(ast);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_builtin_cross_above_and_below_use_lookback\n");
+}
+
+static void test_builtin_delta_and_roc_use_lookback(void) {
+    static const double close_series[] = {100.0, 102.0, 105.0, 110.0, 120.0};
+    static const double base_series[] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    const test_series_env env = {
+        .close = close_series,
+        .base = base_series,
+        .length = 5,
+        .current_index = 4,
+    };
+
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, (void*)&env, NULL);
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+    cxpr_context_set(ctx, "base", base_series[env.current_index]);
+
+    cxpr_ast* ast = parse_or_die(parser, "delta(close, 2)");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 15.0);
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "roc(close, 2)");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 15.0 / 105.0);
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "roc(base, 1)");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(isnan(out));
+    cxpr_ast_free(ast);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_builtin_delta_and_roc_use_lookback\n");
+}
+
+static void test_builtin_highest_and_lowest_use_window(void) {
+    static const double close_series[] = {8.0, 13.0, 9.0, 15.0, 11.0};
+    static const double base_series[] = {1.0, -2.0, 4.0, 3.0, 0.0};
+    const test_series_env env = {
+        .close = close_series,
+        .base = base_series,
+        .length = 5,
+        .current_index = 4,
+    };
+
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, (void*)&env, NULL);
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+    cxpr_context_set(ctx, "base", base_series[env.current_index]);
+
+    cxpr_ast* ast = parse_or_die(parser, "highest(close, 3)");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 15.0);
+    {
+        cxpr_program* prog = cxpr_compile(ast, reg, &err);
+        assert(prog != NULL);
+        assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+        assert(err.code == CXPR_OK);
+        ASSERT_DOUBLE_EQ(out, 15.0);
+        cxpr_program_free(prog);
+    }
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "highest(value=close, samples=3)");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 15.0);
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "lowest(close + base, 4)");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(out, 11.0);
+    cxpr_ast_free(ast);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_builtin_highest_and_lowest_use_window\n");
+}
+
+static void test_timeseries_builtin_name_introspection(void) {
+    assert(cxpr_timeseries_is_builtin("rising"));
+    assert(cxpr_timeseries_is_builtin("falling"));
+    assert(cxpr_timeseries_is_builtin("net_up"));
+    assert(cxpr_timeseries_is_builtin("net_down"));
+    assert(cxpr_timeseries_is_builtin("repeat"));
+    assert(cxpr_timeseries_is_builtin("cross_above"));
+    assert(cxpr_timeseries_is_builtin("cross_below"));
+    assert(cxpr_timeseries_is_builtin("delta"));
+    assert(cxpr_timeseries_is_builtin("roc"));
+    assert(cxpr_timeseries_is_builtin("highest"));
+    assert(cxpr_timeseries_is_builtin("lowest"));
+    assert(!cxpr_timeseries_is_builtin("ema"));
+    assert(!cxpr_timeseries_is_builtin(NULL));
+    printf("  \xE2\x9C\x93 test_timeseries_builtin_name_introspection\n");
+}
+
 int main(void) {
     printf("Running timeseries tests...\n");
     test_eval_ast_at_offset_reuses_lookback_resolver();
     test_builtin_rising_and_falling_use_native_timeseries_eval();
+    test_builtin_repeat_accepts_condition_and_bars_named_args();
+    test_timeseries_builtin_reports_bad_arity();
+    test_timeseries_builtin_rejects_non_call_ast_directly();
     test_registered_timeseries_function_uses_same_api();
+    test_builtin_cross_above_and_below_use_lookback();
+    test_builtin_delta_and_roc_use_lookback();
+    test_builtin_highest_and_lowest_use_window();
+    test_timeseries_builtin_name_introspection();
     printf("All timeseries tests passed!\n");
     return 0;
 }

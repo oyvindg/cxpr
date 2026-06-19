@@ -44,6 +44,7 @@ cxpr_token cxpr_lexer_peek(cxpr_lexer* lexer);
 typedef enum {
     CXPR_OP_PUSH_CONST,
     CXPR_OP_PUSH_BOOL,
+    CXPR_OP_PUSH_STRING,
     CXPR_OP_LOAD_LOCAL,
     CXPR_OP_LOAD_LOCAL_SQUARE,
     CXPR_OP_LOAD_VAR,
@@ -52,6 +53,7 @@ typedef enum {
     CXPR_OP_LOAD_PARAM_SQUARE,
     CXPR_OP_LOAD_FIELD,
     CXPR_OP_LOAD_FIELD_SQUARE,
+    CXPR_OP_LOAD_NAMED_FIELD,
     CXPR_OP_LOAD_CHAIN,
     CXPR_OP_ADD,
     CXPR_OP_SUB,
@@ -133,9 +135,9 @@ typedef struct {
     cxpr_typed_func_ptr typed_func;
     cxpr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
-    cxpr_ast_func_ptr ast_func_overlay;
-    void* ast_func_overlay_userdata;
-    cxpr_userdata_free_fn ast_func_overlay_userdata_free;
+    cxpr_ast_func_ptr ast_func_handler;
+    void* ast_func_handler_userdata;
+    cxpr_userdata_free_fn ast_func_handler_userdata_free;
     enum {
         CXPR_NATIVE_KIND_NONE = 0,
         CXPR_NATIVE_KIND_NULLARY,
@@ -203,7 +205,7 @@ static inline cxpr_value cxpr_test_eval_ast(const cxpr_ast* ast, const cxpr_cont
                                             const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value out = {0};
     if (!cxpr_eval_ast(ast, ctx, reg, &out, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     return out;
 }
@@ -226,7 +228,7 @@ static inline cxpr_value cxpr_test_eval_program(const cxpr_program* prog, const 
                                                 const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value out = {0};
     if (!cxpr_eval_program(prog, ctx, reg, &out, err)) {
-        return cxpr_fv_double(NAN);
+        return cxpr_num(NAN);
     }
     return out;
 }

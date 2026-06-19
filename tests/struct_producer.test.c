@@ -22,7 +22,7 @@ static cxpr_value struct_field(const cxpr_struct_value *s, const char *field) {
         if (strcmp(s->field_names[i], field) == 0) return s->field_values[i];
     }
     assert(!"missing struct field");
-    return cxpr_fv_double(NAN);
+    return cxpr_num(NAN);
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -79,8 +79,8 @@ static void zero_arg_producer(const double *args, size_t argc,
                                void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     g_zero_call_count++;
-    out[0] = cxpr_fv_double(10.0);  /* line */
-    out[1] = cxpr_fv_double(3.0);   /* histogram */
+    out[0] = cxpr_num(10.0);  /* line */
+    out[1] = cxpr_num(3.0);   /* histogram */
 }
 
 static void test_zero_arg_producer_basic(void) {
@@ -138,8 +138,8 @@ static void arg_producer(const double *args, size_t argc,
     g_arg_call_count++;
     g_last_period = args[0];
     g_last_signal = args[1];
-    out[0] = cxpr_fv_double(args[0] * 0.1);  /* line */
-    out[1] = cxpr_fv_double(args[1] * 0.5);  /* histogram */
+    out[0] = cxpr_num(args[0] * 0.1);  /* line */
+    out[1] = cxpr_num(args[1] * 0.5);  /* histogram */
 }
 
 static double combo_scalar(const double *args, size_t argc, void *userdata) {
@@ -262,8 +262,8 @@ static void bool_output_producer(const double *args, size_t argc,
                                   cxpr_value *out, size_t field_count,
                                   void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
-    out[0] = cxpr_fv_double(5.0);
-    out[1] = cxpr_fv_bool(true);
+    out[0] = cxpr_num(5.0);
+    out[1] = cxpr_bool(true);
 }
 
 static void test_bool_output_field(void) {
@@ -298,7 +298,7 @@ static void priority_producer(const double *args, size_t argc,
                                void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     g_priority_call_count++;
-    out[0] = cxpr_fv_double(999.0);
+    out[0] = cxpr_num(999.0);
 }
 
 static void test_host_set_takes_priority(void) {
@@ -310,7 +310,7 @@ static void test_host_set_takes_priority(void) {
     cxpr_registry_add_struct(reg, "obj", priority_producer,
                                       0, 0, fields, 1, NULL, NULL);
 
-    cxpr_value vals[] = {cxpr_fv_double(42.0)};
+    cxpr_value vals[] = {cxpr_num(42.0)};
     cxpr_struct_value *s = cxpr_struct_value_new(fields, vals, 1);
     cxpr_context_set_struct(ctx, "obj", s);
     cxpr_struct_value_free(s);
@@ -335,7 +335,7 @@ static void recallable_producer(const double *args, size_t argc,
                                  void *userdata) {
     (void)args; (void)argc; (void)userdata; (void)field_count;
     g_recall_count++;
-    out[0] = cxpr_fv_double((double)g_recall_count);
+    out[0] = cxpr_num((double)g_recall_count);
 }
 
 static void test_clear_causes_recall(void) {

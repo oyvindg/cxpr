@@ -22,12 +22,12 @@ extern "C" {
 typedef double (*cxpr_func_ptr)(const double* args, size_t argc, void* userdata);
 /**
  * @brief Callback type for synchronous typed-value functions.
- * @param args Evaluated numeric arguments.
+ * @param args Evaluated typed arguments.
  * @param argc Number of arguments.
  * @param userdata Opaque user pointer supplied at registration time.
  * @return Typed function result.
  */
-typedef cxpr_value (*cxpr_value_func_ptr)(const double* args, size_t argc, void* userdata);
+typedef cxpr_value (*cxpr_value_func_ptr)(const cxpr_value* args, size_t argc, void* userdata);
 /**
  * @brief Callback type for synchronous fully-typed functions.
  * @param args Evaluated typed arguments.
@@ -131,14 +131,24 @@ void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
                                          cxpr_userdata_free_fn free_userdata);
 
 /**
- * @brief Register a scalar function.
+ * @brief Register a numeric scalar function.
  * @param reg Destination registry.
  * @param name Function name.
- * @param func Callback to invoke.
+ * @param func Callback to invoke with evaluated numeric arguments.
  * @param min_args Minimum accepted arity.
  * @param max_args Maximum accepted arity.
  * @param userdata User pointer passed to `func`.
  * @param free_userdata Optional cleanup callback for `userdata`.
+ *
+ * Numeric functions are eligible for the double fast path. Use
+ * `cxpr_registry_add_value` or `cxpr_registry_add_typed` for the general
+ * `cxpr_value` callback ABI.
+ */
+void cxpr_registry_add_numeric(cxpr_registry* reg, const char* name,
+                               cxpr_func_ptr func, size_t min_args, size_t max_args,
+                               void* userdata, cxpr_userdata_free_fn free_userdata);
+/**
+ * @brief Backward-compatible alias for `cxpr_registry_add_numeric`.
  */
 void cxpr_registry_add(cxpr_registry* reg, const char* name,
                        cxpr_func_ptr func, size_t min_args, size_t max_args,
@@ -160,11 +170,14 @@ bool cxpr_registry_set_param_names(cxpr_registry* reg, const char* name,
  * @brief Register a typed-value function.
  * @param reg Destination registry.
  * @param name Function name.
- * @param func Callback to invoke.
+ * @param func Callback to invoke with evaluated `cxpr_value` arguments.
  * @param min_args Minimum accepted arity.
  * @param max_args Maximum accepted arity.
  * @param userdata User pointer passed to `func`.
  * @param free_userdata Optional cleanup callback for `userdata`.
+ *
+ * Use `cxpr_registry_add_typed` when argument type validation or a declared
+ * return type is required.
  */
 void cxpr_registry_add_value(cxpr_registry* reg, const char* name,
                              cxpr_value_func_ptr func, size_t min_args, size_t max_args,
@@ -202,29 +215,29 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
                            cxpr_value_type return_type,
                            void* userdata, cxpr_userdata_free_fn free_userdata);
 /**
- * @brief Register an AST-aware overlay for an existing (or new) function entry.
+ * @brief Register an AST-aware handler for an existing (or new) function entry.
  *
  * Unlike `cxpr_registry_add_ast`, this call preserves any existing `sync_func`
  * and `struct_producer` on the entry so that plain scalar calls and struct field
- * access (`name(...).field`) continue to work.  The overlay is invoked for ALL
+ * access (`name(...).field`) continue to work. The handler is invoked for ALL
  * `CXPR_NODE_FUNCTION_CALL` evaluations of `name`, taking priority over
- * `ast_func` and `sync_func`.  Use it to intercept calls that carry a trailing
+ * `ast_func` and `sync_func`.  Use it to handle calls that carry a trailing
  * string-literal timeframe argument while forwarding purely numeric calls to the
  * original scalar implementation via the captured closure.
  *
  * @param reg            Destination registry.
  * @param name           Function name.
- * @param func           Overlay callback (receives raw call AST and context).
+ * @param func           Handler callback (receives raw call AST and context).
  * @param min_args       Minimum accepted arity (merged with existing entry).
  * @param max_args       Maximum accepted arity (merged with existing entry).
  * @param userdata       User pointer passed to `func`.
  * @param free_userdata  Optional cleanup callback for `userdata`.
  */
-void cxpr_registry_add_ast_overlay(cxpr_registry* reg, const char* name,
-                                    cxpr_ast_func_ptr func,
-                                    size_t min_args, size_t max_args,
-                                    void* userdata,
-                                    cxpr_userdata_free_fn free_userdata);
+void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
+                                   cxpr_ast_func_ptr func,
+                                   size_t min_args, size_t max_args,
+                                   void* userdata,
+                                   cxpr_userdata_free_fn free_userdata);
 /**
  * @brief Register an AST-aware time-series function.
  * @param reg Destination registry.
@@ -306,7 +319,7 @@ double cxpr_registry_call(const cxpr_registry* reg, const char* name,
  * @param args Numeric argument array.
  * @param argc Number of arguments.
  * @param err Optional error output.
- * @return Typed result, or `cxpr_fv_double(NAN)` on error.
+ * @return Typed result, or `cxpr_num(NAN)` on error.
  */
 cxpr_value cxpr_registry_call_value(const cxpr_registry* reg, const char* name,
                                     const double* args, size_t argc, cxpr_error* err);
@@ -317,7 +330,7 @@ cxpr_value cxpr_registry_call_value(const cxpr_registry* reg, const char* name,
  * @param args Typed argument array.
  * @param argc Number of arguments.
  * @param err Optional error output.
- * @return Typed result, or `cxpr_fv_double(NAN)` on error.
+ * @return Typed result, or `cxpr_num(NAN)` on error.
  */
 cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
                                     const cxpr_value* args, size_t argc, cxpr_error* err);
@@ -358,10 +371,32 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
                               cxpr_userdata_free_fn free_userdata);
 
 /**
- * @brief Register the default cxpr function set into a registry.
+ * @brief Register cxpr's built-in numeric/math function set into a registry.
  * @param reg Destination registry.
  */
+void cxpr_register_math(cxpr_registry* reg);
+
+/**
+ * @brief Register cxpr's built-in time-series helper set into a registry.
+ * @param reg Destination registry.
+ */
+void cxpr_register_timeseries(cxpr_registry* reg);
+
+/**
+ * @brief Register the default cxpr function set into a registry.
+ * @param reg Destination registry.
+ *
+ * The default set currently composes `cxpr_register_math()` and
+ * `cxpr_register_timeseries()`.
+ */
 void cxpr_register_defaults(cxpr_registry* reg);
+
+/**
+ * @brief Return true when `name` is one of the built-in time-series helpers.
+ * @param name Function name to inspect.
+ * @return True for cxpr-owned time-series builtins such as `rising` and `delta`.
+ */
+bool cxpr_timeseries_is_builtin(const char* name);
 
 /**
  * @brief Register an expression-defined function.

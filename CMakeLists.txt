@@ -35,6 +35,7 @@ endif()
 option(CXPR_STRICT "Enable stricter compiler warnings and treat warnings as errors" OFF)
 option(CXPR_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
+option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
 
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
@@ -49,26 +50,24 @@ if((CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN) AND
     message(FATAL_ERROR "Sanitizers require a GCC/Clang-style compiler")
 endif()
 
+if(CXPR_ENABLE_COVERAGE AND NOT CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    message(FATAL_ERROR "Coverage requires a GCC/Clang-style compiler")
+endif()
+
+if(CXPR_ENABLE_COVERAGE)
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
 # ═══════════════════════════════════════════════════════════════════════════
 # C core library
 # ═══════════════════════════════════════════════════════════════════════════
-add_library(cxpr STATIC
-    src/lexer.c
-    src/parser.c
-    src/ast.c
-    src/eval.c
-    src/ir.c
-    src/ir/compile.c
-    src/ir/exec.c
-    src/hashmap.c
-    src/struct.c
-    src/context.c
-    src/registry.c
-    src/timeseries.c
-    src/basket.c
-    src/evaluator.c
-    src/expression.c
+file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
+list(SORT CXPR_SOURCES)
+
+add_library(cxpr STATIC ${CXPR_SOURCES})
 add_library(cxpr::cxpr ALIAS cxpr)
 
 set_target_properties(cxpr PROPERTIES
@@ -79,6 +78,9 @@ set_target_properties(cxpr PROPERTIES
 target_include_directories(cxpr PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+)
+target_include_directories(cxpr PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 # Determinism: no fast-math, no FP contraction
@@ -127,6 +129,24 @@ endif()
 option(CXPR_BUILD_BENCHMARKS "Build cxpr benchmarks" ${PROJECT_IS_TOP_LEVEL})
 if(CXPR_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
+endif()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fuzzers (libFuzzer; Clang only)
+# ═══════════════════════════════════════════════════════════════════════════
+option(CXPR_BUILD_FUZZERS "Build cxpr libFuzzer targets (requires Clang)" OFF)
+if(CXPR_BUILD_FUZZERS)
+    add_subdirectory(fuzz)
+endif()
+
+if(CXPR_ENABLE_COVERAGE)
+    add_custom_target(cxpr_check_function_coverage
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_function_coverage.sh
+                ${CMAKE_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Checking that every cxpr function is executed by coverage tests"
+        VERBATIM
+    )
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

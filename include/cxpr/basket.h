@@ -30,7 +30,7 @@ bool cxpr_basket_is_builtin(const char* name);
 bool cxpr_basket_is_aggregate_function(const char* name, size_t argc);
 
 /**
- * @brief Register Dynasty basket builtins in a cxpr registry.
+ * @brief Register basket aggregate builtins in a cxpr registry.
  * @param reg Destination registry.
  */
 void cxpr_register_basket_builtins(cxpr_registry* reg);

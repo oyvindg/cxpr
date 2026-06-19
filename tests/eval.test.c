@@ -262,6 +262,8 @@ static void test_pipe_evaluates_like_nested_calls(void) {
     ASSERT_DOUBLE_EQ(eval_ok("x |> abs", ctx, reg), eval_ok("abs(x)", ctx, reg));
     ASSERT_DOUBLE_EQ(eval_ok("x |> abs |> clamp(0, 10)", ctx, reg),
                      eval_ok("clamp(abs(x), 0, 10)", ctx, reg));
+    ASSERT_DOUBLE_EQ(eval_ok("x |> abs |> div(3) |> sub(1) |> mul(2) |> add(4)", ctx, reg),
+                     12.0);
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -300,13 +302,41 @@ static double test_macd_signal(const double* args, size_t argc, void* ud) {
     return args[0] - args[1] + args[2];
 }
 
+static double test_counted_identity(const double* args, size_t argc, void* ud) {
+    int* calls = (int*)ud;
+    assert(argc == 1);
+    if (calls) *calls += 1;
+    return args[0];
+}
+
+static void test_eval_memo_reuses_structurally_equal_subexpressions(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    int calls = 0;
+
+    cxpr_register_defaults(reg);
+    cxpr_context_set(ctx, "close", 10.0);
+    cxpr_registry_add(reg, "counted", test_counted_identity, 1, 1, &calls, NULL);
+
+    ASSERT_DOUBLE_EQ(eval_ok("(counted(close) + 1) + (counted(close) + 1)", ctx, reg), 22.0);
+    assert(calls == 1);
+
+    cxpr_context_set(ctx, "close", 20.0);
+    ASSERT_DOUBLE_EQ(eval_ok("(counted(close) + 1) + (counted(close) + 1)", ctx, reg), 42.0);
+    assert(calls == 2);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_eval_memo_reuses_structurally_equal_subexpressions\n");
+}
+
 static void test_macd_signal_producer(const double* args, size_t argc,
                                       cxpr_value* out, size_t field_count,
                                       void* ud) {
     (void)ud;
     assert(argc == 3);
     assert(field_count == 1);
-    out[0] = cxpr_fv_double(args[0] - args[1] + args[2]);
+    out[0] = cxpr_num(args[0] - args[1] + args[2]);
 }
 
 static void test_function_call_field_access(void) {
@@ -354,6 +384,23 @@ static void test_named_args_for_producer_field_access(void) {
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_named_args_for_producer_field_access\n");
+}
+
+static void test_named_args_for_producer_field_access_allow_omitted_leading_default(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    const char* fields[] = {"signal"};
+    const char* params[] = {"source", "slow", "fast", "period"};
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer, 3, 4, fields, 1, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd", params, 4));
+
+    ASSERT_DOUBLE_EQ(eval_ok("macd(fast=9, slow=21, period=3).signal", ctx, reg), 15.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_named_args_for_producer_field_access_allow_omitted_leading_default\n");
 }
 
 static void test_named_args_support_ir_fallback(void) {
@@ -409,7 +456,7 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
 
     cxpr_context_set(ctx, "ema_len", 8.0);
     cxpr_context_set_param(ctx, "slow", 21.0);
-    cxpr_context_set_param(ctx, "use_short", 1.0);
+    cxpr_context_set_param_bool(ctx, "use_short", true);
     ast_result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     prog_result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
@@ -419,7 +466,7 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
 
     cxpr_context_set(ctx, "ema_len", 12.0);
     cxpr_context_set_param(ctx, "slow", 26.0);
-    cxpr_context_set_param(ctx, "use_short", 0.0);
+    cxpr_context_set_param_bool(ctx, "use_short", false);
     ast_result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     prog_result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
@@ -490,9 +537,9 @@ static void test_wrong_arity(void) {
     printf("  ✓ test_wrong_arity\n");
 }
 
-static cxpr_value test_cross_above(const double* args, size_t argc, void* ud) {
+static cxpr_value test_cross_above(const cxpr_value* args, size_t argc, void* ud) {
     (void)argc; (void)ud;
-    return cxpr_fv_bool(args[0] > args[1]);
+    return cxpr_bool(args[0].d > args[1].d);
 }
 
 static int g_userdata_free_count = 0;
@@ -513,7 +560,7 @@ static cxpr_value test_is_valid_typed(const cxpr_value* args, size_t argc, void*
     assert(argc == 2);
     assert(args[0].type == CXPR_VALUE_BOOL);
     assert(args[1].type == CXPR_VALUE_NUMBER);
-    return cxpr_fv_bool(args[0].b && args[1].d >= 3.0);
+    return cxpr_bool(args[0].b && args[1].d >= 3.0);
 }
 
 static double test_macd_field_number(const cxpr_struct_value* s, const char* field) {
@@ -539,7 +586,7 @@ static cxpr_value test_macd_signal_ok(const cxpr_value* args, size_t argc, void*
     line = test_macd_field_number(args[0].s, "line");
     signal = test_macd_field_number(args[0].s, "signal");
     hist = test_macd_field_number(args[0].s, "histogram");
-    return cxpr_fv_bool(line > signal && hist > min_hist && hist > args[1].d);
+    return cxpr_bool(line > signal && hist > min_hist && hist > args[1].d);
 }
 
 static void test_macd_producer(const double* args, size_t argc,
@@ -548,9 +595,9 @@ static void test_macd_producer(const double* args, size_t argc,
     (void)argc;
     (void)userdata;
     assert(field_count == 3);
-    out[0] = cxpr_fv_double(args[0] + 1.0);
-    out[1] = cxpr_fv_double(args[0] - 0.5);
-    out[2] = cxpr_fv_double(args[0] * 0.25);
+    out[0] = cxpr_num(args[0] + 1.0);
+    out[1] = cxpr_num(args[0] - 0.5);
+    out[2] = cxpr_num(args[0] * 0.25);
 }
 
 static void test_typed_function_bool_argument(void) {
@@ -562,7 +609,7 @@ static void test_typed_function_bool_argument(void) {
     cxpr_program* prog;
     const char* field_names[] = {"active", "score"};
     const cxpr_value_type sig[] = {CXPR_VALUE_BOOL, CXPR_VALUE_NUMBER};
-    cxpr_value sensor_values[] = {cxpr_fv_bool(true), cxpr_fv_double(3.5)};
+    cxpr_value sensor_values[] = {cxpr_bool(true), cxpr_num(3.5)};
     cxpr_struct_value* sensor = cxpr_struct_value_new(field_names, sensor_values, 2);
     assert(sensor != NULL);
 
@@ -582,7 +629,7 @@ static void test_typed_function_bool_argument(void) {
     assert(cxpr_test_eval_program(prog, ctx, reg, &err).b == true);
     assert(err.code == CXPR_OK);
 
-    sensor_values[0] = cxpr_fv_bool(false);
+    sensor_values[0] = cxpr_bool(false);
     sensor = cxpr_struct_value_new(field_names, sensor_values, 2);
     assert(sensor != NULL);
     cxpr_context_set_struct(ctx, "sensor", sensor);
@@ -634,9 +681,9 @@ static void test_typed_function_struct_argument(void) {
     const char* field_names[] = {"line", "signal", "histogram"};
     const cxpr_value_type sig[] = {CXPR_VALUE_STRUCT, CXPR_VALUE_NUMBER};
     cxpr_value macd_values[] = {
-        cxpr_fv_double(2.0),
-        cxpr_fv_double(1.0),
-        cxpr_fv_double(0.6),
+        cxpr_num(2.0),
+        cxpr_num(1.0),
+        cxpr_num(0.6),
     };
     cxpr_struct_value* macd_ctx = cxpr_struct_value_new(field_names, macd_values, 3);
     const char* producer_fields[] = {"line", "signal", "histogram"};
@@ -897,12 +944,14 @@ int main(void) {
     test_comparison();
     test_logical();
     test_function_call();
+    test_eval_memo_reuses_structurally_equal_subexpressions();
     test_pipe_evaluates_like_nested_calls();
     test_ternary();
     test_field_access();
     test_function_call_field_access();
     test_named_args_reorder_by_signature();
     test_named_args_for_producer_field_access();
+    test_named_args_for_producer_field_access_allow_omitted_leading_default();
     test_named_args_support_ir_fallback();
     test_named_args_expression_values_with_ir_and_varying_context();
     test_named_args_for_defined_function();

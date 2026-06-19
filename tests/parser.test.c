@@ -22,7 +22,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Helpers
@@ -206,6 +205,17 @@ static void test_not(void) {
     assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
     assert(cxpr_ast_type(cxpr_ast_operand(ast)) == CXPR_NODE_IDENTIFIER);
     cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "not(x == y)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
+    assert(cxpr_ast_type(cxpr_ast_operand(ast)) == CXPR_NODE_BINARY_OP);
+    cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "not (x == y)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
+    assert(cxpr_ast_type(cxpr_ast_operand(ast)) == CXPR_NODE_BINARY_OP);
+    cxpr_ast_free(ast);
+
     cxpr_parser_free(p);
     printf("  ✓ test_not\n");
 }
@@ -290,10 +300,11 @@ static void test_function_nested(void) {
 static void test_function_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast = parse_ok(p, "macd(12, 26, 9).signal");
-    const char* refs[4] = {0};
+    cxpr_producer_field_ref refs[4] = {0};
     assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
-    assert(cxpr_ast_references(ast, refs, 4) == 1);
-    assert(strcmp(refs[0], "macd.signal") == 0);
+    assert(cxpr_ast_producer_fields_used(ast, refs, 4) == 1);
+    assert(strcmp(refs[0].producer_name, "macd") == 0);
+    assert(strcmp(refs[0].field_name, "signal") == 0);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
     printf("  ✓ test_function_field_access\n");
@@ -306,7 +317,7 @@ static void test_function_field_access(void) {
 static void test_grouped_function_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast;
-    const char* refs[4] = {0};
+    cxpr_producer_field_ref refs[4] = {0};
 
     /* (macd(12, 26, 9)).signal must produce the same node as macd(12, 26, 9).signal */
     ast = parse_ok(p, "(macd(12, 26, 9)).signal");
@@ -314,8 +325,9 @@ static void test_grouped_function_field_access(void) {
     assert(strcmp(cxpr_ast_producer_name(ast), "macd") == 0);
     assert(strcmp(cxpr_ast_producer_field(ast), "signal") == 0);
     assert(cxpr_ast_producer_argc(ast) == 3);
-    assert(cxpr_ast_references(ast, refs, 4) == 1);
-    assert(strcmp(refs[0], "macd.signal") == 0);
+    assert(cxpr_ast_producer_fields_used(ast, refs, 4) == 1);
+    assert(strcmp(refs[0].producer_name, "macd") == 0);
+    assert(strcmp(refs[0].field_name, "signal") == 0);
     cxpr_ast_free(ast);
 
     /* (adx(14)).adx — single-arg form */
@@ -570,6 +582,7 @@ static void test_analysis_unknown_function(void) {
 
     assert(!cxpr_analyze(ast, reg, &info, &err));
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
+    assert(strcmp(err.message, "Unknown function 'missing_fn'") == 0);
     assert(info.has_unknown_functions == true);
     assert(info.first_unknown_function != NULL);
     assert(strcmp(info.first_unknown_function, "missing_fn") == 0);

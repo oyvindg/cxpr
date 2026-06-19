@@ -51,15 +51,49 @@ static void bench_macd(const double* args, size_t argc,
     (void)userdata;
     (void)field_count;
     if (argc != 3) {
-        out[0] = cxpr_fv_double(NAN);
-        out[1] = cxpr_fv_double(NAN);
-        out[2] = cxpr_fv_double(NAN);
+        out[0] = cxpr_num(NAN);
+        out[1] = cxpr_num(NAN);
+        out[2] = cxpr_num(NAN);
         return;
     }
 
-    out[0] = cxpr_fv_double((args[0] - args[1]) * 0.1);
-    out[1] = cxpr_fv_double(args[2] * 0.25);
-    out[2] = cxpr_fv_double(out[0].d - out[1].d);
+    out[0] = cxpr_num((args[0] - args[1]) * 0.1);
+    out[1] = cxpr_num(args[2] * 0.25);
+    out[2] = cxpr_num(out[0].d - out[1].d);
+}
+
+static cxpr_value bench_tf_value_fn(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)argc;
+    (void)userdata;
+    return cxpr_num(args[0].d + 1.0);
+}
+
+static cxpr_value bench_tf_ast_handler_fn(const cxpr_ast* call_ast,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          void* userdata,
+                                          cxpr_error* err) {
+    double value = 0.0;
+
+    (void)userdata;
+    if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &value, err)) {
+        return cxpr_num(NAN);
+    }
+
+    if (cxpr_ast_function_argc(call_ast) == 2) {
+        const cxpr_ast* timeframe = cxpr_ast_function_arg(call_ast, 1);
+        if (!timeframe || cxpr_ast_type(timeframe) != CXPR_NODE_STRING ||
+            strcmp(cxpr_ast_string_value(timeframe), "1h") != 0) {
+            if (err) {
+                err->code = CXPR_ERR_SYNTAX;
+                err->message = "bench_tf expects timeframe \"1h\"";
+            }
+            return cxpr_num(NAN);
+        }
+        return cxpr_num(value + 1000.0);
+    }
+
+    return cxpr_num(value + 1.0);
 }
 
 static long long now_ns(void) {
@@ -751,6 +785,163 @@ static void bench_param_update_paths(cxpr_context* ctx) {
            "mutate_param_hash", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
 }
 
+static double time_context_get_path(const cxpr_context* ctx, const char* name,
+                                    size_t iterations) {
+    size_t i;
+    bool found = false;
+    double total = 0.0;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        total += cxpr_context_get(ctx, name, &found);
+        if (!found) {
+            fprintf(stderr, "Context overlay benchmark missed '%s'\n", name);
+            exit(1);
+        }
+    }
+    end = now_ns();
+    g_sink += total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_context_overlay_alloc_free(const cxpr_context* parent,
+                                              size_t iterations) {
+    size_t i;
+    bool found = false;
+    double total = 0.0;
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        cxpr_context* overlay = cxpr_context_overlay_new(parent);
+        if (!overlay) {
+            fprintf(stderr, "Context overlay allocation failed\n");
+            exit(1);
+        }
+        total += cxpr_context_get(overlay, "a", &found);
+        cxpr_context_free(overlay);
+        if (!found) {
+            fprintf(stderr, "Context overlay alloc/free benchmark missed parent value\n");
+            exit(1);
+        }
+    }
+    end = now_ns();
+    g_sink += total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_expression_number(const cxpr_program* program, cxpr_context* ctx,
+                                     const cxpr_registry* reg, size_t iterations,
+                                     double* out_total) {
+    size_t i;
+    double total = 0.0;
+    cxpr_error err = {0};
+    long long start, end;
+
+    start = now_ns();
+    for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
+        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+            fprintf(stderr, "Overlay expression benchmark failed at iter %zu: %s\n",
+                    i, err.message);
+            exit(1);
+        }
+        total += value;
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg) {
+    const char* expr = "pickx(src)";
+    const size_t iterations = 200000;
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    cxpr_program* program;
+    double total = 0.0;
+    double ns;
+
+    if (!ctx) {
+        fprintf(stderr, "Failed to allocate overlay benchmark context\n");
+        exit(1);
+    }
+    cxpr_context_set(ctx, "src.x", 42.0);
+
+    ast = cxpr_parse(parser, expr, &err);
+    if (!ast) {
+        fprintf(stderr, "Parse failed for defined_overlay_prefix: %s\n", err.message);
+        exit(1);
+    }
+    program = cxpr_compile(ast, reg, &err);
+    if (!program) {
+        fprintf(stderr, "Compile failed for defined_overlay_prefix: %s\n", err.message);
+        exit(1);
+    }
+
+    ns = time_expression_number(program, ctx, reg, iterations, &total);
+    if (fabs(total - (42.0 * (double)iterations)) > 1e-9 * total) {
+        fprintf(stderr, "defined_overlay_prefix output mismatch: %.17g\n", total);
+        exit(1);
+    }
+    g_sink += total;
+
+    printf("%-24s  %10zu  %14.2f  %12.6f\n",
+           "defined_prefix", iterations, ns, total / (double)iterations);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+    cxpr_context_free(ctx);
+}
+
+static void bench_context_overlay_paths(void) {
+    const size_t lookup_iterations = 1000000;
+    const size_t alloc_iterations = 200000;
+    cxpr_context* parent = cxpr_context_new();
+    cxpr_context* fallback = NULL;
+    cxpr_context* override = NULL;
+    double direct_ns;
+    double fallback_ns;
+    double override_ns;
+    double alloc_ns;
+
+    if (!parent) {
+        fprintf(stderr, "Failed to allocate context overlay benchmark parent\n");
+        exit(1);
+    }
+    cxpr_context_set(parent, "a", 11.5);
+
+    fallback = cxpr_context_overlay_new(parent);
+    override = cxpr_context_overlay_new(parent);
+    if (!fallback || !override) {
+        fprintf(stderr, "Failed to allocate context overlays\n");
+        exit(1);
+    }
+    cxpr_context_set(override, "a", 21.5);
+
+    direct_ns = time_context_get_path(parent, "a", lookup_iterations);
+    fallback_ns = time_context_get_path(fallback, "a", lookup_iterations);
+    override_ns = time_context_get_path(override, "a", lookup_iterations);
+    alloc_ns = time_context_overlay_alloc_free(parent, alloc_iterations);
+
+    printf("%-24s  %10s  %14s  %12s\n",
+           "case", "iters", "ns/op", "output");
+    printf("%-24s  %10zu  %14.2f  %12.6f\n",
+           "parent_get", lookup_iterations, direct_ns, 11.5);
+    printf("%-24s  %10zu  %14.2f  %12.6f\n",
+           "overlay_fallback_get", lookup_iterations, fallback_ns, 11.5);
+    printf("%-24s  %10zu  %14.2f  %12.6f\n",
+           "overlay_override_get", lookup_iterations, override_ns, 21.5);
+    printf("%-24s  %10zu  %14.2f  %12.6f\n",
+           "overlay_alloc_free_get", alloc_iterations, alloc_ns, 11.5);
+
+    cxpr_context_free(override);
+    cxpr_context_free(fallback);
+    cxpr_context_free(parent);
+}
+
 static void print_bench_header(const char* title) {
     printf("\n%s\n", title);
     printf("%-18s  %10s  %12s  %12s  %8s\n",
@@ -770,6 +961,8 @@ int main(void) {
         { "deep_defined", "f5(a, b, c, d) + f5(e, f, g, h)", 80000, 0 },
         { "deep_native", "native_f5(a, b, c, d) + native_f5(e, f, g, h)", 80000, 0 },
         { "context_churn", "a + b * c - d / e + x * y - z", 200000, 1 },
+        { "ast_handler_num", "bench_tf(a)", 200000, 0 },
+        { "ast_handler_string", "bench_tf(a, \"1h\")", 200000, 0 },
     };
     const typed_bench_case typed_cases[] = {
         { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL },
@@ -790,6 +983,8 @@ int main(void) {
     cxpr_registry_add_binary(reg, "native_hyp2", native_hyp2);
     cxpr_registry_add_ternary(reg, "native_f3", native_f3);
     cxpr_registry_add(reg, "native_f5", native_f5_adapter, 4, 4, NULL, NULL);
+    cxpr_registry_add_value(reg, "bench_tf", bench_tf_value_fn, 1, 1, NULL, NULL);
+    cxpr_registry_add_ast_handler(reg, "bench_tf", bench_tf_ast_handler_fn, 1, 2, NULL, NULL);
     {
         const char* macd_fields[] = {"line", "signal", "histogram"};
         cxpr_registry_add_struct(reg, "macd", bench_macd, 3, 3, macd_fields, 3, NULL, NULL);
@@ -831,6 +1026,15 @@ int main(void) {
         return 1;
     }
 
+    err = cxpr_registry_define_fn(reg, "pickx(v) => v.x");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define pickx: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+        return 1;
+    }
+
     printf("cxpr AST vs IR benchmark\n");
 
     print_bench_header("Scalar");
@@ -851,6 +1055,10 @@ int main(void) {
 
     printf("\nParam Update Paths\n");
     bench_param_update_paths(ctx);
+
+    printf("\nOverlay Paths\n");
+    bench_context_overlay_paths();
+    bench_defined_overlay_prefix(parser, reg);
 
     printf("sink=%.6f\n", g_sink);
 

@@ -5,7 +5,6 @@
 
 #include <cxpr/cxpr.h>
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,9 +25,9 @@ static cxpr_struct_value* make_role_binding(const double* values, size_t value_c
     }
 
     names[0] = "bound_count";
-    field_values[0] = cxpr_fv_double((double)value_count);
+    field_values[0] = cxpr_num((double)value_count);
     names[1] = "value_count";
-    field_values[1] = cxpr_fv_double((double)value_count);
+    field_values[1] = cxpr_num((double)value_count);
 
     for (i = 0; i < value_count; ++i) {
         const int name_len = snprintf(NULL, 0, "v%zu", i);
@@ -46,7 +45,7 @@ static cxpr_struct_value* make_role_binding(const double* values, size_t value_c
         }
         snprintf(name, (size_t)name_len + 1u, "v%zu", i);
         names[i + 2] = name;
-        field_values[i + 2] = cxpr_fv_double(values[i]);
+        field_values[i + 2] = cxpr_num(values[i]);
     }
 
     out = cxpr_struct_value_new(names, field_values, field_count);
@@ -87,6 +86,17 @@ static bool eval_bool(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
     return out;
 }
 
+static void assert_eval_fails(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
+    cxpr_error err = {0};
+    cxpr_ast* ast = parse_expr(expr, &err);
+    cxpr_value out = {0};
+
+    assert(ast);
+    assert(!cxpr_eval_ast(ast, ctx, reg, &out, &err));
+    assert(err.message != NULL);
+    cxpr_ast_free(ast);
+}
+
 int main(void) {
     const double values[] = {1.0, 2.0, 3.0};
     cxpr_context* ctx = cxpr_context_new();
@@ -100,7 +110,7 @@ int main(void) {
     assert(role);
 
     cxpr_register_basket_builtins(reg);
-    cxpr_context_set_struct(ctx, "__dynasty_role_pair", role);
+    cxpr_context_set_struct(ctx, "__cxpr_basket_role_pair", role);
     cxpr_struct_value_free(role);
 
     assert(cxpr_basket_is_builtin("avg"));
@@ -113,6 +123,10 @@ int main(void) {
     assert(fabs(eval_number("max($pair)", ctx, reg) - 3.0) < 1e-10);
     assert(eval_bool("any($pair > 2)", ctx, reg));
     assert(eval_bool("all($pair > 0)", ctx, reg));
+    assert(fabs(eval_number("min(3, 1, 2)", ctx, reg) - 1.0) < 1e-10);
+    assert(fabs(eval_number("max(3, 1, 2)", ctx, reg) - 3.0) < 1e-10);
+    assert_eval_fails("count(1)", ctx, reg);
+    assert_eval_fails("min(true, 2)", ctx, reg);
 
     ast = parse_expr("avg($pair)", &err);
     assert(ast);
