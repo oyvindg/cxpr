@@ -53,7 +53,8 @@ typedef enum {
     CXPR_TOK_AND,               /**< && or and */
     CXPR_TOK_OR,                /**< || or or */
     CXPR_TOK_NOT,               /**< ! or not */
-    CXPR_TOK_IN,                /**< in */
+    CXPR_TOK_IN,                /**< in (set membership) */
+    CXPR_TOK_WITHIN,            /**< within (interval membership) */
 
     /* Delimiters */
     CXPR_TOK_LPAREN,            /**< ( */

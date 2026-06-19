@@ -4,6 +4,7 @@
  */
 
 #include "internal.h"
+#include "core.h"
 #include <math.h>
 
 cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
@@ -155,10 +156,25 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             case CXPR_OP_DIV:
             case CXPR_OP_MOD:
             case CXPR_OP_POW:
-                if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
-                                          "Arithmetic requires double operands") ||
-                    !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
-                                          "Arithmetic requires double operands")) {
+                if (a.type != CXPR_VALUE_NUMBER || b.type != CXPR_VALUE_NUMBER) {
+                    cxpr_valop vop;
+                    bool mappable = true;
+                    switch (instr->op) {
+                    case CXPR_OP_ADD: vop = CXPR_VALOP_ADD; break;
+                    case CXPR_OP_SUB: vop = CXPR_VALOP_SUB; break;
+                    case CXPR_OP_MUL: vop = CXPR_VALOP_MUL; break;
+                    case CXPR_OP_DIV: vop = CXPR_VALOP_DIV; break;
+                    default: mappable = false; vop = CXPR_VALOP_ADD; break;
+                    }
+                    if (mappable) {
+                        int handled = cxpr_value_binary_op(vop, a, b, &result, err);
+                        if (handled == 1) break;
+                        if (handled == -1) return cxpr_num(NAN);
+                    }
+                    (void)cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
+                                               "Arithmetic requires double operands");
+                    (void)cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
+                                               "Arithmetic requires double operands");
                     return cxpr_num(NAN);
                 }
                 if (instr->op == CXPR_OP_DIV && b.d == 0.0) {
@@ -211,10 +227,22 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 }
                 break;
             default:
-                if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
-                                          "Comparison requires double operands") ||
-                    !cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
-                                          "Comparison requires double operands")) {
+                if (a.type != CXPR_VALUE_NUMBER || b.type != CXPR_VALUE_NUMBER) {
+                    cxpr_valop vop;
+                    int handled;
+                    switch (instr->op) {
+                    case CXPR_OP_CMP_LT: vop = CXPR_VALOP_LT; break;
+                    case CXPR_OP_CMP_LTE: vop = CXPR_VALOP_LTE; break;
+                    case CXPR_OP_CMP_GT: vop = CXPR_VALOP_GT; break;
+                    default: vop = CXPR_VALOP_GTE; break;
+                    }
+                    handled = cxpr_value_binary_op(vop, a, b, &result, err);
+                    if (handled == 1) break;
+                    if (handled == -1) return cxpr_num(NAN);
+                    (void)cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
+                                               "Comparison requires double operands");
+                    (void)cxpr_ir_require_type(b, CXPR_VALUE_NUMBER, err,
+                                               "Comparison requires double operands");
                     return cxpr_num(NAN);
                 }
                 switch (instr->op) {

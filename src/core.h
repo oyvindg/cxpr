@@ -75,4 +75,44 @@ static inline char* cxpr_strtok_r(char* str, const char* delim, char** saveptr) 
     return start;
 }
 
+/**
+ * @brief Normalized binary operator kind for the typed temporal value algebra.
+ *
+ * Shared by the tree evaluator and the typed IR executor so that timestamp and
+ * duration arithmetic/ordering can never diverge between the two engines.
+ */
+typedef enum {
+    CXPR_VALOP_ADD,
+    CXPR_VALOP_SUB,
+    CXPR_VALOP_MUL,
+    CXPR_VALOP_DIV,
+    CXPR_VALOP_LT,
+    CXPR_VALOP_LTE,
+    CXPR_VALOP_GT,
+    CXPR_VALOP_GTE
+} cxpr_valop;
+
+/**
+ * @brief Apply timestamp/duration arithmetic and ordering to typed operands.
+ *
+ * Implements the closed temporal algebra:
+ *   - `timestamp - timestamp -> duration`
+ *   - `timestamp +/- duration -> timestamp`, `duration + timestamp -> timestamp`
+ *   - `duration +/- duration -> duration`
+ *   - `duration * number -> duration`, `number * duration -> duration`
+ *   - `duration / number -> duration`, `duration / duration -> number`
+ *   - ordering (`< <= > >=`) on two timestamps or two durations -> bool
+ *
+ * @param op Normalized operator.
+ * @param a Left operand.
+ * @param b Right operand.
+ * @param out Result on success.
+ * @param err Optional error output (set on type mismatch / division by zero).
+ * @return 1 when handled (`out` written), 0 when neither operand is a
+ *         timestamp/duration (caller applies its own numeric path), and -1 on
+ *         error (`err` set).
+ */
+int cxpr_value_binary_op(cxpr_valop op, cxpr_value a, cxpr_value b,
+                         cxpr_value* out, cxpr_error* err);
+
 #endif /* CXPR_CORE_H */

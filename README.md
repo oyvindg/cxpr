@@ -24,7 +24,11 @@ No external dependencies. C11 required.
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Expression Language](#expression-language)
+- [Sets and Intervals](#sets-and-intervals)
+- [Built-in Function Reference](#built-in-function-reference)
 - [Values, Structs, and Contexts](#values-structs-and-contexts)
+- [Timestamps and Durations](#timestamps-and-durations)
+- [Null Handling](#null-handling)
 - [Context Overlays](#context-overlays)
 - [Slot Binding](#slot-binding)
 - [Lookback Evaluation](#lookback-evaluation)
@@ -137,9 +141,11 @@ target_link_libraries(my_target PRIVATE cxpr::cxpr)
 #include <stdio.h>
 
 // 1. Define some functions the expression can call.
-// deg2rad converts degrees to radians.
-static double deg2rad(double d) {
-    return d * 3.14159265358979323846 / 180.0;
+// ema_alpha is the smoothing factor of an N-period EMA: a genuinely
+// domain-specific helper with no standard-library equivalent. (Common math
+// such as radians/hypot/log1p is already built in — see Custom Functions.)
+static double ema_alpha(double period) {
+    return 2.0 / (period + 1.0);
 }
 
 // clamp keeps a value inside the inclusive [lo, hi] interval.
@@ -167,21 +173,22 @@ int main(void) {
     cxpr_register_defaults(reg);
 
     // 3. Populate runtime data.
-    // angle_deg is a normal context variable referenced as angle_deg in expressions.
-    cxpr_context_set(ctx, "angle_deg", 30.0);
+    // period is a normal context variable referenced as period in expressions.
+    cxpr_context_set(ctx, "period", 9.0);
 
     // limit is a parameter referenced as $limit in expressions.
-    cxpr_context_set_param(ctx, "limit", 1.2);
+    cxpr_context_set_param(ctx, "limit", 0.4);
 
     // 4. Register those functions under the names used in the expression.
-    cxpr_registry_add_unary(reg, "deg2rad", deg2rad);
+    cxpr_registry_add_unary(reg, "ema_alpha", ema_alpha);
     cxpr_registry_add_ternary(reg, "clamp", clamp);
     cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
     cxpr_error err = {0};
-    // 5. Parse an expression that converts angle_deg, clamps it, and checks $limit.
+    // 5. Parse an expression that turns period into a smoothing factor, clamps
+    //    it to [0, 1], and checks it stays below $limit.
     cxpr_ast* ast = cxpr_parse(parser,
-        "within_limit(clamp(deg2rad(angle_deg), 0.0, 1.57), $limit)",
+        "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)",
         &err);
     if (!ast) {
         fprintf(stderr, "parse error at %zu:%zu: %s\n", err.line, err.column, err.message);
@@ -250,9 +257,14 @@ body.position.x + body.velocity.x
 
 Supported language features:
 
-- Arithmetic: `+`, `-`, `*`, `/`, `%`, `^`, `**`
-- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
-- Range membership: `x in [10, 20]`, `x not in [min=10, max=20]`
+- Arithmetic: `+`, `-`, `*`, `/`, `%`, `^`, `**` (numbers; `+`/`-`/`*`/`/` also
+  drive the [timestamp/duration algebra](#timestamps-and-durations))
+- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (numbers, and ordering of two
+  timestamps or two durations)
+- Set membership: `x in [a, b, c]`, `x not in [a, b, c]` (matches when `x` equals
+  any listed value — numbers, strings, or enum-like identifiers)
+- Interval membership: `x within [10, 20]`, `x not within [min=10, max=20]`
+  (inclusive, continuous range; see [Sets and Intervals](#sets-and-intervals))
 - Logic: `and`, `or`, `not`, `&&`, `||`, `!`
 - Ternary: `condition ? a : b`
 - Function calls: `sqrt(x)`, `clamp(v, lo, hi)`
@@ -263,6 +275,151 @@ Supported language features:
 - Field access for named structs and produced structs: `quote.mid`, `body.velocity.x`
 - String literals: `"1d"`, used as named-argument values such as `close(timeframe="1d")`
 - Postfix lookback syntax: `close[1]`, `macd(12, 26, 9).signal[2]`
+
+### Operator Precedence
+
+From lowest to highest binding. Operators in the same row share precedence.
+
+| Level | Operators | Associativity | Notes |
+| --- | --- | --- | --- |
+| 1 (loosest) | `\|>` | left | Forward pipe; RHS must be callable |
+| 2 | `?:` | right | Ternary conditional |
+| 3 | `or`, `\|\|` | left | Short-circuits |
+| 4 | `and`, `&&` | left | Short-circuits |
+| 5 | `not`, `!` | right (unary) | Logical negation |
+| 6 | `==`, `!=` | left | Matching scalar types only |
+| 7 | `<`, `<=`, `>`, `>=`, `in`, `not in`, `within`, `not within` | left | Ordering; set / interval membership |
+| 8 | `+`, `-` | left | Additive |
+| 9 | `*`, `/`, `%` | left | Multiplicative |
+| 10 | `-`, `+` | right (unary) | Unary sign |
+| 11 | `^`, `**` | right | Exponentiation |
+| 12 (tightest) | `f(...)`, `.field`, `[lookback]` | left (postfix) | Calls, field access, lookback |
+
+Primary expressions — number/string literals, `true`/`false`, identifiers,
+`$params`, and parenthesised groups — bind tighter than every operator.
+
+### Sets and Intervals
+
+`in` and `within` are distinct membership tests, and both are pure parse-time
+desugaring — no runtime array value is created.
+
+`x in [a, b, c]` is **set membership**: true when `x` equals any listed value. It
+desugars to an OR-chain of equalities and therefore works for any type equality
+supports (numbers, strings, enum-like identifiers). At least one element is
+required.
+
+```text
+regime in ["uptrend", "breakout"]   # regime == "uptrend" or regime == "breakout"
+side not in [buy, sell]             # not (side == buy or side == sell)
+```
+
+`x within [lo, hi]` is **interval membership**: an inclusive, continuous range.
+It desugars to `lo <= x and x <= hi`, and supports named and exclusive-style
+bounds.
+
+```text
+rsi within [30, 70]                 # 30 <= rsi and rsi <= 70
+rsi within [min=30, max=70]         # named bounds, order-independent
+price not within [support, resistance]
+```
+
+> Migration note (2.0.0): earlier releases used `x in [lo, hi]` for intervals.
+> That spelling is now set membership; use `x within [lo, hi]` for ranges.
+
+## Built-in Function Reference
+
+`cxpr_register_defaults(reg)` installs everything in this section. Arity is the
+accepted argument count; `n..m` means variadic. All numeric functions are
+eligible for the compiled double fast path unless noted.
+
+### Constants (nullary)
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `pi()` | number | 3.14159265358979323846 |
+| `e()` | number | 2.71828182845904523536 |
+| `nan()` | number | IEEE quiet NaN |
+| `inf()` | number | Positive infinity |
+
+### Unary math
+
+| Function | Description |
+| --- | --- |
+| `abs(x)` | Absolute value |
+| `sign(x)` | −1, 0, or +1 by sign of `x` |
+| `floor(x)`, `ceil(x)`, `round(x)`, `trunc(x)` | Rounding modes |
+| `sqrt(x)`, `cbrt(x)` | Square / cube root |
+| `exp(x)`, `exp2(x)`, `expm1(x)` | `e^x`, `2^x`, `e^x − 1` |
+| `log(x)`, `log2(x)`, `log10(x)`, `log1p(x)` | Natural/base-2/base-10 log, `log(1+x)` |
+| `sin(x)`, `cos(x)`, `tan(x)` | Trigonometric (radians) |
+| `asin(x)`, `acos(x)`, `atan(x)` | Inverse trigonometric |
+| `sinh(x)`, `cosh(x)`, `tanh(x)` | Hyperbolic |
+| `radians(x)` | Degrees → radians |
+| `degrees(x)` | Radians → degrees |
+
+### Binary math
+
+| Function | Description |
+| --- | --- |
+| `pow(b, e)` | `b^e` (same as `b ^ e`) |
+| `hypot(x, y)` | `sqrt(x² + y²)` without overflow |
+| `mod(x, y)` | Floating-point remainder (same as `x % y`) |
+| `copysign(m, s)` | Magnitude of `m` with sign of `s` |
+| `atan2(y, x)` | Two-argument arctangent |
+| `add(a, b)`, `sub(a, b)`, `mul(a, b)`, `div(a, b)` | Function forms of `+ - * /` |
+
+### Ternary / variadic math
+
+| Function | Arity | Description |
+| --- | --- | --- |
+| `min(...)`, `max(...)` | 1..8 | Smallest / largest argument |
+| `clamp(x, lo, hi)` | 3 | Constrain `x` to `[lo, hi]` (swaps if `lo > hi`) |
+| `lerp(a, b, t)` | 3 | Linear interpolation `a + (b−a)·t` |
+| `smoothstep(x, e0, e1)` | 3 | Hermite smoothstep in `[e0, e1]` |
+| `sigmoid(x, center, steepness)` | 3 | Logistic `1/(1+e^(−steepness·(x−center)))` |
+| `if(cond, a, b)` | 3 | `a` when `cond ≠ 0`, else `b` (also `cond ? a : b`) |
+
+### Predicates and null handling
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `isnan(x)` | bool | True when `x` is NaN |
+| `isfinite(x)` | bool | True when `x` is finite |
+| `is_null(x)` | bool | True when `x` is `null` |
+| `coalesce(a, b, …)` | any | First non-null argument (1..8 args), else `null` |
+
+### Time-series functions
+
+These read an argument expression at historical offsets (offset 0 = current bar,
+offset `n` = `n` bars ago) and require lookback-capable evaluation. `value` is a
+numeric expression, `condition` a boolean one, and `samples`/`bars` a positive
+integer count. The `(value, samples)` functions accept named `value`/`samples`
+arguments (e.g. `rising(value=close, samples=3)`); `overlaps`/`signal_overlaps`
+accept named `left`, `right`, `bars`. `cross_above`/`cross_below` are positional.
+
+| Function | Arity | Returns | Description |
+| --- | --- | --- | --- |
+| `rising(value, samples)` | 2 | bool | `value` strictly increased on every bar across the window |
+| `falling(value, samples)` | 2 | bool | `value` strictly decreased on every bar across the window |
+| `net_up(value, samples)` | 2 | bool | `value` now is higher than `samples` bars ago |
+| `net_down(value, samples)` | 2 | bool | `value` now is lower than `samples` bars ago |
+| `delta(value, samples)` | 2 | number | `value − value[samples]` |
+| `roc(value, samples)` | 2 | number | Rate of change `(value − value[samples]) / value[samples]` |
+| `highest(value, samples)` | 2 | number | Maximum of `value` over the window |
+| `lowest(value, samples)` | 2 | number | Minimum of `value` over the window |
+| `cross_above(left, right)` | 2 | bool | `left` crossed from `≤ right` to `> right` this bar |
+| `cross_below(left, right)` | 2 | bool | `left` crossed from `≥ right` to `< right` this bar |
+| `repeat(condition, samples)` | 2 | bool | `condition` held true on every one of the last `samples` bars |
+| `overlaps(left, right[, bars])` | 2..3 | bool | Both conditions occur within `bars` bars of each other (default same bar) |
+| `signal_overlaps(left, right[, bars])` | 2..3 | bool | Alias of `overlaps` |
+
+### Opt-in: basket aggregates
+
+`cxpr_register_basket_builtins(reg)` (separate from `cxpr_register_defaults`)
+adds multi-symbol aggregates for hosts that evaluate basket expressions:
+`avg(expr)`, `count(expr)`, `any(expr)`, `all(expr)`, and the basket forms of
+`min(expr)`/`max(expr)`. See [the basket section](#what-the-library-provides)
+and `cxpr_basket_is_builtin` for detection helpers.
 
 ## Values, Structs, and Contexts
 
@@ -276,8 +433,20 @@ from callbacks.
 Equality supports matching scalar operands across number, bool, string, null,
 timestamp, and duration values, so ordinary boolean logic can include checks
 such as `region == "EU"`. Cross-type equality still fails with a type mismatch.
-Arrays are transport values for callbacks and structs; array literals and deep
-array equality are not part of the expression language yet.
+Arrays (`CXPR_VALUE_ARRAY`) are transport values for callbacks and structs.
+Bracketed lists in the expression language (`x in [a, b, c]`,
+`x within [lo, hi]`) are syntax that desugars at parse time — see
+[Sets and Intervals](#sets-and-intervals) — and do not produce first-class array
+values; standalone array literals and deep array equality are not part of the
+expression language.
+
+Timestamps and durations also carry a closed arithmetic and ordering algebra
+(see [Timestamps and Durations](#timestamps-and-durations)), and `null` values
+can be defaulted with the built-in `coalesce`/`is_null` helpers
+(see [Null Handling](#null-handling)). Both work identically in the tree-walk
+and compiled paths. Timestamp and duration values reach expressions through
+struct fields and typed callbacks — not bare numeric context variables, whose
+fast-path stays double-only.
 
 Contexts hold normal variables, `$params`, and named struct values:
 
@@ -307,6 +476,60 @@ For hot loops, prefer the bulk and stable-binding update paths:
 - `cxpr_context_slot_bind` gives direct mutable access to a context value slot.
 - `cxpr_context_overlay_new` creates a context that reads through to a parent and can override selected bindings.
 - `cxpr_context_set_cached_struct` stores per-evaluation struct results; clear them with `cxpr_context_clear_cached_structs`.
+
+## Timestamps and Durations
+
+`CXPR_VALUE_TIMESTAMP` (Unix nanoseconds) and `CXPR_VALUE_DURATION` (nanoseconds)
+participate in a closed, type-checked algebra. Values flow in from struct fields
+and typed callbacks — for example a `bar.time` field or a host `now()` function —
+and the engine reasons about them directly instead of forcing every host to
+unpack raw nanoseconds:
+
+```text
+bar.time - entry.time            # timestamp - timestamp  -> duration
+bar.time + $cooldown             # timestamp + duration    -> timestamp
+$cooldown * 2                    # duration  * number      -> duration
+hold_time / bar_interval         # duration  / duration    -> number (ratio)
+bar.time >= session_open         # ordering of two timestamps -> bool
+```
+
+The full set of valid operations:
+
+| Expression | Result |
+| --- | --- |
+| `timestamp - timestamp` | `duration` |
+| `timestamp ± duration`, `duration + timestamp` | `timestamp` |
+| `duration ± duration` | `duration` |
+| `duration * number`, `number * duration` | `duration` |
+| `duration / number` | `duration` |
+| `duration / duration` | `number` |
+| `<`, `<=`, `>`, `>=` on two timestamps or two durations | `bool` |
+| `==`, `!=` on matching timestamp/duration operands | `bool` |
+
+Any other combination (for example `timestamp + timestamp`, `timestamp * number`,
+or comparing a timestamp with a duration) is a `CXPR_ERR_TYPE_MISMATCH`. The rules
+are identical in the tree-walk evaluator and the compiled IR. Timestamp and
+duration values must originate from struct fields or typed callbacks; the
+double-only numeric fast path is unaffected, so plain numeric variables keep
+their performance.
+
+## Null Handling
+
+`CXPR_VALUE_NULL` represents missing data — a common case for host-backed series
+that have no value for a given bar. Two built-ins make `null` usable instead of
+fatal:
+
+```text
+coalesce(close[1], close)        # first non-null argument (1-8 args)
+coalesce(volume, 0)              # fall back to 0 when volume is missing
+is_null(macd().signal)           # true when the value is null
+coalesce(rsi, 50) < 30           # neutral default before using rsi
+```
+
+`coalesce(a, b, …)` returns its first non-null argument (or `null` if all are
+null). `is_null(x)` returns a boolean and can guard any downstream use. Both run
+in the typed evaluation path in either engine. There is no dedicated `??`
+operator — `coalesce` covers the same need without adding operator syntax.
 
 ## Context Overlays
 
@@ -450,19 +673,22 @@ if (!cxpr_eval_ast_at_offset(ast, 3, ctx, reg, &value, &err)) {
 
 ## Custom Functions
 
-Register C functions before parsing expressions that call them. Using the `deg2rad`, `clamp`,
-and `within_limit` functions from the [Quick Start](#quick-start) example:
+Register C functions before parsing expressions that call them. Register only what is
+genuinely host- or domain-specific — common math (`hypot`, `radians`, `degrees`, `mod`,
+`copysign`, `log1p`, `expm1`, `isnan`, `isfinite`) and null handling (`coalesce`, `is_null`)
+are already built in via `cxpr_register_defaults`. Using the `ema_alpha`, `clamp`, and
+`within_limit` functions from the [Quick Start](#quick-start) example:
 
 ```c
 // Register those functions under the names used in the expression.
-cxpr_registry_add_unary(reg, "deg2rad", deg2rad);
+cxpr_registry_add_unary(reg, "ema_alpha", ema_alpha);
 cxpr_registry_add_ternary(reg, "clamp", clamp);
 cxpr_registry_add_value(reg, "within_limit", within_limit, 2, 2, NULL, NULL);
 
 // Parse a pipe-style expression. This reads left-to-right:
-// angle_deg -> deg2rad(...) -> clamp(..., 0.0, 1.57) -> within_limit(..., $limit)
+// period -> ema_alpha(...) -> clamp(..., 0.0, 1.0) -> within_limit(..., $limit)
 cxpr_ast* ast = cxpr_parse(parser,
-    "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit($limit)",
+    "period |> ema_alpha |> clamp(0.0, 1.0) |> within_limit($limit)",
     &err);
 ```
 
@@ -550,8 +776,12 @@ cxpr_registry_add_binary(reg, "ema", ema_scalar);
 cxpr_registry_add_ast_handler(reg, "ema", ema_scoped_dispatch, 1, 3, NULL, NULL);
 ```
 
-`cxpr_register_defaults` installs standard math helpers such as `sqrt`, `abs`, `min`, and
-`max`. `cxpr_register_basket_builtins` installs basket aggregate helpers for host
+`cxpr_register_defaults` installs standard math helpers. Besides the usual
+`sqrt`, `abs`, `min`, `max`, `clamp`, and trig/exponential families, it includes
+`hypot`, `radians`, `degrees`, `mod`, `copysign`, `log1p`, `expm1`, the boolean
+predicates `isnan`/`isfinite`, and the null helpers `coalesce`/`is_null`. Prefer
+these over re-registering equivalents as custom functions.
+`cxpr_register_basket_builtins` installs basket aggregate helpers for host
 applications that evaluate multi-symbol expressions. Use `cxpr_basket_is_builtin`,
 `cxpr_basket_is_aggregate_function`,
 `cxpr_ast_uses_basket_aggregates`, and `cxpr_expression_uses_basket_aggregates` when a host

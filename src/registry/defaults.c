@@ -7,6 +7,12 @@
 
 #include <math.h>
 
+/* Single source of truth for the math constants the builtins expose, so the
+ * `pi`/`e` constant functions and the radians/degrees conversions never drift.
+ * Spelled out as literals (not M_PI) to stay portable across C compilers. */
+#define CXPR_PI 3.14159265358979323846
+#define CXPR_E  2.71828182845904523536
+
 static double cxpr_clamp(double x, double lo, double hi) {
     if (lo > hi) {
         const double t = lo;
@@ -71,11 +77,11 @@ static double cxpr_sigmoid(double x, double center, double steepness) {
 }
 
 static double cxpr_pi(void) {
-    return 3.14159265358979323846;
+    return CXPR_PI;
 }
 
 static double cxpr_e(void) {
-    return 2.71828182845904523536;
+    return CXPR_E;
 }
 
 static double cxpr_nan(void) {
@@ -88,6 +94,40 @@ static double cxpr_inf(void) {
 
 static double cxpr_if(double cond, double a, double b) {
     return (cond != 0.0) ? a : b;
+}
+
+static double cxpr_radians(double degrees) {
+    return degrees * (CXPR_PI / 180.0);
+}
+
+static double cxpr_degrees(double radians) {
+    return radians * (180.0 / CXPR_PI);
+}
+
+static cxpr_value cxpr_fn_isnan(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)argc;
+    (void)userdata;
+    return cxpr_bool(isnan(args[0].d) != 0);
+}
+
+static cxpr_value cxpr_fn_isfinite(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)argc;
+    (void)userdata;
+    return cxpr_bool(isfinite(args[0].d) != 0);
+}
+
+static cxpr_value cxpr_fn_coalesce(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)userdata;
+    for (size_t i = 0; i < argc; ++i) {
+        if (args[i].type != CXPR_VALUE_NULL) return args[i];
+    }
+    return cxpr_null();
+}
+
+static cxpr_value cxpr_fn_is_null(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)argc;
+    (void)userdata;
+    return cxpr_bool(args[0].type == CXPR_VALUE_NULL);
 }
 
 double cxpr_unary_adapter(const double* args, size_t argc, void* userdata) {
@@ -148,13 +188,21 @@ void cxpr_register_math(cxpr_registry* reg) {
 
     cxpr_registry_add_unary(reg, "sqrt", sqrt);
     cxpr_registry_add_unary(reg, "cbrt", cbrt);
+    cxpr_registry_add_binary(reg, "hypot", hypot);
     cxpr_registry_add_binary(reg, "pow", pow);
     cxpr_registry_add_unary(reg, "exp", exp);
     cxpr_registry_add_unary(reg, "exp2", exp2);
+    cxpr_registry_add_unary(reg, "expm1", expm1);
 
     cxpr_registry_add_unary(reg, "log", log);
     cxpr_registry_add_unary(reg, "log10", log10);
     cxpr_registry_add_unary(reg, "log2", log2);
+    cxpr_registry_add_unary(reg, "log1p", log1p);
+
+    cxpr_registry_add_binary(reg, "mod", fmod);
+    cxpr_registry_add_binary(reg, "copysign", copysign);
+    cxpr_registry_add_unary(reg, "radians", cxpr_radians);
+    cxpr_registry_add_unary(reg, "degrees", cxpr_degrees);
 
     cxpr_registry_add_unary(reg, "sin", sin);
     cxpr_registry_add_unary(reg, "cos", cos);
@@ -174,6 +222,18 @@ void cxpr_register_math(cxpr_registry* reg) {
     cxpr_registry_add_nullary(reg, "inf", cxpr_inf);
 
     cxpr_registry_add_ternary(reg, "if", cxpr_if);
+
+    {
+        static const cxpr_value_type number_arg[] = { CXPR_VALUE_NUMBER };
+        cxpr_registry_add_typed(reg, "isnan", cxpr_fn_isnan, 1, 1, number_arg,
+                                CXPR_VALUE_BOOL, NULL, NULL);
+        cxpr_registry_add_typed(reg, "isfinite", cxpr_fn_isfinite, 1, 1, number_arg,
+                                CXPR_VALUE_BOOL, NULL, NULL);
+    }
+
+    cxpr_registry_add_value(reg, "coalesce", cxpr_fn_coalesce, 1, 8, NULL, NULL);
+    cxpr_registry_add_typed(reg, "is_null", cxpr_fn_is_null, 1, 1, NULL,
+                            CXPR_VALUE_BOOL, NULL, NULL);
 }
 
 void cxpr_register_defaults(cxpr_registry* reg) {

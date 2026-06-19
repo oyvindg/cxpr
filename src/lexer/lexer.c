@@ -104,6 +104,8 @@ static const cxpr_keyword_entry cxpr_keywords[] = {
     {"NOT",   CXPR_TOK_NOT},
     {"in",    CXPR_TOK_IN},
     {"IN",    CXPR_TOK_IN},
+    {"within", CXPR_TOK_WITHIN},
+    {"WITHIN", CXPR_TOK_WITHIN},
     {"true",  CXPR_TOK_TRUE},
     {"TRUE",  CXPR_TOK_TRUE},
     {"false", CXPR_TOK_FALSE},

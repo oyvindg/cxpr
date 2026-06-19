@@ -217,13 +217,28 @@ static bool cxpr_eval_values_equal(cxpr_value left, cxpr_value right, bool* out)
     }
 }
 
+static bool cxpr_tok_to_arith_valop(int op, cxpr_valop* out) {
+    switch (op) {
+    case CXPR_TOK_PLUS: *out = CXPR_VALOP_ADD; return true;
+    case CXPR_TOK_MINUS: *out = CXPR_VALOP_SUB; return true;
+    case CXPR_TOK_STAR: *out = CXPR_VALOP_MUL; return true;
+    case CXPR_TOK_SLASH: *out = CXPR_VALOP_DIV; return true;
+    default: return false; /* %, ^ have no temporal meaning */
+    }
+}
+
 static cxpr_value cxpr_eval_arithmetic_op(int op, cxpr_value left, cxpr_value right,
                                           cxpr_error* err) {
-    if (!cxpr_require_type(left, CXPR_VALUE_NUMBER, err,
-                           "Arithmetic requires double operands") ||
-        !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
-                           "Arithmetic requires double operands")) {
-        return cxpr_num(NAN);
+    if (left.type != CXPR_VALUE_NUMBER || right.type != CXPR_VALUE_NUMBER) {
+        cxpr_valop vop;
+        cxpr_value out;
+        if (cxpr_tok_to_arith_valop(op, &vop)) {
+            int handled = cxpr_value_binary_op(vop, left, right, &out, err);
+            if (handled == 1) return out;
+            if (handled == -1) return cxpr_num(NAN);
+        }
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "Arithmetic requires double operands");
     }
     if ((op == CXPR_TOK_SLASH || op == CXPR_TOK_PERCENT) && right.d == 0.0) {
         return cxpr_eval_error(err, CXPR_ERR_DIVISION_BY_ZERO,
@@ -243,11 +258,21 @@ static cxpr_value cxpr_eval_arithmetic_op(int op, cxpr_value left, cxpr_value ri
 
 static cxpr_value cxpr_eval_comparison_op(int op, cxpr_value left, cxpr_value right,
                                           cxpr_error* err) {
-    if (!cxpr_require_type(left, CXPR_VALUE_NUMBER, err,
-                           "Comparison requires double operands") ||
-        !cxpr_require_type(right, CXPR_VALUE_NUMBER, err,
-                           "Comparison requires double operands")) {
-        return cxpr_num(NAN);
+    if (left.type != CXPR_VALUE_NUMBER || right.type != CXPR_VALUE_NUMBER) {
+        cxpr_valop vop = CXPR_VALOP_LT;
+        cxpr_value out;
+        int handled;
+        switch (op) {
+        case CXPR_TOK_LT: vop = CXPR_VALOP_LT; break;
+        case CXPR_TOK_LTE: vop = CXPR_VALOP_LTE; break;
+        case CXPR_TOK_GT: vop = CXPR_VALOP_GT; break;
+        default: vop = CXPR_VALOP_GTE; break;
+        }
+        handled = cxpr_value_binary_op(vop, left, right, &out, err);
+        if (handled == 1) return out;
+        if (handled == -1) return cxpr_num(NAN);
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "Comparison requires double operands");
     }
 
     switch (op) {
