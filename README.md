@@ -47,6 +47,7 @@ No external dependencies. C11 required.
 - [Errors](#errors)
 - [Concurrency](#concurrency)
 - [Analysis](#analysis)
+- [Code Generation](#code-generation)
 - [Examples](#examples)
 - [Benchmark](#benchmark)
 
@@ -1185,6 +1186,39 @@ inherit a function context only when the traced reference/param resolves to one 
 host context. If the same alias or parameter flows into multiple consumers, for example both
 `supertrend(...)` and `macd(...)`, the host should treat that as ambiguous and keep its default
 placement unless it creates separate context-specific outputs.
+
+## Code Generation
+
+`cxpr/codegen.h` transpiles ASTs into C source — the codegen counterpart to the
+runtime evaluator. Use it to emit native source you then compile (a hot loop, or
+a GPU kernel via a runtime compiler) instead of interpreting.
+
+```c
+cxpr_ast* ast = cxpr_parse(parser, "2 * G * M / c^2", &err);
+char* code = cxpr_ast_to_c(ast, NULL, &err);   // -> "((2 * (G * M)) / pow(c, 2))"
+free(code);
+```
+
+`cxpr_exprset_to_c` transpiles a set of interdependent named expressions into a
+block of C declarations, topologically ordered so each definition precedes its
+uses (cycles are rejected):
+
+```c
+cxpr_c_named_expr defs[] = {
+    { "dr_dl", ast_dr },   // "p_r * f"
+    { "f",     ast_f  },   // "1 - r_s / r"
+    { "r_s",   ast_rs },   // "2 * G * M / c^2"
+};
+char* block = cxpr_exprset_to_c(defs, 3, "double", NULL, &err);
+// double r_s = ...;  double f = ...;  double dr_dl = ...;  (in dependency order)
+```
+
+Mapping: `^`/`**` → `pow()`, `%` → `fmod()`, `and`/`or`/`not` → `&&`/`||`/`!`,
+variadic `min`/`max` → nested `fmin`/`fmax`. Target-specific function names (CUDA,
+WGSL, …) are supplied through `cxpr_c_target.map_function`. Field/chain/producer/
+lookback nodes and unmapped functions are rejected with an error — the emitter is
+conservative by design. `within`/`in` need no special handling: they desugar to
+comparisons and `&&`/`||` at parse time, so they transpile as ordinary operators.
 
 ## Examples
 
