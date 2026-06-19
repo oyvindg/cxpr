@@ -11,6 +11,7 @@
 #include <cxpr/version.h>
 #include <cxpr/types.h>
 #include <cxpr/ast.h>
+#include <cxpr/codegen.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
 #include <cxpr/ir_view.h>

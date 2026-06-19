@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-06-19
+
+### Added
+
+- C source code generation (`cxpr/codegen.h`): `cxpr_ast_to_c` transpiles a
+  single expression AST into a C expression string, and `cxpr_exprset_to_c`
+  transpiles a set of interdependent named expressions into a C block of
+  declarations, topologically ordered so each definition precedes its uses
+  (cycles are rejected). Targets a C-like backend (plain C, CUDA, WGSL) via an
+  optional `cxpr_c_target` function-name map; `^`/`**` map to `pow()`, `%` to
+  `fmod()`, `and`/`or`/`not` to `&&`/`||`/`!`, and variadic `min`/`max` to nested
+  `fmin`/`fmax`. Unsupported nodes (field/chain/producer/lookback) and unmapped
+  functions are rejected with a clear error. This is the codegen counterpart to
+  the runtime evaluator: emit native source to compile a hot loop or a GPU
+  kernel instead of interpreting.
+
 ## [2.0.1] - 2026-06-19
 
 ### Fixed
