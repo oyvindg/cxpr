@@ -54,7 +54,11 @@ static cxpr_ast* cxpr_parse_array_literal(cxpr_parser* p) {
                 elements = grown;
             }
             elements[count] = cxpr_parse_expression(p);
-            if (!elements[count] || p->had_error) goto fail;
+            if (!elements[count] || p->had_error) {
+                cxpr_ast_free(elements[count]);
+                elements[count] = NULL;
+                goto fail;
+            }
             count++;
         } while (cxpr_parser_match(p, CXPR_TOK_COMMA));
     }

@@ -727,6 +727,7 @@ static void test_pipe_gt_edgecases(void) {
 
 static void test_syntax_errors(void) {
     cxpr_parser* p = cxpr_parser_new();
+    const char fuzz_leak_case[] = { '[', 'v', (char)0x83, '\0' };
 
     parse_fail(p, "");       /* empty expression */
     parse_fail(p, "(");      /* unclosed paren */
@@ -735,6 +736,7 @@ static void test_syntax_errors(void) {
     parse_fail(p, "f(a,)");  /* trailing comma in func args */
     parse_fail(p, ".");      /* lone dot */
     parse_fail(p, "f(1).");  /* missing field after function call */
+    parse_fail(p, fuzz_leak_case); /* fuzz regression: error after array element */
 
     cxpr_parser_free(p);
     printf("  ✓ test_syntax_errors\n");
