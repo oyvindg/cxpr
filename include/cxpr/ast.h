@@ -54,7 +54,6 @@ typedef enum {
     CXPR_TOK_OR,                /**< || or or */
     CXPR_TOK_NOT,               /**< ! or not */
     CXPR_TOK_IN,                /**< in (set membership) */
-    CXPR_TOK_WITHIN,            /**< within (interval membership) */
 
     /* Delimiters */
     CXPR_TOK_LPAREN,            /**< ( */
@@ -122,6 +121,13 @@ cxpr_ast* cxpr_ast_new_number(double value);
  * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_bool(bool value);
+/**
+ * @brief Construct an array literal node.
+ * @param elements Element AST array.
+ * @param count Number of elements.
+ * @return Newly allocated AST node taking ownership of `elements`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count);
 /**
  * @brief Construct a plain identifier node.
  * @param name Identifier name.
@@ -220,6 +226,7 @@ cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch,
 typedef enum {
     CXPR_NODE_NUMBER,
     CXPR_NODE_BOOL,
+    CXPR_NODE_ARRAY,
     CXPR_NODE_STRING,
     CXPR_NODE_IDENTIFIER,
     CXPR_NODE_VARIABLE,

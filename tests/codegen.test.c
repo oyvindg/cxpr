@@ -55,12 +55,25 @@ static void test_functions(void) {
     printf("  functions OK\n");
 }
 
-static void test_within_desugar(void) {
-    /* `within` desugars at parse time to comparisons + and. */
-    eq("x within [10, 20]", "((x >= 10) && (x <= 20))");
-    /* `in` desugars to an OR-chain of equalities. */
-    eq("s in [1, 2]", "((s == 1) || (s == 2))");
-    printf("  within/in desugar OK\n");
+static void test_membership_desugar(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "s in [1, 2]", &err);
+    char* printed;
+    char* out;
+
+    assert(ast && err.code == CXPR_OK);
+    printed = cxpr_ast_to_string(ast);
+    assert(printed && strcmp(printed, "contains(s, [1, 2])") == 0);
+    free(printed);
+
+    err = (cxpr_error){0};
+    out = cxpr_ast_to_c(ast, NULL, &err);
+    assert(out == NULL && err.code != CXPR_OK);
+
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  membership desugar OK\n");
 }
 
 static void test_unsupported(void) {
@@ -136,7 +149,7 @@ int main(void) {
     printf("codegen tests:\n");
     test_operators();
     test_functions();
-    test_within_desugar();
+    test_membership_desugar();
     test_unsupported();
     test_exprset_topo();
     test_exprset_cycle();

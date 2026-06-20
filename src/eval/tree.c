@@ -397,6 +397,30 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     case CXPR_NODE_BOOL:
         return cxpr_bool(ast->data.boolean.value);
 
+    case CXPR_NODE_ARRAY: {
+        cxpr_value* values = NULL;
+        cxpr_array_value* array;
+        if (ast->data.array.count > 0u) {
+            values = (cxpr_value*)calloc(ast->data.array.count, sizeof(cxpr_value));
+            if (!values) {
+                return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            }
+            for (size_t i = 0u; i < ast->data.array.count; ++i) {
+                values[i] = cxpr_eval_node(ast->data.array.elements[i], ctx, reg, err);
+                if (err && err->code != CXPR_OK) {
+                    free(values);
+                    return cxpr_num(NAN);
+                }
+            }
+        }
+        array = cxpr_array_value_new(values, ast->data.array.count);
+        free(values);
+        if (!array) {
+            return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        }
+        return cxpr_array(array);
+    }
+
     case CXPR_NODE_STRING:
         return cxpr_string(ast->data.string.value);
 
@@ -411,17 +435,12 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
     case CXPR_NODE_VARIABLE: {
         bool found = false;
-        bool bool_value = cxpr_context_get_param_bool(ctx, ast->data.variable.name, &found);
-        if (found) return cxpr_bool(bool_value);
-        const char* string_value =
-            cxpr_context_get_param_string(ctx, ast->data.variable.name, &found);
-        if (found) return cxpr_string(string_value);
-        double value = cxpr_context_get_param(ctx, ast->data.variable.name, &found);
+        cxpr_value value = cxpr_context_get_param_typed(ctx, ast->data.variable.name, &found);
         if (!found) {
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                    "Unknown parameter variable");
         }
-        return cxpr_num(value);
+        return value;
     }
 
     case CXPR_NODE_FIELD_ACCESS:

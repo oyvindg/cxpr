@@ -177,6 +177,7 @@ void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
                                 unsigned long hash, double value) {
     if (ctx && name) cxpr_bool_map_remove(&ctx->bools, name);
     if (ctx && name) cxpr_string_map_remove(&ctx->strings, name);
+    if (ctx && name) cxpr_context_remove_array(&ctx->arrays, name);
     cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
                             ctx->variable_ptr_cache, &ctx->variables_version,
                             name, hash, value);
@@ -190,13 +191,43 @@ void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
 void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
     cxpr_string_map_remove(&ctx->strings, name);
+    cxpr_context_remove_array(&ctx->arrays, name);
     if (cxpr_bool_map_set(&ctx->bools, name, value)) ctx->variables_version++;
 }
 
 void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* value) {
     if (!ctx || !name) return;
     cxpr_bool_map_remove(&ctx->bools, name);
+    cxpr_context_remove_array(&ctx->arrays, name);
     if (cxpr_string_map_set(&ctx->strings, name, value)) ctx->variables_version++;
+}
+
+void cxpr_context_set_value(cxpr_context* ctx, const char* name, const cxpr_value* value) {
+    if (!ctx || !name || !value) return;
+
+    switch (value->type) {
+    case CXPR_VALUE_NUMBER:
+        cxpr_context_set(ctx, name, value->d);
+        return;
+    case CXPR_VALUE_BOOL:
+        cxpr_context_set_bool(ctx, name, value->b);
+        return;
+    case CXPR_VALUE_STRING:
+        cxpr_context_set_string(ctx, name, value->str);
+        return;
+    case CXPR_VALUE_STRUCT:
+        cxpr_context_set_struct(ctx, name, value->s);
+        return;
+    case CXPR_VALUE_ARRAY:
+        if (!value->a) return;
+        cxpr_bool_map_remove(&ctx->bools, name);
+        cxpr_string_map_remove(&ctx->strings, name);
+        cxpr_context_store_array(&ctx->arrays, name, value->a);
+        ctx->variables_version++;
+        return;
+    default:
+        return;
+    }
 }
 
 void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries) {
@@ -286,6 +317,7 @@ void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
                                       unsigned long hash, double value) {
     if (ctx && name) cxpr_bool_map_remove(&ctx->bool_params, name);
     if (ctx && name) cxpr_string_map_remove(&ctx->string_params, name);
+    if (ctx && name) cxpr_context_remove_array(&ctx->array_params, name);
     cxpr_context_set_hashed(ctx, &ctx->params, ctx->param_cache,
                             ctx->param_ptr_cache, &ctx->params_version,
                             name, hash, value);
@@ -309,13 +341,40 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
 void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
     cxpr_string_map_remove(&ctx->string_params, name);
+    cxpr_context_remove_array(&ctx->array_params, name);
     if (cxpr_bool_map_set(&ctx->bool_params, name, value)) ctx->params_version++;
 }
 
 void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const char* value) {
     if (!ctx || !name) return;
     cxpr_bool_map_remove(&ctx->bool_params, name);
+    cxpr_context_remove_array(&ctx->array_params, name);
     if (cxpr_string_map_set(&ctx->string_params, name, value)) ctx->params_version++;
+}
+
+void cxpr_context_set_param_value(cxpr_context* ctx, const char* name, const cxpr_value* value) {
+    if (!ctx || !name || !value) return;
+
+    switch (value->type) {
+    case CXPR_VALUE_NUMBER:
+        cxpr_context_set_param(ctx, name, value->d);
+        return;
+    case CXPR_VALUE_BOOL:
+        cxpr_context_set_param_bool(ctx, name, value->b);
+        return;
+    case CXPR_VALUE_STRING:
+        cxpr_context_set_param_string(ctx, name, value->str);
+        return;
+    case CXPR_VALUE_ARRAY:
+        if (!value->a) return;
+        cxpr_bool_map_remove(&ctx->bool_params, name);
+        cxpr_string_map_remove(&ctx->string_params, name);
+        cxpr_context_store_array(&ctx->array_params, name, value->a);
+        ctx->params_version++;
+        return;
+    default:
+        return;
+    }
 }
 
 bool cxpr_context_get_param_bool(const cxpr_context* ctx, const char* name, bool* found) {

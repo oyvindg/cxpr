@@ -89,6 +89,13 @@ void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value);
  */
 void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* value);
 /**
+ * @brief Set a typed runtime variable.
+ * @param ctx Destination context.
+ * @param name Variable name.
+ * @param value Typed value to clone and store.
+ */
+void cxpr_context_set_value(cxpr_context* ctx, const char* name, const cxpr_value* value);
+/**
  * @brief Look up a numeric runtime variable.
  * @param ctx Context to query.
  * @param name Variable name.
@@ -149,6 +156,13 @@ void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value
  * @param value String value to copy and store.
  */
 void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const char* value);
+/**
+ * @brief Set a typed `$param`.
+ * @param ctx Destination context.
+ * @param name Parameter name without `$`.
+ * @param value Typed value to clone and store.
+ */
+void cxpr_context_set_param_value(cxpr_context* ctx, const char* name, const cxpr_value* value);
 
 /** @brief Pre-bound variable slot for hot-loop writes. */
 typedef struct {
@@ -216,6 +230,14 @@ const char* cxpr_context_get_param_string(const cxpr_context* ctx, const char* n
  * @return Number, bool, or struct value on hit; zero-like value on miss.
  */
 cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Look up one `$param` binding as a typed cxpr value.
+ * @param ctx Context to query.
+ * @param name Parameter name without `$`.
+ * @param found Optional success flag output.
+ * @return Number, bool, string, or array value on hit; zero-like value on miss.
+ */
+cxpr_value cxpr_context_get_param_typed(const cxpr_context* ctx, const char* name, bool* found);
 /**
  * @brief Clear all variables, params, structs, and caches from a context.
  * @param ctx Context to clear.

@@ -282,6 +282,13 @@ static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_
             return cxpr_print_number(p, ast->data.number.value);
         case CXPR_NODE_BOOL:
             return cxpr_printer_append(p, ast->data.boolean.value ? "true" : "false");
+        case CXPR_NODE_ARRAY:
+            if (!cxpr_printer_append_char(p, '[')) return 0;
+            for (size_t i = 0u; i < ast->data.array.count; ++i) {
+                if (i > 0u && !cxpr_printer_append(p, ", ")) return 0;
+                if (!cxpr_print_node(p, ast->data.array.elements[i], 0)) return 0;
+            }
+            return cxpr_printer_append_char(p, ']');
         case CXPR_NODE_STRING:
             return cxpr_print_string(p, ast->data.string.value);
         case CXPR_NODE_IDENTIFIER:

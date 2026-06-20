@@ -10,7 +10,7 @@ domain-agnostic — the same engine drives rules across very different fields:
 
 ```text
 sqrt(vx^2 + vy^2) > $max_speed              # physics / robotics
-latency_ms within [0, $budget_ms]           # systems / SLOs
+within(latency_ms, 0, $budget_ms)           # systems / SLOs
 rsi < 30 and volume > $min_volume            # trading
 ```
 
@@ -270,13 +270,12 @@ Supported language features:
   drive the [timestamp/duration algebra](#timestamps-and-durations))
 - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (numbers, and ordering of two
   timestamps or two durations)
-- Set membership: `x in [a, b, c]`, `x not in [a, b, c]` (matches when `x` equals
-  any listed value — numbers, strings, or enum-like identifiers)
-- Interval membership: `x within [10, 20]`, `x not within [min=10, max=20]`
-  (inclusive, continuous range; see [Sets and Intervals](#sets-and-intervals))
+- Set membership: `x in [a, b, c]`, `x not in [a, b, c]`,
+  `contains(x, values)` (matches when `x` equals any listed value)
 - Logic: `and`, `or`, `not`, `&&`, `||`, `!`
 - Ternary: `condition ? a : b`
-- Function calls: `sqrt(x)`, `clamp(v, lo, hi)`
+- Function calls: `sqrt(x)`, `clamp(v, lo, hi)`, `contains(v, values)`,
+  `within(v, min, max)`
 - Named arguments for calls that preserve argument names in the AST/provider path:
   `close(timeframe="1d")`, `macd(fast=12, slow=26, signal=9).hist`
 - Forward pipe: `x |> f |> g(1)` (desugars to `g(f(x), 1)`, RHS must be callable)
@@ -297,7 +296,7 @@ From lowest to highest binding. Operators in the same row share precedence.
 | 4 | `and`, `&&` | left | Short-circuits |
 | 5 | `not`, `!` | right (unary) | Logical negation |
 | 6 | `==`, `!=` | left | Matching scalar types only |
-| 7 | `<`, `<=`, `>`, `>=`, `in`, `not in`, `within`, `not within` | left | Ordering; set / interval membership |
+| 7 | `<`, `<=`, `>`, `>=`, `in`, `not in` | left | Ordering; set membership |
 | 8 | `+`, `-` | left | Additive |
 | 9 | `*`, `/`, `%` | left | Multiplicative |
 | 10 | `-`, `+` | right (unary) | Unary sign |
@@ -309,31 +308,38 @@ Primary expressions — number/string literals, `true`/`false`, identifiers,
 
 ### Sets and Intervals
 
-`in` and `within` are distinct membership tests, and both are pure parse-time
-desugaring — no runtime array value is created.
+`in` is set membership syntax. `contains(...)` and `within(...)` are builtin
+membership predicates.
 
 `x in [a, b, c]` is **set membership**: true when `x` equals any listed value. It
-desugars to an OR-chain of equalities and therefore works for any type equality
-supports (numbers, strings, enum-like identifiers). At least one element is
-required.
+desugars to `contains(x, [a, b, c])` and therefore works for any scalar type
+equality supports (numbers, bools, strings, null, timestamps, durations). At
+least one element is required for `in`.
 
 ```text
-regime in ["uptrend", "breakout"]   # regime == "uptrend" or regime == "breakout"
-side not in [buy, sell]             # not (side == buy or side == sell)
+regime in ["uptrend", "breakout"]
+side not in [buy, sell]
+x in [$a, $b]
+contains(source=region, values=$allowed_regions)
 ```
 
-`x within [lo, hi]` is **interval membership**: an inclusive, continuous range.
-It desugars to `lo <= x and x <= hi`, and supports named and exclusive-style
-bounds.
+`contains(source, values)` is the function form for runtime arrays. `values`
+must evaluate to an array; use `cxpr_context_set_value(...)` or
+`cxpr_context_set_param_value(...)` to bind array variables/params from C.
+
+`within(x, lo, hi)` is **interval membership**: an inclusive, continuous range
+by default. It also supports named arguments and optional exclusive bounds.
 
 ```text
-temperature within [18, 24]            # 18 <= temperature and temperature <= 24
-temperature within [min=18, max=24]    # named bounds, order-independent
-latency_ms not within [0, $budget_ms]
+within(temperature, 18, 24)                         # 18 <= temperature and temperature <= 24
+within(source=temperature, min=18, max=24)          # named args, order-independent
+within(temperature, 18, 24, false, true)            # exclusive min, inclusive max
+within(temperature, 18, 24, include_max=false)      # named optional bound
+not within(latency_ms, 0, $budget_ms)
 ```
 
 > Migration note (2.0.0): earlier releases used `x in [lo, hi]` for intervals.
-> That spelling is now set membership; use `x within [lo, hi]` for ranges.
+> That spelling is now set membership; use `within(x, lo, hi)` for ranges.
 
 ## Built-in Function Reference
 
@@ -442,12 +448,11 @@ from callbacks.
 Equality supports matching scalar operands across number, bool, string, null,
 timestamp, and duration values, so ordinary boolean logic can include checks
 such as `region == "EU"`. Cross-type equality still fails with a type mismatch.
-Arrays (`CXPR_VALUE_ARRAY`) are transport values for callbacks and structs.
-Bracketed lists in the expression language (`x in [a, b, c]`,
-`x within [lo, hi]`) are syntax that desugars at parse time — see
-[Sets and Intervals](#sets-and-intervals) — and do not produce first-class array
-values; standalone array literals and deep array equality are not part of the
-expression language.
+Arrays (`CXPR_VALUE_ARRAY`) are transport values for callbacks, structs, and
+membership predicates. Bracketed lists are first-class array literals, so
+`x in [$a, $b]` desugars to `contains(x, [$a, $b])`, while
+`contains(x, $allowed)` can use an array bound in the context. Deep array
+equality is not part of the expression language.
 
 Timestamps and durations also carry a closed arithmetic and ordering algebra
 (see [Timestamps and Durations](#timestamps-and-durations)), and `null` values
@@ -1217,8 +1222,9 @@ Mapping: `^`/`**` → `pow()`, `%` → `fmod()`, `and`/`or`/`not` → `&&`/`||`/
 variadic `min`/`max` → nested `fmin`/`fmax`. Target-specific function names (CUDA,
 WGSL, …) are supplied through `cxpr_c_target.map_function`. Field/chain/producer/
 lookback nodes and unmapped functions are rejected with an error — the emitter is
-conservative by design. `within`/`in` need no special handling: they desugar to
-comparisons and `&&`/`||` at parse time, so they transpile as ordinary operators.
+conservative by design. `in` desugars to `contains(...)`, so codegen rejects it
+unless a target/runtime supplies membership support; `within(...)` is likewise a
+runtime builtin, not a C operator.
 
 ## Examples
 

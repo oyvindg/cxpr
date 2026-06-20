@@ -64,6 +64,12 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
     case CXPR_NODE_BOOL:
         hash = cxpr_eval_hash_mix(hash, ast->data.boolean.value ? 1u : 0u);
         break;
+    case CXPR_NODE_ARRAY:
+        for (i = 0u; i < ast->data.array.count; ++i) {
+            hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.array.elements[i]));
+        }
+        hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.array.count);
+        break;
     case CXPR_NODE_STRING:
         hash = cxpr_eval_hash_string(hash, ast->data.string.value);
         break;
@@ -136,6 +142,14 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
         return lhs->data.number.value == rhs->data.number.value;
     case CXPR_NODE_BOOL:
         return lhs->data.boolean.value == rhs->data.boolean.value;
+    case CXPR_NODE_ARRAY:
+        if (lhs->data.array.count != rhs->data.array.count) return false;
+        for (i = 0u; i < lhs->data.array.count; ++i) {
+            if (!cxpr_eval_ast_equal(lhs->data.array.elements[i], rhs->data.array.elements[i])) {
+                return false;
+            }
+        }
+        return true;
     case CXPR_NODE_STRING:
         return cxpr_eval_opt_string_equal(lhs->data.string.value, rhs->data.string.value);
     case CXPR_NODE_IDENTIFIER:
@@ -206,6 +220,7 @@ bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:
     case CXPR_NODE_STRING:
+    case CXPR_NODE_ARRAY:
     case CXPR_NODE_LOOKBACK:
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_FIELD_ACCESS:
@@ -446,6 +461,14 @@ bool cxpr_eval_ast_contains_string_literal(const cxpr_ast* ast) {
     switch (ast->type) {
     case CXPR_NODE_STRING:
         return true;
+
+    case CXPR_NODE_ARRAY:
+        for (i = 0; i < ast->data.array.count; ++i) {
+            if (cxpr_eval_ast_contains_string_literal(ast->data.array.elements[i])) {
+                return true;
+            }
+        }
+        return false;
 
     case CXPR_NODE_BINARY_OP:
         return cxpr_eval_ast_contains_string_literal(ast->data.binary_op.left) ||

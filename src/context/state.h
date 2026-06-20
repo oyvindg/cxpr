@@ -24,6 +24,19 @@ typedef struct {
     size_t count;
 } cxpr_struct_map;
 
+/** @brief One owned named array binding stored in an internal array map. */
+typedef struct {
+    char* name;
+    cxpr_array_value* value;
+} cxpr_array_map_entry;
+
+/** @brief Internal dynamic array of named array bindings. */
+typedef struct {
+    cxpr_array_map_entry* entries;
+    size_t capacity;
+    size_t count;
+} cxpr_array_map;
+
 /** @brief One owned named bool binding stored in an internal bool map. */
 typedef struct {
     char* name;
@@ -64,6 +77,22 @@ void cxpr_context_store_struct(cxpr_struct_map* map, const char* name,
 /** @brief Look up one struct binding by name from a struct map. */
 const cxpr_struct_value* cxpr_context_lookup_struct_map(const cxpr_struct_map* map,
                                                         const char* name);
+/** @brief Initialize one empty internal array map. */
+void cxpr_array_map_init(cxpr_array_map* map);
+/** @brief Free all storage owned by one internal array map. */
+void cxpr_array_map_destroy(cxpr_array_map* map);
+/** @brief Remove all bindings from one internal array map while keeping capacity. */
+void cxpr_array_map_clear(cxpr_array_map* map);
+/** @brief Deep-clone one internal array map. */
+bool cxpr_array_map_clone(cxpr_array_map* dst, const cxpr_array_map* src);
+/** @brief Store or replace one deep-copied array binding in an array map. */
+void cxpr_context_store_array(cxpr_array_map* map, const char* name,
+                              const cxpr_array_value* value);
+/** @brief Remove one array binding by name from an array map. */
+void cxpr_context_remove_array(cxpr_array_map* map, const char* name);
+/** @brief Look up one array binding by name from an array map. */
+const cxpr_array_value* cxpr_context_lookup_array_map(const cxpr_array_map* map,
+                                                      const char* name);
 /** @brief Store one cached producer struct result on a context. */
 void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
                                     const cxpr_struct_value* value);
@@ -109,6 +138,8 @@ struct cxpr_context {
     cxpr_string_map string_params;
     cxpr_struct_map structs;
     cxpr_struct_map cached_structs;
+    cxpr_array_map arrays;
+    cxpr_array_map array_params;
     cxpr_eval_memo eval_memo;
     cxpr_context_entry_cache variable_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     cxpr_context_entry_cache param_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];

@@ -24,6 +24,8 @@ static bool cxpr_eval_ast_auto_compile_safe(const cxpr_ast* ast, const cxpr_regi
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:
         return true;
+    case CXPR_NODE_ARRAY:
+        return false;
     case CXPR_NODE_UNARY_OP:
         return cxpr_eval_ast_auto_compile_safe(ast->data.unary_op.operand, reg);
     case CXPR_NODE_BINARY_OP:

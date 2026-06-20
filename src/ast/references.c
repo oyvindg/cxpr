@@ -66,6 +66,11 @@ static size_t cxpr_collect_references(const cxpr_ast* ast, const char** names,
     switch (ast->type) {
         case CXPR_NODE_IDENTIFIER:
             return cxpr_add_unique_name(names, count, max_names, ast->data.identifier.name);
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                count = cxpr_collect_references(ast->data.array.elements[i], names, count, max_names);
+            }
+            return count;
         case CXPR_NODE_BINARY_OP:
             count = cxpr_collect_references(ast->data.binary_op.left, names, count, max_names);
             return cxpr_collect_references(ast->data.binary_op.right, names, count, max_names);
@@ -98,6 +103,11 @@ static size_t cxpr_collect_functions(const cxpr_ast* ast, const char** names,
     if (!ast) return count;
 
     switch (ast->type) {
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                count = cxpr_collect_functions(ast->data.array.elements[i], names, count, max_names);
+            }
+            return count;
         case CXPR_NODE_FUNCTION_CALL:
             count = cxpr_add_unique_name(names, count, max_names, ast->data.function_call.name);
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
@@ -134,6 +144,11 @@ static size_t cxpr_collect_variables(const cxpr_ast* ast, const char** names,
     switch (ast->type) {
         case CXPR_NODE_VARIABLE:
             return cxpr_add_unique_name(names, count, max_names, ast->data.variable.name);
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                count = cxpr_collect_variables(ast->data.array.elements[i], names, count, max_names);
+            }
+            return count;
         case CXPR_NODE_BINARY_OP:
             count = cxpr_collect_variables(ast->data.binary_op.left, names, count, max_names);
             return cxpr_collect_variables(ast->data.binary_op.right, names, count, max_names);
@@ -168,6 +183,15 @@ static size_t cxpr_collect_producer_fields(const cxpr_ast* ast,
     if (!ast) return count;
 
     switch (ast->type) {
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                count = cxpr_collect_producer_fields(
+                    ast->data.array.elements[i],
+                    refs,
+                    count,
+                    max_refs);
+            }
+            return count;
         case CXPR_NODE_PRODUCER_ACCESS:
             count = cxpr_add_unique_producer_field(
                 refs,
@@ -219,6 +243,13 @@ static bool cxpr_ast_contains_reference_impl(const cxpr_ast* ast, const char* na
     switch (ast->type) {
         case CXPR_NODE_IDENTIFIER:
             return strcmp(ast->data.identifier.name, name) == 0;
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                if (cxpr_ast_contains_reference_impl(ast->data.array.elements[i], name)) {
+                    return true;
+                }
+            }
+            return false;
         case CXPR_NODE_BINARY_OP:
             return cxpr_ast_contains_reference_impl(ast->data.binary_op.left, name) ||
                    cxpr_ast_contains_reference_impl(ast->data.binary_op.right, name);
@@ -256,6 +287,13 @@ static bool cxpr_ast_contains_variable_impl(const cxpr_ast* ast, const char* nam
     switch (ast->type) {
         case CXPR_NODE_VARIABLE:
             return strcmp(ast->data.variable.name, name) == 0;
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                if (cxpr_ast_contains_variable_impl(ast->data.array.elements[i], name)) {
+                    return true;
+                }
+            }
+            return false;
         case CXPR_NODE_BINARY_OP:
             return cxpr_ast_contains_variable_impl(ast->data.binary_op.left, name) ||
                    cxpr_ast_contains_variable_impl(ast->data.binary_op.right, name);
@@ -297,6 +335,12 @@ static size_t cxpr_collect_call_arg_contexts(
     if (!ast) return count;
 
     switch (ast->type) {
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                count = cxpr_collect_call_arg_contexts(
+                    ast->data.array.elements[i], name, variable, names, count, max_names);
+            }
+            return count;
         case CXPR_NODE_FUNCTION_CALL:
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
                 const cxpr_ast* arg = ast->data.function_call.args[i];

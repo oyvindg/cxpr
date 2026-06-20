@@ -39,6 +39,8 @@ static void cxpr_context_destroy_storage(cxpr_context* ctx) {
     free(ctx->string_params.entries);
     cxpr_struct_map_destroy(&ctx->structs);
     cxpr_struct_map_destroy(&ctx->cached_structs);
+    cxpr_array_map_destroy(&ctx->arrays);
+    cxpr_array_map_destroy(&ctx->array_params);
     free(ctx->eval_memo.entries);
     free(ctx);
 }
@@ -72,6 +74,10 @@ static bool cxpr_context_can_cache_empty_overlay(const cxpr_context* ctx) {
            ctx->cached_structs.count == 0u &&
            ctx->structs.entries == NULL &&
            ctx->cached_structs.entries == NULL &&
+           ctx->arrays.count == 0u &&
+           ctx->array_params.count == 0u &&
+           ctx->arrays.entries == NULL &&
+           ctx->array_params.entries == NULL &&
            ctx->eval_memo.count == 0u &&
            ctx->eval_memo.depth == 0u &&
            ctx->eval_memo.entries == NULL &&
@@ -111,6 +117,8 @@ cxpr_context* cxpr_context_new(void) {
     ctx->string_params.count = 0u;
     cxpr_struct_map_init(&ctx->structs);
     cxpr_struct_map_init(&ctx->cached_structs);
+    cxpr_array_map_init(&ctx->arrays);
+    cxpr_array_map_init(&ctx->array_params);
     ctx->eval_memo.entries = NULL;
     ctx->eval_memo.capacity = 0u;
     ctx->eval_memo.count = 0u;
@@ -180,11 +188,15 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
     param_clone = cxpr_hashmap_clone(&ctx->params);
     if (!var_clone || !param_clone ||
         !cxpr_struct_map_clone(&clone->structs, &ctx->structs) ||
-        !cxpr_struct_map_clone(&clone->cached_structs, &ctx->cached_structs)) {
+        !cxpr_struct_map_clone(&clone->cached_structs, &ctx->cached_structs) ||
+        !cxpr_array_map_clone(&clone->arrays, &ctx->arrays) ||
+        !cxpr_array_map_clone(&clone->array_params, &ctx->array_params)) {
         free(var_clone);
         free(param_clone);
         cxpr_struct_map_destroy(&clone->structs);
         cxpr_struct_map_destroy(&clone->cached_structs);
+        cxpr_array_map_destroy(&clone->arrays);
+        cxpr_array_map_destroy(&clone->array_params);
         free(clone);
         return NULL;
     }
@@ -199,6 +211,8 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
             cxpr_hashmap_destroy(&clone->params);
             cxpr_struct_map_destroy(&clone->structs);
             cxpr_struct_map_destroy(&clone->cached_structs);
+            cxpr_array_map_destroy(&clone->arrays);
+            cxpr_array_map_destroy(&clone->array_params);
             free(var_clone);
             free(param_clone);
             free(clone);
@@ -318,6 +332,8 @@ void cxpr_context_clear(cxpr_context* ctx) {
     ctx->string_params.count = 0u;
     cxpr_struct_map_clear(&ctx->structs);
     cxpr_struct_map_clear(&ctx->cached_structs);
+    cxpr_array_map_clear(&ctx->arrays);
+    cxpr_array_map_clear(&ctx->array_params);
     ctx->eval_memo.count = 0u;
     ctx->eval_memo.depth = 0u;
     cxpr_context_clear_entry_cache(ctx->variable_cache);

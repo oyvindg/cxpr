@@ -20,6 +20,14 @@ void cxpr_ast_free(cxpr_ast* ast) {
         case CXPR_NODE_NUMBER:
         case CXPR_NODE_BOOL:
             break;
+        case CXPR_NODE_ARRAY:
+            if (ast->data.array.elements) {
+                for (size_t i = 0; i < ast->data.array.count; ++i) {
+                    cxpr_ast_free(ast->data.array.elements[i]);
+                }
+                free(ast->data.array.elements);
+            }
+            break;
         case CXPR_NODE_STRING:
             free(ast->data.string.value);
             break;

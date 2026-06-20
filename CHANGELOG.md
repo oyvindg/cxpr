@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-06-20
+
+### Added
+
+- `contains(source, values)` builtin for runtime array membership, including
+  named arguments (`contains(source=x, values=$allowed)`).
+- First-class array literals in expressions. `x in [a, b]` now desugars to
+  `contains(x, [a, b])`, so dynamic elements such as `x in [$a, $b]` work.
+- Typed context setters `cxpr_context_set_value(...)` and
+  `cxpr_context_set_param_value(...)` for binding arrays and other typed values.
+- `within(source, min, max[, include_min, include_max])` builtin with positional
+  and named-argument forms.
+
+### Changed
+
+- **Breaking:** removed the legacy infix `within` interval sugar. Use
+  `within(x, lo, hi)` or `within(source=x, min=lo, max=hi)` instead.
+- `in [...]` remains user-facing set-membership syntax, but its internal AST is
+  now the `contains(...)` builtin rather than an OR-chain of equality nodes.
+
 ## [2.1.0] - 2026-06-19
 
 ### Added

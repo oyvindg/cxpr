@@ -200,7 +200,9 @@ bool cxpr_ast_is_boolean_expression(const cxpr_ast* ast) {
         case CXPR_NODE_FUNCTION_CALL:
             name = ast->data.function_call.name;
             return name != NULL &&
-                   (strcmp(name, "cross_above") == 0 ||
+                   (strcmp(name, "contains") == 0 ||
+                    strcmp(name, "within") == 0 ||
+                    strcmp(name, "cross_above") == 0 ||
                     strcmp(name, "cross_below") == 0);
         case CXPR_NODE_TERNARY:
             return cxpr_ast_is_boolean_expression(ast->data.ternary.condition) &&

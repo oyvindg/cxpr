@@ -34,6 +34,40 @@ static bool cxpr_parse_call_argument(cxpr_parser* p, cxpr_ast** out_arg, char** 
     return true;
 }
 
+static cxpr_ast* cxpr_parse_array_literal(cxpr_parser* p) {
+    size_t count = 0;
+    size_t capacity = 4;
+    cxpr_ast** elements;
+
+    if (!cxpr_parser_expect(p, CXPR_TOK_LBRACKET, "Expected '['")) return NULL;
+
+    elements = (cxpr_ast**)calloc(capacity, sizeof(cxpr_ast*));
+    if (!elements) return NULL;
+
+    if (!cxpr_parser_check(p, CXPR_TOK_RBRACKET)) {
+        do {
+            if (count >= capacity) {
+                cxpr_ast** grown;
+                capacity *= 2;
+                grown = (cxpr_ast**)realloc(elements, capacity * sizeof(cxpr_ast*));
+                if (!grown) goto fail;
+                elements = grown;
+            }
+            elements[count] = cxpr_parse_expression(p);
+            if (!elements[count] || p->had_error) goto fail;
+            count++;
+        } while (cxpr_parser_match(p, CXPR_TOK_COMMA));
+    }
+
+    if (!cxpr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected ']' to close array")) goto fail;
+    return cxpr_ast_new_array(elements, count);
+
+fail:
+    for (size_t i = 0; i < count; ++i) cxpr_ast_free(elements[i]);
+    free(elements);
+    return NULL;
+}
+
 cxpr_ast* cxpr_parse_primary(cxpr_parser* p) {
     cxpr_ast* node = NULL;
     if (cxpr_parser_check(p, CXPR_TOK_NUMBER)) {
@@ -252,6 +286,8 @@ fail_call:
             free(field);
             if (!node) return NULL;
         }
+    } else if (cxpr_parser_check(p, CXPR_TOK_LBRACKET)) {
+        node = cxpr_parse_array_literal(p);
     } else {
         p->had_error = true;
         p->last_error.code = CXPR_ERR_SYNTAX;

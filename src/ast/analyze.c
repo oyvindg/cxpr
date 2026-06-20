@@ -57,6 +57,12 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
             return CXPR_EXPR_NUMBER;
         case CXPR_NODE_BOOL:
             return CXPR_EXPR_BOOL;
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0; i < ast->data.array.count; ++i) {
+                (void)cxpr_ast_analyze_node(ast->data.array.elements[i], state, depth + 1, ok);
+                if (!*ok) return CXPR_EXPR_UNKNOWN;
+            }
+            return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_STRING:
             return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_IDENTIFIER:

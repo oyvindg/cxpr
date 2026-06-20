@@ -24,6 +24,10 @@ struct cxpr_ast {
             bool value;
         } boolean;
         struct {
+            struct cxpr_ast** elements;
+            size_t count;
+        } array;
+        struct {
             char* value;
         } string;
         struct {
@@ -121,6 +125,13 @@ cxpr_ast* cxpr_ast_new_number(double value);
  * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_bool(bool value);
+/**
+ * @brief Internal constructor for an array literal node.
+ * @param elements Owned element array.
+ * @param count Number of elements.
+ * @return Newly allocated AST node taking ownership of `elements`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count);
 /**
  * @brief Internal constructor for a string literal node.
  * @param value Borrowed string payload to copy.

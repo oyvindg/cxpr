@@ -41,6 +41,15 @@ cxpr_ast* cxpr_ast_new_bool(bool value) {
     return node;
 }
 
+cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count) {
+    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_ARRAY;
+    node->data.array.elements = elements;
+    node->data.array.count = count;
+    return node;
+}
+
 cxpr_ast* cxpr_ast_new_string(const char* value) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;

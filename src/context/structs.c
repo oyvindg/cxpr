@@ -73,6 +73,13 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
             return cxpr_string(string_value);
         }
     }
+    {
+        const cxpr_array_value* array_value = cxpr_context_lookup_array_map(&ctx->arrays, name);
+        if (array_value) {
+            if (found) *found = true;
+            return cxpr_array((cxpr_array_value*)array_value);
+        }
+    }
 
     entry = cxpr_context_lookup_pointer_cached_entry((cxpr_hashmap*)&ctx->variables,
                                                      ((cxpr_context*)ctx)->variable_ptr_cache,
@@ -104,6 +111,49 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
     }
 
     if (ctx->parent) return cxpr_context_get_typed(ctx->parent, name, found);
+    if (found) *found = false;
+    return cxpr_num(0.0);
+}
+
+cxpr_value cxpr_context_get_param_typed(const cxpr_context* ctx, const char* name, bool* found) {
+    bool local_found = false;
+
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return cxpr_num(0.0);
+    }
+
+    {
+        bool bool_value = cxpr_context_get_local_param_bool(ctx, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return cxpr_bool(bool_value);
+        }
+    }
+    {
+        const char* string_value = cxpr_context_get_local_param_string(ctx, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return cxpr_string(string_value);
+        }
+    }
+    {
+        const cxpr_array_value* array_value =
+            cxpr_context_lookup_array_map(&ctx->array_params, name);
+        if (array_value) {
+            if (found) *found = true;
+            return cxpr_array((cxpr_array_value*)array_value);
+        }
+    }
+    {
+        double number_value = cxpr_context_get_param(ctx, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return cxpr_num(number_value);
+        }
+    }
+
+    if (ctx->parent) return cxpr_context_get_param_typed(ctx->parent, name, found);
     if (found) *found = false;
     return cxpr_num(0.0);
 }

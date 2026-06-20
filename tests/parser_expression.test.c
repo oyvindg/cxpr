@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_parser_expression_forms(void) {
     cxpr_parser* p = cxpr_parser_new();
@@ -15,21 +16,23 @@ static void test_parser_expression_forms(void) {
     assert(cxpr_ast_function_argc(ast) == 3);
     cxpr_ast_free(ast);
 
-    /* `within [lo, hi]` is interval membership: desugars to lo <= x <= hi (AND). */
-    ast = cxpr_parse(p, "score within [10, 20]", &err);
+    /* `within(...)` is a normal builtin function call. */
+    ast = cxpr_parse(p, "within(score, 10, 20)", &err);
     assert(ast);
-    assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
-    assert(cxpr_ast_operator(ast) == CXPR_TOK_AND);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_ast_function_name(ast), "within") == 0);
+    assert(cxpr_ast_function_argc(ast) == 3);
     cxpr_ast_free(ast);
 
-    /* `in [a, b, c]` is set membership: desugars to an OR-chain of equalities. */
+    /* `in [a, b, c]` is set membership: desugars to contains(...). */
     ast = cxpr_parse(p, "score in [10, 20, 30]", &err);
     assert(ast);
-    assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
-    assert(cxpr_ast_operator(ast) == CXPR_TOK_OR);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_ast_function_name(ast), "contains") == 0);
+    assert(cxpr_ast_function_argc(ast) == 2);
     cxpr_ast_free(ast);
 
-    /* `not in [...]` wraps the OR-chain in a logical NOT. */
+    /* `not in [...]` wraps the contains call in a logical NOT. */
     ast = cxpr_parse(p, "score not in [10, 20]", &err);
     assert(ast);
     assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);

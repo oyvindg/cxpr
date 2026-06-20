@@ -310,3 +310,194 @@ const cxpr_struct_value* cxpr_context_lookup_struct_map(const cxpr_struct_map* m
     entry = cxpr_struct_map_get(map, name);
     return entry ? entry->value : NULL;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Array map
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static cxpr_array_map_entry* cxpr_array_map_find_slot(const cxpr_array_map* map,
+                                                      const char* name) {
+    unsigned long hash;
+
+    if (!map->entries || map->capacity == 0) return NULL;
+
+    hash = cxpr_hash_string(name) % map->capacity;
+    while (map->entries[hash].name) {
+        if (strcmp(map->entries[hash].name, name) == 0) {
+            return &((cxpr_array_map*)map)->entries[hash];
+        }
+        hash = (hash + 1) % map->capacity;
+    }
+    return &((cxpr_array_map*)map)->entries[hash];
+}
+
+static bool cxpr_array_map_grow(cxpr_array_map* map) {
+    size_t new_capacity;
+    cxpr_array_map_entry* new_entries;
+
+    if (map->capacity > SIZE_MAX / 2) return false;
+    new_capacity = map->capacity * 2;
+    new_entries = (cxpr_array_map_entry*)calloc(new_capacity, sizeof(cxpr_array_map_entry));
+    if (!new_entries) return false;
+
+    for (size_t i = 0; i < map->capacity; i++) {
+        unsigned long hash;
+        if (!map->entries[i].name) continue;
+        hash = cxpr_hash_string(map->entries[i].name) % new_capacity;
+        while (new_entries[hash].name) {
+            hash = (hash + 1) % new_capacity;
+        }
+        new_entries[hash] = map->entries[i];
+    }
+
+    free(map->entries);
+    map->entries = new_entries;
+    map->capacity = new_capacity;
+    return true;
+}
+
+void cxpr_array_map_init(cxpr_array_map* map) {
+    map->capacity = 0;
+    map->count = 0;
+    map->entries = NULL;
+}
+
+void cxpr_array_map_destroy(cxpr_array_map* map) {
+    if (!map->entries) return;
+    for (size_t i = 0; i < map->capacity; i++) {
+        free(map->entries[i].name);
+        cxpr_array_value_free(map->entries[i].value);
+    }
+    free(map->entries);
+    map->entries = NULL;
+    map->capacity = 0;
+    map->count = 0;
+}
+
+void cxpr_array_map_clear(cxpr_array_map* map) {
+    for (size_t i = 0; i < map->capacity; i++) {
+        free(map->entries[i].name);
+        map->entries[i].name = NULL;
+        cxpr_array_value_free(map->entries[i].value);
+        map->entries[i].value = NULL;
+    }
+    map->count = 0;
+}
+
+bool cxpr_array_map_clone(cxpr_array_map* dst, const cxpr_array_map* src) {
+    cxpr_array_map_init(dst);
+    if (!src || !src->entries || src->count == 0) return true;
+
+    dst->capacity = CXPR_HASHMAP_INITIAL_CAPACITY;
+    dst->entries = (cxpr_array_map_entry*)calloc(dst->capacity, sizeof(cxpr_array_map_entry));
+    if (!dst->entries) return false;
+
+    for (size_t i = 0; i < src->capacity; i++) {
+        cxpr_array_value* copy;
+        cxpr_array_map_entry* slot;
+        if (!src->entries[i].name) continue;
+        copy = cxpr_array_value_new(src->entries[i].value->values,
+                                    src->entries[i].value->count);
+        if (!copy) return false;
+        if ((double)(dst->count + 1) / dst->capacity > CXPR_HASHMAP_LOAD_FACTOR
+            && !cxpr_array_map_grow(dst)) {
+            cxpr_array_value_free(copy);
+            return false;
+        }
+        slot = cxpr_array_map_find_slot(dst, src->entries[i].name);
+        slot->name = cxpr_strdup(src->entries[i].name);
+        slot->value = copy;
+        if (!slot->name) return false;
+        dst->count++;
+    }
+    return true;
+}
+
+static const cxpr_array_map_entry* cxpr_array_map_get(const cxpr_array_map* map,
+                                                      const char* name) {
+    cxpr_array_map_entry* slot = cxpr_array_map_find_slot(map, name);
+    if (!slot || !slot->name) return NULL;
+    return slot;
+}
+
+void cxpr_context_store_array(cxpr_array_map* map, const char* name,
+                              const cxpr_array_value* value) {
+    cxpr_array_map_entry* slot;
+    cxpr_array_value* copy;
+
+    if (!map || !name || !value) return;
+
+    copy = cxpr_array_value_new(value->values, value->count);
+    if (!copy) return;
+
+    if (!map->entries) {
+        map->capacity = CXPR_HASHMAP_INITIAL_CAPACITY;
+        map->entries =
+            (cxpr_array_map_entry*)calloc(map->capacity, sizeof(cxpr_array_map_entry));
+        if (!map->entries) {
+            map->capacity = 0;
+            cxpr_array_value_free(copy);
+            return;
+        }
+    }
+
+    if ((double)(map->count + 1) / map->capacity > CXPR_HASHMAP_LOAD_FACTOR
+        && !cxpr_array_map_grow(map)) {
+        cxpr_array_value_free(copy);
+        return;
+    }
+
+    slot = cxpr_array_map_find_slot(map, name);
+    if (slot->name) {
+        cxpr_array_value_free(slot->value);
+        slot->value = copy;
+        return;
+    }
+
+    slot->name = cxpr_strdup(name);
+    if (!slot->name) {
+        cxpr_array_value_free(copy);
+        return;
+    }
+    slot->value = copy;
+    map->count++;
+}
+
+void cxpr_context_remove_array(cxpr_array_map* map, const char* name) {
+    cxpr_array_map_entry* slot;
+    size_t index;
+
+    if (!map || !name) return;
+    slot = cxpr_array_map_find_slot(map, name);
+    if (!slot || !slot->name) return;
+    index = (size_t)(slot - map->entries);
+
+    free(slot->name);
+    slot->name = NULL;
+    cxpr_array_value_free(slot->value);
+    slot->value = NULL;
+    if (map->count > 0u) map->count--;
+
+    index = (index + 1u) % map->capacity;
+    while (map->entries[index].name) {
+        cxpr_array_map_entry displaced = map->entries[index];
+        cxpr_array_map_entry* target;
+        map->entries[index].name = NULL;
+        map->entries[index].value = NULL;
+        if (map->count > 0u) map->count--;
+        target = cxpr_array_map_find_slot(map, displaced.name);
+        *target = displaced;
+        map->count++;
+        index = (index + 1u) % map->capacity;
+    }
+}
+
+const cxpr_array_value* cxpr_context_lookup_array_map(const cxpr_array_map* map,
+                                                      const char* name) {
+    const cxpr_array_map_entry* entry;
+
+    if (!map || !name) return NULL;
+
+    entry = cxpr_array_map_get(map, name);
+    return entry ? entry->value : NULL;
+}
