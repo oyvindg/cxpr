@@ -312,3 +312,74 @@ char* cxpr_exprset_to_c(const cxpr_c_named_expr* exprs, size_t count,
     if (b.oom) { free(b.data); cxpr_cg_err(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return NULL; }
     return b.data ? b.data : cxpr_strdup("");
 }
+
+char* cxpr_exprset_to_c_function(const char* qualifiers, const char* return_struct,
+                                 const char* scalar_type, const char* function_name,
+                                 const char* const* inputs, size_t input_count,
+                                 const cxpr_c_named_expr* exprs, size_t count,
+                                 const cxpr_c_target* target, cxpr_error* err) {
+    char indented_decl[64];
+    cxpr_cg_buf b = {0};
+    char* block;
+
+    if (err) *err = (cxpr_error){0};
+    if (!return_struct || !scalar_type || !function_name || (count && !exprs) ||
+        (input_count && !inputs)) {
+        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "invalid arguments");
+        return NULL;
+    }
+
+    /* Declaration block (topologically ordered), indented for the function body. */
+    snprintf(indented_decl, sizeof(indented_decl), "    %s", scalar_type);
+    block = cxpr_exprset_to_c(exprs, count, indented_decl, target, err);
+    if (!block) return NULL;
+
+    /* Result struct: one field per expression name. */
+    cxpr_cg_puts(&b, "typedef struct ");
+    cxpr_cg_puts(&b, return_struct);
+    cxpr_cg_puts(&b, " {\n");
+    for (size_t i = 0; i < count; ++i) {
+        cxpr_cg_puts(&b, "    ");
+        cxpr_cg_puts(&b, scalar_type);
+        cxpr_cg_putc(&b, ' ');
+        cxpr_cg_puts(&b, exprs[i].name);
+        cxpr_cg_puts(&b, ";\n");
+    }
+    cxpr_cg_puts(&b, "} ");
+    cxpr_cg_puts(&b, return_struct);
+    cxpr_cg_puts(&b, ";\n\n");
+
+    /* Function signature: one scalar param per input. */
+    if (qualifiers && *qualifiers) { cxpr_cg_puts(&b, qualifiers); cxpr_cg_putc(&b, ' '); }
+    cxpr_cg_puts(&b, return_struct);
+    cxpr_cg_putc(&b, ' ');
+    cxpr_cg_puts(&b, function_name);
+    cxpr_cg_putc(&b, '(');
+    if (input_count == 0) {
+        cxpr_cg_puts(&b, "void");
+    } else {
+        for (size_t i = 0; i < input_count; ++i) {
+            if (i) cxpr_cg_puts(&b, ", ");
+            cxpr_cg_puts(&b, scalar_type);
+            cxpr_cg_putc(&b, ' ');
+            cxpr_cg_puts(&b, inputs[i]);
+        }
+    }
+    cxpr_cg_puts(&b, ") {\n");
+    cxpr_cg_puts(&b, block);   /* "    <type> name = ...;\n" lines */
+    cxpr_cg_puts(&b, "    ");
+    cxpr_cg_puts(&b, return_struct);
+    cxpr_cg_puts(&b, " _cx_out;\n");
+    for (size_t i = 0; i < count; ++i) {
+        cxpr_cg_puts(&b, "    _cx_out.");
+        cxpr_cg_puts(&b, exprs[i].name);
+        cxpr_cg_puts(&b, " = ");
+        cxpr_cg_puts(&b, exprs[i].name);
+        cxpr_cg_puts(&b, ";\n");
+    }
+    cxpr_cg_puts(&b, "    return _cx_out;\n}\n");
+
+    free(block);
+    if (b.oom) { free(b.data); cxpr_cg_err(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return NULL; }
+    return b.data ? b.data : cxpr_strdup("");
+}

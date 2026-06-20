@@ -1218,6 +1218,21 @@ char* block = cxpr_exprset_to_c(defs, 3, "double", NULL, &err);
 // double r_s = ...;  double f = ...;  double dr_dl = ...;  (in dependency order)
 ```
 
+`cxpr_exprset_to_c_function` wraps that block into a complete function: a result
+struct (one field per expression name) plus a function that takes one parameter
+per input, computes the locals in dependency order, and returns the struct. The
+caller supplies every name and type, so it stays target-agnostic — it emits
+portable C with no CUDA coupling; `__host__ __device__` (if wanted) is just a
+`qualifiers` argument:
+
+```c
+const char* inputs[] = { "r", "p_r", "G", "M", "c", "L" };
+char* fn = cxpr_exprset_to_c_function("CX_HD static inline", "State", "double",
+                                      "eval", inputs, 6, defs, 3, NULL, &err);
+// typedef struct State { double r_s; double f; double dr_dl; } State;
+// CX_HD static inline State eval(double r, double p_r, ...) { ...; return _cx_out; }
+```
+
 Mapping: `^`/`**` → `pow()`, `%` → `fmod()`, `and`/`or`/`not` → `&&`/`||`/`!`,
 variadic `min`/`max` → nested `fmin`/`fmax`. Target-specific function names (CUDA,
 WGSL, …) are supplied through `cxpr_c_target.map_function`. Field/chain/producer/
