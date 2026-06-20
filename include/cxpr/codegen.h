@@ -81,6 +81,39 @@ char* cxpr_exprset_to_c(const cxpr_c_named_expr* exprs, size_t count,
                         const char* decl_type, const cxpr_c_target* target,
                         cxpr_error* err);
 
+/**
+ * @brief Transpile an interdependent expression set into a complete C function.
+ *
+ * Emits a result `struct` (one `scalar_type` field per expression name) and a
+ * function that takes one `scalar_type` parameter per input, computes the
+ * expressions as locals in dependency order, packs them into the struct, and
+ * returns it. Builds on `cxpr_exprset_to_c`. The caller still owns any file
+ * scaffolding (include guard, target macros like `__host__ __device__`).
+ *
+ * Example output:
+ * ```c
+ * typedef struct State { double r_s; double f; } State;
+ * <qualifiers> State eval(double r, double G) { ...locals...; State _cx_out; ...; return _cx_out; }
+ * ```
+ *
+ * @param qualifiers Leading qualifiers for the function (e.g. "static inline"), or NULL.
+ * @param return_struct Name of the emitted result struct (fields = expression names).
+ * @param scalar_type Scalar C type for fields, params, and locals (e.g. "double").
+ * @param function_name Generated function name.
+ * @param inputs Parameter names (each typed `scalar_type`).
+ * @param input_count Number of inputs (0 emits a `void` parameter list).
+ * @param exprs Named expressions (their names become struct fields).
+ * @param count Number of expressions.
+ * @param target Optional function-name mapping (NULL = default).
+ * @param err Optional error output.
+ * @return Newly allocated C source (free with `free`), or NULL on error.
+ */
+char* cxpr_exprset_to_c_function(const char* qualifiers, const char* return_struct,
+                                 const char* scalar_type, const char* function_name,
+                                 const char* const* inputs, size_t input_count,
+                                 const cxpr_c_named_expr* exprs, size_t count,
+                                 const cxpr_c_target* target, cxpr_error* err);
+
 #ifdef __cplusplus
 }
 #endif
