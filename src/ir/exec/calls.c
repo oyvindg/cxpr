@@ -4,7 +4,37 @@
  */
 
 #include "internal.h"
+#include "../../eval/internal.h"
 #include <math.h>
+
+static bool cxpr_ir_call_instr_memoable(const cxpr_ir_instr* instr) {
+    const cxpr_ast* ast = instr ? (const cxpr_ast*)instr->payload : NULL;
+
+    if (!instr || !instr->func || !ast || ast->type != CXPR_NODE_FUNCTION_CALL) return false;
+    return !instr->func->ast_func_handler &&
+           !instr->func->ast_func &&
+           !(instr->func->struct_producer &&
+             !instr->func->sync_func &&
+             !instr->func->value_func);
+}
+
+bool cxpr_ir_call_memo_get(const cxpr_context* ctx,
+                           const cxpr_ir_instr* instr,
+                           cxpr_value* out) {
+    const cxpr_ast* ast = instr ? (const cxpr_ast*)instr->payload : NULL;
+
+    if (!cxpr_ir_call_instr_memoable(instr)) return false;
+    return cxpr_eval_memo_get(ctx, ast, cxpr_eval_function_call_hash_cached(ast), out);
+}
+
+bool cxpr_ir_call_memo_set(const cxpr_context* ctx,
+                           const cxpr_ir_instr* instr,
+                           cxpr_value value) {
+    const cxpr_ast* ast = instr ? (const cxpr_ast*)instr->payload : NULL;
+
+    if (!cxpr_ir_call_instr_memoable(instr)) return false;
+    return cxpr_eval_memo_set(ctx, ast, cxpr_eval_function_call_hash_cached(ast), value);
+}
 
 cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name,
                                         const char* cache_key,

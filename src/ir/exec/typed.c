@@ -327,8 +327,16 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                       "Function arguments must be doubles")) {
                 return cxpr_num(NAN);
             }
+            if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
+                    return cxpr_num(NAN);
+                }
+                break;
+            }
+            result = cxpr_num(instr->func->native_scalar.unary(a.d));
+            (void)cxpr_ir_call_memo_set(ctx, instr, result);
             if (!cxpr_ir_stack_push(stack, &sp,
-                                    cxpr_num(instr->func->native_scalar.unary(a.d)),
+                                    result,
                                     CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
@@ -341,8 +349,16 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                       "Function arguments must be doubles")) {
                 return cxpr_num(NAN);
             }
+            if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
+                    return cxpr_num(NAN);
+                }
+                break;
+            }
+            result = cxpr_num(instr->func->native_scalar.binary(a.d, b.d));
+            (void)cxpr_ir_call_memo_set(ctx, instr, result);
             if (!cxpr_ir_stack_push(stack, &sp,
-                                    cxpr_num(instr->func->native_scalar.binary(a.d, b.d)),
+                                    result,
                                     CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
@@ -358,10 +374,15 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                       "Function arguments must be doubles")) {
                 return cxpr_num(NAN);
             }
-            if (!cxpr_ir_stack_push(
-                    stack, &sp,
-                    cxpr_num(instr->func->native_scalar.ternary(a.d, b.d, result.d)),
-                    CXPR_IR_STACK_CAPACITY, err)) {
+            if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
+                    return cxpr_num(NAN);
+                }
+                break;
+            }
+            result = cxpr_num(instr->func->native_scalar.ternary(a.d, b.d, result.d));
+            (void)cxpr_ir_call_memo_set(ctx, instr, result);
+            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
             break;
@@ -374,18 +395,33 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 typed_args[i] = stack[sp - instr->index + i];
             }
             sp -= instr->index;
+            if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
+                    return cxpr_num(NAN);
+                }
+                break;
+            }
             result = cxpr_registry_call_typed(reg, instr->func->name, typed_args, instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+            (void)cxpr_ir_call_memo_set(ctx, instr, result);
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
             break;
         case CXPR_OP_CALL_DEFINED:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_num(NAN);
+            if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+                sp -= instr->index;
+                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
+                    return cxpr_num(NAN);
+                }
+                break;
+            }
             result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
                                                  &stack[sp - instr->index], instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             sp -= instr->index;
+            (void)cxpr_ir_call_memo_set(ctx, instr, result);
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }

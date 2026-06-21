@@ -472,6 +472,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                     (cxpr_ir_instr){
                                         .op = CXPR_OP_CALL_UNARY,
                                         .func = entry,
+                                        .payload = ast,
                                         .index = 1,
                                     },
                                     err);
@@ -482,6 +483,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                     (cxpr_ir_instr){
                                         .op = CXPR_OP_CALL_BINARY,
                                         .func = entry,
+                                        .payload = ast,
                                         .index = 2,
                                     },
                                     err);
@@ -492,6 +494,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                     (cxpr_ir_instr){
                                         .op = CXPR_OP_CALL_TERNARY,
                                         .func = entry,
+                                        .payload = ast,
                                         .index = 3,
                                     },
                                     err);
@@ -500,6 +503,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_FUNC,
                                     .func = entry,
+                                    .payload = ast,
                                     .index = ast->data.function_call.argc,
                                 },
                                 err);
@@ -563,6 +567,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                     (cxpr_ir_instr){
                                         .op = CXPR_OP_CALL_DEFINED,
                                         .func = entry,
+                                        .payload = ast,
                                         .index = ast->data.function_call.argc,
                                     },
                                     err);

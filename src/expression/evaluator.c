@@ -189,6 +189,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
     previous_scope = ctx->expression_scope;
     cxpr_context_set_expression_scope(ctx, evaluator);
     cxpr_context_clear_cached_structs(ctx);
+    cxpr_eval_memo_enter(ctx);
 
     for (size_t i = 0; i < evaluator->count; i++) {
         evaluator->expressions[i].evaluated = false;
@@ -209,6 +210,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
                 &value,
                 &eval_err);
             if (struct_alias < 0) {
+                cxpr_eval_memo_leave(ctx);
                 cxpr_context_set_expression_scope(ctx, previous_scope);
                 if (err) *err = eval_err;
                 return;
@@ -224,6 +226,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
             (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
         }
         if (eval_err.code != CXPR_OK) {
+            cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
             if (err) *err = eval_err;
             return;
@@ -237,6 +240,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
             value.type != CXPR_VALUE_TIMESTAMP &&
             value.type != CXPR_VALUE_DURATION &&
             value.type != CXPR_VALUE_ARRAY) {
+            cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
@@ -247,6 +251,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
 
         entry->result = cxpr_expression_result_clone(&value, &eval_err);
         if (eval_err.code != CXPR_OK) {
+            cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
             if (err) *err = eval_err;
             return;
@@ -254,6 +259,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         entry->evaluated = true;
     }
 
+    cxpr_eval_memo_leave(ctx);
     cxpr_context_set_expression_scope(ctx, previous_scope);
     if (err) err->code = CXPR_OK;
 }

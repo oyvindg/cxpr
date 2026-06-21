@@ -73,6 +73,14 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
                                              size_t argc,
                                              const char* field,
                                              cxpr_error* err);
+/** @brief Fetch a memoized scalar function-call result for an IR call instruction. */
+bool cxpr_ir_call_memo_get(const cxpr_context* ctx,
+                           const cxpr_ir_instr* instr,
+                           cxpr_value* out);
+/** @brief Store a scalar function-call result for an IR call instruction. */
+bool cxpr_ir_call_memo_set(const cxpr_context* ctx,
+                           const cxpr_ir_instr* instr,
+                           cxpr_value value);
 /** @brief Execute one expression-defined function on the scalar-only IR path. */
 cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                        const cxpr_context* ctx,

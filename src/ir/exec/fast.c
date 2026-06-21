@@ -183,6 +183,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
     };
     const cxpr_ir_instr* instr;
     double a, b, value;
+    cxpr_value memo_value;
     cxpr_value scalar_args[CXPR_MAX_CALL_ARGS];
 
 #define CXPR_FAST_DISPATCH()                                                        \
@@ -391,24 +392,54 @@ op_clamp:
     CXPR_FAST_NEXT();
 op_call_unary:
     a = stack[--sp];
-    stack[sp++] = instr->func->native_scalar.unary(a);
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_NUMBER) stack[sp++] = memo_value.d;
+        else if (memo_value.type == CXPR_VALUE_BOOL) stack[sp++] = memo_value.b ? 1.0 : 0.0;
+        else return cxpr_ir_runtime_error(err, "Memoized function result is not scalar").d;
+        CXPR_FAST_NEXT();
+    }
+    value = instr->func->native_scalar.unary(a);
+    (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(value));
+    stack[sp++] = value;
     CXPR_FAST_NEXT();
 op_call_binary:
     b = stack[--sp];
     a = stack[--sp];
-    stack[sp++] = instr->func->native_scalar.binary(a, b);
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_NUMBER) stack[sp++] = memo_value.d;
+        else if (memo_value.type == CXPR_VALUE_BOOL) stack[sp++] = memo_value.b ? 1.0 : 0.0;
+        else return cxpr_ir_runtime_error(err, "Memoized function result is not scalar").d;
+        CXPR_FAST_NEXT();
+    }
+    value = instr->func->native_scalar.binary(a, b);
+    (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(value));
+    stack[sp++] = value;
     CXPR_FAST_NEXT();
 op_call_ternary:
     value = stack[--sp];
     b = stack[--sp];
     a = stack[--sp];
-    stack[sp++] = instr->func->native_scalar.ternary(a, b, value);
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_NUMBER) stack[sp++] = memo_value.d;
+        else if (memo_value.type == CXPR_VALUE_BOOL) stack[sp++] = memo_value.b ? 1.0 : 0.0;
+        else return cxpr_ir_runtime_error(err, "Memoized function result is not scalar").d;
+        CXPR_FAST_NEXT();
+    }
+    value = instr->func->native_scalar.ternary(a, b, value);
+    (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(value));
+    stack[sp++] = value;
     CXPR_FAST_NEXT();
 op_call_func:
     if (instr->func->typed_func) {
         return cxpr_ir_runtime_error(err, "Typed function requires typed execution path").d;
     }
     sp -= instr->index;
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_NUMBER) stack[sp++] = memo_value.d;
+        else if (memo_value.type == CXPR_VALUE_BOOL) stack[sp++] = memo_value.b ? 1.0 : 0.0;
+        else return cxpr_ir_runtime_error(err, "Memoized function result is not scalar").d;
+        CXPR_FAST_NEXT();
+    }
     if (instr->func->value_func) {
         for (size_t i = 0; i < instr->index; ++i) {
             scalar_args[i] = cxpr_num(stack[sp + i]);
@@ -418,8 +449,10 @@ op_call_func:
         if (value_result.type == CXPR_VALUE_NUMBER) stack[sp++] = value_result.d;
         else if (value_result.type == CXPR_VALUE_BOOL) stack[sp++] = value_result.b ? 1.0 : 0.0;
         else return cxpr_ir_runtime_error(err, "Function did not evaluate to scalar").d;
+        (void)cxpr_ir_call_memo_set(ctx, instr, value_result);
     } else {
         double call_result = instr->func->sync_func(&stack[sp], instr->index, instr->func->userdata);
+        (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(call_result));
         stack[sp++] = call_result;
     }
     CXPR_FAST_NEXT();
@@ -557,6 +590,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
     const cxpr_ir_instr* instr;
     double a, b, value;
     bool bv;
+    cxpr_value memo_value;
     cxpr_value scalar_args[CXPR_MAX_CALL_ARGS];
 
 #define CXPR_BOOL_FAST_DISPATCH()                                                   \
@@ -788,18 +822,51 @@ opb_clamp:
     CXPR_BOOL_FAST_NEXT();
 opb_call_unary:
     a = nstack[--nsp];
-    nstack[nsp++] = instr->func->native_scalar.unary(a);
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_BOOL) bstack[bsp++] = memo_value.b;
+        else if (memo_value.type == CXPR_VALUE_NUMBER) nstack[nsp++] = memo_value.d;
+        else {
+            (void)cxpr_ir_runtime_error(err, "Memoized function result is not scalar");
+            return false;
+        }
+        CXPR_BOOL_FAST_NEXT();
+    }
+    value = instr->func->native_scalar.unary(a);
+    (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(value));
+    nstack[nsp++] = value;
     CXPR_BOOL_FAST_NEXT();
 opb_call_binary:
     b = nstack[--nsp];
     a = nstack[--nsp];
-    nstack[nsp++] = instr->func->native_scalar.binary(a, b);
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_BOOL) bstack[bsp++] = memo_value.b;
+        else if (memo_value.type == CXPR_VALUE_NUMBER) nstack[nsp++] = memo_value.d;
+        else {
+            (void)cxpr_ir_runtime_error(err, "Memoized function result is not scalar");
+            return false;
+        }
+        CXPR_BOOL_FAST_NEXT();
+    }
+    value = instr->func->native_scalar.binary(a, b);
+    (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(value));
+    nstack[nsp++] = value;
     CXPR_BOOL_FAST_NEXT();
 opb_call_ternary:
     value = nstack[--nsp];
     b = nstack[--nsp];
     a = nstack[--nsp];
-    nstack[nsp++] = instr->func->native_scalar.ternary(a, b, value);
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_BOOL) bstack[bsp++] = memo_value.b;
+        else if (memo_value.type == CXPR_VALUE_NUMBER) nstack[nsp++] = memo_value.d;
+        else {
+            (void)cxpr_ir_runtime_error(err, "Memoized function result is not scalar");
+            return false;
+        }
+        CXPR_BOOL_FAST_NEXT();
+    }
+    value = instr->func->native_scalar.ternary(a, b, value);
+    (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(value));
+    nstack[nsp++] = value;
     CXPR_BOOL_FAST_NEXT();
 opb_call_func:
     if (instr->func->typed_func) {
@@ -807,6 +874,15 @@ opb_call_func:
         return false;
     }
     nsp -= instr->index;
+    if (cxpr_ir_call_memo_get(ctx, instr, &memo_value)) {
+        if (memo_value.type == CXPR_VALUE_BOOL) bstack[bsp++] = memo_value.b;
+        else if (memo_value.type == CXPR_VALUE_NUMBER) nstack[nsp++] = memo_value.d;
+        else {
+            (void)cxpr_ir_runtime_error(err, "Memoized function result is not scalar");
+            return false;
+        }
+        CXPR_BOOL_FAST_NEXT();
+    }
     if (instr->func->value_func) {
         for (size_t i = 0; i < instr->index; ++i) {
             scalar_args[i] = cxpr_num(nstack[nsp + i]);
@@ -819,13 +895,28 @@ opb_call_func:
             (void)cxpr_ir_runtime_error(err, "Function did not evaluate to scalar");
             return false;
         }
+        (void)cxpr_ir_call_memo_set(ctx, instr, value_result);
     } else {
         double call_result = instr->func->sync_func(&nstack[nsp], instr->index, instr->func->userdata);
+        (void)cxpr_ir_call_memo_set(ctx, instr, cxpr_num(call_result));
         nstack[nsp++] = call_result;
     }
     CXPR_BOOL_FAST_NEXT();
 opb_call_defined: {
     cxpr_value result;
+    if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+        nsp -= instr->index;
+        if (result.type == CXPR_VALUE_BOOL) bstack[bsp++] = result.b;
+        else if (result.type == CXPR_VALUE_NUMBER) nstack[nsp++] = result.d;
+        else {
+            if (err) {
+                err->code = CXPR_ERR_TYPE_MISMATCH;
+                err->message = "Memoized defined function returned non-scalar";
+            }
+            return false;
+        }
+        CXPR_BOOL_FAST_NEXT();
+    }
     for (size_t i = 0; i < instr->index; ++i) {
         scalar_args[i] = cxpr_num(nstack[nsp - instr->index + i]);
     }
@@ -842,6 +933,7 @@ opb_call_defined: {
         }
         return false;
     }
+    (void)cxpr_ir_call_memo_set(ctx, instr, result);
     CXPR_BOOL_FAST_NEXT();
 }
 opb_jump:
