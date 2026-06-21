@@ -9,12 +9,71 @@
 #include <stdio.h>
 #include <string.h>
 
+static char* dup_text(const char* text) {
+    size_t len = strlen(text);
+    char* out = (char*)malloc(len + 1u);
+    assert(out);
+    memcpy(out, text, len + 1u);
+    return out;
+}
+
 static char* to_c(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, expr, &err);
     assert(ast && err.code == CXPR_OK);
     char* out = cxpr_ast_to_c(ast, NULL, &err);
+    assert(out && err.code == CXPR_OK);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    return out;
+}
+
+static char* test_emit_leaf_at_offset(const cxpr_ast* ast,
+                                      unsigned lookback_offset,
+                                      void* userdata,
+                                      cxpr_error* err) {
+    char buf[128];
+    const char* name = NULL;
+    (void)userdata;
+    if (cxpr_ast_type(ast) == CXPR_NODE_IDENTIFIER) {
+        name = cxpr_ast_identifier_name(ast);
+    } else if (cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS) {
+        snprintf(buf, sizeof(buf), "%s_%s[(i >= %uu ? i - %uu : 0u)]",
+                 cxpr_ast_field_object(ast),
+                 cxpr_ast_field_name(ast),
+                 lookback_offset,
+                 lookback_offset);
+        return dup_text(buf);
+    }
+    if (!name) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "test leaf hook only supports identifiers and fields";
+        }
+        return NULL;
+    }
+    if (lookback_offset == 0u) {
+        snprintf(buf, sizeof(buf), "%s[i]", name);
+    } else {
+        snprintf(buf, sizeof(buf), "%s[(i >= %uu ? i - %uu : 0u)]",
+                 name,
+                 lookback_offset,
+                 lookback_offset);
+    }
+    return dup_text(buf);
+}
+
+static char* to_c_with_lookback(const char* expr) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_c_target target = {
+        .api_version = CXPR_C_TARGET_API_VERSION,
+        .emit_leaf_at_offset = test_emit_leaf_at_offset,
+    };
+    assert(ast && err.code == CXPR_OK);
+    char* out = cxpr_ast_to_c(ast, &target, &err);
     assert(out && err.code == CXPR_OK);
     cxpr_ast_free(ast);
     cxpr_parser_free(p);
@@ -55,6 +114,26 @@ static void test_functions(void) {
     printf("  functions OK\n");
 }
 
+static void test_lookback_codegen_with_leaf_hook(void) {
+    char* out = to_c_with_lookback("close[2] > open[1]");
+    assert(strcmp(out, "(close[(i >= 2u ? i - 2u : 0u)] > open[(i >= 1u ? i - 1u : 0u)])") == 0);
+    free(out);
+
+    out = to_c_with_lookback("close[1][2]");
+    assert(strcmp(out, "close[(i >= 3u ? i - 3u : 0u)]") == 0);
+    free(out);
+
+    out = to_c_with_lookback("falling(close, 3)");
+    assert(strcmp(out, "((close[i] < close[(i >= 1u ? i - 1u : 0u)]) && (close[(i >= 1u ? i - 1u : 0u)] < close[(i >= 2u ? i - 2u : 0u)]))") == 0);
+    free(out);
+
+    out = to_c_with_lookback("repeat(condition=close > open, bars=2)");
+    assert(strcmp(out, "(((close[i] > open[i])) && ((close[(i >= 1u ? i - 1u : 0u)] > open[(i >= 1u ? i - 1u : 0u)])))") == 0);
+    free(out);
+
+    printf("  lookback leaf-hook codegen OK\n");
+}
+
 static void test_membership_desugar(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
@@ -85,6 +164,13 @@ static void test_unsupported(void) {
     assert(ast);
     err = (cxpr_error){0};
     char* out = cxpr_ast_to_c(ast, NULL, &err);
+    assert(out == NULL && err.code != CXPR_OK);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "close[1]", &err);
+    assert(ast);
+    err = (cxpr_error){0};
+    out = cxpr_ast_to_c(ast, NULL, &err);
     assert(out == NULL && err.code != CXPR_OK);
     cxpr_ast_free(ast);
 
@@ -189,6 +275,7 @@ int main(void) {
     printf("codegen tests:\n");
     test_operators();
     test_functions();
+    test_lookback_codegen_with_leaf_hook();
     test_membership_desugar();
     test_unsupported();
     test_exprset_topo();

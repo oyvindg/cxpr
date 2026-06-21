@@ -19,9 +19,23 @@
 #include <cxpr/ast.h>
 #include <cxpr/types.h>
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define CXPR_C_TARGET_API_VERSION 1u
+
+typedef char* (*cxpr_c_emit_leaf_at_offset_fn)(const cxpr_ast* ast,
+                                               unsigned lookback_offset,
+                                               void* userdata,
+                                               cxpr_error* err);
+
+typedef bool (*cxpr_c_emit_offset_fn)(void* userdata,
+                                      const cxpr_ast* ast,
+                                      int lookback_offset,
+                                      cxpr_error* err);
 
 /**
  * @brief Target description for a C-like backend (plain C, CUDA, WGSL, ...).
@@ -35,6 +49,8 @@ extern "C" {
 typedef struct cxpr_c_target {
     const char* (*map_function)(const char* name, size_t argc, void* userdata);
     void* userdata;
+    unsigned api_version;
+    cxpr_c_emit_leaf_at_offset_fn emit_leaf_at_offset;
 } cxpr_c_target;
 
 /**
@@ -44,8 +60,9 @@ typedef struct cxpr_c_target {
  * (emitted as the bare name), arithmetic/comparison/logical binary operators,
  * unary `-`/`!`, ternary `?:`, and function calls resolved through @p target.
  * `^`/`**` map to `pow()`, `%` to `fmod()`, `and`/`or`/`not` to `&&`/`||`/`!`.
- * Field/chain/producer/lookback nodes are rejected (host/series concepts with
- * no standalone C form).
+ * Lookback nodes are supported only when @p target supplies
+ * `emit_leaf_at_offset`; field/chain/producer nodes are rejected unless the
+ * target can emit them as offset-aware leaves.
  *
  * @param ast Expression AST to transpile.
  * @param target Optional target (NULL = default mapping).
@@ -54,6 +71,20 @@ typedef struct cxpr_c_target {
  *         an unsupported node, operator, or function.
  */
 char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
+
+/**
+ * @brief Apply cxpr's native lookback offset rule to one LOOKBACK node.
+ *
+ * This helper centralizes the `expr[n]` codegen rule used by backends with
+ * custom emitters: validate that `n` is a non-negative integer literal, add it
+ * to @p current_offset, then delegate emission of the target expression to the
+ * host callback. The host owns concrete leaf layout.
+ */
+bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
+                                       int current_offset,
+                                       cxpr_c_emit_offset_fn emit,
+                                       void* userdata,
+                                       cxpr_error* err);
 
 /** @brief One named expression for set transpilation. */
 typedef struct cxpr_c_named_expr {
