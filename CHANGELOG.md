@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-06-21
+
+### Added
+
+- **Engine layer (`cxpr/engine.h`)** — a stateful rule engine on top of the
+  stateless evaluator. One declarative `cxpr_engine_config` registers a
+  registry, an expression set, source backings (pull / random-access view /
+  direct column), watches, params, and basket roles; `cxpr_engine_tick` pulls
+  only the referenced sources, evaluates the rule set, and returns a borrowed
+  event batch for the host to drain. Edge detection (`RISING`/`FALLING`/`LEVEL`/
+  `CHANGED`), engine-owned lookback (column/view offsets, pull-source rings, and
+  named-expression result rings), per-tick memoization, and per-session source
+  binding are built in. Opt-in and additive — included via `<cxpr/engine.h>`,
+  not the `cxpr.h` aggregator; the kernel is unchanged.
+- `cxpr_register_column_lookback` — a reusable column-backed `name[n]` lookback
+  resolver (table of `{name, base, stride, count}` plus a host-advanced cursor),
+  the generic counterpart to the engine's resolver for bare-evaluator hosts.
+- `cxpr_c_target` now has a version-gated `emit_leaf_at_offset` hook for native
+  lookback codegen. cxpr owns `expr[n]` offset propagation, including
+  literal-bar `rising`/`falling`/`repeat` lowering; hosts still own concrete
+  leaf layout such as series array indexing and warmup clamping.
+- Thread lifecycle moved to its own header `cxpr/thread.h` (declaring
+  `cxpr_thread_cleanup`), now included from the `cxpr.h` aggregator.
+
 ## [2.3.1] - 2026-06-20
 
 ### Fixed
