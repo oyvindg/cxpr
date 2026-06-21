@@ -107,6 +107,26 @@ cxpr_engine_config
   -> cxpr_engine_tick()        # hydrate referenced sources, evaluate, emit events
 ```
 
+The engine API is split into:
+
+- `cxpr_engine_config`: declarative description of rules, sources, params, roles,
+  and watches
+- `cxpr_engine_program`: immutable compiled engine program, built once and shared
+- `cxpr_engine_session`: mutable per-run state, one per live run or worker
+
+Think of `program` as the compiled rule plan and `session` as one execution of
+that plan. The program owns read-only structure: expression dependency order,
+watch declarations, source definitions, default params, and lookback buffer
+layout. A session borrows that program and owns changing state: the current
+cursor, hydrated source values, lookback history, previous values for edge
+detection, per-run `$param` overrides, role membership, and pending events.
+
+Build one program when the rule/source shape is fixed, then create one session
+per independent run. Optimizers typically share one program across many worker
+sessions with different params or data bindings. A live loop or one-off backtest
+may use only one session, but the same lifetime rule applies: a borrowed program
+must outlive every session created from it.
+
 The engine owns:
 
 - dependency-ordered expression evaluation
@@ -149,7 +169,8 @@ int main(void) {
     };
 
     cxpr_error err = {0};
-    cxpr_engine_session* session = cxpr_engine_session_create(&cfg, &err);
+    cxpr_engine_program* program = cxpr_engine_program_new(&cfg, &err);
+    cxpr_engine_session* session = cxpr_engine_session_new(program);
 
     for (size_t i = 0; i < 5; ++i) {
         const cxpr_engine_event* events = NULL;
@@ -159,6 +180,7 @@ int main(void) {
     }
 
     cxpr_engine_session_free(session);
+    cxpr_engine_program_free(program);
     return 0;
 }
 ```
