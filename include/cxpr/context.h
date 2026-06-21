@@ -36,18 +36,6 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx);
 cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
 
 /**
- * @brief Release the calling thread's internal per-thread caches.
- *
- * cxpr maintains a thread-local empty-overlay reuse cache that is populated
- * implicitly during evaluation. A long-lived process that spawns and joins
- * many worker threads should call this from each worker just before it exits
- * to avoid retaining that thread's cache until process exit. It is optional,
- * idempotent, and never required for correctness — only for promptly
- * reclaiming memory on threads that will not run further cxpr evaluations.
- */
-void cxpr_thread_cleanup(void);
-
-/**
  * @brief Set a numeric runtime variable.
  * @param ctx Destination context.
  * @param name Variable name.

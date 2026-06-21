@@ -84,7 +84,7 @@ static bool cxpr_context_can_cache_empty_overlay(const cxpr_context* ctx) {
            ctx->expression_scope == NULL;
 }
 
-static void cxpr_context_overlay_cache_destroy(void) {
+void cxpr_thread_cleanup(void) {
     while (cxpr_overlay_context_cache) {
         cxpr_context* next = cxpr_overlay_context_cache->overlay_cache_next;
         cxpr_overlay_context_cache->overlay_cache_next = NULL;
@@ -92,10 +92,6 @@ static void cxpr_context_overlay_cache_destroy(void) {
         cxpr_overlay_context_cache = next;
     }
     cxpr_overlay_context_cache_count = 0u;
-}
-
-void cxpr_thread_cleanup(void) {
-    cxpr_context_overlay_cache_destroy();
 }
 
 cxpr_context* cxpr_context_new(void) {
@@ -162,7 +158,7 @@ void cxpr_context_free(cxpr_context* ctx) {
     if (cxpr_context_can_cache_empty_overlay(ctx) &&
         cxpr_overlay_context_cache_count < CXPR_OVERLAY_CONTEXT_CACHE_MAX) {
         if (!cxpr_overlay_context_cache_atexit_registered) {
-            atexit(cxpr_context_overlay_cache_destroy);
+            atexit(cxpr_thread_cleanup);
             cxpr_overlay_context_cache_atexit_registered = true;
         }
         cxpr_context_reset_empty_overlay(ctx, NULL);
