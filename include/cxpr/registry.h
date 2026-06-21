@@ -131,6 +131,44 @@ void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
                                          cxpr_userdata_free_fn free_userdata);
 
 /**
+ * @brief One column binding for the built-in column lookback resolver.
+ *
+ * Maps a source name to a `double` column of a host array-of-structs. `base`
+ * points at the field of element 0; `stride` is the element size in bytes.
+ */
+typedef struct {
+    const char* name;   /**< Source name matched against the lookback target identifier. */
+    const void* base;   /**< Address of the `double` field in element 0 (e.g. `&bars[0].close`). Borrowed. */
+    size_t stride;      /**< Bytes between consecutive elements. */
+    size_t count;       /**< Number of elements, used for bounds checking. */
+} cxpr_lookback_column;
+
+/**
+ * @brief Install a ready-made lookback resolver backed by host columns.
+ *
+ * Lets a host evaluate postfix lookbacks (`close[3]`) over array-of-structs data
+ * without hand-writing a resolver: provide a table of `{name, base, stride,
+ * count}` plus a pointer to a host-advanced cursor, and `name[n]` resolves to
+ * the column value at `(*cursor - n)`. An out-of-range index (warmup or past an
+ * end) resolves to `NaN`; a non-literal index or a target name not in the table
+ * is left unresolved (so other resolvers / default handling can apply). The
+ * table is copied; @p cursor is borrowed and read as `*cursor` at evaluation.
+ *
+ * This is the generic, reusable counterpart to the engine's own lookback (which
+ * additionally covers callback views and pull-source rings). Either path lets
+ * `name[n]` be both parsed and executed entirely within cxpr.
+ *
+ * @param reg Destination registry.
+ * @param columns Column bindings (copied).
+ * @param count Number of entries in @p columns.
+ * @param cursor Pointer to the host's current index; read per evaluation.
+ * @return True on success, false on invalid arguments or allocation failure.
+ */
+bool cxpr_register_column_lookback(cxpr_registry* reg,
+                                   const cxpr_lookback_column* columns, size_t count,
+                                   const int64_t* cursor);
+
+/**
  * @brief Register a numeric scalar function.
  * @param reg Destination registry.
  * @param name Function name.

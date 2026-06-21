@@ -11,7 +11,6 @@
  * parity cross-check) and prints ns/bar + the ratio. */
 #include <cxpr/engine.h>
 #include <cxpr/cxpr.h>
-#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,27 +31,6 @@ static long long now_ns(void) {
 }
 
 static double bench_decay(double x) { return x * 0.99; }
-
-/* Low-level lookback resolver: the host must write this and thread the cursor. */
-static bool ll_lookback(const cxpr_ast* target, const cxpr_ast* index,
-                        const cxpr_context* ctx, const cxpr_registry* reg,
-                        void* ud, cxpr_value* out, cxpr_error* err) {
-    const char* nm;
-    const double* a;
-    int64_t n, idx;
-    (void)ctx; (void)reg; (void)ud; (void)err;
-    if (!index || cxpr_ast_type(index) != CXPR_NODE_NUMBER) return false;
-    if (!target || cxpr_ast_type(target) != CXPR_NODE_IDENTIFIER) return false;
-    n = (int64_t)cxpr_ast_number_value(index);
-    nm = cxpr_ast_identifier_name(target);
-    a = strcmp(nm, "close") == 0 ? close_ :
-        strcmp(nm, "high") == 0  ? high_  :
-        strcmp(nm, "open") == 0  ? open_  :
-        strcmp(nm, "low") == 0   ? low_   : NULL;
-    idx = g_ll_cursor - n;
-    *out = cxpr_num((a && idx >= 0 && idx < (int64_t)NBARS) ? a[idx] : NAN);
-    return true;
-}
 
 static void report(const char* name, long long low_ns, long long low_sig,
                    long long eng_ns, long long eng_sig) {
@@ -154,9 +132,14 @@ static int run_lookback(void) {
         cxpr_evaluator* ev;
         cxpr_context* ctx;
         long long start;
+        const cxpr_lookback_column llcols[] = {
+            { "close", &close_[0], sizeof(double), NBARS },
+            { "high",  &high_[0],  sizeof(double), NBARS },
+        };
         cxpr_register_defaults(reg);
         cxpr_registry_add_unary(reg, "decay", bench_decay);
-        cxpr_registry_set_lookback_resolver(reg, ll_lookback, NULL, NULL);
+        /* Built-in column lookback — no hand-written resolver needed. */
+        cxpr_register_column_lookback(reg, llcols, 2, &g_ll_cursor);
         ev = cxpr_evaluator_new(reg);
         cxpr_expressions_add(ev, E, 3, &err);
         cxpr_evaluator_compile(ev, &err);
