@@ -58,6 +58,10 @@ typedef struct {
     size_t ring_cap;             /* == max_lookback + 1 when allocated */
     size_t ring_head;            /* index of the newest sample */
     size_t ring_count;           /* samples held so far (<= ring_cap) */
+
+    /* Session-only hot-loop write slot: avoids re-hashing the name each tick. */
+    cxpr_context_slot slot;
+    bool slot_bound;
 } engine_source;
 
 typedef struct {
@@ -724,6 +728,7 @@ cxpr_engine_session* cxpr_engine_session_new(const cxpr_engine_program* prog) {
             engine_source* src = &s->sources[i];
             src->ring = NULL;
             src->ring_cap = src->ring_head = src->ring_count = 0;
+            src->slot_bound = false;
             if (src->kind == ENGINE_SRC_PULL && src->referenced && src->max_lookback > 0) {
                 src->ring_cap = src->max_lookback + 1u;
                 src->ring = (double*)malloc(src->ring_cap * sizeof(double));
@@ -815,6 +820,7 @@ void cxpr_engine_session_reset(cxpr_engine_session* session) {
     for (i = 0; i < session->source_count; ++i) {
         session->sources[i].ring_head = 0;
         session->sources[i].ring_count = 0;
+        session->sources[i].slot_bound = false; /* rebind lazily next tick */
     }
     for (i = 0; i < session->expr_ring_count; ++i) {
         session->expr_rings[i].head = 0;
@@ -924,7 +930,14 @@ bool cxpr_engine_tick(cxpr_engine_session* session,
         if (!src->referenced) continue;
         v = engine_resolve_source(src, session->cursor);
         if (src->kind == ENGINE_SRC_PULL && src->ring) engine_ring_append(src, v);
-        cxpr_context_set(session->ctx, src->name, v);
+        /* Hot path: write through a pre-bound slot (no per-tick name hash); fall
+         * back to a keyed set on the first write or after a rehash. */
+        if (src->slot_bound && cxpr_context_slot_valid(session->ctx, &src->slot)) {
+            cxpr_context_slot_set(&src->slot, v);
+        } else {
+            cxpr_context_set(session->ctx, src->name, v);
+            src->slot_bound = cxpr_context_slot_bind(session->ctx, src->name, &src->slot);
+        }
     }
 
     /* Reserve this tick's slot (depth 0) in each expression result ring so that
