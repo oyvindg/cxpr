@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef struct {
     const double (*prices)[3];
@@ -257,12 +258,72 @@ static void test_engine_rejects_pull_arg_lookback_without_arg_rings(void) {
     cxpr_engine_session_free(session);
 }
 
+static void test_engine_replay_collects_owned_events(void) {
+    static const double temp[8] = {20.0, 25.0, 31.0, 35.0, 28.0, 32.0, 33.0, 18.0};
+    const cxpr_expression_def exprs[] = {
+        {"hot", "t > 30"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"t", &temp[0], sizeof(double), 8},
+    };
+    const cxpr_engine_watch_def watches[] = {
+        {"hot", CXPR_EDGE_RISING},
+        {"hot", CXPR_EDGE_FALLING},
+    };
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_event* events = NULL;
+    size_t count = 0u;
+    size_t i, rising = 0u, falling = 0u;
+    const char* rising_name = NULL;
+    const char* falling_name = NULL;
+
+    cfg.expressions = exprs;
+    cfg.expression_count = 1;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1;
+    cfg.watches = watches;
+    cfg.watch_count = 2;
+
+    /* hot (t>30): F F T T F T T F -> RISING at 2,5 ; FALLING at 4,7. */
+    assert(cxpr_engine_replay(&cfg, 8u, &events, &count, &err));
+    assert(err.code == CXPR_OK);
+    assert(events && count == 4u);
+    for (i = 0; i < count; ++i) {
+        /* Names survive the freed internal program (interned into the result),
+         * and stay pointer-stable per watch (D11 identifies a watch by its own
+         * strdup'd name pointer, so the two "hot" watches keep distinct pointers
+         * here, one per edge). */
+        assert(events[i].expr_name && strcmp(events[i].expr_name, "hot") == 0);
+        if (events[i].edge == CXPR_EDGE_RISING) {
+            ++rising;
+            if (!rising_name) rising_name = events[i].expr_name;
+            else assert(events[i].expr_name == rising_name);
+        } else if (events[i].edge == CXPR_EDGE_FALLING) {
+            ++falling;
+            if (!falling_name) falling_name = events[i].expr_name;
+            else assert(events[i].expr_name == falling_name);
+        }
+    }
+    assert(rising_name && falling_name && rising_name != falling_name);
+    assert(rising == 2u && falling == 2u);
+    cxpr_engine_events_free(events, count);
+
+    /* n_ticks = 0 is a no-op; discarding events (NULL out) still succeeds. */
+    events = NULL;
+    count = 123u;
+    assert(cxpr_engine_replay(&cfg, 0u, &events, &count, &err));
+    assert(events == NULL && count == 0u);
+    assert(cxpr_engine_replay(&cfg, 8u, NULL, NULL, &err));
+}
+
 int main(void) {
     test_engine_view_source_lookback();
     test_engine_inline_lookback_reevaluates_at_offset();
     test_engine_basket_roles_source_args_and_member_lookback();
     test_engine_source_call_memo_reuses_bound_args();
     test_engine_rejects_pull_arg_lookback_without_arg_rings();
+    test_engine_replay_collects_owned_events();
     printf("  \xE2\x9C\x93 engine_layer\n");
     return 0;
 }

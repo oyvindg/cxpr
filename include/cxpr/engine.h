@@ -509,6 +509,63 @@ double cxpr_engine_get_double(const cxpr_engine_session* session, const char* na
  */
 bool cxpr_engine_get_bool(const cxpr_engine_session* session, const char* name, bool* found);
 
+/* -------------------------------------------------------------------------- */
+/* Replay: one-shot closed-loop convenience over tick.                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Build a program from one config, advance it @p n_ticks, and return the
+ *        events that fired as a single owned batch.
+ *
+ * Closed-loop convenience over @ref cxpr_engine_tick for the case where the host
+ * does **not** need to intervene between ticks: it builds an internal session
+ * (as @ref cxpr_engine_session_create would), ticks @p n_ticks times collecting
+ * every fired event, then frees the session. The host never sees a session — it
+ * hands in a config and gets back the whole event stream.
+ *
+ * Use it to replay a finite, predetermined sequence — a preloaded view/column
+ * series, a recorded sensor log, a batch of records. It is **not** suitable for
+ * live/streaming use even though pull sources compile against it: events are
+ * returned only after *all* @p n_ticks complete, so the host cannot react per
+ * tick. When the host must feed state back between ticks (e.g. order/fill state
+ * read by a later tick's pull source), drive @ref cxpr_engine_tick directly and
+ * keep the session.
+ *
+ * The returned `*events_out` is a single owned allocation: the event array
+ * followed by an interned copy of the watch names, so each `expr_name` stays
+ * valid after the internal program is freed and remains pointer-stable across
+ * events of the same watch (D11). Release it with @ref cxpr_engine_events_free.
+ * Pass NULL for @p events_out to run purely for side effects and collect nothing
+ * (no accumulation, no allocation). A run with zero fired events yields a NULL
+ * `*events_out` and a count of 0.
+ *
+ * A structural tick failure (D18) aborts the run, frees everything, and returns
+ * false with @p err set; data misses (NaN) are not failures and do not abort.
+ *
+ * @param config Declarative program configuration (as for @ref cxpr_engine_session_create).
+ * @param n_ticks Number of ticks to advance. Host owns termination (D20); 0 is a no-op.
+ * @param events_out Receives the owned event batch, or NULL to discard events.
+ * @param event_count_out Receives the number of events, or NULL to ignore.
+ * @param err Optional error output describing the first failing step.
+ * @return True on success (including zero events), false on build or structural failure.
+ */
+bool cxpr_engine_replay(const cxpr_engine_config* config,
+                        size_t n_ticks,
+                        cxpr_engine_event** events_out,
+                        size_t* event_count_out,
+                        cxpr_error* err);
+
+/**
+ * @brief Free the event batch returned by @ref cxpr_engine_replay.
+ *
+ * The batch is a single allocation (events plus interned names), so this frees
+ * everything at once.
+ *
+ * @param events Batch returned by @ref cxpr_engine_replay. May be NULL.
+ * @param count Event count from the same call (unused; accepted for symmetry).
+ */
+void cxpr_engine_events_free(cxpr_engine_event* events, size_t count);
+
 #ifdef __cplusplus
 }
 #endif

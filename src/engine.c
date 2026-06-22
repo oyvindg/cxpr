@@ -1299,3 +1299,133 @@ bool cxpr_engine_get_bool(const cxpr_engine_session* session, const char* name, 
     if (!session || !name) return false;
     return cxpr_expression_get_bool(session->eval, name, found);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Replay: one-shot config -> run n_ticks -> single owned event batch.         */
+/* -------------------------------------------------------------------------- */
+
+bool cxpr_engine_replay(const cxpr_engine_config* config,
+                        size_t n_ticks,
+                        cxpr_engine_event** events_out,
+                        size_t* event_count_out,
+                        cxpr_error* err) {
+    cxpr_engine_session* session;
+    cxpr_engine_event* acc = NULL; /* growable; names still borrow the program */
+    size_t acc_n = 0u, acc_cap = 0u;
+    cxpr_engine_event* block = NULL; /* single owned allocation handed back */
+    size_t i;
+
+    if (events_out) *events_out = NULL;
+    if (event_count_out) *event_count_out = 0u;
+    if (!config) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: NULL config");
+        return false;
+    }
+
+    session = cxpr_engine_session_create(config, err);
+    if (!session) return false; /* err set by session_create */
+
+    for (i = 0; i < n_ticks; ++i) {
+        const cxpr_engine_event* ev = NULL;
+        size_t n = 0u;
+        if (!cxpr_engine_tick(session, &ev, &n, err)) {
+            free(acc);
+            cxpr_engine_session_free(session);
+            return false; /* structural failure (D18); err set by tick */
+        }
+        if (!events_out || n == 0u) continue;
+
+        if (acc_n + n > acc_cap) {
+            size_t new_cap = acc_cap ? acc_cap * 2u : 16u;
+            cxpr_engine_event* grown;
+            while (new_cap < acc_n + n) new_cap *= 2u;
+            grown = (cxpr_engine_event*)realloc(acc, new_cap * sizeof(*acc));
+            if (!grown) {
+                engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY, "engine: replay event buffer");
+                free(acc);
+                cxpr_engine_session_free(session);
+                return false;
+            }
+            acc = grown;
+            acc_cap = new_cap;
+        }
+        /* Value is scalar/bool (D24), safe to copy; expr_name still borrows the
+         * program and is interned into `block` before the session is freed. */
+        memcpy(acc + acc_n, ev, n * sizeof(*acc));
+        acc_n += n;
+    }
+
+    /* Build a self-contained result: one allocation holding the event array
+     * followed by an interned name pool, so the borrowed program-stable names
+     * outlive session_free and one free() releases everything. Identical watch
+     * names share one interned copy — the program stores one pointer per watch,
+     * so dedup is by pointer identity (keeps D11's stable-pointer contract). */
+    if (events_out && acc_n > 0u) {
+        const char** uniq;
+        size_t* uniq_off;
+        size_t uniq_n = 0u, name_bytes = 0u, j, k;
+        char* pool;
+
+        uniq = (const char**)malloc(acc_n * sizeof(*uniq));
+        uniq_off = (size_t*)malloc(acc_n * sizeof(*uniq_off));
+        if (!uniq || !uniq_off) {
+            engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY, "engine: replay name intern");
+            free(uniq);
+            free(uniq_off);
+            free(acc);
+            cxpr_engine_session_free(session);
+            return false;
+        }
+        for (j = 0; j < acc_n; ++j) {
+            const char* name = acc[j].expr_name;
+            for (k = 0; k < uniq_n; ++k) {
+                if (uniq[k] == name) break;
+            }
+            if (k == uniq_n) {
+                uniq[uniq_n] = name;
+                uniq_off[uniq_n] = name_bytes;
+                name_bytes += (name ? strlen(name) : 0u) + 1u;
+                ++uniq_n;
+            }
+        }
+
+        block = (cxpr_engine_event*)malloc(acc_n * sizeof(*block) + name_bytes);
+        if (!block) {
+            engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY, "engine: replay result");
+            free(uniq);
+            free(uniq_off);
+            free(acc);
+            cxpr_engine_session_free(session);
+            return false;
+        }
+        pool = (char*)(block + acc_n);
+        for (k = 0; k < uniq_n; ++k) {
+            const char* name = uniq[k];
+            size_t len = (name ? strlen(name) : 0u) + 1u;
+            memcpy(pool + uniq_off[k], name ? name : "", len);
+        }
+        for (j = 0; j < acc_n; ++j) {
+            const char* name = acc[j].expr_name;
+            block[j] = acc[j];
+            for (k = 0; k < uniq_n; ++k) {
+                if (uniq[k] == name) break;
+            }
+            block[j].expr_name = pool + uniq_off[k];
+        }
+        free(uniq);
+        free(uniq_off);
+    }
+
+    free(acc);
+    cxpr_engine_session_free(session);
+
+    if (events_out) *events_out = block;
+    if (event_count_out) *event_count_out = block ? acc_n : 0u;
+    if (err) err->code = CXPR_OK;
+    return true;
+}
+
+void cxpr_engine_events_free(cxpr_engine_event* events, size_t count) {
+    (void)count; /* single-block allocation: names live inside the same malloc */
+    free(events);
+}

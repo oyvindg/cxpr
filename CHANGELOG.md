@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-06-22
+
+### Added
+
+- `cxpr_engine_replay` — a one-shot, closed-loop convenience over
+  `cxpr_engine_tick`: build a program from one `cxpr_engine_config`, advance it
+  N ticks, and return every fired event as a single owned batch, with no session
+  visible to the host. The result is one allocation (events plus an interned copy
+  of the watch names) so each `expr_name` outlives the internal program and stays
+  pointer-stable per watch; release it with `cxpr_engine_events_free`. Intended
+  for replaying a finite, predetermined sequence (preloaded view/column series,
+  recorded sensor logs, record batches) where the host need not intervene between
+  ticks — not for live/streaming use, since events are returned only after all
+  ticks complete. Domain-neutral (D3); see `examples/engine_replay.c` for a
+  non-trading sensor-log replay.
+
 ## [2.5.0] - 2026-06-21
 
 ### Added
