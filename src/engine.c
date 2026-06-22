@@ -122,6 +122,14 @@ struct cxpr_engine_program {
 
     engine_tracked_expr* tracked; /* expressions referenced via lookback (D16) */
     size_t tracked_count;
+
+    /* Resolver previously installed on an injected registry. The engine owns
+     * lookback for its sources + tracked expressions; any other target falls
+     * through here so a host's resolver (e.g. dyn's series/indicator resolver)
+     * keeps serving lookbacks the engine does not own. NULL for the
+     * engine-owned default registry (no prior resolver). */
+    cxpr_lookback_resolver_ptr delegate_lookback_fn;
+    void* delegate_lookback_ud;
 };
 
 struct cxpr_engine_session {
@@ -581,9 +589,14 @@ static cxpr_value engine_source_call(const cxpr_ast* call_ast,
     return cxpr_num(value);
 }
 
-/* Lookback resolver for `target[n]` (D16). Increment 2a serves source
- * identifiers (column/view via cursor offset, pull via ring); other targets
- * (named-expression result-rings, inline expressions) are increment 2b. */
+/* Lookback resolver for `target[n]` (D16). The engine serves the lookbacks it
+ * owns — sources (column/view via cursor offset, pull via ring) and
+ * named-expression result-rings — and delegates any other target to the
+ * resolver a host installed before the engine (prog->delegate_lookback_fn),
+ * falling back to the engine's own inline re-evaluation when no delegate
+ * exists. The delegation is what lets a host (e.g. dyn) migrate lookback onto
+ * the engine piecewise: OHLCV/tracked-expression lookbacks resolve here, while
+ * host indicator/series lookbacks still flow to the host resolver. */
 static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* index,
                                      const cxpr_context* ctx, const cxpr_registry* reg,
                                      void* userdata, cxpr_value* out, cxpr_error* err) {
@@ -592,8 +605,9 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
     engine_source* src;
     double nd, v = NAN;
     size_t n;
+    int target_type;
 
-    (void)ctx; (void)reg; (void)userdata;
+    (void)userdata;
     if (!s || !out) { engine_set_err(err, CXPR_ERR_SYNTAX, "engine: no active session for lookback"); return false; }
     if (!index || cxpr_ast_type(index) != CXPR_NODE_NUMBER) {
         engine_set_err(err, CXPR_ERR_SYNTAX, "engine: non-literal lookback index unsupported");
@@ -604,7 +618,10 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
     n = (size_t)nd;
 
     if (!target) return false;
-    if (cxpr_ast_type(target) == CXPR_NODE_FUNCTION_CALL) {
+    target_type = cxpr_ast_type(target);
+
+    /* Engine-owned: a source bound as a function call, e.g. ema(close,14)[2]. */
+    if (target_type == CXPR_NODE_FUNCTION_CALL) {
         double args[CXPR_MAX_CALL_ARGS] = {0};
         size_t argc = 0;
         name = cxpr_ast_function_name(target);
@@ -612,20 +629,42 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
         if (src) {
             if (!engine_eval_call_args(target, ctx, reg, args, &argc, err)) return true;
             if (!engine_resolve_source_call(
-                    s,
-                    src,
-                    args,
-                    argc,
-                    g_engine_tls_lookback_offset + n,
-                    &v,
-                    err)) {
+                    s, src, args, argc, g_engine_tls_lookback_offset + n, &v, err)) {
                 return true;
             }
             *out = cxpr_num(v);
             return true;
         }
+    } else if (target_type == CXPR_NODE_IDENTIFIER) {
+        name = cxpr_ast_identifier_name(target);
+        src = engine_find_source_in(s->sources, s->source_count, name);
+        if (src) {
+            if (!engine_resolve_source_call(
+                    s, src, NULL, 0u, g_engine_tls_lookback_offset + n, &v, err)) {
+                return true;
+            }
+            *out = cxpr_num(v); /* warmup / OOB -> NaN, propagated (D18) */
+            return true;
+        }
+        {
+            /* Named-expression result ring (D16). */
+            int ti = engine_tracked_index(s->prog, name);
+            if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
+                *out = cxpr_num(engine_ringb_read(&s->expr_rings[ti], n));
+                return true;
+            }
+        }
     }
-    if (cxpr_ast_type(target) != CXPR_NODE_IDENTIFIER) {
+
+    /* Not engine-owned: hand off to the host's prior resolver if one exists. */
+    if (s->prog->delegate_lookback_fn) {
+        return s->prog->delegate_lookback_fn(target, index, ctx, reg,
+                                             s->prog->delegate_lookback_ud, out, err);
+    }
+
+    /* No delegate (engine-owned registry): the engine's own fallbacks. */
+    if (target_type != CXPR_NODE_IDENTIFIER) {
+        /* Inline anonymous subexpression: re-evaluate with sources offset by n. */
         cxpr_context* shifted;
         size_t saved_offset = g_engine_tls_lookback_offset;
         cxpr_value value = cxpr_num(NAN);
@@ -644,32 +683,9 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
         if (ok) *out = value;
         return true;
     }
-    name = cxpr_ast_identifier_name(target);
-    src = engine_find_source_in(s->sources, s->source_count, name);
-    if (!src) {
-        /* Named-expression result ring (D16). */
-        int ti = engine_tracked_index(s->prog, name);
-        if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
-            *out = cxpr_num(engine_ringb_read(&s->expr_rings[ti], n));
-            return true;
-        }
-        engine_set_err(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                       "engine: lookback target is neither a source nor a tracked expression");
-        return false;
-    }
-
-    if (!engine_resolve_source_call(
-            s,
-            src,
-            NULL,
-            0u,
-            g_engine_tls_lookback_offset + n,
-            &v,
-            err)) {
-        return true;
-    }
-    *out = cxpr_num(v); /* warmup / OOB -> NaN, propagated (D18) */
-    return true;
+    engine_set_err(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                   "engine: lookback target is neither a source nor a tracked expression");
+    return false;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -697,7 +713,21 @@ static void engine_program_free_internals(cxpr_engine_program* prog) {
     free(prog->roles);
     for (i = 0; i < prog->tracked_count; ++i) free(prog->tracked[i].name);
     free(prog->tracked);
-    if (prog->owns_registry) cxpr_registry_free((cxpr_registry*)prog->registry);
+    if (prog->owns_registry) {
+        cxpr_registry_free((cxpr_registry*)prog->registry);
+    } else {
+        /* Injected registry: leave it as we found it. Restore the resolver the
+         * host had installed (or none) so a later non-engine evaluation does not
+         * hit the engine resolver with no active session. Only restore if the
+         * registry still points at ours — never clobber a newer install. */
+        cxpr_lookback_resolver_ptr cur = NULL;
+        cxpr_registry_lookback_resolver(prog->registry, &cur, NULL);
+        if (cur == engine_lookback_resolver) {
+            cxpr_registry_set_lookback_resolver((cxpr_registry*)prog->registry,
+                                                prog->delegate_lookback_fn,
+                                                prog->delegate_lookback_ud, NULL);
+        }
+    }
 }
 
 /* Build a fresh compiled evaluator from the program's expression set. Each
@@ -925,9 +955,21 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
     }
 
     /* Install the engine's lookback resolver (D7/D16). The engine owns lookback
-     * (D19), so it installs its resolver on the registry it uses — the one
-     * registry write it performs, done here at single-threaded setup time. An
-     * injected registry must therefore not rely on a different lookback resolver. */
+     * (D19) for its sources + tracked named-expressions, the one registry write
+     * it performs, done here at single-threaded setup time. Capture any resolver
+     * a host already installed first and chain to it: lookbacks the engine does
+     * not own (e.g. host indicator/series lookback) fall through to the prior
+     * resolver instead of failing, letting lookback migrate onto the engine
+     * piecewise. NULL on the engine-owned default registry (no prior resolver). */
+    {
+        cxpr_lookback_resolver_ptr prior = NULL;
+        void* prior_ud = NULL;
+        cxpr_registry_lookback_resolver(prog->registry, &prior, &prior_ud);
+        if (prior != engine_lookback_resolver) { /* never self-chain */
+            prog->delegate_lookback_fn = prior;
+            prog->delegate_lookback_ud = prior_ud;
+        }
+    }
     cxpr_registry_set_lookback_resolver((cxpr_registry*)prog->registry,
                                         engine_lookback_resolver, NULL, NULL);
 

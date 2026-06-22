@@ -131,6 +131,21 @@ void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
                                          cxpr_userdata_free_fn free_userdata);
 
 /**
+ * @brief Read the currently-installed lookback resolver, if any.
+ * @param reg Registry to query.
+ * @param out_resolver Receives the installed resolver (or NULL if none). May be NULL.
+ * @param out_userdata Receives the resolver's userdata. May be NULL.
+ *
+ * Lets a layer that installs its own resolver capture and chain to a resolver a
+ * host already installed, so postfix lookbacks the new layer does not own can
+ * fall through to the prior resolver instead of failing. The returned pointers
+ * are borrowed; this does not transfer ownership of @p out_userdata.
+ */
+void cxpr_registry_lookback_resolver(const cxpr_registry* reg,
+                                     cxpr_lookback_resolver_ptr* out_resolver,
+                                     void** out_userdata);
+
+/**
  * @brief One column binding for the built-in column lookback resolver.
  *
  * Maps a source name to a `double` column of a host array-of-structs. `base`

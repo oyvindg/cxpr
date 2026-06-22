@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-06-22
+
+### Added
+
+- `cxpr_registry_lookback_resolver` — read the lookback resolver currently
+  installed on a registry, so a layer that installs its own resolver can capture
+  and chain to a host's prior resolver.
+
+### Changed
+
+- **Engine lookback now chains to a host's resolver.** When
+  `cxpr_engine_program_new` is given a registry that already has a lookback
+  resolver installed, the engine captures it and delegates any `target[n]` it
+  does not own (i.e. not an engine source or a tracked named-expression) to that
+  prior resolver instead of failing. This lets a host migrate lookback onto the
+  engine piecewise — engine-owned lookbacks (OHLCV columns, result rings) resolve
+  in the engine while host indicator/series lookbacks keep flowing to the host
+  resolver. The engine-owned default registry (no prior resolver) is unchanged.
+  On `cxpr_engine_program_free` the prior resolver is restored, so an injected
+  registry is left exactly as the engine found it.
+
 ## [2.5.0] - 2026-06-21
 
 ### Added

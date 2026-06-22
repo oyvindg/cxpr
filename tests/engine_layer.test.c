@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef struct {
     const double (*prices)[3];
@@ -257,8 +258,91 @@ static void test_engine_rejects_pull_arg_lookback_without_arg_rings(void) {
     cxpr_engine_session_free(session);
 }
 
+/* A host resolver that owns only `hostvar[n]`, counting its invocations. */
+static bool host_prior_resolver(const cxpr_ast* target, const cxpr_ast* index,
+                                const cxpr_context* ctx, const cxpr_registry* reg,
+                                void* userdata, cxpr_value* out, cxpr_error* err) {
+    size_t* calls = (size_t*)userdata;
+    const char* name;
+    double nd;
+    (void)ctx;
+    (void)reg;
+    (void)err;
+    if (!target || cxpr_ast_type(target) != CXPR_NODE_IDENTIFIER) return false;
+    name = cxpr_ast_identifier_name(target);
+    if (!name || strcmp(name, "hostvar") != 0) return false;
+    if (calls) (*calls)++;
+    nd = (index && cxpr_ast_type(index) == CXPR_NODE_NUMBER) ? cxpr_ast_number_value(index) : 0.0;
+    *out = cxpr_num(1000.0 + nd);
+    return true;
+}
+
+/* The engine serves its own source lookback (`close[n]`) and delegates targets
+ * it does not own (`hostvar[n]`) to a resolver the host installed beforehand. */
+static void test_engine_lookback_delegates_to_prior_resolver(void) {
+    static const double close[5] = {10.0, 11.0, 9.0, 12.0, 8.0};
+    size_t host_calls = 0u;
+    const cxpr_expression_def exprs[] = {
+        {"c1", "close[1]"},
+        {"h1", "hostvar[1]"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &close[0], sizeof(double), 5},
+    };
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    double c1[5];
+    double h1[5];
+    size_t i;
+
+    assert(registry);
+    cxpr_register_defaults(registry);
+    cxpr_registry_set_lookback_resolver(registry, host_prior_resolver, &host_calls, NULL);
+
+    cfg.registry = registry;
+    cfg.expressions = exprs;
+    cfg.expression_count = 2;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    for (i = 0; i < 5; ++i) {
+        bool found = false;
+        assert(cxpr_engine_tick(session, NULL, NULL, &err));
+        c1[i] = cxpr_engine_get_double(session, "c1", &found);
+        assert(found);
+        h1[i] = cxpr_engine_get_double(session, "h1", &found);
+        assert(found);
+    }
+
+    /* close[1]: engine column offset, warmup NaN at tick 0. */
+    assert(isnan(c1[0]));
+    assert(c1[1] == 10.0);
+    assert(c1[4] == 12.0);
+    /* hostvar[1]: served by the delegate every tick (1000 + 1). */
+    for (i = 0; i < 5; ++i) assert(h1[i] == 1001.0);
+    /* The delegate fires only for hostvar[1], never for the engine-owned close[1]. */
+    assert(host_calls == 5u);
+
+    cxpr_engine_session_free(session);
+
+    /* The injected registry is left as found: the host's resolver is restored. */
+    {
+        cxpr_lookback_resolver_ptr restored = NULL;
+        void* restored_ud = NULL;
+        cxpr_registry_lookback_resolver(registry, &restored, &restored_ud);
+        assert(restored == host_prior_resolver);
+        assert(restored_ud == &host_calls);
+    }
+    cxpr_registry_free(registry); /* injected registry is not engine-owned */
+}
+
 int main(void) {
     test_engine_view_source_lookback();
+    test_engine_lookback_delegates_to_prior_resolver();
     test_engine_inline_lookback_reevaluates_at_offset();
     test_engine_basket_roles_source_args_and_member_lookback();
     test_engine_source_call_memo_reuses_bound_args();
