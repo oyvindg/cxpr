@@ -7,6 +7,12 @@
 #include "core.h"
 #include <math.h>
 
+static bool cxpr_ir_value_truthy(cxpr_value value) {
+    if (value.type == CXPR_VALUE_BOOL) return value.b;
+    if (value.type == CXPR_VALUE_NUMBER) return value.d != 0.0 && !isnan(value.d);
+    return false;
+}
+
 cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                               const cxpr_registry* reg, const double* locals,
                               size_t local_count, cxpr_error* err) {
@@ -270,11 +276,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             break;
         case CXPR_OP_NOT:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
-                                      "Logical not requires bool operand")) {
+            if (a.type != CXPR_VALUE_BOOL && a.type != CXPR_VALUE_NUMBER) {
+                (void)cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
+                                           "Logical not requires bool or numeric operand");
                 return cxpr_num(NAN);
             }
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_bool(!a.b),
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_bool(!cxpr_ir_value_truthy(a)),
                                     CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
@@ -511,14 +518,18 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_JUMP_IF_FALSE:
         case CXPR_OP_JUMP_IF_TRUE:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
-                                      "Conditional jump requires bool operand")) {
+            if (a.type != CXPR_VALUE_BOOL && a.type != CXPR_VALUE_NUMBER) {
+                (void)cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
+                                           "Conditional jump requires bool or numeric operand");
                 return cxpr_num(NAN);
             }
-            if ((instr->op == CXPR_OP_JUMP_IF_FALSE && !a.b) ||
-                (instr->op == CXPR_OP_JUMP_IF_TRUE && a.b)) {
+            {
+                bool truthy = cxpr_ir_value_truthy(a);
+                if ((instr->op == CXPR_OP_JUMP_IF_FALSE && !truthy) ||
+                    (instr->op == CXPR_OP_JUMP_IF_TRUE && truthy)) {
                 ip = instr->index;
                 continue;
+                }
             }
             break;
         case CXPR_OP_RETURN:

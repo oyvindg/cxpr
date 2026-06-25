@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-06-22
+
+### Changed
+
+- **Engine-owned lookback now covers tracked struct fields.** Lookbacks such as
+  `bb.lower[1]` are resolved from the tracked expression result ring when `bb`
+  is a named expression that produced a struct. The engine still delegates
+  unowned lookback targets to a prior host resolver.
+- Typed IR now accepts numeric truthiness for `not` and conditional jumps,
+  matching engine watch/basket truthiness for numeric helper results.
+- `cxpr_engine_role_def` now carries optional `bound_count` metadata so
+  `count($role)` can report the logical bound universe size separately from the
+  materialized member values used by basket aggregates.
+- Engine pull sources now support lookback with evaluated arguments, e.g.
+  `price($pair)[1]`, using per-argument result rings.
+- Engine view sources can now provide an optional cursor-to-source index mapper
+  for timestamp-aligned secondary series reads.
+
 ## [2.6.0] - 2026-06-22
 
 ### Added

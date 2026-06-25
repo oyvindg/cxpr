@@ -12,6 +12,13 @@ typedef struct {
     size_t calls;
 } test_price_env;
 
+typedef struct {
+    const double* values;
+    size_t count;
+    const int64_t* index_map;
+    size_t map_count;
+} mapped_view_env;
+
 static bool array_view(int64_t index,
                        const char* name,
                        const double* args,
@@ -44,11 +51,108 @@ static bool pair_price_view(int64_t index,
     return true;
 }
 
+static bool mapped_array_view(int64_t index,
+                              const char* name,
+                              const double* args,
+                              size_t argc,
+                              double* out,
+                              void* userdata) {
+    const mapped_view_env* env = (const mapped_view_env*)userdata;
+    (void)name;
+    (void)args;
+    (void)argc;
+    if (!env || !env->values || !out || index < 0 || (size_t)index >= env->count) return false;
+    *out = env->values[index];
+    return true;
+}
+
+static int64_t mapped_array_index(int64_t cursor, void* userdata) {
+    const mapped_view_env* env = (const mapped_view_env*)userdata;
+    if (!env || !env->index_map || cursor < 0 || (size_t)cursor >= env->map_count) return -1;
+    return env->index_map[cursor];
+}
+
 static double pull_with_args(const char* name, const double* args, size_t argc, void* userdata) {
     size_t* calls = (size_t*)userdata;
     (void)name;
+    if (calls && argc > 0u) (*calls)++;
+    return argc > 0u ? args[0] * 10.0 + (calls ? (double)(*calls) : 0.0) : 0.0;
+}
+
+static cxpr_value band_value_fn(const cxpr_value* args, size_t argc, void* userdata) {
+    const char* fields[] = {"lower", "upper"};
+    cxpr_value values[2];
+    cxpr_struct_value* sv;
+    double close;
+    (void)userdata;
+    assert(argc == 1u);
+    assert(args[0].type == CXPR_VALUE_NUMBER);
+    close = args[0].d;
+    values[0] = cxpr_num(close - 1.0);
+    values[1] = cxpr_num(close + 1.0);
+    sv = cxpr_struct_value_new(fields, values, 2u);
+    assert(sv != NULL);
+    return cxpr_struct(sv);
+}
+
+static cxpr_value nested_box_value_fn(const cxpr_value* args, size_t argc, void* userdata) {
+    const char* inner_fields[] = {"value"};
+    const char* outer_fields[] = {"inner"};
+    cxpr_value inner_values[1];
+    cxpr_value outer_values[1];
+    cxpr_struct_value* inner;
+    cxpr_struct_value* outer;
+    double close;
+    (void)userdata;
+    assert(argc == 1u);
+    assert(args[0].type == CXPR_VALUE_NUMBER);
+    close = args[0].d;
+    inner_values[0] = cxpr_num(close + 0.5);
+    inner = cxpr_struct_value_new(inner_fields, inner_values, 1u);
+    assert(inner != NULL);
+    outer_values[0] = cxpr_struct(inner);
+    outer = cxpr_struct_value_new(outer_fields, outer_values, 1u);
+    assert(outer != NULL);
+    cxpr_struct_value_free(inner);
+    return cxpr_struct(outer);
+}
+
+static cxpr_value shifted_ast_fn(const cxpr_ast* call_ast,
+                                 const cxpr_context* ctx,
+                                 const cxpr_registry* reg,
+                                 void* userdata,
+                                 cxpr_error* err) {
+    double arg = NAN;
+    size_t offset = 0u;
+    (void)userdata;
+    assert(cxpr_ast_function_argc(call_ast) == 1u);
+    if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0u), ctx, reg, &arg, err)) {
+        return cxpr_num(NAN);
+    }
+    return cxpr_num(
+        arg + (cxpr_engine_context_lookback_offset(ctx, &offset) ? (double)offset * 100.0 : 0.0));
+}
+
+static bool inline_shifted_policy(const cxpr_ast* target, void* userdata) {
+    size_t* calls = (size_t*)userdata;
     if (calls) (*calls)++;
-    return argc > 0u ? args[0] : 0.0;
+    return target &&
+           cxpr_ast_type(target) == CXPR_NODE_FUNCTION_CALL &&
+           strcmp(cxpr_ast_function_name(target), "shifted") == 0;
+}
+
+static bool host_counting_resolver(const cxpr_ast* target, const cxpr_ast* index,
+                                   const cxpr_context* ctx, const cxpr_registry* reg,
+                                   void* userdata, cxpr_value* out, cxpr_error* err) {
+    size_t* calls = (size_t*)userdata;
+    (void)target;
+    (void)index;
+    (void)ctx;
+    (void)reg;
+    (void)err;
+    if (calls) (*calls)++;
+    if (out) *out = cxpr_num(-999.0);
+    return true;
 }
 
 static void test_engine_view_source_lookback(void) {
@@ -86,6 +190,90 @@ static void test_engine_view_source_lookback(void) {
     assert(isnan(v1[0]));
     assert(v1[3] == 8.0);
     assert(v2[4] == 8.0);
+    cxpr_engine_session_free(session);
+}
+
+static void test_engine_view_source_map_index_before_read(void) {
+    static const double secondary_values[3] = {100.0, 200.0, 300.0};
+    static const int64_t index_map[5] = {-1, 0, 0, 1, 2};
+    mapped_view_env env = {
+        secondary_values,
+        3u,
+        index_map,
+        5u,
+    };
+    const cxpr_expression_def exprs[] = {
+        {"mapped_now", "secondary"},
+        {"mapped_prev", "secondary[1]"},
+    };
+    const cxpr_engine_view_source_def views[] = {
+        {"secondary", mapped_array_view, &env, mapped_array_index},
+    };
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    double now[5];
+    double prev[5];
+    size_t i;
+
+    cfg.expressions = exprs;
+    cfg.expression_count = 2u;
+    cfg.view_sources = views;
+    cfg.view_source_count = 1u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    for (i = 0; i < 5u; ++i) {
+        bool found = false;
+        assert(cxpr_engine_tick(session, NULL, NULL, &err));
+        now[i] = cxpr_engine_get_double(session, "mapped_now", &found);
+        assert(found);
+        prev[i] = cxpr_engine_get_double(session, "mapped_prev", &found);
+        assert(found);
+    }
+
+    assert(isnan(now[0]));
+    assert(now[1] == 100.0);
+    assert(now[2] == 100.0);
+    assert(now[4] == 300.0);
+    assert(isnan(prev[0]));
+    assert(isnan(prev[1]));
+    assert(prev[2] == 100.0);
+    assert(prev[4] == 200.0);
+
+    cxpr_engine_session_free(session);
+}
+
+static void test_engine_bare_identifier_alias_preserves_bool(void) {
+    typedef struct {
+        double close;
+    } row;
+    static const row rows[2] = {{1.0}, {2.0}};
+    const cxpr_expression_def exprs[] = {
+        {"trend_up", "close > close[1]"},
+        {"long_signal", "trend_up"},
+        {"entry", "long_signal"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &rows[0].close, sizeof(row), 2u},
+    };
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    bool found = false;
+    bool entry = false;
+
+    cfg.expressions = exprs;
+    cfg.expression_count = 3u;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    assert(cxpr_engine_tick_at(session, 1, NULL, NULL, &err));
+    entry = cxpr_engine_get_bool(session, "entry", &found);
+    assert(found);
+    assert(entry == true);
     cxpr_engine_session_free(session);
 }
 
@@ -158,7 +346,7 @@ static void test_engine_basket_roles_source_args_and_member_lookback(void) {
         {"price", pair_price_view, &env},
     };
     const cxpr_engine_role_def roles[] = {
-        {"pair", members, 3},
+        {"pair", members, 3, 5},
         {"solo", single_member, 1},
     };
     cxpr_engine_config cfg = {0};
@@ -182,7 +370,7 @@ static void test_engine_basket_roles_source_args_and_member_lookback(void) {
     assert(cxpr_engine_get_double(session, "max_px", &found) == 9.0 && found);
     assert(!cxpr_engine_get_bool(session, "any_hot", &found) && found);
     assert(cxpr_engine_get_bool(session, "all_positive", &found) && found);
-    assert(cxpr_engine_get_double(session, "count_pair", &found) == 3.0 && found);
+    assert(cxpr_engine_get_double(session, "count_pair", &found) == 5.0 && found);
     assert(cxpr_engine_get_double(session, "avg_double", &found) == 10.0 && found);
     assert(cxpr_engine_get_double(session, "single_direct", &found) == 2.0 && found);
     assert(isnan(cxpr_engine_get_double(session, "avg_prev", &found)) && found);
@@ -234,10 +422,10 @@ static void test_engine_source_call_memo_reuses_bound_args(void) {
     cxpr_engine_session_free(session);
 }
 
-static void test_engine_rejects_pull_arg_lookback_without_arg_rings(void) {
+static void test_engine_pull_arg_lookback_uses_per_argument_ring(void) {
     size_t calls = 0u;
     const cxpr_expression_def exprs[] = {
-        {"bad", "quote(1)[1]"},
+        {"prev", "quote(1)[1]"},
     };
     const cxpr_engine_pull_source_def pulls[] = {
         {"quote", pull_with_args, &calls},
@@ -245,6 +433,7 @@ static void test_engine_rejects_pull_arg_lookback_without_arg_rings(void) {
     cxpr_engine_config cfg = {0};
     cxpr_error err = {0};
     cxpr_engine_session* session;
+    bool found = false;
 
     cfg.expressions = exprs;
     cfg.expression_count = 1;
@@ -253,8 +442,12 @@ static void test_engine_rejects_pull_arg_lookback_without_arg_rings(void) {
 
     session = cxpr_engine_session_create(&cfg, &err);
     assert(session);
-    assert(!cxpr_engine_tick(session, NULL, NULL, &err));
-    assert(err.code != CXPR_OK);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    assert(isnan(cxpr_engine_get_double(session, "prev", &found)) && found);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    assert(cxpr_engine_get_double(session, "prev", &found) == 11.0 && found);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    assert(cxpr_engine_get_double(session, "prev", &found) == 12.0 && found);
     cxpr_engine_session_free(session);
 }
 
@@ -340,13 +533,264 @@ static void test_engine_lookback_delegates_to_prior_resolver(void) {
     cxpr_registry_free(registry); /* injected registry is not engine-owned */
 }
 
+static void test_engine_shared_registry_non_engine_lookback_uses_prior_resolver(void) {
+    static const double close[3] = {10.0, 11.0, 12.0};
+    size_t host_calls = 0u;
+    const cxpr_expression_def exprs[] = {
+        {"c1", "close[1]"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &close[0], sizeof(double), 3u},
+    };
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    cxpr_ast* ast;
+    double out = 0.0;
+
+    assert(registry);
+    assert(ctx);
+    assert(parser);
+    cxpr_register_defaults(registry);
+    cxpr_registry_set_lookback_resolver(registry, host_prior_resolver, &host_calls, NULL);
+
+    cfg.registry = registry;
+    cfg.expressions = exprs;
+    cfg.expression_count = 1u;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+
+    ast = cxpr_parse(parser, "hostvar[2]", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, registry, &out, &err));
+    assert(out == 1002.0);
+    assert(host_calls == 1u);
+
+    cxpr_ast_free(ast);
+    cxpr_engine_session_free(session);
+    cxpr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(registry);
+}
+
+static void test_engine_shared_registry_resolver_refcount(void) {
+    static const double close[3] = {10.0, 11.0, 12.0};
+    size_t host_calls = 0u;
+    const cxpr_expression_def exprs[] = {
+        {"c1", "close[1]"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &close[0], sizeof(double), 3u},
+    };
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* first;
+    cxpr_engine_session* second;
+    bool found = false;
+
+    assert(registry);
+    cxpr_register_defaults(registry);
+    cxpr_registry_set_lookback_resolver(registry, host_prior_resolver, &host_calls, NULL);
+
+    cfg.registry = registry;
+    cfg.expressions = exprs;
+    cfg.expression_count = 1u;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1u;
+
+    first = cxpr_engine_session_create(&cfg, &err);
+    assert(first);
+    second = cxpr_engine_session_create(&cfg, &err);
+    assert(second);
+
+    assert(cxpr_engine_tick(first, NULL, NULL, &err));
+    assert(isnan(cxpr_engine_get_double(first, "c1", &found)) && found);
+
+    cxpr_engine_session_free(first);
+
+    assert(cxpr_engine_tick(second, NULL, NULL, &err));
+    assert(isnan(cxpr_engine_get_double(second, "c1", &found)) && found);
+    assert(cxpr_engine_tick(second, NULL, NULL, &err));
+    assert(cxpr_engine_get_double(second, "c1", &found) == 10.0 && found);
+    assert(host_calls == 0u);
+
+    cxpr_engine_session_free(second);
+    {
+        cxpr_lookback_resolver_ptr restored = NULL;
+        void* restored_ud = NULL;
+        cxpr_registry_lookback_resolver(registry, &restored, &restored_ud);
+        assert(restored == host_prior_resolver);
+        assert(restored_ud == &host_calls);
+    }
+    cxpr_registry_free(registry);
+}
+
+static void test_engine_tracked_struct_field_lookback_uses_result_ring(void) {
+    static const double close[5] = {10.0, 12.0, 15.0, 11.0, 20.0};
+    const cxpr_expression_def exprs[] = {
+        {"band", "band(close)"},
+        {"prev_lower", "band.lower[1]"},
+        {"prev_upper2", "band.upper[2]"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &close[0], sizeof(double), 5},
+    };
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    double prev_lower[5];
+    double prev_upper2[5];
+    size_t i;
+
+    assert(registry);
+    cxpr_register_defaults(registry);
+    cxpr_registry_add_value(registry, "band", band_value_fn, 1u, 1u, NULL, NULL);
+
+    cfg.registry = registry;
+    cfg.expressions = exprs;
+    cfg.expression_count = 3u;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    for (i = 0; i < 5u; ++i) {
+        bool found = false;
+        assert(cxpr_engine_tick(session, NULL, NULL, &err));
+        prev_lower[i] = cxpr_engine_get_double(session, "prev_lower", &found);
+        assert(found);
+        prev_upper2[i] = cxpr_engine_get_double(session, "prev_upper2", &found);
+        assert(found);
+    }
+
+    assert(isnan(prev_lower[0]));
+    assert(prev_lower[1] == 9.0);
+    assert(prev_lower[4] == 10.0);
+    assert(isnan(prev_upper2[0]));
+    assert(isnan(prev_upper2[1]));
+    assert(prev_upper2[3] == 13.0);
+
+    cxpr_engine_session_free(session);
+    cxpr_registry_free(registry);
+}
+
+static void test_engine_tracked_nested_struct_path_lookback_uses_result_ring(void) {
+    static const double close[5] = {10.0, 12.0, 15.0, 11.0, 20.0};
+    const cxpr_expression_def exprs[] = {
+        {"box", "box(close)"},
+        {"prev_value", "box.inner.value[1]"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &close[0], sizeof(double), 5},
+    };
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    double prev_value[5];
+    size_t i;
+
+    assert(registry);
+    cxpr_register_defaults(registry);
+    cxpr_registry_add_value(registry, "box", nested_box_value_fn, 1u, 1u, NULL, NULL);
+
+    cfg.registry = registry;
+    cfg.expressions = exprs;
+    cfg.expression_count = 2u;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    for (i = 0; i < 5u; ++i) {
+        bool found = false;
+        assert(cxpr_engine_tick(session, NULL, NULL, &err));
+        prev_value[i] = cxpr_engine_get_double(session, "prev_value", &found);
+        assert(found);
+    }
+
+    assert(isnan(prev_value[0]));
+    assert(prev_value[1] == 10.5);
+    assert(prev_value[4] == 11.5);
+
+    cxpr_engine_session_free(session);
+    cxpr_registry_free(registry);
+}
+
+static void test_engine_inline_lookback_policy_preempts_prior_resolver(void) {
+    static const double close[4] = {10.0, 11.0, 9.0, 12.0};
+    size_t delegate_calls = 0u;
+    size_t policy_calls = 0u;
+    const cxpr_expression_def exprs[] = {
+        {"prev_shifted", "shifted(close)[1]"},
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        {"close", &close[0], sizeof(double), 4},
+    };
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    double values[4];
+    size_t i;
+
+    assert(registry);
+    cxpr_register_defaults(registry);
+    cxpr_registry_add_ast(
+        registry, "shifted", shifted_ast_fn, 1u, 1u, CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_lookback_resolver(
+        registry, host_counting_resolver, &delegate_calls, NULL);
+
+    cfg.registry = registry;
+    cfg.expressions = exprs;
+    cfg.expression_count = 1u;
+    cfg.column_sources = cols;
+    cfg.column_source_count = 1u;
+    cfg.inline_lookback = inline_shifted_policy;
+    cfg.inline_lookback_userdata = &policy_calls;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    for (i = 0; i < 4u; ++i) {
+        bool found = false;
+        assert(cxpr_engine_tick(session, NULL, NULL, &err));
+        values[i] = cxpr_engine_get_double(session, "prev_shifted", &found);
+        assert(found);
+    }
+
+    assert(isnan(values[0]));
+    assert(values[1] == 110.0);
+    assert(values[2] == 111.0);
+    assert(values[3] == 109.0);
+    assert(delegate_calls == 0u);
+    assert(policy_calls == 4u);
+
+    cxpr_engine_session_free(session);
+    cxpr_registry_free(registry);
+}
+
 int main(void) {
     test_engine_view_source_lookback();
+    test_engine_view_source_map_index_before_read();
+    test_engine_bare_identifier_alias_preserves_bool();
     test_engine_lookback_delegates_to_prior_resolver();
+    test_engine_shared_registry_non_engine_lookback_uses_prior_resolver();
+    test_engine_shared_registry_resolver_refcount();
+    test_engine_tracked_struct_field_lookback_uses_result_ring();
+    test_engine_tracked_nested_struct_path_lookback_uses_result_ring();
+    test_engine_inline_lookback_policy_preempts_prior_resolver();
     test_engine_inline_lookback_reevaluates_at_offset();
     test_engine_basket_roles_source_args_and_member_lookback();
     test_engine_source_call_memo_reuses_bound_args();
-    test_engine_rejects_pull_arg_lookback_without_arg_rings();
+    test_engine_pull_arg_lookback_uses_per_argument_ring();
     printf("  \xE2\x9C\x93 engine_layer\n");
     return 0;
 }

@@ -21,6 +21,38 @@ static void test_ir_exec_typed_bool_path(void) {
     assert(out.b == false);
 }
 
+static void test_ir_exec_typed_numeric_truthiness(void) {
+    {
+        cxpr_ir_instr code[] = {
+            {.op = CXPR_OP_PUSH_CONST, .value = 0.0},
+            {.op = CXPR_OP_NOT},
+            {.op = CXPR_OP_RETURN}
+        };
+        cxpr_ir_program program = {.code = code, .count = 3};
+        cxpr_error err = {0};
+        cxpr_value out = cxpr_ir_exec_typed(&program, NULL, NULL, NULL, 0, &err);
+        assert(err.code == CXPR_OK);
+        assert(out.type == CXPR_VALUE_BOOL);
+        assert(out.b == true);
+    }
+    {
+        cxpr_ir_instr code[] = {
+            {.op = CXPR_OP_PUSH_CONST, .value = 2.0},
+            {.op = CXPR_OP_JUMP_IF_FALSE, .index = 4},
+            {.op = CXPR_OP_PUSH_BOOL, .value = 1.0},
+            {.op = CXPR_OP_RETURN},
+            {.op = CXPR_OP_PUSH_BOOL, .value = 0.0},
+            {.op = CXPR_OP_RETURN}
+        };
+        cxpr_ir_program program = {.code = code, .count = 6};
+        cxpr_error err = {0};
+        cxpr_value out = cxpr_ir_exec_typed(&program, NULL, NULL, NULL, 0, &err);
+        assert(err.code == CXPR_OK);
+        assert(out.type == CXPR_VALUE_BOOL);
+        assert(out.b == true);
+    }
+}
+
 static void test_ir_exec_typed_string_literal(void) {
     cxpr_ir_instr code[] = {
         {.op = CXPR_OP_PUSH_STRING, .name = "1h"},
@@ -37,6 +69,7 @@ static void test_ir_exec_typed_string_literal(void) {
 
 int main(void) {
     test_ir_exec_typed_bool_path();
+    test_ir_exec_typed_numeric_truthiness();
     test_ir_exec_typed_string_literal();
     printf("  \xE2\x9C\x93 ir_exec_typed\n");
     return 0;

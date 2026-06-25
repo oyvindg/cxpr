@@ -759,14 +759,14 @@ handle:
 cxpr_context_set(ctx, "close", 0.0);
 cxpr_context_set(ctx, "volume", 0.0);
 
-cxpr_context_slot close_slot, volume_slot;
-cxpr_context_slot_bind(ctx, "close", &close_slot);
-cxpr_context_slot_bind(ctx, "volume", &volume_slot);
+const char* slot_names[] = {"close", "volume"};
+cxpr_context_slot slots[2];
+cxpr_context_slots_bind(ctx, slot_names, slots, CXPR_ARRAY_COUNT(slots));
 
 // In the hot loop, update through slots instead of by name.
 for (size_t i = 0; i < bar_count; i++) {
-    cxpr_context_slot_set(&close_slot, bars[i].close);
-    cxpr_context_slot_set(&volume_slot, bars[i].volume);
+    cxpr_context_slots_set(slots, (double[]){bars[i].close, bars[i].volume},
+                           CXPR_ARRAY_COUNT(slots));
 
     bool result = false;
     cxpr_eval_program_bool(prog, ctx, reg, &result, NULL);

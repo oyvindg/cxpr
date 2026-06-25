@@ -45,7 +45,7 @@
  *   from @ref cxpr_engine_tick as a borrowed array of plain events, after the
  *   tick has finished. All effects happen in host code, post-tick.
  *
- * The engine is domain-neutral: it knows nothing of bars, orders, or positions.
+ * The engine is domain-neutral: it knows nothing of host records or actions.
  * It speaks sources, expressions, ticks, and events. Policy — what an expression
  * *means* and what to do when it fires — stays in the host.
  *
@@ -70,6 +70,18 @@ extern "C" {
 typedef struct cxpr_engine_program cxpr_engine_program;
 /** @brief Opaque mutable engine session — one isolated run, one per thread. */
 typedef struct cxpr_engine_session cxpr_engine_session;
+
+/** @brief Context key used by cxpr_engine while evaluating an inline lookback target. */
+extern const char* const CXPR_ENGINE_LOOKBACK_OFFSET_KEY;
+
+/**
+ * @brief Read the current inline lookback offset from a context.
+ *
+ * Hosts that opt AST targets into @ref cxpr_engine_inline_lookback_fn can use
+ * this helper inside their callbacks to adjust any host-owned scoped/source
+ * reads. Returns false when no engine inline lookback is active.
+ */
+bool cxpr_engine_context_lookback_offset(const cxpr_context* ctx, size_t* out_offset);
 
 /**
  * @brief Transition kind that causes a watched expression to fire.
@@ -109,7 +121,7 @@ typedef double (*cxpr_engine_pull_fn)(
  * @brief Resolve a view (random-access) source at an absolute cursor index.
  *
  * View sources model inputs the host already holds as an indexed series — a
- * preloaded bar array, for example. The engine keeps no ring for them; it asks
+ * preloaded sample array, for example. The engine keeps no ring for them; it asks
  * for the value at the current cursor for live reads and at `cursor - n` for
  * `expr[n]` lookback, offsetting the index itself.
  *
@@ -129,6 +141,30 @@ typedef bool (*cxpr_engine_view_fn)(
     double* out_value,
     void* userdata);
 
+/**
+ * @brief Optional host policy for inline lookback evaluation.
+ *
+ * The engine owns lookback for its declared sources and named expression rings.
+ * For host-provided AST functions it normally delegates to the registry's prior
+ * lookback resolver. A host that has offset-aware functions can opt specific
+ * targets into engine inline evaluation without teaching cxpr any domain names.
+ */
+typedef bool (*cxpr_engine_inline_lookback_fn)(
+    const cxpr_ast* target,
+    void* userdata);
+
+/**
+ * @brief Optionally map the engine cursor to a view source's own index space.
+ *
+ * The engine calls this after applying expression lookback (`cursor - n`) and
+ * before invoking @ref cxpr_engine_view_fn. Hosts with timestamp-aligned
+ * secondary series can map a primary tick to the secondary index at or before
+ * that tick. Return a negative value when no source row exists for the cursor.
+ */
+typedef int64_t (*cxpr_engine_view_index_map_fn)(
+    int64_t cursor,
+    void* userdata);
+
 /** @brief One pull (streaming) source registration entry. */
 typedef struct {
     const char* name;       /**< Provider-visible source name. */
@@ -141,6 +177,7 @@ typedef struct {
     const char* name;       /**< Provider-visible source name. */
     cxpr_engine_view_fn fn;  /**< Indexed value resolver. */
     void* userdata;         /**< Opaque pointer passed back to @ref fn. */
+    cxpr_engine_view_index_map_fn map_index; /**< Optional cursor → source-index mapper. */
 } cxpr_engine_view_source_def;
 
 /**
@@ -150,7 +187,7 @@ typedef struct {
  * Binds a source straight to a `double` field of a host record array, so the
  * engine reads `*(const double*)((const char*)base + index * stride)` with no
  * per-read branching. This is the zero-boilerplate fast path for scalar columns
- * of an array-of-structs (e.g. `cxta_series_bar::close`): point @ref base at the
+ * of an array-of-structs (e.g. `sample_record::value`): point @ref base at the
  * field of element 0 and set @ref stride to the element size. Lookback and
  * bounds behave exactly as for callback view sources (out-of-range → NaN/false).
  *
@@ -160,8 +197,8 @@ typedef struct {
  */
 typedef struct {
     const char* name;   /**< Provider-visible source name. */
-    const void* base;   /**< Address of the `double` field in element 0 (e.g. `&bars[0].close`). Borrowed. */
-    size_t stride;      /**< Bytes between consecutive elements (e.g. `sizeof(cxta_series_bar)`). */
+    const void* base;   /**< Address of the `double` field in element 0 (e.g. `&records[0].value`). Borrowed. */
+    size_t stride;      /**< Bytes between consecutive elements (e.g. `sizeof(sample_record)`). */
     size_t count;       /**< Number of elements, used for bounds checking. */
 } cxpr_engine_column_source_def;
 
@@ -186,6 +223,7 @@ typedef struct {
     const char* name;        /**< Role variable name (used as `$name` in expressions). */
     const double* members;   /**< Opaque member ids. */
     size_t member_count;     /**< Number of members. */
+    size_t bound_count;      /**< Logical bound universe size, or 0 to match member_count. */
 } cxpr_engine_role_def;
 
 /**
@@ -244,9 +282,9 @@ typedef struct {
  * stride / callback) is program-level and shared, but the **binding** — a pull/
  * view source's `userdata`, a column source's `base`/`count` — is per-session,
  * with the config value as the default. Data and host state are session-scoped:
- * a session points its sources at its own bar array / host state via
+ * a session points its sources at its own sample array / host state via
  * @ref cxpr_engine_bind_column and @ref cxpr_engine_bind_userdata. Sessions that
- * share data (e.g. an optimizer varying only params over one bar set) just keep
+ * share data (e.g. an optimizer varying only params over one dataset) just keep
  * the defaults and never rebind.
  *
  * `roles` seed basket roles per session (defaults, like `params`); update a
@@ -271,6 +309,8 @@ typedef struct {
     size_t param_count;                             /**< Number of entries in @ref params. */
     const cxpr_engine_role_def* roles;              /**< Default basket roles (seeded per session). */
     size_t role_count;                              /**< Number of entries in @ref roles. */
+    cxpr_engine_inline_lookback_fn inline_lookback; /**< Optional host policy for offset-aware AST targets. */
+    void* inline_lookback_userdata;                 /**< Opaque pointer passed to @ref inline_lookback. */
 } cxpr_engine_config;
 
 /**
@@ -324,8 +364,8 @@ cxpr_engine_session* cxpr_engine_session_new(const cxpr_engine_program* prog);
 /**
  * @brief One-shot: build a program and open a single session from one config.
  *
- * Convenience for the **single-session** case (live trading, a one-off
- * backtest) where the program/session split is pure ceremony. Equivalent to
+ * Convenience for the **single-session** case where the program/session split
+ * is pure ceremony. Equivalent to
  * @ref cxpr_engine_program_new followed by @ref cxpr_engine_session_new, except
  * the returned session **owns** its program: @ref cxpr_engine_session_free frees
  * both.
@@ -366,6 +406,53 @@ void cxpr_engine_session_free(cxpr_engine_session* session);
 void cxpr_engine_session_reset(cxpr_engine_session* session);
 
 /**
+ * @brief Return the mutable context owned by a session.
+ *
+ * Hosts may populate ordinary variables, structs, strings, and params directly
+ * before calling @ref cxpr_engine_tick. The returned pointer is borrowed and
+ * remains owned by @p session.
+ */
+cxpr_context* cxpr_engine_session_context(cxpr_engine_session* session);
+
+/**
+ * @brief Advance the session at an explicit absolute cursor index.
+ *
+ * Equivalent to setting the next tick cursor to @p index and then calling
+ * @ref cxpr_engine_tick. This is useful for hosts that already own an indexed
+ * series and need an engine expression to align with an existing read index.
+ */
+bool cxpr_engine_tick_at(cxpr_engine_session* session,
+                         int64_t index,
+                         const cxpr_engine_event** out_events,
+                         size_t* out_count,
+                         cxpr_error* err);
+
+/**
+ * @brief Advance one tick using an external context as fallback input.
+ *
+ * The engine keeps its own session context for hydrated sources, seeded params,
+ * roles, source slots, and result lookback, while temporarily using @p parent_ctx
+ * as fallback input for ordinary host variables, structs, strings, and params.
+ * This preserves existing host-owned context APIs while keeping source and
+ * result lookback inside the engine session.
+ */
+bool cxpr_engine_tick_fallback(cxpr_engine_session* session,
+                               const cxpr_context* parent_ctx,
+                               const cxpr_engine_event** out_events,
+                               size_t* out_count,
+                               cxpr_error* err);
+
+/**
+ * @brief Advance at an explicit cursor index using an external parent context.
+ */
+bool cxpr_engine_tick_at_fallback(cxpr_engine_session* session,
+                                  int64_t index,
+                                  const cxpr_context* parent_ctx,
+                                  const cxpr_engine_event** out_events,
+                                  size_t* out_count,
+                                  cxpr_error* err);
+
+/**
  * @brief Set a numeric `$param` for a session.
  *
  * Params are fixed for the life of a session unless changed by an explicit call
@@ -391,8 +478,8 @@ void cxpr_engine_set_param_value(cxpr_engine_session* session, const char* name,
  * @brief Point a column source at this session's data (per-session binding).
  *
  * Overrides the config default `base`/`count` for one column source. Data is
- * session-scoped: use this to run the same program over a different bar array
- * (walk-forward, multi-symbol) without rebuilding the program. The structural
+ * session-scoped: use this to run the same program over a different sample array
+ * without rebuilding the program. The structural
  * `stride` is fixed at declaration and not changed here.
  *
  * @param session Destination session.
@@ -508,6 +595,26 @@ double cxpr_engine_get_double(const cxpr_engine_session* session, const char* na
  * @return Boolean result, or `false` on miss or type mismatch.
  */
 bool cxpr_engine_get_bool(const cxpr_engine_session* session, const char* name, bool* found);
+
+/**
+ * @brief Return the compiled IR instruction count for one engine expression.
+ */
+size_t cxpr_engine_expression_instruction_count(const cxpr_engine_session* session,
+                                                const char* name,
+                                                bool* found);
+
+/**
+ * @brief Return compiled IR instructions for one expression plus dependencies.
+ */
+size_t cxpr_engine_expression_dependency_instruction_count(
+    const cxpr_engine_session* session,
+    const char* name,
+    bool* found);
+
+/**
+ * @brief Return total compiled IR instructions for the engine expression batch.
+ */
+size_t cxpr_engine_expression_total_instruction_count(const cxpr_engine_session* session);
 
 #ifdef __cplusplus
 }

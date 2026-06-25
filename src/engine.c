@@ -4,19 +4,16 @@
  *
  * Implements cxpr/engine.h. See plans/cxpr_engine_layer_decisions.md (D1-D25).
  *
- * Increment 1 scope: program/session lifecycle (D14/D4), registry DI incl.
- * NULL-default (D19), config-seeded params (D12) and roles (D25), per-session
- * source binding (D22), source hydration via pull/view/column backings, watches
- * with edge detection and the borrowed event batch (D9/D11), and the result
- * readers. Engine-owned lookback rings / result-rings (D7/D16/D17) and the
- * lookback-resolver wiring are a later increment; until then expressions see the
- * current value of each referenced source.
- *
- * Built only on cxpr's public API so the layer stays decoupled from the kernel.
+ * Owns program/session lifecycle (D14/D4), registry DI incl. NULL-default
+ * (D19), config-seeded params (D12) and roles (D25), per-session source binding
+ * (D22), source hydration via pull/view/column backings, source/result lookback
+ * rings (D7/D16/D17), watches with edge detection and borrowed event batches
+ * (D9/D11), and result readers.
  */
 
 #include <cxpr/engine.h>
 #include <cxpr/cxpr.h>
+#include "context/internal.h"
 #include "limits.h"
 
 #include <math.h>
@@ -45,6 +42,7 @@ typedef struct {
     engine_source_kind kind;
     cxpr_engine_pull_fn pull_fn; /* PULL */
     cxpr_engine_view_fn view_fn; /* VIEW */
+    cxpr_engine_view_index_map_fn map_index_fn; /* VIEW, optional */
     void* userdata;              /* PULL/VIEW binding (default; overridable per session) */
     const void* base;            /* COLUMN binding (default; overridable per session) */
     size_t stride;               /* COLUMN: structural, fixed */
@@ -75,6 +73,7 @@ typedef struct {
     char* name;
     double* members;
     size_t count;
+    size_t bound_count;
 } engine_role;
 
 /* A named expression that is looked back (`expr[n]`); gets a per-session result
@@ -84,9 +83,9 @@ typedef struct {
     size_t max_depth;
 } engine_tracked_expr;
 
-/* Simple circular buffer of doubles (newest at head). */
+/* Simple circular buffer of expression values (newest at head). */
 typedef struct {
-    double* buf;
+    cxpr_value* buf;
     size_t cap;
     size_t head;
     size_t count;
@@ -100,6 +99,18 @@ typedef struct {
     double value;
     bool valid;
 } engine_source_memo_entry;
+
+typedef struct {
+    const engine_source* src;
+    double args[CXPR_MAX_CALL_ARGS];
+    size_t argc;
+    double* ring;
+    size_t ring_cap;
+    size_t ring_head;
+    size_t ring_count;
+    int64_t last_append_cursor;
+    bool valid;
+} engine_arg_ring_entry;
 
 struct cxpr_engine_program {
     const cxpr_registry* registry;
@@ -117,6 +128,9 @@ struct cxpr_engine_program {
     cxpr_context_entry* params; /* names owned */
     size_t param_count;
 
+    char** external_params; /* $params referenced by expressions, names owned */
+    size_t external_param_count;
+
     engine_role* roles;
     size_t role_count;
 
@@ -125,11 +139,12 @@ struct cxpr_engine_program {
 
     /* Resolver previously installed on an injected registry. The engine owns
      * lookback for its sources + tracked expressions; any other target falls
-     * through here so a host's resolver (e.g. dyn's series/indicator resolver)
-     * keeps serving lookbacks the engine does not own. NULL for the
-     * engine-owned default registry (no prior resolver). */
+     * through here so the host can keep serving lookbacks the engine does not
+     * own. NULL for the engine-owned default registry (no prior resolver). */
     cxpr_lookback_resolver_ptr delegate_lookback_fn;
     void* delegate_lookback_ud;
+    cxpr_engine_inline_lookback_fn inline_lookback_fn;
+    void* inline_lookback_ud;
 };
 
 struct cxpr_engine_session {
@@ -159,7 +174,101 @@ struct cxpr_engine_session {
     engine_source_memo_entry* source_memo;
     size_t source_memo_count;
     size_t source_memo_cap;
+
+    engine_arg_ring_entry* arg_rings;
+    size_t arg_ring_count;
+    size_t arg_ring_cap;
 };
+
+static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* index,
+                                     const cxpr_context* ctx, const cxpr_registry* reg,
+                                     void* userdata, cxpr_value* out, cxpr_error* err);
+
+typedef struct engine_registry_resolver_ref {
+    const cxpr_registry* registry;
+    cxpr_lookback_resolver_ptr prior_fn;
+    void* prior_ud;
+    size_t ref_count;
+    struct engine_registry_resolver_ref* next;
+} engine_registry_resolver_ref;
+
+static engine_registry_resolver_ref* g_engine_registry_refs = NULL;
+
+static bool engine_registry_resolver_acquire(cxpr_engine_program* prog) {
+    engine_registry_resolver_ref* it;
+    cxpr_lookback_resolver_ptr prior = NULL;
+    void* prior_ud = NULL;
+
+    if (!prog || !prog->registry || prog->owns_registry) return true;
+    for (it = g_engine_registry_refs; it; it = it->next) {
+        if (it->registry == prog->registry) {
+            it->ref_count++;
+            prog->delegate_lookback_fn = it->prior_fn;
+            prog->delegate_lookback_ud = it->prior_ud;
+            return true;
+        }
+    }
+
+    cxpr_registry_lookback_resolver(prog->registry, &prior, &prior_ud);
+    it = (engine_registry_resolver_ref*)calloc(1u, sizeof(*it));
+    if (!it) return false;
+    it->registry = prog->registry;
+    it->prior_fn = prior == engine_lookback_resolver ? NULL : prior;
+    it->prior_ud = prior == engine_lookback_resolver ? NULL : prior_ud;
+    it->ref_count = 1u;
+    it->next = g_engine_registry_refs;
+    g_engine_registry_refs = it;
+
+    prog->delegate_lookback_fn = it->prior_fn;
+    prog->delegate_lookback_ud = it->prior_ud;
+    cxpr_registry_set_lookback_resolver(
+        (cxpr_registry*)prog->registry, engine_lookback_resolver, NULL, NULL);
+    return true;
+}
+
+static void engine_registry_resolver_release(const cxpr_engine_program* prog) {
+    engine_registry_resolver_ref** link;
+    if (!prog || !prog->registry || prog->owns_registry) return;
+    for (link = &g_engine_registry_refs; *link; link = &(*link)->next) {
+        engine_registry_resolver_ref* it = *link;
+        if (it->registry != prog->registry) continue;
+        if (it->ref_count > 1u) {
+            it->ref_count--;
+            return;
+        }
+        {
+            cxpr_lookback_resolver_ptr cur = NULL;
+            cxpr_registry_lookback_resolver(prog->registry, &cur, NULL);
+            if (cur == engine_lookback_resolver) {
+                cxpr_registry_set_lookback_resolver(
+                    (cxpr_registry*)prog->registry,
+                    it->prior_fn,
+                    it->prior_ud,
+                    NULL);
+            }
+        }
+        *link = it->next;
+        free(it);
+        return;
+    }
+}
+
+static bool engine_registry_resolver_delegate(const cxpr_registry* registry,
+                                              cxpr_lookback_resolver_ptr* out_fn,
+                                              void** out_ud) {
+    engine_registry_resolver_ref* it;
+    if (out_fn) *out_fn = NULL;
+    if (out_ud) *out_ud = NULL;
+    if (!registry) return false;
+    for (it = g_engine_registry_refs; it; it = it->next) {
+        if (it->registry == registry) {
+            if (out_fn) *out_fn = it->prior_fn;
+            if (out_ud) *out_ud = it->prior_ud;
+            return it->prior_fn != NULL;
+        }
+    }
+    return false;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Small helpers                                                               */
@@ -196,11 +305,12 @@ static bool engine_value_truthy(cxpr_value v) {
     return false;
 }
 
-/* Build the basket role struct the cxpr basket builtins read (D25). Mirrors
- * dyn's binding: `__cxpr_basket_role_<name>` = { bound_count, value_count,
- * v0..v{n-1} }, plus `$name` bound directly when there is a single member. */
+/* Build the basket role struct the cxpr basket builtins read (D25):
+ * `__cxpr_basket_role_<name>` = { bound_count, value_count, v0..v{n-1} },
+ * plus `$name` bound directly when there is a single member. */
 static bool engine_seed_role(cxpr_context* ctx, const char* name,
-                             const double* members, size_t count) {
+                             const double* members, size_t count,
+                             size_t bound_count) {
     char key[256];
     const char** fnames;
     cxpr_value* fvals;
@@ -221,7 +331,7 @@ static bool engine_seed_role(cxpr_context* ctx, const char* name,
     }
 
     fnames[0] = "bound_count";
-    fvals[0] = cxpr_num((double)count);
+    fvals[0] = cxpr_num((double)(bound_count ? bound_count : count));
     fnames[1] = "value_count";
     fvals[1] = cxpr_num((double)count);
     for (i = 0; i < count; ++i) {
@@ -248,6 +358,23 @@ static bool engine_seed_role(cxpr_context* ctx, const char* name,
  * without per-session userdata on the registry. */
 static ENGINE_TLS cxpr_engine_session* g_engine_tls_session = NULL;
 static ENGINE_TLS size_t g_engine_tls_lookback_offset = 0;
+
+const char* const CXPR_ENGINE_LOOKBACK_OFFSET_KEY = "__cxpr_engine_lookback_offset";
+
+bool cxpr_engine_context_lookback_offset(const cxpr_context* ctx, size_t* out_offset) {
+    bool found = false;
+    double raw;
+    long long rounded;
+
+    if (out_offset) *out_offset = 0u;
+    if (!ctx) return false;
+    raw = cxpr_context_get(ctx, CXPR_ENGINE_LOOKBACK_OFFSET_KEY, &found);
+    if (!found || !isfinite(raw) || raw <= 0.0) return false;
+    rounded = llround(raw);
+    if (rounded < 0ll || fabs(raw - (double)rounded) > 1e-9) return false;
+    if (out_offset) *out_offset = (size_t)rounded;
+    return true;
+}
 
 static engine_source* engine_find_source_in(engine_source* sources, size_t count,
                                             const char* name) {
@@ -276,16 +403,19 @@ static double engine_ring_read(const engine_source* s, size_t depth) {
 }
 
 /* engine_ring (used for expression result rings). */
-static void engine_ringb_append(engine_ring* r, double v) {
+static void engine_ringb_append(engine_ring* r, cxpr_value v) {
     if (!r->buf || r->cap == 0) return;
     r->head = (r->head + 1u) % r->cap;
-    r->buf[r->head] = v;
+    cxpr_value_free(&r->buf[r->head]);
+    r->buf[r->head] = cxpr_value_clone(&v);
     if (r->count < r->cap) r->count++;
 }
-static double engine_ringb_read(const engine_ring* r, size_t depth) {
+static cxpr_value engine_ringb_read(const engine_ring* r, size_t depth, bool* found) {
     size_t idx;
-    if (!r->buf || depth >= r->count) return NAN;
+    if (found) *found = false;
+    if (!r->buf || depth >= r->count) return cxpr_num(NAN);
     idx = (r->head + r->cap - depth) % r->cap;
+    if (found) *found = true;
     return r->buf[idx];
 }
 
@@ -317,6 +447,25 @@ static bool engine_track_expr(cxpr_engine_program* prog, const char* name, size_
     if (!prog->tracked[prog->tracked_count].name) return false;
     prog->tracked[prog->tracked_count].max_depth = depth;
     prog->tracked_count++;
+    return true;
+}
+
+static bool engine_track_external_param(cxpr_engine_program* prog, const char* name) {
+    char** grown;
+    size_t i;
+
+    if (!prog || !name || name[0] == '\0') return true;
+    for (i = 0u; i < prog->external_param_count; ++i) {
+        if (strcmp(prog->external_params[i], name) == 0) return true;
+    }
+    grown = (char**)realloc(
+        prog->external_params,
+        (prog->external_param_count + 1u) * sizeof(*grown));
+    if (!grown) return false;
+    prog->external_params = grown;
+    prog->external_params[prog->external_param_count] = engine_strdup(name);
+    if (!prog->external_params[prog->external_param_count]) return false;
+    prog->external_param_count++;
     return true;
 }
 
@@ -359,6 +508,23 @@ static void engine_scan_ast_with_offset(const cxpr_ast* ast,
                         engine_track_expr(prog, tname, lookback); /* expr result-ring (D16) */
                     }
                 }
+            } else if (target && cxpr_ast_type(target) == CXPR_NODE_CHAIN_ACCESS &&
+                       cxpr_ast_chain_depth(target) >= 2u &&
+                       index && cxpr_ast_type(index) == CXPR_NODE_NUMBER) {
+                const char* root = cxpr_ast_chain_segment(target, 0u);
+                double nd = cxpr_ast_number_value(index);
+                if (nd >= 0.0 && engine_is_expr_name(prog, root)) {
+                    lookback = inherited_lookback + (size_t)nd;
+                    engine_track_expr(prog, root, lookback);
+                }
+            } else if (target && cxpr_ast_type(target) == CXPR_NODE_FIELD_ACCESS &&
+                       index && cxpr_ast_type(index) == CXPR_NODE_NUMBER) {
+                const char* root = cxpr_ast_field_object(target);
+                double nd = cxpr_ast_number_value(index);
+                if (nd >= 0.0 && engine_is_expr_name(prog, root)) {
+                    lookback = inherited_lookback + (size_t)nd;
+                    engine_track_expr(prog, root, lookback);
+                }
             } else if (index && cxpr_ast_type(index) == CXPR_NODE_NUMBER) {
                 double nd = cxpr_ast_number_value(index);
                 if (nd >= 0.0) lookback = inherited_lookback + (size_t)nd;
@@ -391,6 +557,10 @@ static void engine_scan_ast_with_offset(const cxpr_ast* ast,
             }
             break;
         }
+        case CXPR_NODE_FIELD_ACCESS:
+            break;
+        case CXPR_NODE_CHAIN_ACCESS:
+            break;
         case CXPR_NODE_PRODUCER_ACCESS:
             for (i = 0; i < cxpr_ast_producer_argc(ast); ++i) {
                 engine_scan_ast_with_offset(cxpr_ast_producer_arg(ast, i), prog, inherited_lookback);
@@ -411,6 +581,37 @@ static int engine_tracked_index(const cxpr_engine_program* prog, const char* nam
         if (strcmp(prog->tracked[i].name, name) == 0) return (int)i;
     }
     return -1;
+}
+
+static bool engine_struct_field_value(cxpr_value value, const char* field, cxpr_value* out) {
+    size_t i;
+    if (!field || !out || value.type != CXPR_VALUE_STRUCT || !value.s) return false;
+    for (i = 0; i < value.s->field_count; ++i) {
+        if (value.s->field_names[i] && strcmp(value.s->field_names[i], field) == 0) {
+            *out = value.s->field_values[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool engine_struct_path_value(cxpr_value value,
+                                     const cxpr_ast* chain,
+                                     size_t first_segment,
+                                     cxpr_value* out) {
+    size_t i;
+    size_t depth;
+    cxpr_value cur = value;
+    if (!chain || !out || cxpr_ast_type(chain) != CXPR_NODE_CHAIN_ACCESS) return false;
+    depth = cxpr_ast_chain_depth(chain);
+    if (first_segment >= depth) return false;
+    for (i = first_segment; i < depth; ++i) {
+        if (!engine_struct_field_value(cur, cxpr_ast_chain_segment(chain, i), &cur)) {
+            return false;
+        }
+    }
+    *out = cur;
+    return true;
 }
 
 static bool engine_eval_call_args(const cxpr_ast* call_ast,
@@ -495,6 +696,88 @@ static void engine_source_memo_set(cxpr_engine_session* session,
     for (i = 0; i < argc; ++i) entry->args[i] = args[i];
 }
 
+static bool engine_arg_tuple_equal(const double* lhs, const double* rhs, size_t argc) {
+    size_t i;
+    for (i = 0; i < argc; ++i) {
+        if (lhs[i] != rhs[i]) return false;
+    }
+    return true;
+}
+
+static engine_arg_ring_entry* engine_arg_ring_find(cxpr_engine_session* session,
+                                                   const engine_source* src,
+                                                   const double* args,
+                                                   size_t argc) {
+    size_t i;
+    if (!session || !src || !args || argc == 0u) return NULL;
+    for (i = 0; i < session->arg_ring_count; ++i) {
+        engine_arg_ring_entry* entry = &session->arg_rings[i];
+        if (entry->valid && entry->src == src && entry->argc == argc &&
+            engine_arg_tuple_equal(entry->args, args, argc)) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static engine_arg_ring_entry* engine_arg_ring_get_or_create(cxpr_engine_session* session,
+                                                            const engine_source* src,
+                                                            const double* args,
+                                                            size_t argc) {
+    engine_arg_ring_entry* entry;
+    engine_arg_ring_entry* grown;
+    size_t i;
+    if (!session || !src || !args || argc == 0u || argc > CXPR_MAX_CALL_ARGS ||
+        src->max_lookback == 0u) {
+        return NULL;
+    }
+    entry = engine_arg_ring_find(session, src, args, argc);
+    if (entry) return entry;
+    if (session->arg_ring_count == session->arg_ring_cap) {
+        size_t next_cap = session->arg_ring_cap ? session->arg_ring_cap * 2u : 8u;
+        grown = (engine_arg_ring_entry*)realloc(
+            session->arg_rings, next_cap * sizeof(*session->arg_rings));
+        if (!grown) return NULL;
+        memset(grown + session->arg_ring_cap, 0,
+               (next_cap - session->arg_ring_cap) * sizeof(*grown));
+        session->arg_rings = grown;
+        session->arg_ring_cap = next_cap;
+    }
+    entry = &session->arg_rings[session->arg_ring_count++];
+    memset(entry, 0, sizeof(*entry));
+    entry->src = src;
+    entry->argc = argc;
+    entry->ring_cap = src->max_lookback + 1u;
+    entry->last_append_cursor = -1;
+    entry->ring = (double*)malloc(entry->ring_cap * sizeof(double));
+    if (!entry->ring) {
+        memset(entry, 0, sizeof(*entry));
+        session->arg_ring_count--;
+        return NULL;
+    }
+    for (i = 0; i < argc; ++i) entry->args[i] = args[i];
+    entry->valid = true;
+    return entry;
+}
+
+static void engine_arg_ring_append(engine_arg_ring_entry* entry, double value, int64_t cursor) {
+    if (!entry || !entry->ring || entry->ring_cap == 0u ||
+        entry->last_append_cursor == cursor) {
+        return;
+    }
+    entry->ring_head = (entry->ring_head + 1u) % entry->ring_cap;
+    entry->ring[entry->ring_head] = value;
+    if (entry->ring_count < entry->ring_cap) entry->ring_count++;
+    entry->last_append_cursor = cursor;
+}
+
+static double engine_arg_ring_read(const engine_arg_ring_entry* entry, size_t depth) {
+    size_t idx;
+    if (!entry || !entry->ring || depth >= entry->ring_count) return NAN;
+    idx = (entry->ring_head + entry->ring_cap - depth) % entry->ring_cap;
+    return entry->ring[idx];
+}
+
 static bool engine_resolve_source_call(cxpr_engine_session* session,
                                        const engine_source* src,
                                        const double* args,
@@ -510,12 +793,18 @@ static bool engine_resolve_source_call(cxpr_engine_session* session,
     cursor = session->cursor - (int64_t)offset;
     switch (src->kind) {
         case ENGINE_SRC_PULL:
-            if (argc > 0u && offset > 0u) {
-                engine_set_err(
-                    err,
-                    CXPR_ERR_SYNTAX,
-                    "engine: pull source lookback with arguments requires per-argument rings");
-                return false;
+            if (argc > 0u && src->ring_cap > 0u && src->pull_fn) {
+                engine_arg_ring_entry* ring =
+                    engine_arg_ring_get_or_create(session, src, args, argc);
+                double current = src->pull_fn(src->name, args, argc, src->userdata);
+                if (!ring) {
+                    engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY,
+                                   "engine: failed to allocate pull source argument ring");
+                    return false;
+                }
+                engine_arg_ring_append(ring, current, session->cursor);
+                v = engine_arg_ring_read(ring, offset);
+                break;
             }
             if (argc == 0u && (offset > 0u || src->ring)) {
                 v = engine_ring_read(src, offset);
@@ -530,7 +819,12 @@ static bool engine_resolve_source_call(cxpr_engine_session* session,
         case ENGINE_SRC_VIEW:
             if (src->view_fn && cursor >= 0) {
                 double out = 0.0;
-                if (src->view_fn(cursor, src->name, args, argc, &out, src->userdata)) v = out;
+                int64_t source_index = cursor;
+                if (src->map_index_fn) source_index = src->map_index_fn(cursor, src->userdata);
+                if (source_index >= 0 &&
+                    src->view_fn(source_index, src->name, args, argc, &out, src->userdata)) {
+                    v = out;
+                }
             }
             break;
         case ENGINE_SRC_COLUMN:
@@ -558,6 +852,34 @@ static bool engine_hydrate_sources_at_offset(cxpr_engine_session* s,
         }
         cxpr_context_set(ctx, src->name, v);
     }
+    return true;
+}
+
+static bool engine_eval_inline_lookback(cxpr_engine_session* s,
+                                        const cxpr_ast* target,
+                                        size_t offset,
+                                        const cxpr_context* ctx,
+                                        const cxpr_registry* reg,
+                                        cxpr_value* out,
+                                        cxpr_error* err) {
+    cxpr_context* shifted;
+    size_t saved_offset = g_engine_tls_lookback_offset;
+    cxpr_value value = cxpr_num(NAN);
+    bool ok;
+
+    shifted = cxpr_context_clone(ctx);
+    if (!shifted) {
+        engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY, "engine: out of memory evaluating inline lookback");
+        return true;
+    }
+    g_engine_tls_lookback_offset = saved_offset + offset;
+    cxpr_context_set(shifted, CXPR_ENGINE_LOOKBACK_OFFSET_KEY,
+                     (double)g_engine_tls_lookback_offset);
+    engine_hydrate_sources_at_offset(s, shifted, g_engine_tls_lookback_offset);
+    ok = cxpr_eval_ast(target, shifted, reg, &value, err);
+    cxpr_context_free(shifted);
+    g_engine_tls_lookback_offset = saved_offset;
+    if (ok) *out = value;
     return true;
 }
 
@@ -591,12 +913,10 @@ static cxpr_value engine_source_call(const cxpr_ast* call_ast,
 
 /* Lookback resolver for `target[n]` (D16). The engine serves the lookbacks it
  * owns — sources (column/view via cursor offset, pull via ring) and
- * named-expression result-rings — and delegates any other target to the
- * resolver a host installed before the engine (prog->delegate_lookback_fn),
- * falling back to the engine's own inline re-evaluation when no delegate
- * exists. The delegation is what lets a host (e.g. dyn) migrate lookback onto
- * the engine piecewise: OHLCV/tracked-expression lookbacks resolve here, while
- * host indicator/series lookbacks still flow to the host resolver. */
+ * named-expression result-rings. For anything else, a host-supplied inline
+ * policy may opt offset-aware targets into engine re-evaluation; remaining
+ * targets delegate to the resolver a host installed before the engine. This
+ * keeps cxpr domain-neutral while allowing hosts to migrate lookback piecewise. */
 static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* index,
                                      const cxpr_context* ctx, const cxpr_registry* reg,
                                      void* userdata, cxpr_value* out, cxpr_error* err) {
@@ -608,7 +928,19 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
     int target_type;
 
     (void)userdata;
-    if (!s || !out) { engine_set_err(err, CXPR_ERR_SYNTAX, "engine: no active session for lookback"); return false; }
+    if (!out) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: missing lookback output");
+        return false;
+    }
+    if (!s) {
+        cxpr_lookback_resolver_ptr delegate = NULL;
+        void* delegate_ud = NULL;
+        if (engine_registry_resolver_delegate(reg, &delegate, &delegate_ud)) {
+            return delegate(target, index, ctx, reg, delegate_ud, out, err);
+        }
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: no active session for lookback");
+        return false;
+    }
     if (!index || cxpr_ast_type(index) != CXPR_NODE_NUMBER) {
         engine_set_err(err, CXPR_ERR_SYNTAX, "engine: non-literal lookback index unsupported");
         return false;
@@ -620,13 +952,16 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
     if (!target) return false;
     target_type = cxpr_ast_type(target);
 
-    /* Engine-owned: a source bound as a function call, e.g. ema(close,14)[2]. */
+    /* Engine-owned: a source bound as a function call, e.g. source(id)[2].
+     * Column sources are excluded: `name(args)` on a column may be a host
+     * function of the same name, so it must delegate rather than coerce
+     * non-numeric host arguments to doubles. */
     if (target_type == CXPR_NODE_FUNCTION_CALL) {
         double args[CXPR_MAX_CALL_ARGS] = {0};
         size_t argc = 0;
         name = cxpr_ast_function_name(target);
         src = engine_find_source_in(s->sources, s->source_count, name);
-        if (src) {
+        if (src && src->kind != ENGINE_SRC_COLUMN) {
             if (!engine_eval_call_args(target, ctx, reg, args, &argc, err)) return true;
             if (!engine_resolve_source_call(
                     s, src, args, argc, g_engine_tls_lookback_offset + n, &v, err)) {
@@ -634,6 +969,10 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
             }
             *out = cxpr_num(v);
             return true;
+        }
+        if (src && src->kind == ENGINE_SRC_COLUMN) {
+            return engine_eval_inline_lookback(
+                s, target, n, ctx, reg, out, err);
         }
     } else if (target_type == CXPR_NODE_IDENTIFIER) {
         name = cxpr_ast_identifier_name(target);
@@ -650,39 +989,68 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
             /* Named-expression result ring (D16). */
             int ti = engine_tracked_index(s->prog, name);
             if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
-                *out = cxpr_num(engine_ringb_read(&s->expr_rings[ti], n));
+                bool found = false;
+                cxpr_value value = engine_ringb_read(&s->expr_rings[ti], n, &found);
+                *out = found ? value : cxpr_num(NAN);
                 return true;
             }
+        }
+    } else if (target_type == CXPR_NODE_CHAIN_ACCESS &&
+               cxpr_ast_chain_depth(target) >= 2u) {
+        const char* root = cxpr_ast_chain_segment(target, 0u);
+        int ti = engine_tracked_index(s->prog, root);
+        if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
+            bool found = false;
+            cxpr_value value = engine_ringb_read(&s->expr_rings[ti], n, &found);
+            if (!found) {
+                *out = cxpr_num(NAN);
+                return true;
+            }
+            if (!engine_struct_path_value(value, target, 1u, out)) {
+                engine_set_err(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                               "engine: unknown tracked expression field path");
+                return true;
+            }
+            return true;
+        }
+    } else if (target_type == CXPR_NODE_FIELD_ACCESS) {
+        const char* root = cxpr_ast_field_object(target);
+        const char* field = cxpr_ast_field_name(target);
+        int ti = engine_tracked_index(s->prog, root);
+        if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
+            bool found = false;
+            cxpr_value value = engine_ringb_read(&s->expr_rings[ti], n, &found);
+            if (!found) {
+                *out = cxpr_num(NAN);
+                return true;
+            }
+            if (!engine_struct_field_value(value, field, out)) {
+                engine_set_err(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                               "engine: unknown tracked expression field");
+                return true;
+            }
+            return true;
         }
     }
 
     /* Not engine-owned: hand off to the host's prior resolver if one exists. */
     if (s->prog->delegate_lookback_fn) {
+        if (target_type != CXPR_NODE_IDENTIFIER &&
+            s->prog->inline_lookback_fn &&
+            s->prog->inline_lookback_fn(target, s->prog->inline_lookback_ud)) {
+            return engine_eval_inline_lookback(
+                s, target, n, ctx, reg, out, err);
+        }
         return s->prog->delegate_lookback_fn(target, index, ctx, reg,
                                              s->prog->delegate_lookback_ud, out, err);
     }
 
-    /* No delegate (engine-owned registry): the engine's own fallbacks. */
     if (target_type != CXPR_NODE_IDENTIFIER) {
         /* Inline anonymous subexpression: re-evaluate with sources offset by n. */
-        cxpr_context* shifted;
-        size_t saved_offset = g_engine_tls_lookback_offset;
-        cxpr_value value = cxpr_num(NAN);
-        bool ok;
-
-        shifted = cxpr_context_clone(ctx);
-        if (!shifted) {
-            engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY, "engine: out of memory evaluating inline lookback");
-            return true;
-        }
-        g_engine_tls_lookback_offset = saved_offset + n;
-        engine_hydrate_sources_at_offset(s, shifted, g_engine_tls_lookback_offset);
-        ok = cxpr_eval_ast(target, shifted, reg, &value, err);
-        cxpr_context_free(shifted);
-        g_engine_tls_lookback_offset = saved_offset;
-        if (ok) *out = value;
-        return true;
+        return engine_eval_inline_lookback(
+            s, target, n, ctx, reg, out, err);
     }
+
     engine_set_err(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                    "engine: lookback target is neither a source nor a tracked expression");
     return false;
@@ -706,6 +1074,8 @@ static void engine_program_free_internals(cxpr_engine_program* prog) {
     free(prog->watches);
     for (i = 0; i < prog->param_count; ++i) free((char*)prog->params[i].name);
     free(prog->params);
+    for (i = 0; i < prog->external_param_count; ++i) free(prog->external_params[i]);
+    free(prog->external_params);
     for (i = 0; i < prog->role_count; ++i) {
         free(prog->roles[i].name);
         free(prog->roles[i].members);
@@ -716,17 +1086,7 @@ static void engine_program_free_internals(cxpr_engine_program* prog) {
     if (prog->owns_registry) {
         cxpr_registry_free((cxpr_registry*)prog->registry);
     } else {
-        /* Injected registry: leave it as we found it. Restore the resolver the
-         * host had installed (or none) so a later non-engine evaluation does not
-         * hit the engine resolver with no active session. Only restore if the
-         * registry still points at ours — never clobber a newer install. */
-        cxpr_lookback_resolver_ptr cur = NULL;
-        cxpr_registry_lookback_resolver(prog->registry, &cur, NULL);
-        if (cur == engine_lookback_resolver) {
-            cxpr_registry_set_lookback_resolver((cxpr_registry*)prog->registry,
-                                                prog->delegate_lookback_fn,
-                                                prog->delegate_lookback_ud, NULL);
-        }
+        engine_registry_resolver_release(prog);
     }
 }
 
@@ -786,6 +1146,8 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
         prog->registry = reg;
         prog->owns_registry = true;
     }
+    prog->inline_lookback_fn = config->inline_lookback;
+    prog->inline_lookback_ud = config->inline_lookback_userdata;
 
     /* Copy expressions. */
     if (config->expression_count > 0) {
@@ -821,6 +1183,7 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
                 prog->sources[k].kind = ENGINE_SRC_VIEW;
                 prog->sources[k].name = engine_strdup(config->view_sources[i].name);
                 prog->sources[k].view_fn = config->view_sources[i].fn;
+                prog->sources[k].map_index_fn = config->view_sources[i].map_index;
                 prog->sources[k].userdata = config->view_sources[i].userdata;
                 if (!prog->sources[k].name) { prog->source_count = k + 1; goto oom; }
             }
@@ -836,9 +1199,14 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
         }
     }
 
-    /* Source names can also be called with numeric args, e.g. `price($pair)`.
-     * The handler reads the active session via TLS so bindings remain per-session. */
+    /* Source names can also be called with numeric args, e.g. `metric($item)`.
+     * The handler reads the active session via TLS so bindings remain per-session.
+     * Column sources are scalar per-step values with no numeric-arg call semantics
+     * (engine_resolve_source_call yields NaN for argc>0), so skip them: registering
+     * a column as a callable would clobber a host function of the same name on a
+     * shared registry, and that host function may accept non-numeric arguments. */
     for (i = 0; i < prog->source_count; ++i) {
+        if (prog->sources[i].kind == ENGINE_SRC_COLUMN) continue;
         cxpr_registry_add_ast(
             (cxpr_registry*)prog->registry,
             prog->sources[i].name,
@@ -882,6 +1250,7 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
             size_t mc = config->roles[i].member_count;
             prog->roles[i].name = engine_strdup(config->roles[i].name);
             prog->roles[i].count = mc;
+            prog->roles[i].bound_count = config->roles[i].bound_count;
             if (mc > 0) {
                 prog->roles[i].members = (double*)malloc(mc * sizeof(double));
                 if (!prog->roles[i].members) { prog->role_count = i + 1; goto oom; }
@@ -946,7 +1315,21 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
                 cxpr_error perr = {0};
                 cxpr_ast* ast = cxpr_parse(parser, prog->exprs[i].expression, &perr);
                 if (ast) {
+                    const char* params[256];
+                    size_t param_count;
+                    size_t pi;
                     engine_scan_ast(ast, prog);
+                    param_count = cxpr_ast_variables_used(
+                        ast, params, sizeof(params) / sizeof(params[0]));
+                    for (pi = 0u;
+                         pi < param_count && pi < sizeof(params) / sizeof(params[0]);
+                         ++pi) {
+                        if (!engine_track_external_param(prog, params[pi])) {
+                            cxpr_ast_free(ast);
+                            cxpr_parser_free(parser);
+                            goto oom;
+                        }
+                    }
                     cxpr_ast_free(ast);
                 }
             }
@@ -954,24 +1337,17 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
         }
     }
 
-    /* Install the engine's lookback resolver (D7/D16). The engine owns lookback
-     * (D19) for its sources + tracked named-expressions, the one registry write
-     * it performs, done here at single-threaded setup time. Capture any resolver
-     * a host already installed first and chain to it: lookbacks the engine does
-     * not own (e.g. host indicator/series lookback) fall through to the prior
-     * resolver instead of failing, letting lookback migrate onto the engine
-     * piecewise. NULL on the engine-owned default registry (no prior resolver). */
-    {
-        cxpr_lookback_resolver_ptr prior = NULL;
-        void* prior_ud = NULL;
-        cxpr_registry_lookback_resolver(prog->registry, &prior, &prior_ud);
-        if (prior != engine_lookback_resolver) { /* never self-chain */
-            prog->delegate_lookback_fn = prior;
-            prog->delegate_lookback_ud = prior_ud;
-        }
+    /* Install the engine's lookback resolver (D7/D16). Injected registries can
+     * be shared by several engine programs, so refcount the install and restore
+     * the host resolver only when the last program is freed. */
+    if (prog->owns_registry) {
+        cxpr_registry_set_lookback_resolver((cxpr_registry*)prog->registry,
+                                            engine_lookback_resolver, NULL, NULL);
+    } else if (!engine_registry_resolver_acquire(prog)) {
+        engine_set_err(err, CXPR_ERR_OUT_OF_MEMORY,
+                       "engine: failed to install lookback resolver");
+        goto oom;
     }
-    cxpr_registry_set_lookback_resolver((cxpr_registry*)prog->registry,
-                                        engine_lookback_resolver, NULL, NULL);
 
     /* Validate by compiling once; surfaces parse/dependency errors early. */
     validate = engine_build_evaluator(prog, err);
@@ -1047,7 +1423,7 @@ cxpr_engine_session* cxpr_engine_session_new(const cxpr_engine_program* prog) {
         s->expr_ring_count = prog->tracked_count;
         for (i = 0; i < prog->tracked_count; ++i) {
             size_t cap = prog->tracked[i].max_depth + 1u;
-            s->expr_rings[i].buf = (double*)malloc(cap * sizeof(double));
+            s->expr_rings[i].buf = (cxpr_value*)calloc(cap, sizeof(cxpr_value));
             if (!s->expr_rings[i].buf) goto fail;
             s->expr_rings[i].cap = cap;
         }
@@ -1067,8 +1443,8 @@ cxpr_engine_session* cxpr_engine_session_new(const cxpr_engine_program* prog) {
     /* Heuristic: ~16 distinct (args, offset) keys per source plus slack. Generous
      * for scalar sources; a large basket (members × call-sites × offsets) can still
      * exceed it, in which case engine_source_memo_set degrades gracefully (see there).
-     * Revisit the sizing — and a hashed lookup over the current linear scan — under
-     * the dyn/CUDA parity+perf gate if real baskets push past this. */
+     * Revisit the sizing — and a hashed lookup over the current linear scan — if
+     * real workloads push past this. */
     s->source_memo_cap = (prog->source_count * 16u) + 32u;
     if (s->source_memo_cap > 0u) {
         s->source_memo = (engine_source_memo_entry*)calloc(
@@ -1082,7 +1458,8 @@ cxpr_engine_session* cxpr_engine_session_new(const cxpr_engine_program* prog) {
         cxpr_context_set_param(s->ctx, prog->params[i].name, prog->params[i].value);
     }
     for (i = 0; i < prog->role_count; ++i) {
-        engine_seed_role(s->ctx, prog->roles[i].name, prog->roles[i].members, prog->roles[i].count);
+        engine_seed_role(s->ctx, prog->roles[i].name, prog->roles[i].members,
+                         prog->roles[i].count, prog->roles[i].bound_count);
     }
 
     return s;
@@ -1114,13 +1491,21 @@ void cxpr_engine_session_free(cxpr_engine_session* session) {
     if (session->ctx) cxpr_context_free(session->ctx);
     for (i = 0; i < session->source_count; ++i) free(session->sources[i].ring);
     free(session->sources);
-    for (i = 0; i < session->expr_ring_count; ++i) free(session->expr_rings[i].buf);
+    for (i = 0; i < session->expr_ring_count; ++i) {
+        size_t j;
+        for (j = 0; j < session->expr_rings[i].cap; ++j) {
+            cxpr_value_free(&session->expr_rings[i].buf[j]);
+        }
+        free(session->expr_rings[i].buf);
+    }
     free(session->expr_rings);
     free(session->prev_truthy);
     free(session->prev_value);
     free(session->prev_valid);
     free(session->events);
     free(session->source_memo);
+    for (i = 0; i < session->arg_ring_count; ++i) free(session->arg_rings[i].ring);
+    free(session->arg_rings);
     if (session->owned_prog) cxpr_engine_program_free(session->owned_prog);
     free(session);
 }
@@ -1140,12 +1525,25 @@ void cxpr_engine_session_reset(cxpr_engine_session* session) {
         session->sources[i].slot_bound = false; /* rebind lazily next tick */
     }
     for (i = 0; i < session->expr_ring_count; ++i) {
+        size_t j;
+        for (j = 0; j < session->expr_rings[i].cap; ++j) {
+            cxpr_value_free(&session->expr_rings[i].buf[j]);
+        }
         session->expr_rings[i].head = 0;
         session->expr_rings[i].count = 0;
+    }
+    for (i = 0; i < session->arg_ring_count; ++i) {
+        session->arg_rings[i].ring_head = 0u;
+        session->arg_rings[i].ring_count = 0u;
+        session->arg_rings[i].last_append_cursor = -1;
     }
     session->source_memo_count = 0u;
     cxpr_context_clear_cached_structs(session->ctx);
     /* Params, role structs and source bindings are retained (D12/D22). */
+}
+
+cxpr_context* cxpr_engine_session_context(cxpr_engine_session* session) {
+    return session ? session->ctx : NULL;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1194,7 +1592,7 @@ bool cxpr_engine_bind_userdata(cxpr_engine_session* session, const char* name,
 bool cxpr_engine_set_role(cxpr_engine_session* session, const char* name,
                           const double* members, size_t count) {
     if (!session || !name) return false;
-    return engine_seed_role(session->ctx, name, members, count);
+    return engine_seed_role(session->ctx, name, members, count, 0u);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1251,7 +1649,7 @@ bool cxpr_engine_tick(cxpr_engine_session* session,
     /* Reserve this tick's slot (depth 0) in each expression result ring so that
      * `expr[n]` reads depth n uniformly with sources; filled after eval (D16). */
     for (i = 0; i < session->expr_ring_count; ++i) {
-        engine_ringb_append(&session->expr_rings[i], NAN);
+        engine_ringb_append(&session->expr_rings[i], cxpr_num(NAN));
     }
 
     /* Evaluate the rule set. Data misses are NaN and do not abort (D18).
@@ -1271,7 +1669,10 @@ bool cxpr_engine_tick(cxpr_engine_session* session,
         bool f = false;
         cxpr_value v = cxpr_expression_get(session->eval, prog->tracked[i].name, &f);
         engine_ring* r = &session->expr_rings[i];
-        if (r->buf) r->buf[r->head] = f ? engine_value_to_double(v) : NAN;
+        if (r->buf) {
+            cxpr_value_free(&r->buf[r->head]);
+            r->buf[r->head] = f ? cxpr_value_clone(&v) : cxpr_num(NAN);
+        }
     }
 
     /* Edge detection over watches (D9/D11). */
@@ -1320,6 +1721,69 @@ bool cxpr_engine_tick(cxpr_engine_session* session,
     return true;
 }
 
+bool cxpr_engine_tick_at(cxpr_engine_session* session,
+                         int64_t index,
+                         const cxpr_engine_event** out_events,
+                         size_t* out_count,
+                         cxpr_error* err) {
+    if (!session) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: NULL session");
+        return false;
+    }
+    if (index < 0) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: negative tick index");
+        return false;
+    }
+    session->cursor = index - 1;
+    return cxpr_engine_tick(session, out_events, out_count, err);
+}
+
+bool cxpr_engine_tick_fallback(cxpr_engine_session* session,
+                               const cxpr_context* parent_ctx,
+                               const cxpr_engine_event** out_events,
+                               size_t* out_count,
+                               cxpr_error* err) {
+    const cxpr_context* previous_parent;
+    size_t i;
+    bool ok;
+
+    if (!session) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: NULL session");
+        return false;
+    }
+    if (!parent_ctx) return cxpr_engine_tick(session, out_events, out_count, err);
+
+    for (i = 0u; i < session->prog->external_param_count; ++i) {
+        bool found = false;
+        const char* name = session->prog->external_params[i];
+        cxpr_value value = cxpr_context_get_param_typed(parent_ctx, name, &found);
+        if (found) cxpr_context_set_param_value(session->ctx, name, &value);
+    }
+    previous_parent = session->ctx->parent;
+    session->ctx->parent = parent_ctx;
+    ok = cxpr_engine_tick(session, out_events, out_count, err);
+    session->ctx->parent = previous_parent;
+    return ok;
+}
+
+bool cxpr_engine_tick_at_fallback(cxpr_engine_session* session,
+                                  int64_t index,
+                                  const cxpr_context* parent_ctx,
+                                  const cxpr_engine_event** out_events,
+                                  size_t* out_count,
+                                  cxpr_error* err) {
+    if (!session) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: NULL session");
+        return false;
+    }
+    if (index < 0) {
+        engine_set_err(err, CXPR_ERR_SYNTAX, "engine: negative tick index");
+        return false;
+    }
+    session->cursor = index - 1;
+    return cxpr_engine_tick_fallback(session, parent_ctx, out_events, out_count, err);
+}
+
 int64_t cxpr_engine_tick_index(const cxpr_engine_session* session) {
     return session ? session->cursor : -1;
 }
@@ -1340,4 +1804,26 @@ bool cxpr_engine_get_bool(const cxpr_engine_session* session, const char* name, 
     if (found) *found = false;
     if (!session || !name) return false;
     return cxpr_expression_get_bool(session->eval, name, found);
+}
+
+size_t cxpr_engine_expression_instruction_count(const cxpr_engine_session* session,
+                                                const char* name,
+                                                bool* found) {
+    if (found) *found = false;
+    if (!session || !name) return 0u;
+    return cxpr_expression_instruction_count(session->eval, name, found);
+}
+
+size_t cxpr_engine_expression_dependency_instruction_count(
+    const cxpr_engine_session* session,
+    const char* name,
+    bool* found) {
+    if (found) *found = false;
+    if (!session || !name) return 0u;
+    return cxpr_expression_dependency_instruction_count(session->eval, name, found);
+}
+
+size_t cxpr_engine_expression_total_instruction_count(const cxpr_engine_session* session) {
+    if (!session) return 0u;
+    return cxpr_expression_total_instruction_count(session->eval);
 }

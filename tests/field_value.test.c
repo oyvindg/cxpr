@@ -433,6 +433,31 @@ static void test_ir_parity(void) {
     printf("  \u2713 test_ir_parity\n");
 }
 
+static void test_ir_parent_bool_identifier_equality(void) {
+    cxpr_registry *reg = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_context *parent = cxpr_context_new();
+    cxpr_context *ctx;
+
+    cxpr_value r;
+
+    cxpr_context_set_bool(parent, "flag", false);
+    ctx = cxpr_context_overlay_new(parent);
+
+    r = ir_eval_typed("flag == false", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
+    assert(r.b == true);
+
+    r = ir_eval_typed("flag != true", ctx, reg);
+    assert(r.type == CXPR_VALUE_BOOL);
+    assert(r.b == true);
+
+    cxpr_context_free(ctx);
+    cxpr_context_free(parent);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_ir_parent_bool_identifier_equality\n");
+}
+
 int main(void) {
     printf("Running field_value tests...\n");
     test_fv_constructors();
@@ -449,6 +474,7 @@ int main(void) {
     test_eval_double_wrapper();
     test_eval_bool_wrapper();
     test_ir_parity();
+    test_ir_parent_bool_identifier_equality();
     printf("All field_value tests passed!\n");
     return 0;
 }
