@@ -5,7 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.7.0] - 2026-06-22
+## [2.7.0] - 2026-06-29
+
+### Added
+
+- **`cxpr_c_target.emit_call_at_offset`** — an optional codegen hook letting a
+  C-like target render a whole `FUNCTION_CALL` node its own way (e.g. a memoized
+  value referenced as a precomputed variable, or a source accessor lowered to an
+  array index) instead of as a `name(args...)` call. The hook sets `*handled`;
+  returning `false` falls back to cxpr's built-in emission (function-name
+  mapping and the `rising`/`falling`/`repeat`/`min`/`max` expansions), so it is
+  purely additive and existing targets are unaffected. Gated on
+  `api_version == CXPR_C_TARGET_API_VERSION` like `emit_leaf_at_offset`.
+- **`cxpr_ast_to_c_at_offset(ast, lookback_offset, target, err)`** — transpile a
+  single AST to a C expression string relative to a base lookback offset.
+  `cxpr_ast_to_c` is now this with offset 0. Lets a target's `emit_call_at_offset`
+  recurse into sub-arguments at the correct lookback offset, keeping nested
+  operator/lookback handling inside cxpr.
 
 ### Changed
 

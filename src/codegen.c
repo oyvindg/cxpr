@@ -63,6 +63,12 @@ static int cxpr_cg_target_has_offset_leaf(const cxpr_c_target* target) {
            target->emit_leaf_at_offset;
 }
 
+static int cxpr_cg_target_has_call(const cxpr_c_target* target) {
+    return target &&
+           target->api_version == CXPR_C_TARGET_API_VERSION &&
+           target->emit_call_at_offset;
+}
+
 /* ── function mapping ────────────────────────────────────────────────────── */
 
 /* Default portable C/CUDA names for cxpr builtins. min/max are handled
@@ -105,11 +111,6 @@ static const char* cxpr_cg_binary_op_str(int op) {
 static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
                                   cxpr_cg_buf* b, const cxpr_c_target* target,
                                   cxpr_error* err);
-
-static int cxpr_cg_emit(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target* target,
-                        cxpr_error* err) {
-    return cxpr_cg_emit_at_offset(ast, 0u, b, target, err);
-}
 
 static int cxpr_cg_emit_trend_call(const cxpr_ast* ast, unsigned lookback_offset,
                                    cxpr_cg_buf* b, const cxpr_c_target* target,
@@ -210,6 +211,22 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_ast* ast, unsigned lookback_of
                                        cxpr_error* err) {
     const char* name = cxpr_ast_function_name(ast);
     size_t argc = cxpr_ast_function_argc(ast);
+
+    if (cxpr_cg_target_has_call(target)) {
+        bool handled = false;
+        cxpr_error herr = {0};
+        char* out = target->emit_call_at_offset(ast, lookback_offset, target->userdata, &handled, &herr);
+        if (handled) {
+            if (!out) {
+                if (err) *err = herr;
+                return 0;
+            }
+            cxpr_cg_puts(b, out);
+            free(out);
+            return 1;
+        }
+        free(out); /* defensive: ignored when not handled */
+    }
 
     if (strcmp(name, "rising") == 0 || strcmp(name, "falling") == 0) {
         return cxpr_cg_emit_trend_call(
@@ -425,9 +442,14 @@ bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
 }
 
 char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err) {
+    return cxpr_ast_to_c_at_offset(ast, 0u, target, err);
+}
+
+char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+                              const cxpr_c_target* target, cxpr_error* err) {
     cxpr_cg_buf b = {0};
     if (err) *err = (cxpr_error){0};
-    if (!cxpr_cg_emit(ast, &b, target, err)) { free(b.data); return NULL; }
+    if (!cxpr_cg_emit_at_offset(ast, lookback_offset, &b, target, err)) { free(b.data); return NULL; }
     if (b.oom) { free(b.data); cxpr_cg_err(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return NULL; }
     return b.data ? b.data : cxpr_strdup("");
 }

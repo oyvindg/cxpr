@@ -80,6 +80,91 @@ static char* to_c_with_lookback(const char* expr) {
     return out;
 }
 
+/* ── emit_call_at_offset hook ────────────────────────────────────────────── */
+
+typedef struct call_hook_ud {
+    const cxpr_c_target* self;
+} call_hook_ud;
+
+/* Handles `rsi(...)` as an opaque offset-aware leaf (a precomputed state var),
+ * `wrap(x)` by recursing into its argument at the current offset (proving
+ * cxpr_ast_to_c_at_offset threads the offset), and falls through otherwise. */
+static char* test_emit_call(const cxpr_ast* ast,
+                            unsigned lookback_offset,
+                            void* userdata,
+                            bool* handled,
+                            cxpr_error* err) {
+    const char* name = cxpr_ast_function_name(ast);
+    call_hook_ud* ud = (call_hook_ud*)userdata;
+    char buf[256];
+
+    if (name && strcmp(name, "rsi") == 0) {
+        *handled = true;
+        if (lookback_offset == 0u) {
+            snprintf(buf, sizeof(buf), "rsi_val[i]");
+        } else {
+            snprintf(buf, sizeof(buf), "rsi_val[(i >= %uu ? i - %uu : 0u)]",
+                     lookback_offset, lookback_offset);
+        }
+        return dup_text(buf);
+    }
+    if (name && strcmp(name, "wrap") == 0) {
+        *handled = true;
+        char* inner = cxpr_ast_to_c_at_offset(
+            cxpr_ast_function_arg(ast, 0u), lookback_offset, ud->self, err);
+        if (!inner) return NULL;
+        snprintf(buf, sizeof(buf), "W(%s)", inner);
+        free(inner);
+        return dup_text(buf);
+    }
+    *handled = false;
+    return NULL;
+}
+
+static char* to_c_with_call(const char* expr) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    call_hook_ud ud = {0};
+    cxpr_c_target target = {
+        .api_version = CXPR_C_TARGET_API_VERSION,
+        .emit_leaf_at_offset = test_emit_leaf_at_offset,
+        .emit_call_at_offset = test_emit_call,
+        .userdata = &ud,
+    };
+    ud.self = &target;
+    assert(ast && err.code == CXPR_OK);
+    char* out = cxpr_ast_to_c(ast, &target, &err);
+    assert(out && err.code == CXPR_OK);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    return out;
+}
+
+static void call_eq(const char* expr, const char* want) {
+    char* got = to_c_with_call(expr);
+    if (strcmp(got, want) != 0) {
+        fprintf(stderr, "to_c_with_call(\"%s\") = \"%s\", want \"%s\"\n", expr, got, want);
+        assert(0);
+    }
+    free(got);
+}
+
+static void test_emit_call_hook(void) {
+    /* handled opaque call -> precomputed state var leaf */
+    call_eq("rsi(close, 14)", "rsi_val[i]");
+    /* lookback applies to the handled call's offset */
+    call_eq("rsi(close, 14)[1] > 30", "(rsi_val[(i >= 1u ? i - 1u : 0u)] > 30)");
+    /* recursion via cxpr_ast_to_c_at_offset threads the offset into the arg */
+    call_eq("wrap(close)", "W(close[i])");
+    call_eq("wrap(close)[2]", "W(close[(i >= 2u ? i - 2u : 0u)])");
+    /* unhandled call falls through to cxpr's own emission (leaf hook on arg) */
+    call_eq("sqrt(x)", "sqrt(x[i])");
+    /* unhandled builtin still gets cxpr's rising/falling expansion */
+    call_eq("falling(close, 2)", "((close[i] < close[(i >= 1u ? i - 1u : 0u)]))");
+    printf("  emit_call_at_offset hook OK\n");
+}
+
 static void eq(const char* expr, const char* want) {
     char* got = to_c(expr);
     if (strcmp(got, want) != 0) {
@@ -276,6 +361,7 @@ int main(void) {
     test_operators();
     test_functions();
     test_lookback_codegen_with_leaf_hook();
+    test_emit_call_hook();
     test_membership_desugar();
     test_unsupported();
     test_exprset_topo();
