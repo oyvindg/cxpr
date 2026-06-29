@@ -317,11 +317,10 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
     }
 
     {
-        bool bool_found = false;
-        bool bool_value = cxpr_context_get_local_bool(ctx, instr->name, &bool_found);
-        if (bool_found) {
+        cxpr_value typed = cxpr_context_get_typed(ctx, instr->name, &scope_found);
+        if (scope_found) {
             if (found) *found = true;
-            return cxpr_bool(bool_value);
+            return typed;
         }
     }
 
@@ -333,5 +332,6 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
         return cxpr_num(scalar);
     }
 
-    return cxpr_context_get_typed(ctx, instr->name, found);
+    if (found) *found = false;
+    return cxpr_num(0.0);
 }

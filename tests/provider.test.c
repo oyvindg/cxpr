@@ -399,7 +399,9 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
 
     cxpr_provider_host_visible_arg_range(ema, NULL, &min_args, &max_args);
     assert(min_args == 1u);
-    assert(max_args == 2u);
+    /* source + period + optional `selector` scope arg, e.g.
+       ema(close, period=10, selector="daily"). */
+    assert(max_args == 3u);
 
     assert(cxpr_provider_expr_param_spec_for(&expr_provider, "ema", &expr_spec) != 0);
     assert(expr_spec.count == 2u);
@@ -409,7 +411,7 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(cxpr_register_provider_fn_spec(reg, ema, NULL) != 0);
     assert(cxpr_registry_lookup(reg, "ema", &min_args, &max_args) != 0);
     assert(min_args == 1u);
-    assert(max_args == 2u);
+    assert(max_args == 3u);
 
     {
         cxpr_parser* parser = cxpr_parser_new();

@@ -19,9 +19,43 @@
 #include <cxpr/ast.h>
 #include <cxpr/types.h>
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define CXPR_C_TARGET_API_VERSION 1u
+
+typedef char* (*cxpr_c_emit_leaf_at_offset_fn)(const cxpr_ast* ast,
+                                               unsigned lookback_offset,
+                                               void* userdata,
+                                               cxpr_error* err);
+
+typedef bool (*cxpr_c_emit_offset_fn)(void* userdata,
+                                      const cxpr_ast* ast,
+                                      int lookback_offset,
+                                      cxpr_error* err);
+
+/**
+ * @brief Optionally emit a whole FUNCTION_CALL node as target-specific source.
+ *
+ * Consulted before cxpr's own call emission (builtin name mapping, the
+ * `rising`/`falling`/`repeat`/`min`/`max` expansions). Lets a target render a
+ * call its own way — e.g. a memoized value referenced as a precomputed
+ * variable, or a source accessor lowered to an array index — instead of as a
+ * `name(args...)` call. Set `*handled` to true and return a newly allocated
+ * string (free with `free`) to take ownership of the node; on error inside a
+ * handled node, set `*handled` true, populate @p err, and return NULL. Set
+ * `*handled` false (return value ignored) to fall back to cxpr's default
+ * emission. The target may recurse into sub-arguments via
+ * `cxpr_ast_to_c_at_offset` to keep nested operator/lookback handling in cxpr.
+ */
+typedef char* (*cxpr_c_emit_call_at_offset_fn)(const cxpr_ast* ast,
+                                               unsigned lookback_offset,
+                                               void* userdata,
+                                               bool* handled,
+                                               cxpr_error* err);
 
 /**
  * @brief Target description for a C-like backend (plain C, CUDA, WGSL, ...).
@@ -31,10 +65,18 @@ extern "C" {
  * remap others). Return NULL to reject a function — transpilation then fails
  * with a clear error. When `map_function` (or the whole target) is NULL, a
  * default portable-C/CUDA mapping is used.
+ *
+ * `emit_leaf_at_offset` (optional) lets the target render identifier/variable/
+ * field leaves itself, threading the current lookback offset; `emit_call_at_offset`
+ * (optional) does the same for whole function-call nodes. Both are gated on
+ * `api_version == CXPR_C_TARGET_API_VERSION`.
  */
 typedef struct cxpr_c_target {
     const char* (*map_function)(const char* name, size_t argc, void* userdata);
     void* userdata;
+    unsigned api_version;
+    cxpr_c_emit_leaf_at_offset_fn emit_leaf_at_offset;
+    cxpr_c_emit_call_at_offset_fn emit_call_at_offset;
 } cxpr_c_target;
 
 /**
@@ -44,8 +86,9 @@ typedef struct cxpr_c_target {
  * (emitted as the bare name), arithmetic/comparison/logical binary operators,
  * unary `-`/`!`, ternary `?:`, and function calls resolved through @p target.
  * `^`/`**` map to `pow()`, `%` to `fmod()`, `and`/`or`/`not` to `&&`/`||`/`!`.
- * Field/chain/producer/lookback nodes are rejected (host/series concepts with
- * no standalone C form).
+ * Lookback nodes are supported only when @p target supplies
+ * `emit_leaf_at_offset`; field/chain/producer nodes are rejected unless the
+ * target can emit them as offset-aware leaves.
  *
  * @param ast Expression AST to transpile.
  * @param target Optional target (NULL = default mapping).
@@ -54,6 +97,37 @@ typedef struct cxpr_c_target {
  *         an unsupported node, operator, or function.
  */
 char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
+
+/**
+ * @brief Transpile a single AST into a C expression string at a lookback offset.
+ *
+ * As `cxpr_ast_to_c`, but every leaf/lookback is resolved relative to
+ * @p lookback_offset (added to any `expr[n]` offsets encountered). Intended for
+ * targets whose `emit_call_at_offset` recurses into sub-arguments: pass the
+ * offset handed to the hook so nested lookback stays correct.
+ *
+ * @param ast Expression AST to transpile.
+ * @param lookback_offset Base lookback offset applied to leaves.
+ * @param target Optional target (NULL = default mapping).
+ * @param err Optional error output, populated on failure.
+ * @return Newly allocated C expression string (free with `free`), or NULL on error.
+ */
+char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+                              const cxpr_c_target* target, cxpr_error* err);
+
+/**
+ * @brief Apply cxpr's native lookback offset rule to one LOOKBACK node.
+ *
+ * This helper centralizes the `expr[n]` codegen rule used by backends with
+ * custom emitters: validate that `n` is a non-negative integer literal, add it
+ * to @p current_offset, then delegate emission of the target expression to the
+ * host callback. The host owns concrete leaf layout.
+ */
+bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
+                                       int current_offset,
+                                       cxpr_c_emit_offset_fn emit,
+                                       void* userdata,
+                                       cxpr_error* err);
 
 /** @brief One named expression for set transpilation. */
 typedef struct cxpr_c_named_expr {

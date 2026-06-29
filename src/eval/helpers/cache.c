@@ -246,7 +246,7 @@ bool cxpr_eval_memo_get(const cxpr_context* ctx,
                         cxpr_value* out_value) {
     size_t i;
 
-    if (!ctx || !ast || !out_value) return false;
+    if (!ctx || !ast || !out_value || ctx->eval_memo.depth == 0u) return false;
     for (i = 0u; i < ctx->eval_memo.count; ++i) {
         const cxpr_eval_memo_entry* entry = &ctx->eval_memo.entries[i];
         if (entry->hash == hash && cxpr_eval_ast_equal(entry->ast, ast)) {
@@ -264,7 +264,7 @@ bool cxpr_eval_memo_set(const cxpr_context* ctx,
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
     cxpr_eval_memo_entry* grown;
 
-    if (!mutable_ctx || !ast) return false;
+    if (!mutable_ctx || !ast || mutable_ctx->eval_memo.depth == 0u) return false;
     if (value.type != CXPR_VALUE_NUMBER && value.type != CXPR_VALUE_BOOL) return true;
     if (mutable_ctx->eval_memo.count == mutable_ctx->eval_memo.capacity) {
         size_t next_cap = mutable_ctx->eval_memo.capacity ? mutable_ctx->eval_memo.capacity * 2u : 64u;

@@ -62,7 +62,7 @@ static void test_numeric_set_membership(void) {
 }
 
 static void test_string_set_membership(void) {
-    /* The dynasty pattern: regime in [list of enum-like values]. */
+    /* Enum-like string membership. */
     cxpr_context* ctx = cxpr_context_new();
     cxpr_context_set_string(ctx, "region", "EU");
 

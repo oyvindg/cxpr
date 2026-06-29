@@ -10,6 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
+#define CXPR_CG_UINT_MAX ((unsigned)~0u)
+#define CXPR_CG_INT_MAX ((int)(CXPR_CG_UINT_MAX >> 1u))
 
 /* ── growable string buffer ──────────────────────────────────────────────── */
 
@@ -53,6 +57,18 @@ static int cxpr_cg_err(cxpr_error* err, cxpr_error_code code, const char* msg) {
     return 0; /* false */
 }
 
+static int cxpr_cg_target_has_offset_leaf(const cxpr_c_target* target) {
+    return target &&
+           target->api_version == CXPR_C_TARGET_API_VERSION &&
+           target->emit_leaf_at_offset;
+}
+
+static int cxpr_cg_target_has_call(const cxpr_c_target* target) {
+    return target &&
+           target->api_version == CXPR_C_TARGET_API_VERSION &&
+           target->emit_call_at_offset;
+}
+
 /* ── function mapping ────────────────────────────────────────────────────── */
 
 /* Default portable C/CUDA names for cxpr builtins. min/max are handled
@@ -92,23 +108,143 @@ static const char* cxpr_cg_binary_op_str(int op) {
 
 /* ── recursive emitter ───────────────────────────────────────────────────── */
 
-static int cxpr_cg_emit(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target* target,
-                   cxpr_error* err);
+static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+                                  cxpr_cg_buf* b, const cxpr_c_target* target,
+                                  cxpr_error* err);
 
-static int cxpr_cg_emit_call(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target* target,
-                        cxpr_error* err) {
+static int cxpr_cg_emit_trend_call(const cxpr_ast* ast, unsigned lookback_offset,
+                                   cxpr_cg_buf* b, const cxpr_c_target* target,
+                                   cxpr_error* err, int rising) {
+    const char* name = rising ? "rising" : "falling";
+    size_t argc = cxpr_ast_function_argc(ast);
+    const cxpr_ast* value_ast = NULL;
+    const cxpr_ast* bars_ast = NULL;
+    double raw;
+    unsigned bars;
+
+    if (argc != 2u) {
+        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "rising/falling codegen requires value and literal bars");
+    }
+    for (size_t i = 0u; i < argc; ++i) {
+        const char* arg_name = cxpr_ast_function_arg_name(ast, i);
+        if (arg_name && strcmp(arg_name, "value") == 0) {
+            value_ast = cxpr_ast_function_arg(ast, i);
+        } else if (arg_name && (strcmp(arg_name, "bars") == 0 || strcmp(arg_name, "samples") == 0)) {
+            bars_ast = cxpr_ast_function_arg(ast, i);
+        }
+    }
+    if (!value_ast) value_ast = cxpr_ast_function_arg(ast, 0u);
+    if (!bars_ast) bars_ast = cxpr_ast_function_arg(ast, 1u);
+    if (!bars_ast || cxpr_ast_type(bars_ast) != CXPR_NODE_NUMBER) {
+        static CXPR_THREAD_LOCAL char msg[128];
+        snprintf(msg, sizeof(msg), "%s codegen requires a constant bars argument", name);
+        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, msg);
+    }
+    raw = cxpr_ast_number_value(bars_ast);
+    bars = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
+    if (!isfinite(raw) || raw < 2.0 || fabs(raw - (double)bars) > 1e-9) {
+        static CXPR_THREAD_LOCAL char msg[128];
+        snprintf(msg, sizeof(msg), "%s codegen bars must be an integer >= 2", name);
+        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, msg);
+    }
+
+    cxpr_cg_putc(b, '(');
+    for (unsigned i = 0u; i + 1u < bars; ++i) {
+        if (i > 0u) cxpr_cg_puts(b, " && ");
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_at_offset(value_ast, lookback_offset + i, b, target, err)) return 0;
+        cxpr_cg_puts(b, rising ? " > " : " < ");
+        if (!cxpr_cg_emit_at_offset(value_ast, lookback_offset + i + 1u, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+    }
+    cxpr_cg_putc(b, ')');
+    return 1;
+}
+
+static int cxpr_cg_emit_repeat_call(const cxpr_ast* ast, unsigned lookback_offset,
+                                    cxpr_cg_buf* b, const cxpr_c_target* target,
+                                    cxpr_error* err) {
+    size_t argc = cxpr_ast_function_argc(ast);
+    const cxpr_ast* condition_ast = NULL;
+    const cxpr_ast* bars_ast = NULL;
+    double raw;
+    unsigned bars;
+
+    if (argc != 2u) {
+        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "repeat codegen requires condition and literal bars");
+    }
+    for (size_t i = 0u; i < argc; ++i) {
+        const char* arg_name = cxpr_ast_function_arg_name(ast, i);
+        if (arg_name && strcmp(arg_name, "condition") == 0) {
+            condition_ast = cxpr_ast_function_arg(ast, i);
+        } else if (arg_name && (strcmp(arg_name, "bars") == 0 || strcmp(arg_name, "samples") == 0)) {
+            bars_ast = cxpr_ast_function_arg(ast, i);
+        }
+    }
+    if (!condition_ast) condition_ast = cxpr_ast_function_arg(ast, 0u);
+    if (!bars_ast) bars_ast = cxpr_ast_function_arg(ast, 1u);
+    if (!bars_ast || cxpr_ast_type(bars_ast) != CXPR_NODE_NUMBER) {
+        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "repeat codegen requires a constant bars argument");
+    }
+    raw = cxpr_ast_number_value(bars_ast);
+    bars = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
+    if (!isfinite(raw) || raw < 0.0 || fabs(raw - (double)bars) > 1e-9) {
+        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "repeat codegen bars must be a non-negative integer");
+    }
+    if (bars == 0u) {
+        cxpr_cg_puts(b, "true");
+        return 1;
+    }
+    cxpr_cg_putc(b, '(');
+    for (unsigned i = 0u; i < bars; ++i) {
+        if (i > 0u) cxpr_cg_puts(b, " && ");
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_at_offset(condition_ast, lookback_offset + i, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+    }
+    cxpr_cg_putc(b, ')');
+    return 1;
+}
+
+static int cxpr_cg_emit_call_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+                                       cxpr_cg_buf* b, const cxpr_c_target* target,
+                                       cxpr_error* err) {
     const char* name = cxpr_ast_function_name(ast);
     size_t argc = cxpr_ast_function_argc(ast);
+
+    if (cxpr_cg_target_has_call(target)) {
+        bool handled = false;
+        cxpr_error herr = {0};
+        char* out = target->emit_call_at_offset(ast, lookback_offset, target->userdata, &handled, &herr);
+        if (handled) {
+            if (!out) {
+                if (err) *err = herr;
+                return 0;
+            }
+            cxpr_cg_puts(b, out);
+            free(out);
+            return 1;
+        }
+        free(out); /* defensive: ignored when not handled */
+    }
+
+    if (strcmp(name, "rising") == 0 || strcmp(name, "falling") == 0) {
+        return cxpr_cg_emit_trend_call(
+            ast, lookback_offset, b, target, err, strcmp(name, "rising") == 0);
+    }
+    if (strcmp(name, "repeat") == 0) {
+        return cxpr_cg_emit_repeat_call(ast, lookback_offset, b, target, err);
+    }
 
     /* min/max: variadic -> nested fmin/fmax (right-folded). */
     if ((strcmp(name, "min") == 0 || strcmp(name, "max") == 0) && argc >= 1) {
         const char* fn = (name[1] == 'i') ? "fmin" : "fmax";
-        if (argc == 1) return cxpr_cg_emit(cxpr_ast_function_arg(ast, 0), b, target, err);
+        if (argc == 1) return cxpr_cg_emit_at_offset(cxpr_ast_function_arg(ast, 0), lookback_offset, b, target, err);
         for (size_t i = 0; i + 1 < argc; ++i) { cxpr_cg_puts(b, fn); cxpr_cg_putc(b, '('); }
-        if (!cxpr_cg_emit(cxpr_ast_function_arg(ast, 0), b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(cxpr_ast_function_arg(ast, 0), lookback_offset, b, target, err)) return 0;
         for (size_t i = 1; i < argc; ++i) {
             cxpr_cg_puts(b, ", ");
-            if (!cxpr_cg_emit(cxpr_ast_function_arg(ast, i), b, target, err)) return 0;
+            if (!cxpr_cg_emit_at_offset(cxpr_ast_function_arg(ast, i), lookback_offset, b, target, err)) return 0;
             cxpr_cg_putc(b, ')');
         }
         return 1;
@@ -127,14 +263,27 @@ static int cxpr_cg_emit_call(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_t
     cxpr_cg_putc(b, '(');
     for (size_t i = 0; i < argc; ++i) {
         if (i) cxpr_cg_puts(b, ", ");
-        if (!cxpr_cg_emit(cxpr_ast_function_arg(ast, i), b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(cxpr_ast_function_arg(ast, i), lookback_offset, b, target, err)) return 0;
     }
     cxpr_cg_putc(b, ')');
     return 1;
 }
 
-static int cxpr_cg_emit(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target* target,
-                   cxpr_error* err) {
+static int cxpr_cg_emit_hooked_leaf(const cxpr_ast* ast, unsigned lookback_offset,
+                                    cxpr_cg_buf* b, const cxpr_c_target* target,
+                                    cxpr_error* err) {
+    char* out;
+    if (!cxpr_cg_target_has_offset_leaf(target)) return 0;
+    out = target->emit_leaf_at_offset(ast, lookback_offset, target->userdata, err);
+    if (!out) return 0;
+    cxpr_cg_puts(b, out);
+    free(out);
+    return 1;
+}
+
+static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+                                  cxpr_cg_buf* b, const cxpr_c_target* target,
+                                  cxpr_error* err) {
     if (!ast) return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "NULL AST node");
 
     switch (cxpr_ast_type(ast)) {
@@ -158,10 +307,24 @@ static int cxpr_cg_emit(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target
         return 1;
     }
     case CXPR_NODE_IDENTIFIER:
+        if (cxpr_cg_target_has_offset_leaf(target)) {
+            return cxpr_cg_emit_hooked_leaf(ast, lookback_offset, b, target, err);
+        }
+        if (lookback_offset > 0u) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "lookback codegen requires cxpr_c_target.emit_leaf_at_offset");
+        }
         cxpr_cg_puts(b, cxpr_ast_identifier_name(ast));
         return 1;
     case CXPR_NODE_VARIABLE: {
         const char* name = cxpr_ast_variable_name(ast);
+        if (cxpr_cg_target_has_offset_leaf(target)) {
+            return cxpr_cg_emit_hooked_leaf(ast, lookback_offset, b, target, err);
+        }
+        if (lookback_offset > 0u) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "lookback codegen requires cxpr_c_target.emit_leaf_at_offset");
+        }
         if (name && name[0] == '$') name++; /* emit the bare name */
         cxpr_cg_puts(b, name ? name : "");
         return 1;
@@ -172,18 +335,18 @@ static int cxpr_cg_emit(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target
         const cxpr_ast* r = cxpr_ast_right(ast);
         if (op == CXPR_TOK_POWER || op == CXPR_TOK_PERCENT) {
             cxpr_cg_puts(b, op == CXPR_TOK_POWER ? "pow(" : "fmod(");
-            if (!cxpr_cg_emit(l, b, target, err)) return 0;
+            if (!cxpr_cg_emit_at_offset(l, lookback_offset, b, target, err)) return 0;
             cxpr_cg_puts(b, ", ");
-            if (!cxpr_cg_emit(r, b, target, err)) return 0;
+            if (!cxpr_cg_emit_at_offset(r, lookback_offset, b, target, err)) return 0;
             cxpr_cg_putc(b, ')');
             return 1;
         }
         const char* ops = cxpr_cg_binary_op_str(op);
         if (!ops) return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "unsupported binary operator in C codegen");
         cxpr_cg_putc(b, '(');
-        if (!cxpr_cg_emit(l, b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(l, lookback_offset, b, target, err)) return 0;
         cxpr_cg_putc(b, ' '); cxpr_cg_puts(b, ops); cxpr_cg_putc(b, ' ');
-        if (!cxpr_cg_emit(r, b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(r, lookback_offset, b, target, err)) return 0;
         cxpr_cg_putc(b, ')');
         return 1;
     }
@@ -193,36 +356,100 @@ static int cxpr_cg_emit(const cxpr_ast* ast, cxpr_cg_buf* b, const cxpr_c_target
             return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "unsupported unary operator in C codegen");
         cxpr_cg_putc(b, '(');
         cxpr_cg_putc(b, op == CXPR_TOK_MINUS ? '-' : '!');
-        if (!cxpr_cg_emit(cxpr_ast_operand(ast), b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(cxpr_ast_operand(ast), lookback_offset, b, target, err)) return 0;
         cxpr_cg_putc(b, ')');
         return 1;
     }
     case CXPR_NODE_TERNARY:
         cxpr_cg_putc(b, '(');
-        if (!cxpr_cg_emit(cxpr_ast_ternary_condition(ast), b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(cxpr_ast_ternary_condition(ast), lookback_offset, b, target, err)) return 0;
         cxpr_cg_puts(b, " ? ");
-        if (!cxpr_cg_emit(cxpr_ast_ternary_true_branch(ast), b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(cxpr_ast_ternary_true_branch(ast), lookback_offset, b, target, err)) return 0;
         cxpr_cg_puts(b, " : ");
-        if (!cxpr_cg_emit(cxpr_ast_ternary_false_branch(ast), b, target, err)) return 0;
+        if (!cxpr_cg_emit_at_offset(cxpr_ast_ternary_false_branch(ast), lookback_offset, b, target, err)) return 0;
         cxpr_cg_putc(b, ')');
         return 1;
     case CXPR_NODE_FUNCTION_CALL:
-        return cxpr_cg_emit_call(ast, b, target, err);
+        return cxpr_cg_emit_call_at_offset(ast, lookback_offset, b, target, err);
+    case CXPR_NODE_LOOKBACK: {
+        const cxpr_ast* index = cxpr_ast_lookback_index(ast);
+        double raw;
+        unsigned offset;
+        if (!index || cxpr_ast_type(index) != CXPR_NODE_NUMBER) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "C codegen requires constant lookback indexes");
+        }
+        raw = cxpr_ast_number_value(index);
+        offset = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
+        if (!isfinite(raw) || raw < 0.0 || fabs(raw - (double)offset) > 1e-9) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "C codegen requires integer lookback indexes");
+        }
+        if (CXPR_CG_UINT_MAX - lookback_offset < offset) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "C codegen lookback offset overflow");
+        }
+        return cxpr_cg_emit_at_offset(
+            cxpr_ast_lookback_target(ast), lookback_offset + offset, b, target, err);
+    }
     case CXPR_NODE_FIELD_ACCESS:
+        if (cxpr_cg_target_has_offset_leaf(target)) {
+            return cxpr_cg_emit_hooked_leaf(ast, lookback_offset, b, target, err);
+        }
+        if (lookback_offset > 0u) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "lookback codegen requires cxpr_c_target.emit_leaf_at_offset");
+        }
+        /* fallthrough */
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_PRODUCER_ACCESS:
-    case CXPR_NODE_LOOKBACK:
         return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
-                      "field/chain/producer/lookback nodes have no standalone C form");
+                      "field/chain/producer nodes have no standalone C form");
     default:
         return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "unsupported AST node in C codegen");
     }
 }
 
+bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
+                                       int current_offset,
+                                       cxpr_c_emit_offset_fn emit,
+                                       void* userdata,
+                                       cxpr_error* err) {
+    const cxpr_ast* index_ast;
+    double raw;
+    unsigned offset;
+    int next_offset;
+
+    if (err) *err = (cxpr_error){0};
+    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_LOOKBACK || !emit) {
+        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "invalid lookback codegen arguments");
+        return false;
+    }
+    index_ast = cxpr_ast_lookback_index(ast);
+    if (!index_ast || cxpr_ast_type(index_ast) != CXPR_NODE_NUMBER) {
+        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "codegen requires constant lookback indexes");
+        return false;
+    }
+    raw = cxpr_ast_number_value(index_ast);
+    offset = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
+    if (!isfinite(raw) || raw < 0.0 || fabs(raw - (double)offset) > 1e-9) {
+        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "codegen requires integer lookback indexes");
+        return false;
+    }
+    if (current_offset > CXPR_CG_INT_MAX - (int)offset) {
+        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "codegen lookback offset overflow");
+        return false;
+    }
+    next_offset = current_offset + (int)offset;
+    return emit(userdata, cxpr_ast_lookback_target(ast), next_offset, err);
+}
+
 char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err) {
+    return cxpr_ast_to_c_at_offset(ast, 0u, target, err);
+}
+
+char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+                              const cxpr_c_target* target, cxpr_error* err) {
     cxpr_cg_buf b = {0};
     if (err) *err = (cxpr_error){0};
-    if (!cxpr_cg_emit(ast, &b, target, err)) { free(b.data); return NULL; }
+    if (!cxpr_cg_emit_at_offset(ast, lookback_offset, &b, target, err)) { free(b.data); return NULL; }
     if (b.oom) { free(b.data); cxpr_cg_err(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return NULL; }
     return b.data ? b.data : cxpr_strdup("");
 }

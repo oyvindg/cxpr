@@ -6,6 +6,14 @@
 #include "internal.h"
 #include <math.h>
 
+static bool cxpr_ir_program_is_bare_identifier(const cxpr_ir_program* program) {
+    return program &&
+           program->count == 2u &&
+           program->code &&
+           program->code[0].op == CXPR_OP_LOAD_VAR &&
+           program->code[1].op == CXPR_OP_RETURN;
+}
+
 bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry* reg,
                                      cxpr_error* err) {
     if (!entry || !entry->defined_body || !cxpr_ir_defined_is_scalar_only(entry)) {
@@ -86,6 +94,14 @@ cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context*
         return cxpr_num(NAN);
     }
     if (prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        if (cxpr_ir_program_is_bare_identifier(&prog->ir)) {
+            cxpr_error typed_err = {0};
+            cxpr_value typed_value = cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, &typed_err);
+            if (typed_err.code == CXPR_OK) {
+                if (err) *err = typed_err;
+                return typed_value;
+            }
+        }
         double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
         if (err && err->code != CXPR_OK) {
             cxpr_error typed_err = {0};

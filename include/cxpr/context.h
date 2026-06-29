@@ -36,18 +36,6 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx);
 cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
 
 /**
- * @brief Release the calling thread's internal per-thread caches.
- *
- * cxpr maintains a thread-local empty-overlay reuse cache that is populated
- * implicitly during evaluation. A long-lived process that spawns and joins
- * many worker threads should call this from each worker just before it exits
- * to avoid retaining that thread's cache until process exit. It is optional,
- * idempotent, and never required for correctness — only for promptly
- * reclaiming memory on threads that will not run further cxpr evaluations.
- */
-void cxpr_thread_cleanup(void);
-
-/**
  * @brief Set a numeric runtime variable.
  * @param ctx Destination context.
  * @param name Variable name.
@@ -179,6 +167,16 @@ typedef struct {
  */
 bool cxpr_context_slot_bind(cxpr_context* ctx, const char* name, cxpr_context_slot* slot);
 /**
+ * @brief Bind multiple slots to existing variables.
+ * @param ctx Context that owns the variables.
+ * @param names Variable names.
+ * @param slots Output slot handles.
+ * @param count Number of slots to bind.
+ * @return True when every slot was bound, false if any variable was not found.
+ */
+bool cxpr_context_slots_bind(cxpr_context* ctx, const char* const* names,
+                             cxpr_context_slot* slots, size_t count);
+/**
  * @brief Check whether a previously bound slot is still valid.
  * @param ctx Context the slot belongs to.
  * @param slot Slot to validate.
@@ -191,6 +189,13 @@ bool cxpr_context_slot_valid(const cxpr_context* ctx, const cxpr_context_slot* s
  * @param value Value to write.
  */
 void cxpr_context_slot_set(cxpr_context_slot* slot, double value);
+/**
+ * @brief Write multiple values through bound slots.
+ * @param slots Bound slot handles.
+ * @param values Values to write.
+ * @param count Number of slots to write.
+ */
+void cxpr_context_slots_set(cxpr_context_slot* slots, const double* values, size_t count);
 /**
  * @brief Read a value through a bound slot.
  * @param slot Bound slot handle.

@@ -233,6 +233,13 @@ void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
     reg->free_lookback_userdata = free_userdata;
 }
 
+void cxpr_registry_lookback_resolver(const cxpr_registry* reg,
+                                     cxpr_lookback_resolver_ptr* out_resolver,
+                                     void** out_userdata) {
+    if (out_resolver) *out_resolver = reg ? reg->lookback_resolver : NULL;
+    if (out_userdata) *out_userdata = reg ? reg->lookback_userdata : NULL;
+}
+
 bool cxpr_registry_set_param_names(cxpr_registry* reg, const char* name,
                                    const char* const* param_names, size_t param_count) {
     cxpr_func_entry* entry;

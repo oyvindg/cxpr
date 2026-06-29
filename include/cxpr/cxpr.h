@@ -22,5 +22,6 @@
 #include <cxpr/provider.h>
 #include <cxpr/runtime_call.h>
 #include <cxpr/source_plan.h>
+#include <cxpr/thread.h>
 
 #endif /* CXPR_H */

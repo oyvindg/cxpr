@@ -3,10 +3,12 @@
 [![CI](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml/badge.svg)](https://github.com/oyvindg/cxpr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`cxpr` is a C11 library for runtime expression evaluation. Given an expression string, it
-parses it into an AST, evaluates it against a context of variables and parameters, and
-optionally compiles it to an IR for repeated execution without re-parsing. It is
-domain-agnostic — the same engine drives rules across very different fields:
+`cxpr` is a standalone C11 expression engine for applications that need safe,
+embeddable rules without a scripting runtime. Given an expression string, it
+parses it into an AST, analyzes references and function requirements, evaluates
+it against a context of variables and parameters, and optionally compiles it to
+typed IR for repeated execution without re-parsing. It is domain-agnostic — the
+same engine drives rules across very different fields:
 
 ```text
 sqrt(vx^2 + vy^2) > $max_speed              # physics / robotics
@@ -15,12 +17,13 @@ rsi < 30 and volume > $min_volume            # trading
 ```
 
 It supports numbers, booleans, struct-like values, custom C callbacks, and
-expression-defined functions. A named-expression evaluator manages sets of interdependent
-expressions with automatic topological ordering and cycle detection. Host integrations can
-also expose provider metadata, scoped sources, runtime-resolved series, and source plans for
-step-by-step materialization (e.g. per simulation tick or per market bar) outside the
-expression engine. See [examples/](examples) for runnable physics, robotics, and trading
-programs.
+expression-defined functions. A named-expression evaluator manages sets of
+interdependent expressions with automatic topological ordering and cycle
+detection. Host integrations provide domain data and execution policy: provider
+metadata, scoped sources, runtime-resolved series, and source plans for
+step-by-step materialization (e.g. per simulation tick or per market bar) live
+outside the engine. See [examples/](examples) for runnable physics, robotics,
+and trading programs.
 
 No external dependencies. C11 required.
 
@@ -28,6 +31,7 @@ No external dependencies. C11 required.
 
 - [What The Library Provides](#what-the-library-provides)
 - [Core Concepts](#core-concepts)
+- [Engine Layer](#engine-layer)
 - [Building and Testing](#building-and-testing)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -53,6 +57,7 @@ No external dependencies. C11 required.
 
 ## What The Library Provides
 
+- A standalone expression engine: parser, analyzer, evaluator, and typed IR compiler
 - A parser that turns expression strings into an AST
 - Evaluation of numbers, booleans, and struct-like values
 - AST and typed IR execution paths for expressions you run many times
@@ -62,6 +67,8 @@ No external dependencies. C11 required.
 - AST analysis for references, parameters, functions, producer fields, result shape, and short-circuit behavior
 - Provider metadata for host-backed functions, named arguments, record fields, scoped series, and direct sources
 - Runtime-call and source-plan helpers for host integrations that materialize series data outside `cxpr`
+- An opt-in rule-engine layer for stateful tick/session execution, source hydration,
+  lookback history, and transition events
 - Structured errors with source position information
 - Thread-safe for per-thread evaluation: immutable registries/programs shared, contexts per thread (see [Concurrency](#concurrency))
 
@@ -78,6 +85,109 @@ Use `cxpr` when you need an embeddable expression evaluator in plain C without b
 - `cxpr_provider`: describes host-backed function/source inventories
 - `cxpr_source_plan_ast`: parsed provider source tree with canonical identity and bound runtime arguments
 - `cxpr_scope_resolver`: host callback used by low-level scoped-source runtime adapters
+- `cxpr_engine_program`: immutable compiled rule engine program, safe to share across sessions
+- `cxpr_engine_session`: mutable per-run engine state for ticks, params, lookback, and events
+
+## Engine Layer
+
+Most of the API is intentionally low level: parse an expression, build a
+registry, fill a context, evaluate. That is the right surface when a host already
+has its own scheduler, state model, and event loop.
+
+`cxpr/engine.h` adds a higher-level rule-engine layer for hosts that want cxpr to
+own the repeated execution mechanics. The host declares expressions, sources,
+default `$params`, roles, and watches once in a `cxpr_engine_config`. The engine
+then builds a compiled `cxpr_engine_program` and runs isolated
+`cxpr_engine_session`s:
+
+```text
+cxpr_engine_config
+  -> cxpr_engine_program       # immutable, compiled once, shareable
+  -> cxpr_engine_session       # mutable run state: params, cursor, lookback
+  -> cxpr_engine_tick()        # hydrate referenced sources, evaluate, emit events
+```
+
+The engine API is split into:
+
+- `cxpr_engine_config`: declarative description of rules, sources, params, roles,
+  and watches
+- `cxpr_engine_program`: immutable compiled engine program, built once and shared
+- `cxpr_engine_session`: mutable per-run state, one per live run or worker
+
+Think of `program` as the compiled rule plan and `session` as one execution of
+that plan. The program owns read-only structure: expression dependency order,
+watch declarations, source definitions, default params, and lookback buffer
+layout. A session borrows that program and owns changing state: the current
+cursor, hydrated source values, lookback history, previous values for edge
+detection, per-run `$param` overrides, role membership, and pending events.
+
+Build one program when the rule/source shape is fixed, then create one session
+per independent run. Optimizers typically share one program across many worker
+sessions with different params or data bindings. A live loop or one-off backtest
+may use only one session, but the same lifetime rule applies: a borrowed program
+must outlive every session created from it.
+
+The engine owns:
+
+- dependency-ordered expression evaluation
+- lazy source hydration for pull, callback-view, and direct column sources
+- lookback history for `expr[n]`
+- per-session `$param` overrides and role bindings
+- transition detection via `CXPR_EDGE_RISING`, `CXPR_EDGE_FALLING`,
+  `CXPR_EDGE_LEVEL`, and `CXPR_EDGE_CHANGED`
+
+The host still owns domain policy. Source callbacks only provide values; fired
+events are returned after the tick, and the host decides what those events mean.
+The engine has no trading, robotics, monitoring, order, or IO behavior built in.
+
+Minimal shape:
+
+```c
+#include <cxpr/engine.h>
+
+static const double close[] = { 10.0, 11.0, 9.0, 12.0, 8.0 };
+
+int main(void) {
+    const cxpr_expression_def exprs[] = {
+        { "buy", "close > $threshold" },
+    };
+    const cxpr_context_entry params[] = {
+        { "threshold", 10.0 },
+    };
+    const cxpr_engine_column_source_def cols[] = {
+        { "close", &close[0], sizeof(double), 5 },
+    };
+    const cxpr_engine_watch_def watches[] = {
+        { "buy", CXPR_EDGE_RISING },
+    };
+
+    cxpr_engine_config cfg = {
+        .expressions = exprs, .expression_count = 1,
+        .params = params, .param_count = 1,
+        .column_sources = cols, .column_source_count = 1,
+        .watches = watches, .watch_count = 1,
+    };
+
+    cxpr_error err = {0};
+    cxpr_engine_program* program = cxpr_engine_program_new(&cfg, &err);
+    cxpr_engine_session* session = cxpr_engine_session_new(program);
+
+    for (size_t i = 0; i < 5; ++i) {
+        const cxpr_engine_event* events = NULL;
+        size_t event_count = 0;
+        cxpr_engine_tick(session, &events, &event_count, &err);
+        /* Host handles events[0..event_count). */
+    }
+
+    cxpr_engine_session_free(session);
+    cxpr_engine_program_free(program);
+    return 0;
+}
+```
+
+Use the lower-level evaluator/context APIs when you need full control over every
+evaluation step. Use the engine layer when your application naturally looks like
+"compile rules once, advance a cursor, and react to fired conditions".
 
 ## Building and Testing
 
@@ -649,14 +759,14 @@ handle:
 cxpr_context_set(ctx, "close", 0.0);
 cxpr_context_set(ctx, "volume", 0.0);
 
-cxpr_context_slot close_slot, volume_slot;
-cxpr_context_slot_bind(ctx, "close", &close_slot);
-cxpr_context_slot_bind(ctx, "volume", &volume_slot);
+const char* slot_names[] = {"close", "volume"};
+cxpr_context_slot slots[2];
+cxpr_context_slots_bind(ctx, slot_names, slots, CXPR_ARRAY_COUNT(slots));
 
 // In the hot loop, update through slots instead of by name.
 for (size_t i = 0; i < bar_count; i++) {
-    cxpr_context_slot_set(&close_slot, bars[i].close);
-    cxpr_context_slot_set(&volume_slot, bars[i].volume);
+    cxpr_context_slots_set(slots, (double[]){bars[i].close, bars[i].volume},
+                           CXPR_ARRAY_COUNT(slots));
 
     bool result = false;
     cxpr_eval_program_bool(prog, ctx, reg, &result, NULL);
@@ -1118,9 +1228,10 @@ This makes the common optimizer pattern safe: build a registry and compile progr
 the main thread, then fan out across worker threads where each thread owns its context and
 evaluates against the shared, read-only registry/programs.
 
-A worker thread that runs many evaluations and then exits can call `cxpr_thread_cleanup()`
-just before exiting to release its thread-local overlay cache immediately. This is optional —
-it never affects correctness, only how promptly that memory is reclaimed.
+A worker thread that runs many evaluations and then exits can call
+`cxpr_thread_cleanup()` from `cxpr/thread.h` just before exiting to release its
+thread-local overlay cache immediately. This is optional — it never affects
+correctness, only how promptly that memory is reclaimed.
 
 ## Analysis
 
@@ -1235,11 +1346,18 @@ char* fn = cxpr_exprset_to_c_function("CX_HD static inline", "State", "double",
 
 Mapping: `^`/`**` → `pow()`, `%` → `fmod()`, `and`/`or`/`not` → `&&`/`||`/`!`,
 variadic `min`/`max` → nested `fmin`/`fmax`. Target-specific function names (CUDA,
-WGSL, …) are supplied through `cxpr_c_target.map_function`. Field/chain/producer/
-lookback nodes and unmapped functions are rejected with an error — the emitter is
-conservative by design. `in` desugars to `contains(...)`, so codegen rejects it
-unless a target/runtime supplies membership support; `within(...)` is likewise a
-runtime builtin, not a C operator.
+WGSL, …) are supplied through `cxpr_c_target.map_function`. Native lookback
+codegen is available when the target sets `api_version = CXPR_C_TARGET_API_VERSION`
+and supplies `emit_leaf_at_offset`; cxpr then propagates `expr[n]` offsets through
+the AST and the host emits each concrete leaf at that offset. This keeps buffer
+layout and warmup policy host-side while sharing one traversal rule. `rising`,
+`falling`, and `repeat` codegen require literal bars/samples so those offsets can
+be expanded at compile time.
+
+Field/chain/producer nodes without a target hook and unmapped functions are
+rejected with an error — the emitter is conservative by design. `in` desugars to
+`contains(...)`, so codegen rejects it unless a target/runtime supplies membership
+support; `within(...)` is likewise a runtime builtin, not a C operator.
 
 ## Examples
 

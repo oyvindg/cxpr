@@ -5,6 +5,85 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-06-29
+
+### Added
+
+- **`cxpr_c_target.emit_call_at_offset`** — an optional codegen hook letting a
+  C-like target render a whole `FUNCTION_CALL` node its own way (e.g. a memoized
+  value referenced as a precomputed variable, or a source accessor lowered to an
+  array index) instead of as a `name(args...)` call. The hook sets `*handled`;
+  returning `false` falls back to cxpr's built-in emission (function-name
+  mapping and the `rising`/`falling`/`repeat`/`min`/`max` expansions), so it is
+  purely additive and existing targets are unaffected. Gated on
+  `api_version == CXPR_C_TARGET_API_VERSION` like `emit_leaf_at_offset`.
+- **`cxpr_ast_to_c_at_offset(ast, lookback_offset, target, err)`** — transpile a
+  single AST to a C expression string relative to a base lookback offset.
+  `cxpr_ast_to_c` is now this with offset 0. Lets a target's `emit_call_at_offset`
+  recurse into sub-arguments at the correct lookback offset, keeping nested
+  operator/lookback handling inside cxpr.
+
+### Changed
+
+- **Engine-owned lookback now covers tracked struct fields.** Lookbacks such as
+  `bb.lower[1]` are resolved from the tracked expression result ring when `bb`
+  is a named expression that produced a struct. The engine still delegates
+  unowned lookback targets to a prior host resolver.
+- Typed IR now accepts numeric truthiness for `not` and conditional jumps,
+  matching engine watch/basket truthiness for numeric helper results.
+- `cxpr_engine_role_def` now carries optional `bound_count` metadata so
+  `count($role)` can report the logical bound universe size separately from the
+  materialized member values used by basket aggregates.
+- Engine pull sources now support lookback with evaluated arguments, e.g.
+  `price($pair)[1]`, using per-argument result rings.
+- Engine view sources can now provide an optional cursor-to-source index mapper
+  for timestamp-aligned secondary series reads.
+
+## [2.6.0] - 2026-06-22
+
+### Added
+
+- `cxpr_registry_lookback_resolver` — read the lookback resolver currently
+  installed on a registry, so a layer that installs its own resolver can capture
+  and chain to a host's prior resolver.
+
+### Changed
+
+- **Engine lookback now chains to a host's resolver.** When
+  `cxpr_engine_program_new` is given a registry that already has a lookback
+  resolver installed, the engine captures it and delegates any `target[n]` it
+  does not own (i.e. not an engine source or a tracked named-expression) to that
+  prior resolver instead of failing. This lets a host migrate lookback onto the
+  engine piecewise — engine-owned lookbacks (OHLCV columns, result rings) resolve
+  in the engine while host indicator/series lookbacks keep flowing to the host
+  resolver. The engine-owned default registry (no prior resolver) is unchanged.
+  On `cxpr_engine_program_free` the prior resolver is restored, so an injected
+  registry is left exactly as the engine found it.
+
+## [2.5.0] - 2026-06-21
+
+### Added
+
+- **Engine layer (`cxpr/engine.h`)** — a stateful rule engine on top of the
+  stateless evaluator. One declarative `cxpr_engine_config` registers a
+  registry, an expression set, source backings (pull / random-access view /
+  direct column), watches, params, and basket roles; `cxpr_engine_tick` pulls
+  only the referenced sources, evaluates the rule set, and returns a borrowed
+  event batch for the host to drain. Edge detection (`RISING`/`FALLING`/`LEVEL`/
+  `CHANGED`), engine-owned lookback (column/view offsets, pull-source rings, and
+  named-expression result rings), per-tick memoization, and per-session source
+  binding are built in. Opt-in and additive — included via `<cxpr/engine.h>`,
+  not the `cxpr.h` aggregator; the kernel is unchanged.
+- `cxpr_register_column_lookback` — a reusable column-backed `name[n]` lookback
+  resolver (table of `{name, base, stride, count}` plus a host-advanced cursor),
+  the generic counterpart to the engine's resolver for bare-evaluator hosts.
+- `cxpr_c_target` now has a version-gated `emit_leaf_at_offset` hook for native
+  lookback codegen. cxpr owns `expr[n]` offset propagation, including
+  literal-bar `rising`/`falling`/`repeat` lowering; hosts still own concrete
+  leaf layout such as series array indexing and warmup clamping.
+- Thread lifecycle moved to its own header `cxpr/thread.h` (declaring
+  `cxpr_thread_cleanup`), now included from the `cxpr.h` aggregator.
+
 ## [2.3.1] - 2026-06-20
 
 ### Fixed

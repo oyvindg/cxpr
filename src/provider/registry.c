@@ -271,8 +271,17 @@ void cxpr_provider_host_visible_arg_range(
     if ((spec->flags & CXPR_PROVIDER_FN_SOURCE_INPUT) != 0u) {
         const size_t source_min_args = 1u + spec->source_min_args;
         const size_t source_max_args = 1u + spec->source_max_args;
+        const int has_scope = spec->scope &&
+            spec->scope->param_name &&
+            spec->scope->param_name[0] != '\0';
+        const size_t scoped_source_min_args =
+            source_min_args + (has_scope && !spec->scope->optional ? 1u : 0u);
+        const size_t scoped_source_max_args =
+            source_max_args + (has_scope ? 1u : 0u);
         if (source_min_args < *min_args) *min_args = source_min_args;
         if (source_max_args > *max_args) *max_args = source_max_args;
+        if (scoped_source_min_args < *min_args) *min_args = scoped_source_min_args;
+        if (scoped_source_max_args > *max_args) *max_args = scoped_source_max_args;
     }
 }
 
