@@ -19,7 +19,18 @@ typedef struct {
     const char* field;
 } typed_bench_case;
 
+typedef struct {
+    const char* name;
+    const char* expr;
+    size_t iterations;
+} lookback_bench_case;
+
 static volatile double g_sink = 0.0;
+
+enum { LOOKBACK_BARS = 4096 };
+static double g_close[LOOKBACK_BARS];
+static double g_high[LOOKBACK_BARS];
+static int64_t g_lookback_cursor = 0;
 
 static double native_sq(double x) {
     return x * x;
@@ -118,6 +129,27 @@ static void set_base_values(cxpr_context* ctx) {
     cxpr_context_set(ctx, "z", 13.5);
     cxpr_context_set(ctx, "m", 14.5);
     cxpr_context_set(ctx, "n", -15.5);
+}
+
+static void init_lookback_bars(void) {
+    uint64_t state = 0x9e3779b97f4a7c15ULL;
+
+    for (size_t i = 0u; i < LOOKBACK_BARS; ++i) {
+        double open_value;
+        double close_value;
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        open_value = 100.0 + (double)((state >> 33u) % 1000u) / 100.0;
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        close_value = 100.0 + (double)((state >> 33u) % 1000u) / 100.0;
+        g_close[i] = close_value;
+        g_high[i] = (open_value > close_value ? open_value : close_value) + 0.75;
+    }
+}
+
+static void set_lookback_bar(cxpr_context* ctx, size_t i) {
+    g_lookback_cursor = (int64_t)(i % LOOKBACK_BARS);
+    cxpr_context_set(ctx, "close", g_close[g_lookback_cursor]);
+    cxpr_context_set(ctx, "high", g_high[g_lookback_cursor]);
 }
 
 static void mutate_values(cxpr_context* ctx, size_t i) {
@@ -684,6 +716,127 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     cxpr_ast_free(ast);
 }
 
+static double time_ast_lookback(const cxpr_ast* ast, cxpr_context* ctx,
+                                const cxpr_registry* reg, size_t iterations) {
+    size_t i;
+    double total = 0.0;
+    cxpr_error err = {0};
+
+    for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
+        set_lookback_bar(ctx, i);
+        if (!cxpr_eval_ast_number(ast, ctx, reg, &value, &err)) {
+            fprintf(stderr, "AST lookback benchmark eval failed at iter %zu: %s\n",
+                    i, err.message ? err.message : "(null)");
+            exit(1);
+        }
+        if (isfinite(value)) total += value;
+    }
+
+    return total;
+}
+
+static double time_ir_lookback(const cxpr_program* program, cxpr_context* ctx,
+                               const cxpr_registry* reg, size_t iterations) {
+    size_t i;
+    double total = 0.0;
+    cxpr_error err = {0};
+
+    for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
+        set_lookback_bar(ctx, i);
+        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+            fprintf(stderr, "IR lookback benchmark eval failed at iter %zu: %s\n",
+                    i, err.message ? err.message : "(null)");
+            exit(1);
+        }
+        if (isfinite(value)) total += value;
+    }
+
+    return total;
+}
+
+static void validate_lookback_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
+                                        cxpr_context* ctx, const cxpr_registry* reg,
+                                        const lookback_bench_case* c) {
+    cxpr_error ast_err = {0};
+    cxpr_error ir_err = {0};
+
+    for (size_t i = 0u; i < LOOKBACK_BARS; ++i) {
+        double ast_value = NAN;
+        double ir_value = NAN;
+        set_lookback_bar(ctx, i);
+        if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) ast_value = NAN;
+        if (!cxpr_eval_program_number(program, ctx, reg, &ir_value, &ir_err)) ir_value = NAN;
+        if (ast_err.code != ir_err.code) {
+            fprintf(stderr,
+                    "Lookback AST/IR error-code mismatch for '%s' at bar %zu: ast=%d ir=%d\n",
+                    c->name, i, ast_err.code, ir_err.code);
+            exit(1);
+        }
+        if (ast_err.code != CXPR_OK) {
+            fprintf(stderr,
+                    "Lookback AST/IR runtime error for '%s' at bar %zu: %s\n",
+                    c->name, i, ast_err.message ? ast_err.message : "(null)");
+            exit(1);
+        }
+        if ((isnan(ast_value) && isnan(ir_value)) ||
+            fabs(ast_value - ir_value) <= 1e-9 * (1.0 + fabs(ast_value))) {
+            ast_err = (cxpr_error){0};
+            ir_err = (cxpr_error){0};
+            continue;
+        }
+        fprintf(stderr,
+                "Lookback AST/IR mismatch for '%s' at bar %zu: %.17g vs %.17g\n",
+                c->name, i, ast_value, ir_value);
+        exit(1);
+    }
+}
+
+static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+                               const lookback_bench_case* c) {
+    long long ast_start, ast_end, ir_start, ir_end;
+    double ast_total, ir_total, ast_ns, ir_ns;
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
+    cxpr_program* program;
+
+    if (!ast) {
+        fprintf(stderr, "Parse failed for lookback '%s': %s\n", c->name, err.message);
+        exit(1);
+    }
+    program = cxpr_compile(ast, reg, &err);
+    if (!program) {
+        fprintf(stderr, "Compile failed for lookback '%s': %s\n", c->name, err.message);
+        cxpr_ast_free(ast);
+        exit(1);
+    }
+
+    ast_start = now_ns();
+    ast_total = time_ast_lookback(ast, ctx, reg, c->iterations);
+    ast_end = now_ns();
+
+    ir_start = now_ns();
+    ir_total = time_ir_lookback(program, ctx, reg, c->iterations);
+    ir_end = now_ns();
+
+    validate_lookback_ast_vs_ir(ast, program, ctx, reg, c);
+
+    ast_ns = (double)(ast_end - ast_start) / (double)c->iterations;
+    ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
+    g_sink += ast_total + ir_total;
+
+    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           c->name,
+           c->iterations,
+           ast_ns,
+           ir_ns,
+           ast_ns / ir_ns);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+}
+
 static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
     const char* expr = "a + b * c - d / e + x * y - z";
     const size_t iterations = 200000;
@@ -968,6 +1121,11 @@ int main(void) {
         { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL },
         { "producer_struct", "macd(12, 26, 9)", 150000, "histogram" },
     };
+    const lookback_bench_case lookback_cases[] = {
+        { "lookback_leaf", "close - close[3]", 250000 },
+        { "lookback_mixed", "(close + high[1]) - close[3]", 200000 },
+        { "lookback_nested", "close[1][2] + high[2]", 200000 },
+    };
     size_t i;
     cxpr_error err = {0};
     cxpr_parser* parser = cxpr_parser_new();
@@ -988,6 +1146,20 @@ int main(void) {
     {
         const char* macd_fields[] = {"line", "signal", "histogram"};
         cxpr_registry_add_struct(reg, "macd", bench_macd, 3, 3, macd_fields, 3, NULL, NULL);
+    }
+    {
+        const cxpr_lookback_column columns[] = {
+            { "close", &g_close[0], sizeof(g_close[0]), LOOKBACK_BARS },
+            { "high", &g_high[0], sizeof(g_high[0]), LOOKBACK_BARS },
+        };
+        init_lookback_bars();
+        if (!cxpr_register_column_lookback(reg, columns, 2u, &g_lookback_cursor)) {
+            fprintf(stderr, "Failed to register lookback columns\n");
+            cxpr_registry_free(reg);
+            cxpr_context_free(ctx);
+            cxpr_parser_free(parser);
+            return 1;
+        }
     }
 
     err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
@@ -1045,6 +1217,11 @@ int main(void) {
     print_bench_header("Typed Struct");
     for (i = 0; i < sizeof(typed_cases) / sizeof(typed_cases[0]); ++i) {
         bench_one_typed(parser, ctx, reg, &typed_cases[i]);
+    }
+
+    print_bench_header("Lookback");
+    for (i = 0; i < sizeof(lookback_cases) / sizeof(lookback_cases[0]); ++i) {
+        bench_one_lookback(parser, ctx, reg, &lookback_cases[i]);
     }
 
     print_bench_header("IR-only");

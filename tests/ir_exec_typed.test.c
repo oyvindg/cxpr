@@ -31,9 +31,8 @@ static void test_ir_exec_typed_numeric_truthiness(void) {
         cxpr_ir_program program = {.code = code, .count = 3};
         cxpr_error err = {0};
         cxpr_value out = cxpr_ir_exec_typed(&program, NULL, NULL, NULL, 0, &err);
-        assert(err.code == CXPR_OK);
-        assert(out.type == CXPR_VALUE_BOOL);
-        assert(out.b == true);
+        assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+        assert(out.type == CXPR_VALUE_NUMBER);
     }
     {
         cxpr_ir_instr code[] = {
@@ -47,9 +46,8 @@ static void test_ir_exec_typed_numeric_truthiness(void) {
         cxpr_ir_program program = {.code = code, .count = 6};
         cxpr_error err = {0};
         cxpr_value out = cxpr_ir_exec_typed(&program, NULL, NULL, NULL, 0, &err);
-        assert(err.code == CXPR_OK);
-        assert(out.type == CXPR_VALUE_BOOL);
-        assert(out.b == true);
+        assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+        assert(out.type == CXPR_VALUE_NUMBER);
     }
 }
 
@@ -67,10 +65,29 @@ static void test_ir_exec_typed_string_literal(void) {
     assert(strcmp(out.str, "1h") == 0);
 }
 
+static void test_ir_exec_typed_lookback_brackets_are_stack_neutral(void) {
+    cxpr_ir_instr code[] = {
+        {.op = CXPR_OP_LOOKBACK_PUSH, .index = 2},
+        {.op = CXPR_OP_LOOKBACK_PUSH, .index = 3},
+        {.op = CXPR_OP_LOOKBACK_POP},
+        {.op = CXPR_OP_LOOKBACK_POP},
+        {.op = CXPR_OP_PUSH_CONST, .value = 7.0},
+        {.op = CXPR_OP_RETURN}
+    };
+    cxpr_ir_program program = {.code = code, .count = 6};
+    cxpr_error err = {0};
+    cxpr_value out = cxpr_ir_exec_typed(&program, NULL, NULL, NULL, 0, &err);
+
+    assert(err.code == CXPR_OK);
+    assert(out.type == CXPR_VALUE_NUMBER);
+    assert(out.d == 7.0);
+}
+
 int main(void) {
     test_ir_exec_typed_bool_path();
     test_ir_exec_typed_numeric_truthiness();
     test_ir_exec_typed_string_literal();
+    test_ir_exec_typed_lookback_brackets_are_stack_neutral();
     printf("  \xE2\x9C\x93 ir_exec_typed\n");
     return 0;
 }

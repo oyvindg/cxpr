@@ -58,6 +58,9 @@ static cxpr_ir_view_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
     case CXPR_OP_JUMP: return CXPR_IR_VIEW_OP_JUMP;
     case CXPR_OP_JUMP_IF_FALSE: return CXPR_IR_VIEW_OP_JUMP_IF_FALSE;
     case CXPR_OP_JUMP_IF_TRUE: return CXPR_IR_VIEW_OP_JUMP_IF_TRUE;
+    case CXPR_OP_LOOKBACK_PUSH: return CXPR_IR_VIEW_OP_LOOKBACK_PUSH;
+    case CXPR_OP_LOOKBACK_POP: return CXPR_IR_VIEW_OP_LOOKBACK_POP;
+    case CXPR_OP_LOOKBACK_RESOLVE: return CXPR_IR_VIEW_OP_LOOKBACK_RESOLVE;
     case CXPR_OP_RETURN: return CXPR_IR_VIEW_OP_RETURN;
     default: return CXPR_IR_VIEW_OP_UNKNOWN;
     }
@@ -86,6 +89,8 @@ static bool cxpr_ir_view_opcode_has_index(cxpr_opcode op) {
     case CXPR_OP_JUMP:
     case CXPR_OP_JUMP_IF_FALSE:
     case CXPR_OP_JUMP_IF_TRUE:
+    case CXPR_OP_LOOKBACK_PUSH:
+    case CXPR_OP_LOOKBACK_RESOLVE:
         return true;
     default:
         return false;
@@ -213,6 +218,9 @@ const char* cxpr_ir_view_opcode_name(cxpr_ir_view_opcode op) {
     case CXPR_IR_VIEW_OP_JUMP: return "JUMP";
     case CXPR_IR_VIEW_OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
     case CXPR_IR_VIEW_OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
+    case CXPR_IR_VIEW_OP_LOOKBACK_PUSH: return "LOOKBACK_PUSH";
+    case CXPR_IR_VIEW_OP_LOOKBACK_POP: return "LOOKBACK_POP";
+    case CXPR_IR_VIEW_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
     case CXPR_IR_VIEW_OP_RETURN: return "RETURN";
     case CXPR_IR_VIEW_OP_UNKNOWN:
     default:

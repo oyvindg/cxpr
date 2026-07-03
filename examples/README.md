@@ -13,8 +13,23 @@ This folder contains longer examples that are useful for understanding how `cxpr
 - [`scientific.md`](scientific.md): interdependent expressions resolved in topological
   order across relativity, quantum mechanics, and chemistry
   Test: [`../tests/examples/scientific.test.c`](../tests/examples/scientific.test.c)
+- [`engine_slots.c`](engine_slots.c): `cxpr_engine` driven from host-owned
+  hot-loop values via pre-bound `cxpr_context_slot` handles
+- [`ast_snapshot_cytoscape/`](ast_snapshot_cytoscape/): single-tick AST
+  snapshot rendered as a Cytoscape tree
 
 These examples are illustrative. They show expression shapes and integration patterns, not validated domain models.
+
+## Engine Examples
+
+The `engine_*.c` files are standalone embedding examples for `cxpr_engine`.
+They are intentionally small and can be compiled directly from `libs/cxpr/`
+against a local `build` directory:
+
+```bash
+cc examples/engine_slots.c -Iinclude -Lbuild -lcxpr -lm -o /tmp/cxpr_engine_slots
+/tmp/cxpr_engine_slots
+```
 
 ## Running The Example Tests
 

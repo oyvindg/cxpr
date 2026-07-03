@@ -11,6 +11,7 @@
  * parity cross-check) and prints ns/bar + the ratio. */
 #include <cxpr/engine.h>
 #include <cxpr/cxpr.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,10 @@
 static volatile double g_sink = 0.0;
 static double open_[NBARS], high_[NBARS], low_[NBARS], close_[NBARS];
 static int64_t g_ll_cursor; /* low-level lookback cursor (host-tracked by hand) */
+
+static void sink_add(double value) {
+    if (isfinite(value)) g_sink += value;
+}
 
 static long long now_ns(void) {
     struct timespec ts;
@@ -40,6 +45,29 @@ static void report(const char* name, long long low_ns, long long low_sig,
            (double)eng_ns / (double)low_ns, low_sig == eng_sig ? "OK" : "MISMATCH");
 }
 
+static void report_detail(const char* name, long long ns) {
+    double total = (double)NBARS * (double)REPS;
+    printf("  %-24s %7.2f ns/bar\n", name, (double)ns / total);
+}
+
+static cxpr_ast* parse_or_die(cxpr_parser* parser, const char* expr, cxpr_error* err) {
+    cxpr_ast* ast = cxpr_parse(parser, expr, err);
+    if (!ast) {
+        fprintf(stderr, "parse failed for '%s': %s\n", expr, err->message ? err->message : "?");
+        exit(1);
+    }
+    return ast;
+}
+
+static cxpr_program* compile_or_die(cxpr_ast* ast, const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_program* program = cxpr_compile(ast, reg, err);
+    if (!program) {
+        fprintf(stderr, "compile failed: %s\n", err->message ? err->message : "?");
+        exit(1);
+    }
+    return program;
+}
+
 /* ---------------- scenario 1: basic (no lookback) ---------------- */
 static int run_basic(void) {
     static const cxpr_expression_def E[] = {
@@ -48,9 +76,55 @@ static int run_basic(void) {
         { "score","(close - open) / (high - low + 0.0001)" },
     };
     cxpr_error err = {0};
-    long long low_ns, eng_ns, low_sig = 0, eng_sig = 0;
+    long long raw_ns, no_watch_ns, low_ns, eng_ns;
+    long long raw_sig = 0, no_watch_sig = 0, low_sig = 0, eng_sig = 0;
     unsigned i, r;
 
+    { /* raw compiled programs */
+        cxpr_registry* reg = cxpr_registry_new();
+        cxpr_parser* parser = cxpr_parser_new();
+        cxpr_context* ctx = cxpr_context_new();
+        cxpr_ast* buy_ast;
+        cxpr_ast* exit_ast;
+        cxpr_ast* score_ast;
+        cxpr_program* buy_prog;
+        cxpr_program* exit_prog;
+        cxpr_program* score_prog;
+        long long start;
+        cxpr_register_defaults(reg);
+        buy_ast = parse_or_die(parser, "close > open && (high - low) > 0.5", &err);
+        exit_ast = parse_or_die(parser, "close < open", &err);
+        score_ast = parse_or_die(parser, "(close - open) / (high - low + 0.0001)", &err);
+        buy_prog = compile_or_die(buy_ast, reg, &err);
+        exit_prog = compile_or_die(exit_ast, reg, &err);
+        score_prog = compile_or_die(score_ast, reg, &err);
+        start = now_ns();
+        for (r = 0; r < REPS; ++r) {
+            bool pb = false, pe = false;
+            for (i = 0; i < NBARS; ++i) {
+                bool b = false, e = false;
+                double score = 0.0;
+                cxpr_context_set(ctx, "open", open_[i]);
+                cxpr_context_set(ctx, "high", high_[i]);
+                cxpr_context_set(ctx, "low", low_[i]);
+                cxpr_context_set(ctx, "close", close_[i]);
+                if (!cxpr_eval_program_bool(buy_prog, ctx, reg, &b, &err) ||
+                    !cxpr_eval_program_bool(exit_prog, ctx, reg, &e, &err) ||
+                    !cxpr_eval_program_number(score_prog, ctx, reg, &score, &err)) {
+                    fprintf(stderr, "basic raw eval failed: %s\n", err.message ? err.message : "?");
+                    exit(1);
+                }
+                sink_add(score);
+                if (b && !pb) ++raw_sig;
+                if (e && !pe) ++raw_sig;
+                pb = b; pe = e;
+            }
+        }
+        raw_ns = now_ns() - start;
+        cxpr_program_free(score_prog); cxpr_program_free(exit_prog); cxpr_program_free(buy_prog);
+        cxpr_ast_free(score_ast); cxpr_ast_free(exit_ast); cxpr_ast_free(buy_ast);
+        cxpr_context_free(ctx); cxpr_parser_free(parser); cxpr_registry_free(reg);
+    }
     { /* low-level */
         cxpr_registry* reg = cxpr_registry_new();
         cxpr_evaluator* ev;
@@ -73,7 +147,7 @@ static int run_basic(void) {
                 cxpr_evaluator_eval(ev, ctx, &err);
                 bool b = cxpr_expression_get_bool(ev, "buy", &f);
                 bool e = cxpr_expression_get_bool(ev, "exit", &f);
-                g_sink += cxpr_expression_get_double(ev, "score", &f);
+                sink_add(cxpr_expression_get_double(ev, "score", &f));
                 if (b && !pb) ++low_sig;
                 if (e && !pe) ++low_sig;
                 pb = b; pe = e;
@@ -81,6 +155,40 @@ static int run_basic(void) {
         }
         low_ns = now_ns() - start;
         cxpr_context_free(ctx); cxpr_evaluator_free(ev); cxpr_registry_free(reg);
+    }
+    { /* engine without watches */
+        const cxpr_engine_column_source_def cols[] = {
+            { "open", &open_[0], sizeof(double), NBARS },
+            { "high", &high_[0], sizeof(double), NBARS },
+            { "low",  &low_[0],  sizeof(double), NBARS },
+            { "close",&close_[0],sizeof(double), NBARS },
+        };
+        cxpr_engine_config cfg = {0};
+        cxpr_engine_program* prog;
+        cxpr_engine_session* s;
+        long long start;
+        cfg.expressions = E; cfg.expression_count = 3;
+        cfg.column_sources = cols; cfg.column_source_count = 4;
+        prog = cxpr_engine_program_new(&cfg, &err);
+        s = cxpr_engine_session_new(prog);
+        start = now_ns();
+        for (r = 0; r < REPS; ++r) {
+            bool pb = false, pe = false;
+            cxpr_engine_session_reset(s);
+            for (i = 0; i < NBARS; ++i) {
+                const cxpr_engine_event* ev2; size_t n; bool f;
+                bool b, e;
+                cxpr_engine_tick(s, &ev2, &n, &err);
+                b = cxpr_engine_get_bool(s, "buy", &f);
+                e = cxpr_engine_get_bool(s, "exit", &f);
+                sink_add(cxpr_engine_get_double(s, "score", &f));
+                if (b && !pb) ++no_watch_sig;
+                if (e && !pe) ++no_watch_sig;
+                pb = b; pe = e;
+            }
+        }
+        no_watch_ns = now_ns() - start;
+        cxpr_engine_session_free(s); cxpr_engine_program_free(prog);
     }
     { /* engine */
         const cxpr_engine_column_source_def cols[] = {
@@ -106,14 +214,18 @@ static int run_basic(void) {
                 const cxpr_engine_event* ev2; size_t n; bool f;
                 cxpr_engine_tick(s, &ev2, &n, &err);
                 eng_sig += (long long)n;
-                g_sink += cxpr_engine_get_double(s, "score", &f);
+                sink_add(cxpr_engine_get_double(s, "score", &f));
             }
         }
         eng_ns = now_ns() - start;
         cxpr_engine_session_free(s); cxpr_engine_program_free(prog);
     }
     report("basic   ", low_ns, low_sig, eng_ns, eng_sig);
-    return low_sig == eng_sig;
+    report_detail("basic.raw_programs", raw_ns);
+    report_detail("basic.evaluator", low_ns);
+    report_detail("basic.engine_nowatch", no_watch_ns);
+    report_detail("basic.engine_watch", eng_ns);
+    return raw_sig == low_sig && low_sig == no_watch_sig && low_sig == eng_sig;
 }
 
 /* ---------------- scenario 2: lookback + registered fn ---------------- */
@@ -124,9 +236,59 @@ static int run_lookback(void) {
         { "sm",  "decay(close)" },             /* registered fn */
     };
     cxpr_error err = {0};
-    long long low_ns, eng_ns, low_sig = 0, eng_sig = 0;
+    long long raw_ns, no_watch_ns, low_ns, eng_ns;
+    long long raw_sig = 0, no_watch_sig = 0, low_sig = 0, eng_sig = 0;
     unsigned i, r;
 
+    { /* raw compiled programs with column lookback resolver */
+        cxpr_registry* reg = cxpr_registry_new();
+        cxpr_parser* parser = cxpr_parser_new();
+        cxpr_context* ctx = cxpr_context_new();
+        cxpr_ast* brk_ast;
+        cxpr_ast* mom_ast;
+        cxpr_ast* sm_ast;
+        cxpr_program* brk_prog;
+        cxpr_program* mom_prog;
+        cxpr_program* sm_prog;
+        long long start;
+        const cxpr_lookback_column llcols[] = {
+            { "close", &close_[0], sizeof(double), NBARS },
+            { "high",  &high_[0],  sizeof(double), NBARS },
+        };
+        cxpr_register_defaults(reg);
+        cxpr_registry_add_unary(reg, "decay", bench_decay);
+        cxpr_register_column_lookback(reg, llcols, 2, &g_ll_cursor);
+        brk_ast = parse_or_die(parser, "close > high[1]", &err);
+        mom_ast = parse_or_die(parser, "close - close[3]", &err);
+        sm_ast = parse_or_die(parser, "decay(close)", &err);
+        brk_prog = compile_or_die(brk_ast, reg, &err);
+        mom_prog = compile_or_die(mom_ast, reg, &err);
+        sm_prog = compile_or_die(sm_ast, reg, &err);
+        start = now_ns();
+        for (r = 0; r < REPS; ++r) {
+            bool pbrk = false;
+            for (i = 0; i < NBARS; ++i) {
+                bool b = false;
+                double mom = 0.0, sm = 0.0;
+                g_ll_cursor = (int64_t)i;
+                cxpr_context_set(ctx, "high", high_[i]);
+                cxpr_context_set(ctx, "close", close_[i]);
+                if (!cxpr_eval_program_bool(brk_prog, ctx, reg, &b, &err) ||
+                    !cxpr_eval_program_number(mom_prog, ctx, reg, &mom, &err) ||
+                    !cxpr_eval_program_number(sm_prog, ctx, reg, &sm, &err)) {
+                    fprintf(stderr, "lookback raw eval failed: %s\n", err.message ? err.message : "?");
+                    exit(1);
+                }
+                sink_add(mom); sink_add(sm);
+                if (b && !pbrk) ++raw_sig;
+                pbrk = b;
+            }
+        }
+        raw_ns = now_ns() - start;
+        cxpr_program_free(sm_prog); cxpr_program_free(mom_prog); cxpr_program_free(brk_prog);
+        cxpr_ast_free(sm_ast); cxpr_ast_free(mom_ast); cxpr_ast_free(brk_ast);
+        cxpr_context_free(ctx); cxpr_parser_free(parser); cxpr_registry_free(reg);
+    }
     { /* low-level: host writes + installs its own lookback resolver, tracks cursor */
         cxpr_registry* reg = cxpr_registry_new();
         cxpr_evaluator* ev;
@@ -154,14 +316,50 @@ static int run_lookback(void) {
                 cxpr_context_set(ctx, "close", close_[i]);
                 cxpr_evaluator_eval(ev, ctx, &err);
                 bool b = cxpr_expression_get_bool(ev, "brk", &f);
-                g_sink += cxpr_expression_get_double(ev, "mom", &f);
-                g_sink += cxpr_expression_get_double(ev, "sm", &f);
+                sink_add(cxpr_expression_get_double(ev, "mom", &f));
+                sink_add(cxpr_expression_get_double(ev, "sm", &f));
                 if (b && !pbrk) ++low_sig;
                 pbrk = b;
             }
         }
         low_ns = now_ns() - start;
         cxpr_context_free(ctx); cxpr_evaluator_free(ev); cxpr_registry_free(reg);
+    }
+    { /* engine without watches */
+        cxpr_registry* reg = cxpr_registry_new();
+        const cxpr_engine_column_source_def cols[] = {
+            { "high", &high_[0],  sizeof(double), NBARS },
+            { "close",&close_[0], sizeof(double), NBARS },
+        };
+        cxpr_engine_config cfg = {0};
+        cxpr_engine_program* prog;
+        cxpr_engine_session* s;
+        long long start;
+        cxpr_register_defaults(reg);
+        cxpr_registry_add_unary(reg, "decay", bench_decay);
+        cfg.registry = reg;
+        cfg.expressions = E; cfg.expression_count = 3;
+        cfg.column_sources = cols; cfg.column_source_count = 2;
+        prog = cxpr_engine_program_new(&cfg, &err);
+        if (!prog) { fprintf(stderr, "lookback no-watch build: %s\n", err.message ? err.message : "?"); return 0; }
+        s = cxpr_engine_session_new(prog);
+        start = now_ns();
+        for (r = 0; r < REPS; ++r) {
+            bool pbrk = false;
+            cxpr_engine_session_reset(s);
+            for (i = 0; i < NBARS; ++i) {
+                const cxpr_engine_event* ev2; size_t n; bool f;
+                bool b;
+                cxpr_engine_tick(s, &ev2, &n, &err);
+                b = cxpr_engine_get_bool(s, "brk", &f);
+                sink_add(cxpr_engine_get_double(s, "mom", &f));
+                sink_add(cxpr_engine_get_double(s, "sm", &f));
+                if (b && !pbrk) ++no_watch_sig;
+                pbrk = b;
+            }
+        }
+        no_watch_ns = now_ns() - start;
+        cxpr_engine_session_free(s); cxpr_engine_program_free(prog); cxpr_registry_free(reg);
     }
     { /* engine: declare the lookback exprs; engine owns rings + resolver */
         cxpr_registry* reg = cxpr_registry_new();
@@ -190,15 +388,19 @@ static int run_lookback(void) {
                 const cxpr_engine_event* ev2; size_t n; bool f;
                 cxpr_engine_tick(s, &ev2, &n, &err);
                 eng_sig += (long long)n;
-                g_sink += cxpr_engine_get_double(s, "mom", &f);
-                g_sink += cxpr_engine_get_double(s, "sm", &f);
+                sink_add(cxpr_engine_get_double(s, "mom", &f));
+                sink_add(cxpr_engine_get_double(s, "sm", &f));
             }
         }
         eng_ns = now_ns() - start;
         cxpr_engine_session_free(s); cxpr_engine_program_free(prog); cxpr_registry_free(reg);
     }
     report("lookback", low_ns, low_sig, eng_ns, eng_sig);
-    return low_sig == eng_sig;
+    report_detail("lookback.raw_programs", raw_ns);
+    report_detail("lookback.evaluator", low_ns);
+    report_detail("lookback.engine_nowatch", no_watch_ns);
+    report_detail("lookback.engine_watch", eng_ns);
+    return raw_sig == low_sig && low_sig == no_watch_sig && low_sig == eng_sig;
 }
 
 int main(void) {

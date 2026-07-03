@@ -4,16 +4,15 @@
  */
 
 #include <cxpr/codegen.h>
+#include <cxpr/typecheck.h>
 
 #include "core.h"
+#include "lookback.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-
-#define CXPR_CG_UINT_MAX ((unsigned)~0u)
-#define CXPR_CG_INT_MAX ((int)(CXPR_CG_UINT_MAX >> 1u))
 
 /* ── growable string buffer ──────────────────────────────────────────────── */
 
@@ -373,21 +372,14 @@ static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
         return cxpr_cg_emit_call_at_offset(ast, lookback_offset, b, target, err);
     case CXPR_NODE_LOOKBACK: {
         const cxpr_ast* index = cxpr_ast_lookback_index(ast);
-        double raw;
         unsigned offset;
-        if (!index || cxpr_ast_type(index) != CXPR_NODE_NUMBER) {
-            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "C codegen requires constant lookback indexes");
-        }
-        raw = cxpr_ast_number_value(index);
-        offset = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
-        if (!isfinite(raw) || raw < 0.0 || fabs(raw - (double)offset) > 1e-9) {
-            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "C codegen requires integer lookback indexes");
-        }
-        if (CXPR_CG_UINT_MAX - lookback_offset < offset) {
-            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "C codegen lookback offset overflow");
-        }
+        unsigned next_offset;
+        if (!cxpr_lookback_literal_offset(
+                index, &offset, err, "C codegen requires constant integer lookback indexes")) return 0;
+        if (!cxpr_lookback_add_unsigned(
+                lookback_offset, offset, &next_offset, err, "C codegen lookback offset overflow")) return 0;
         return cxpr_cg_emit_at_offset(
-            cxpr_ast_lookback_target(ast), lookback_offset + offset, b, target, err);
+            cxpr_ast_lookback_target(ast), next_offset, b, target, err);
     }
     case CXPR_NODE_FIELD_ACCESS:
         if (cxpr_cg_target_has_offset_leaf(target)) {
@@ -413,7 +405,6 @@ bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
                                        void* userdata,
                                        cxpr_error* err) {
     const cxpr_ast* index_ast;
-    double raw;
     unsigned offset;
     int next_offset;
 
@@ -423,21 +414,10 @@ bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
         return false;
     }
     index_ast = cxpr_ast_lookback_index(ast);
-    if (!index_ast || cxpr_ast_type(index_ast) != CXPR_NODE_NUMBER) {
-        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "codegen requires constant lookback indexes");
-        return false;
-    }
-    raw = cxpr_ast_number_value(index_ast);
-    offset = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
-    if (!isfinite(raw) || raw < 0.0 || fabs(raw - (double)offset) > 1e-9) {
-        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "codegen requires integer lookback indexes");
-        return false;
-    }
-    if (current_offset > CXPR_CG_INT_MAX - (int)offset) {
-        cxpr_cg_err(err, CXPR_ERR_SYNTAX, "codegen lookback offset overflow");
-        return false;
-    }
-    next_offset = current_offset + (int)offset;
+    if (!cxpr_lookback_literal_offset(
+            index_ast, &offset, err, "codegen requires constant integer lookback indexes")) return false;
+    if (!cxpr_lookback_add_int(
+            current_offset, offset, &next_offset, err, "codegen lookback offset overflow")) return false;
     return emit(userdata, cxpr_ast_lookback_target(ast), next_offset, err);
 }
 
@@ -449,6 +429,7 @@ char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
                               const cxpr_c_target* target, cxpr_error* err) {
     cxpr_cg_buf b = {0};
     if (err) *err = (cxpr_error){0};
+    if (!cxpr_typecheck(ast, NULL, NULL, err)) return NULL;
     if (!cxpr_cg_emit_at_offset(ast, lookback_offset, &b, target, err)) { free(b.data); return NULL; }
     if (b.oom) { free(b.data); cxpr_cg_err(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return NULL; }
     return b.data ? b.data : cxpr_strdup("");

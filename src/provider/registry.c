@@ -16,6 +16,7 @@ typedef struct {
     cxpr_runtime_required_scalar_fn callback;
     void* host_userdata;
     char* name;
+    cxpr_value_type return_type;
 } cxpr_provider_runtime_required_context;
 
 typedef struct {
@@ -24,6 +25,7 @@ typedef struct {
     char* name;
     char** field_names;
     size_t field_count;
+    cxpr_value_type return_type;
 } cxpr_provider_runtime_required_struct_context;
 
 static double cxpr_provider_runtime_required_default(const char* name,
@@ -37,15 +39,30 @@ static double cxpr_provider_runtime_required_default(const char* name,
     return NAN;
 }
 
-static double cxpr_provider_runtime_required_adapter(const double* args,
-                                                        size_t argc,
-                                                        void* userdata) {
+static cxpr_value cxpr_provider_runtime_required_value_adapter(const cxpr_value* args,
+                                                               size_t argc,
+                                                               void* userdata) {
     cxpr_provider_runtime_required_context* ctx = userdata;
     const cxpr_runtime_required_scalar_fn callback =
         (ctx && ctx->callback)
             ? ctx->callback
             : cxpr_provider_runtime_required_default;
-    return callback(ctx ? ctx->name : NULL, args, argc, ctx ? ctx->host_userdata : NULL);
+    double numeric_args[64];
+    size_t i;
+
+    if (argc > CXPR_ARRAY_COUNT(numeric_args)) return cxpr_num(NAN);
+    for (i = 0u; i < argc; ++i) {
+        if (args[i].type != CXPR_VALUE_NUMBER) return cxpr_num(NAN);
+        numeric_args[i] = args[i].d;
+    }
+    {
+        double value = callback(ctx ? ctx->name : NULL,
+                                numeric_args,
+                                argc,
+                                ctx ? ctx->host_userdata : NULL);
+        if (ctx && ctx->return_type == CXPR_VALUE_BOOL) return cxpr_bool(value != 0.0);
+        return cxpr_num(value);
+    }
 }
 
 static void cxpr_provider_runtime_required_context_free(void* userdata) {
@@ -87,6 +104,32 @@ static void cxpr_provider_runtime_required_struct_adapter(
     }
 }
 
+static cxpr_value cxpr_provider_runtime_required_struct_value_adapter(const cxpr_value* args,
+                                                                      size_t argc,
+                                                                      void* userdata) {
+    cxpr_provider_runtime_required_struct_context* ctx = userdata;
+    const cxpr_runtime_required_scalar_fn callback =
+        (ctx && ctx->callback)
+            ? ctx->callback
+            : cxpr_provider_runtime_required_default;
+    double numeric_args[64];
+    size_t i;
+
+    if (argc > CXPR_ARRAY_COUNT(numeric_args)) return cxpr_num(NAN);
+    for (i = 0u; i < argc; ++i) {
+        if (args[i].type != CXPR_VALUE_NUMBER) return cxpr_num(NAN);
+        numeric_args[i] = args[i].d;
+    }
+    {
+        double value = callback(ctx ? ctx->name : NULL,
+                                numeric_args,
+                                argc,
+                                ctx ? ctx->host_userdata : NULL);
+        if (ctx && ctx->return_type == CXPR_VALUE_BOOL) return cxpr_bool(value != 0.0);
+        return cxpr_num(value);
+    }
+}
+
 static void cxpr_provider_runtime_required_struct_context_free(void* userdata) {
     cxpr_provider_runtime_required_struct_context* ctx = userdata;
     size_t i;
@@ -122,6 +165,7 @@ static void cxpr_provider_runtime_required_struct_register(
     ctx->callback = callback;
     ctx->host_userdata = host ? host->userdata : NULL;
     ctx->field_count = spec->field_count;
+    ctx->return_type = spec->return_type == CXPR_VALUE_BOOL ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER;
     ctx->name = malloc(len + 1u);
     ctx->field_names = calloc(spec->field_count, sizeof(*ctx->field_names));
     if (!ctx->name || !ctx->field_names) {
@@ -144,12 +188,14 @@ static void cxpr_provider_runtime_required_struct_register(
         memcpy(ctx->field_names[i], spec->fields[i].name, field_len + 1u);
     }
 
-    cxpr_registry_add(
+    cxpr_registry_add_typed(
         reg,
         spec->name,
-        cxpr_provider_runtime_required_adapter,
+        cxpr_provider_runtime_required_struct_value_adapter,
         min_args,
         max_args,
+        NULL,
+        spec->return_type == CXPR_VALUE_BOOL ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER,
         ctx,
         cxpr_provider_runtime_required_struct_context_free);
 
@@ -169,6 +215,7 @@ static void cxpr_provider_runtime_required_register(cxpr_registry* reg,
                                                        const char* name,
                                                        size_t min_args,
                                                        size_t max_args,
+                                                       cxpr_value_type return_type,
                                                        const cxpr_host_config* host) {
     cxpr_provider_runtime_required_context* ctx;
     const cxpr_runtime_required_scalar_fn callback =
@@ -184,6 +231,7 @@ static void cxpr_provider_runtime_required_register(cxpr_registry* reg,
     if (!ctx) return;
     ctx->callback = callback;
     ctx->host_userdata = host ? host->userdata : NULL;
+    ctx->return_type = return_type == CXPR_VALUE_BOOL ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER;
     ctx->name = malloc(len + 1u);
     if (!ctx->name) {
         free(ctx);
@@ -191,12 +239,14 @@ static void cxpr_provider_runtime_required_register(cxpr_registry* reg,
     }
     memcpy(ctx->name, name, len + 1u);
 
-    cxpr_registry_add(
+    cxpr_registry_add_typed(
         reg,
         name,
-        cxpr_provider_runtime_required_adapter,
+        cxpr_provider_runtime_required_value_adapter,
         min_args,
         max_args,
+        NULL,
+        return_type == CXPR_VALUE_BOOL ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER,
         ctx,
         cxpr_provider_runtime_required_context_free);
 }
@@ -206,7 +256,8 @@ static void cxpr_provider_signature_family_add(cxpr_registry* reg,
                                              size_t min_args,
                                              size_t max_args,
                                              const cxpr_host_config* host) {
-    cxpr_provider_runtime_required_register(reg, name, min_args, max_args, host);
+    cxpr_provider_runtime_required_register(
+        reg, name, min_args, max_args, CXPR_VALUE_NUMBER, host);
 }
 
 int cxpr_register_provider_fn_spec(
@@ -226,7 +277,12 @@ int cxpr_register_provider_fn_spec(
         cxpr_provider_runtime_required_struct_register(reg, spec, min_args, max_args, host);
     } else {
         cxpr_provider_runtime_required_register(
-            reg, spec->name, min_args, max_args, host);
+            reg,
+            spec->name,
+            min_args,
+            max_args,
+            spec->return_type == CXPR_VALUE_BOOL ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER,
+            host);
     }
 
     if (!spec->params || spec->param_count == 0u) return 1;
@@ -336,6 +392,11 @@ void cxpr_register_provider_signatures(
         const cxpr_provider_source_spec* source = source_specs ? source_specs[source_index] : NULL;
         if (!source || !source->name || source->name[0] == '\0') continue;
         cxpr_provider_runtime_required_register(
-            reg, source->name, source->min_args, source->max_args, host);
+            reg,
+            source->name,
+            source->min_args,
+            source->max_args,
+            CXPR_VALUE_NUMBER,
+            host);
     }
 }

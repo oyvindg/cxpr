@@ -13,6 +13,7 @@
 
 #include <cxpr/engine.h>
 #include <cxpr/cxpr.h>
+#include <cxpr/typecheck.h>
 #include "context/internal.h"
 #include "limits.h"
 
@@ -299,12 +300,6 @@ static double engine_value_to_double(cxpr_value v) {
     return NAN;
 }
 
-static bool engine_value_truthy(cxpr_value v) {
-    if (v.type == CXPR_VALUE_BOOL) return v.b;
-    if (v.type == CXPR_VALUE_NUMBER) return v.d != 0.0 && !isnan(v.d);
-    return false;
-}
-
 /* Build the basket role struct the cxpr basket builtins read (D25):
  * `__cxpr_basket_role_<name>` = { bound_count, value_count, v0..v{n-1} },
  * plus `$name` bound directly when there is a single member. */
@@ -427,6 +422,18 @@ static bool engine_is_expr_name(const cxpr_engine_program* prog, const char* nam
         if (prog->exprs[i].name && strcmp(prog->exprs[i].name, name) == 0) return true;
     }
     return false;
+}
+
+static const cxpr_expression_def* engine_find_expr_def(const cxpr_engine_program* prog,
+                                                       const char* name) {
+    size_t i;
+    if (!prog || !name) return NULL;
+    for (i = 0; i < prog->expr_count; ++i) {
+        if (prog->exprs[i].name && strcmp(prog->exprs[i].name, name) == 0) {
+            return &prog->exprs[i];
+        }
+    }
+    return NULL;
 }
 
 /* Record (or deepen) a tracked expression for `expr[n]` lookback. */
@@ -1307,6 +1314,30 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
         }
     }
 
+    for (i = 0; i < prog->watch_count; ++i) {
+        const cxpr_expression_def* def = engine_find_expr_def(prog, prog->watches[i].expr_name);
+        cxpr_parser* parser;
+        cxpr_ast* ast;
+
+        if (!def) continue;
+        parser = cxpr_parser_new();
+        if (!parser) goto oom;
+        ast = cxpr_parse(parser, def->expression, err);
+        cxpr_parser_free(parser);
+        if (!ast) {
+            engine_program_free_internals(prog);
+            free(prog);
+            return NULL;
+        }
+        if (!cxpr_typecheck_bool_root(ast, prog->registry, err)) {
+            cxpr_ast_free(ast);
+            engine_program_free_internals(prog);
+            free(prog);
+            return NULL;
+        }
+        cxpr_ast_free(ast);
+    }
+
     /* Discover referenced sources + per-source lookback depth (D5/D16). */
     {
         cxpr_parser* parser = cxpr_parser_new();
@@ -1680,9 +1711,18 @@ bool cxpr_engine_tick(cxpr_engine_session* session,
         const engine_watch* w = &prog->watches[i];
         bool found = false;
         cxpr_value val = cxpr_expression_get(session->eval, w->expr_name, &found);
-        bool truthy = found ? engine_value_truthy(val) : false;
+        bool truthy = false;
         double num = found ? engine_value_to_double(val) : NAN;
         bool fire = false;
+
+        if (found) {
+            if (val.type != CXPR_VALUE_BOOL) {
+                engine_set_err(err, CXPR_ERR_TYPE_MISMATCH,
+                               "engine watch expression must evaluate to bool");
+                return false;
+            }
+            truthy = val.b;
+        }
 
         switch (w->edge) {
             case CXPR_EDGE_RISING:

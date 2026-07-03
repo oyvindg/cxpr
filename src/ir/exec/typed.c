@@ -5,19 +5,108 @@
 
 #include "internal.h"
 #include "core.h"
+#include "ast/internal.h"
 #include <math.h>
+#include <string.h>
 
-static bool cxpr_ir_value_truthy(cxpr_value value) {
-    if (value.type == CXPR_VALUE_BOOL) return value.b;
-    if (value.type == CXPR_VALUE_NUMBER) return value.d != 0.0 && !isnan(value.d);
-    return false;
+static bool cxpr_ir_resolve_lookback_target(const cxpr_ast* target,
+                                            size_t offset,
+                                            const cxpr_context* ctx,
+                                            const cxpr_registry* reg,
+                                            cxpr_value* out,
+                                            cxpr_error* err) {
+    cxpr_ast index_ast = {0};
+
+    if (!reg || !reg->lookback_resolver || !target || !out) {
+        return false;
+    }
+    index_ast.type = CXPR_NODE_NUMBER;
+    index_ast.data.number.value = (double)offset;
+    return reg->lookback_resolver(
+        target, &index_ast, ctx, reg, reg->lookback_userdata, out, err);
+}
+
+static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
+                                           size_t offset,
+                                           const cxpr_context* ctx,
+                                           const cxpr_registry* reg,
+                                           cxpr_value* out,
+                                           cxpr_error* err) {
+    const cxpr_ast* borrowed = instr ? (const cxpr_ast*)instr->payload : NULL;
+    cxpr_ast target = {0};
+    cxpr_ast* target_ptr = (cxpr_ast*)borrowed;
+    char field_key[256];
+    char chain_key[512];
+    char* segments[32];
+    size_t depth = 0u;
+
+    if (!instr) return false;
+    if (borrowed) {
+        return cxpr_ir_resolve_lookback_target(borrowed, offset, ctx, reg, out, err);
+    }
+
+    switch (instr->op) {
+    case CXPR_OP_LOAD_VAR:
+    case CXPR_OP_LOAD_VAR_SQUARE:
+        target.type = CXPR_NODE_IDENTIFIER;
+        target.data.identifier.name = (char*)instr->name;
+        break;
+    case CXPR_OP_LOAD_FIELD:
+    case CXPR_OP_LOAD_FIELD_SQUARE: {
+        char* dot;
+        if (!instr->name) return false;
+        if (strlen(instr->name) >= sizeof(field_key)) return false;
+        strcpy(field_key, instr->name);
+        dot = strchr(field_key, '.');
+        if (!dot || dot == field_key || dot[1] == '\0') return false;
+        *dot = '\0';
+        target.type = CXPR_NODE_FIELD_ACCESS;
+        target.data.field_access.object = field_key;
+        target.data.field_access.field = dot + 1;
+        target.data.field_access.full_key = (char*)instr->name;
+        break;
+    }
+    case CXPR_OP_LOAD_NAMED_FIELD:
+        target.type = CXPR_NODE_FIELD_ACCESS;
+        target.data.field_access.object = (char*)instr->name;
+        target.data.field_access.field = (char*)instr->aux_name;
+        target.data.field_access.full_key = NULL;
+        break;
+    case CXPR_OP_LOAD_CHAIN: {
+        char* segment;
+        char* saveptr = NULL;
+        if (!instr->name) return false;
+        if (strlen(instr->name) >= sizeof(chain_key)) return false;
+        strcpy(chain_key, instr->name);
+        segment = cxpr_strtok_r(chain_key, ".", &saveptr);
+        while (segment && depth < sizeof(segments) / sizeof(segments[0])) {
+            segments[depth++] = segment;
+            segment = cxpr_strtok_r(NULL, ".", &saveptr);
+        }
+        if (segment || depth < 2u) return false;
+        target.type = CXPR_NODE_CHAIN_ACCESS;
+        target.data.chain_access.path = segments;
+        target.data.chain_access.depth = depth;
+        target.data.chain_access.full_key = (char*)instr->name;
+        break;
+    }
+    default:
+        return false;
+    }
+
+    target_ptr = &target;
+    return cxpr_ir_resolve_lookback_target(target_ptr, offset, ctx, reg, out, err);
 }
 
 cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                               const cxpr_registry* reg, const double* locals,
                               size_t local_count, cxpr_error* err) {
     cxpr_value stack[CXPR_IR_STACK_CAPACITY];
+    size_t lookback_stack[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
+    size_t lookback_sp = 0;
+    size_t lookback_offset = 0;
+    size_t lookback_depth = 0;
     size_t ip = 0;
 
     if (err) *err = (cxpr_error){0};
@@ -69,8 +158,16 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_LOAD_VAR:
             {
                 bool found = false;
-                result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
-                if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+                if (lookback_depth > 0u) {
+                    if (!cxpr_ir_resolve_lookback_instr(
+                            instr, lookback_offset, ctx, reg, &result, err)) {
+                        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                        return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                    }
+                } else {
+                    result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
+                    if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+                }
             }
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
@@ -79,8 +176,16 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_LOAD_VAR_SQUARE:
             {
                 bool found = false;
-                result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
-                if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+                if (lookback_depth > 0u) {
+                    if (!cxpr_ir_resolve_lookback_instr(
+                            instr, lookback_offset, ctx, reg, &result, err)) {
+                        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                        return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                    }
+                } else {
+                    result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
+                    if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+                }
             }
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_num(NAN);
             break;
@@ -117,26 +222,58 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_num(NAN);
             break;
         case CXPR_OP_LOAD_FIELD:
-            result = cxpr_ir_load_field_value(ctx, reg, instr, err);
+            if (lookback_depth > 0u) {
+                if (!cxpr_ir_resolve_lookback_instr(
+                        instr, lookback_offset, ctx, reg, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                }
+            } else {
+                result = cxpr_ir_load_field_value(ctx, reg, instr, err);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
             break;
         case CXPR_OP_LOAD_FIELD_SQUARE:
-            result = cxpr_ir_load_field_value(ctx, reg, instr, err);
+            if (lookback_depth > 0u) {
+                if (!cxpr_ir_resolve_lookback_instr(
+                        instr, lookback_offset, ctx, reg, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                }
+            } else {
+                result = cxpr_ir_load_field_value(ctx, reg, instr, err);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_num(NAN);
             break;
         case CXPR_OP_LOAD_NAMED_FIELD:
-            result = cxpr_ir_load_named_field_value(ctx, instr, err);
+            if (lookback_depth > 0u) {
+                if (!cxpr_ir_resolve_lookback_instr(
+                        instr, lookback_offset, ctx, reg, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                }
+            } else {
+                result = cxpr_ir_load_named_field_value(ctx, instr, err);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
             break;
         case CXPR_OP_LOAD_CHAIN:
-            result = cxpr_ir_load_chain_value(ctx, instr, err);
+            if (lookback_depth > 0u) {
+                if (!cxpr_ir_resolve_lookback_instr(
+                        instr, lookback_offset, ctx, reg, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                }
+            } else {
+                result = cxpr_ir_load_chain_value(ctx, instr, err);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
@@ -276,12 +413,11 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             break;
         case CXPR_OP_NOT:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
-            if (a.type != CXPR_VALUE_BOOL && a.type != CXPR_VALUE_NUMBER) {
-                (void)cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
-                                           "Logical not requires bool or numeric operand");
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
+                                      "Logical not requires bool operand")) {
                 return cxpr_num(NAN);
             }
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_bool(!cxpr_ir_value_truthy(a)),
+            if (!cxpr_ir_stack_push(stack, &sp, cxpr_bool(!a.b),
                                     CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
             }
@@ -506,7 +642,15 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             }
             break;
         case CXPR_OP_CALL_AST:
-            (void)cxpr_eval_ast(instr->ast, ctx, reg, &result, err);
+            if (lookback_depth > 0u) {
+                if (!cxpr_ir_resolve_lookback_target(
+                        instr->ast, lookback_offset, ctx, reg, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                }
+            } else {
+                (void)cxpr_eval_ast(instr->ast, ctx, reg, &result, err);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
                 return cxpr_num(NAN);
@@ -518,17 +662,60 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_JUMP_IF_FALSE:
         case CXPR_OP_JUMP_IF_TRUE:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
-            if (a.type != CXPR_VALUE_BOOL && a.type != CXPR_VALUE_NUMBER) {
-                (void)cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
-                                           "Conditional jump requires bool or numeric operand");
+            if (!cxpr_ir_require_type(a, CXPR_VALUE_BOOL, err,
+                                      "Conditional jump requires bool operand")) {
                 return cxpr_num(NAN);
             }
             {
-                bool truthy = cxpr_ir_value_truthy(a);
-                if ((instr->op == CXPR_OP_JUMP_IF_FALSE && !truthy) ||
-                    (instr->op == CXPR_OP_JUMP_IF_TRUE && truthy)) {
+                if ((instr->op == CXPR_OP_JUMP_IF_FALSE && !a.b) ||
+                    (instr->op == CXPR_OP_JUMP_IF_TRUE && a.b)) {
                 ip = instr->index;
                 continue;
+                }
+            }
+            break;
+        case CXPR_OP_LOOKBACK_PUSH:
+            if (lookback_sp >= CXPR_IR_STACK_CAPACITY) {
+                return cxpr_ir_runtime_error(err, "Lookback offset stack overflow");
+            }
+            lookback_stack[lookback_sp++] = lookback_offset;
+            if (((size_t)-1) - lookback_offset < instr->index) {
+                return cxpr_ir_runtime_error(err, "Lookback offset overflow");
+            }
+            lookback_offset += instr->index;
+            ++lookback_depth;
+            break;
+        case CXPR_OP_LOOKBACK_POP:
+            if (lookback_sp == 0) {
+                return cxpr_ir_runtime_error(err, "Lookback offset stack underflow");
+            }
+            lookback_offset = lookback_stack[--lookback_sp];
+            if (lookback_depth == 0u) {
+                return cxpr_ir_runtime_error(err, "Lookback depth underflow");
+            }
+            --lookback_depth;
+            break;
+        case CXPR_OP_LOOKBACK_RESOLVE:
+            {
+                const cxpr_ast* target = (const cxpr_ast*)instr->payload;
+                cxpr_ast index_ast = {0};
+                result = cxpr_num(NAN);
+                if (!reg || !reg->lookback_resolver || !target) {
+                    return cxpr_ir_runtime_error(err, "Lookback requires registry resolver");
+                }
+                if (((size_t)-1) - lookback_offset < instr->index) {
+                    return cxpr_ir_runtime_error(err, "Lookback offset overflow");
+                }
+                index_ast.type = CXPR_NODE_NUMBER;
+                index_ast.data.number.value = (double)(lookback_offset + instr->index);
+                if (!reg->lookback_resolver(target, &index_ast, ctx, reg,
+                                            reg->lookback_userdata, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                }
+                if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
+                    return cxpr_num(NAN);
                 }
             }
             break;

@@ -1503,6 +1503,35 @@ static void test_ir_constant_folding_reduces_program(void) {
     printf("  ✓ test_ir_constant_folding_reduces_program\n");
 }
 
+static void test_ir_constant_folding_lookback_constant_target(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "(2 + 3)[1]", &err);
+    cxpr_ir_program program = {0};
+    double result;
+
+    assert(ast);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+    assert(program.count == 2);
+    assert(program.code[0].op == CXPR_OP_PUSH_CONST);
+    ASSERT_DOUBLE_EQ(program.code[0].value, 5.0);
+    assert(program.code[1].op == CXPR_OP_RETURN);
+
+    result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(result, 5.0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_constant_folding_lookback_constant_target\n");
+}
+
 static void test_ir_constant_folding_comparison_logic_and_not(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -1752,6 +1781,7 @@ int main(void) {
     test_ir_eval_invalidates_parent_lookup_when_child_shadows();
     test_ir_eval_invalidates_parent_lookup_when_owner_map_grows();
     test_ir_constant_folding_reduces_program();
+    test_ir_constant_folding_lookback_constant_target();
     test_ir_constant_folding_comparison_logic_and_not();
     test_ir_constant_folding_pure_function_call();
     test_ir_constant_folding_keeps_variable_function_runtime();

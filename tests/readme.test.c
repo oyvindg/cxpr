@@ -807,7 +807,7 @@ static void test_readme_context_slot_binding(void) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Analysis API — cxpr_analyze_expr and cxpr_ast_references
  *
- *   cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err);
+ *   cxpr_analyze_expr("close > ema_fast and volume > $min_volume", reg, &info, &err);
  *   cxpr_ast_references(ast, refs, 8);
  *   cxpr_ast_variables_used(ast, params, 8);
  *   cxpr_ast_functions_used(ast, fns, 8);
@@ -821,21 +821,21 @@ static void test_readme_analysis_api(void) {
 
     /* Part 1: cxpr_analyze_expr */
     cxpr_analysis info = {0};
-    assert(cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err));
+    assert(cxpr_analyze_expr("close > ema_fast and volume > $min_volume", reg, &info, &err));
     assert(info.result_type == CXPR_EXPR_BOOL);
     assert(info.uses_parameters == true);
     assert(info.uses_variables == true);
     assert(info.can_short_circuit == true);
-    assert(info.reference_count == 2);   /* rsi, volume */
+    assert(info.reference_count == 3);   /* close, ema_fast, volume */
     assert(info.parameter_count == 1);   /* min_volume */
 
     /* Part 2: cxpr_ast_references / variables_used / functions_used */
-    cxpr_ast* ast = cxpr_parse(parser, "ema_fast > ema_slow and rsi < $limit", &err);
+    cxpr_ast* ast = cxpr_parse(parser, "close > ema_fast and volume > $limit", &err);
     assert(ast);
 
     const char* refs[8];
     size_t n = cxpr_ast_references(ast, refs, 8);
-    assert(n == 3);  /* ema_fast, ema_slow, rsi */
+    assert(n == 3);  /* close, ema_fast, volume */
 
     const char* params[8];
     size_t p = cxpr_ast_variables_used(ast, params, 8);

@@ -70,6 +70,9 @@ typedef enum {
     CXPR_OP_JUMP,
     CXPR_OP_JUMP_IF_FALSE,
     CXPR_OP_JUMP_IF_TRUE,
+    CXPR_OP_LOOKBACK_PUSH,
+    CXPR_OP_LOOKBACK_POP,
+    CXPR_OP_LOOKBACK_RESOLVE,
     CXPR_OP_RETURN
 } cxpr_opcode;
 
@@ -85,6 +88,8 @@ typedef enum {
  * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
+ * - LOOKBACK_PUSH: literal offset in index
+ * - LOOKBACK_RESOLVE: target AST in payload, literal offset in index
  * - arithmetic / comparisons / return: no extra operand
  */
 typedef struct {

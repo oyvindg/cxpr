@@ -15,6 +15,10 @@ struct cxpr_ast {
     const struct cxpr_registry* compiled_registry;
     unsigned long compiled_registry_version;
     bool compiled_cache_failed;
+    const struct cxpr_registry* typecheck_registry;
+    unsigned long typecheck_registry_version;
+    bool typecheck_cache_valid;
+    bool typecheck_cache_ok;
 
     union {
         struct {

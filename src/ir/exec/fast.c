@@ -179,6 +179,9 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         [CXPR_OP_JUMP] = &&op_jump,
         [CXPR_OP_JUMP_IF_FALSE] = &&op_jump_if_false,
         [CXPR_OP_JUMP_IF_TRUE] = &&op_jump_if_true,
+        [CXPR_OP_LOOKBACK_PUSH] = &&op_unsupported,
+        [CXPR_OP_LOOKBACK_POP] = &&op_unsupported,
+        [CXPR_OP_LOOKBACK_RESOLVE] = &&op_unsupported,
         [CXPR_OP_RETURN] = &&op_return
     };
     const cxpr_ir_instr* instr;
@@ -585,6 +588,9 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         [CXPR_OP_JUMP] = &&opb_jump,
         [CXPR_OP_JUMP_IF_FALSE] = &&opb_jump_if_false,
         [CXPR_OP_JUMP_IF_TRUE] = &&opb_jump_if_true,
+        [CXPR_OP_LOOKBACK_PUSH] = &&opb_unsupported,
+        [CXPR_OP_LOOKBACK_POP] = &&opb_unsupported,
+        [CXPR_OP_LOOKBACK_RESOLVE] = &&opb_unsupported,
         [CXPR_OP_RETURN] = &&opb_return
     };
     const cxpr_ir_instr* instr;

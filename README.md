@@ -13,7 +13,7 @@ same engine drives rules across very different fields:
 ```text
 sqrt(vx^2 + vy^2) > $max_speed              # physics / robotics
 within(latency_ms, 0, $budget_ms)           # systems / SLOs
-rsi < 30 and volume > $min_volume            # trading
+close > ema(close, 20) and volume > $min_volume # trading
 ```
 
 It supports numbers, booleans, struct-like values, custom C callbacks, and
@@ -369,7 +369,7 @@ Examples:
 ```text
 (a + b) * c / d
 sqrt(x^2 + y^2)
-rsi < 30 and volume > $min_volume
+close > ema(close, 20) and volume > $min_volume
 signal > $threshold ? 1.0 : 0.0
 body.position.x + body.velocity.x
 ```
@@ -1262,18 +1262,18 @@ collection helpers:
 // Analyze an expression to discover its shape and dependencies.
 cxpr_analysis info = {0};
 cxpr_error err = {0};
-if (cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err)) {
+if (cxpr_analyze_expr("close > ema_fast and volume > $min_volume", reg, &info, &err)) {
     printf("result type:  %s\n", info.result_type == CXPR_EXPR_BOOL ? "bool" : "number");
     printf("uses params:  %s\n", info.uses_parameters ? "yes" : "no");
     printf("can short-circuit: %s\n", info.can_short_circuit ? "yes" : "no");
-    printf("references:   %zu\n", info.reference_count);   // rsi, volume
+    printf("references:   %zu\n", info.reference_count);   // close, ema_fast, volume
     printf("parameters:   %zu\n", info.parameter_count);   // min_volume
 }
 
 // Collect the actual names used in a parsed AST.
-cxpr_ast* ast = cxpr_parse(parser, "ema_fast > ema_slow and rsi < $limit", &err);
+cxpr_ast* ast = cxpr_parse(parser, "close > ema_fast and volume > $limit", &err);
 const char* refs[8];
-size_t n = cxpr_ast_references(ast, refs, 8);      // ema_fast, ema_slow, rsi
+size_t n = cxpr_ast_references(ast, refs, 8);      // close, ema_fast, volume
 const char* params[8];
 size_t p = cxpr_ast_variables_used(ast, params, 8); // limit
 const char* fns[8];

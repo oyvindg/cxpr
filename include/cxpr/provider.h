@@ -82,6 +82,7 @@ typedef struct {
     const cxpr_provider_field_descriptor* fields;      /**< Record output field metadata, or NULL. */
     size_t field_count;                                /**< Number of entries in @p fields. */
     int primary_field_index;                           /**< Preferred default field index, or -1. */
+    cxpr_value_type return_type;                       /**< Declared scalar result type, or NUMBER when unset. */
     unsigned flags;                                    /**< Bitwise OR of `cxpr_provider_fn_flags`. */
     const cxpr_provider_scope_spec* scope;             /**< Optional scoped-series scope metadata. */
 } cxpr_provider_fn_spec;

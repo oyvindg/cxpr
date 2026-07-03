@@ -9,6 +9,7 @@
 #include "core.h"
 #include "expression/internal.h"
 #include "limits.h"
+#include "lookback.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -452,9 +453,41 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     case CXPR_NODE_LOOKBACK: {
         cxpr_value value;
         if (reg && reg->lookback_resolver) {
+            const cxpr_ast* target = ast->data.lookback.target;
+            cxpr_ast index_ast = {0};
+            unsigned offset;
+            bool flattened = false;
             value = cxpr_num(NAN);
-            if (reg->lookback_resolver(ast->data.lookback.target,
-                                       ast->data.lookback.index,
+            if (cxpr_lookback_literal_offset(ast->data.lookback.index,
+                                             &offset,
+                                             NULL,
+                                             NULL)) {
+                while (target && target->type == CXPR_NODE_LOOKBACK) {
+                    unsigned inner_offset;
+                    unsigned summed;
+                    if (!cxpr_lookback_literal_offset(target->data.lookback.index,
+                                                      &inner_offset,
+                                                      NULL,
+                                                      NULL) ||
+                        !cxpr_lookback_add_unsigned(offset,
+                                                    inner_offset,
+                                                    &summed,
+                                                    NULL,
+                                                    NULL)) {
+                        target = ast->data.lookback.target;
+                        break;
+                    }
+                    offset = summed;
+                    target = target->data.lookback.target;
+                }
+                if (target != ast->data.lookback.target) {
+                    index_ast.type = CXPR_NODE_NUMBER;
+                    index_ast.data.number.value = (double)offset;
+                    flattened = true;
+                }
+            }
+            if (reg->lookback_resolver(target,
+                                       flattened ? &index_ast : ast->data.lookback.index,
                                        ctx,
                                        reg,
                                        reg->lookback_userdata,

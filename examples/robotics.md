@@ -118,14 +118,19 @@ planar_goal_range(goal2, pose2) < $capture_radius
 spatial_waypoint_range(goal3.x, goal3.y, goal3.z, pose3.x, pose3.y, pose3.z) < $capture_radius
 ```
 
-## Sensor Loop
+## Sensor Loop With Engine
 
-For streaming robotics data you typically keep one `cxpr_context` alive and overwrite the latest sensor values each cycle. Register helper functions once, then feed the new sensor frame into the same keys.
+For streaming robotics data, `cxpr_engine` is the higher-level path: declare the
+control expressions once, bind sensor slots once, then tick the engine for each
+frame. Watches turn guard transitions into events the host can dispatch after
+the tick.
 
 ```c
 #include <cxpr/cxpr.h>
+#include <cxpr/engine.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef struct {
     double distance_front;
@@ -138,6 +143,14 @@ typedef struct {
     double goal_y;
 } sensor_frame_t;
 
+static double as_number(cxpr_value value) {
+    return value.type == CXPR_VALUE_NUMBER ? value.d : 0.0;
+}
+
+static int as_bool(cxpr_value value) {
+    return value.type == CXPR_VALUE_BOOL ? (value.b ? 1 : 0) : 0;
+}
+
 static double fn_planar_goal_range(const double* args, size_t argc, void* userdata) {
     (void)argc;
     (void)userdata;
@@ -147,12 +160,9 @@ static double fn_planar_goal_range(const double* args, size_t argc, void* userda
 }
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
 
-    const char* xy[] = {"x", "y"};
     const sensor_frame_t frames[] = {
         {0.42, 76.0,  4.0, 0.03, 0.0, 4.0, 3.0, 0.0},
         {0.18, 76.0,  6.0, 0.03, 1.0, 3.0, 3.0, 0.0},
@@ -160,59 +170,85 @@ int main(void) {
     };
 
     cxpr_register_defaults(reg);
-    cxpr_registry_add_fn(reg, "planar_goal_range", fn_planar_goal_range, xy, 2, 2, NULL, NULL);
+    cxpr_registry_add(reg, "planar_goal_range", fn_planar_goal_range, 4, 4, NULL, NULL);
 
-    cxpr_context_set(ctx, "max_speed", 2.0);
-    cxpr_context_set_param(ctx, "stop_distance", 0.25);
-    cxpr_context_set_param(ctx, "max_slip", 0.10);
-    cxpr_context_set_param(ctx, "max_heading_error", 12.0);
-    cxpr_context_set_param(ctx, "capture_radius", 0.5);
+    const cxpr_expression_def exprs[] = {
+        {"cmd_vel", "distance_front < $stop_distance ? 0.0 : (battery > 20 ? $max_speed : 0.0)"},
+        {"fault_guard", "slip_ratio > $max_slip or abs(heading_error) > $max_heading_error"},
+        {"reached_goal", "planar_goal_range(pose_x, pose_y, goal_x, goal_y) < $capture_radius"}
+    };
+    const cxpr_context_entry params[] = {
+        {"stop_distance", 0.25},
+        {"max_slip", 0.10},
+        {"max_heading_error", 12.0},
+        {"capture_radius", 0.5},
+        {"max_speed", 2.0}
+    };
+    const cxpr_engine_watch_def watches[] = {
+        {"fault_guard", CXPR_EDGE_RISING},
+        {"reached_goal", CXPR_EDGE_RISING}
+    };
+    const cxpr_engine_config cfg = {
+        .registry = reg,
+        .expressions = exprs,
+        .expression_count = CXPR_ARRAY_COUNT(exprs),
+        .params = params,
+        .param_count = CXPR_ARRAY_COUNT(params),
+        .watches = watches,
+        .watch_count = CXPR_ARRAY_COUNT(watches)
+    };
 
-    cxpr_ast* cmd_expr = cxpr_parse(
-        parser,
-        "distance_front < $stop_distance ? 0.0 : (battery > 20 ? max_speed : 0.0)",
-        &err
-    );
-    cxpr_ast* guard_expr = cxpr_parse(
-        parser,
-        "slip_ratio > $max_slip or abs(heading_error) > $max_heading_error",
-        &err
-    );
-    cxpr_ast* reached_expr = cxpr_parse(
-        parser,
-        "planar_goal_range(goal, pose) < $capture_radius",
-        &err
-    );
+    cxpr_engine_session* session = cxpr_engine_session_create(&cfg, &err);
+    if (!session) return 1;
 
-    for (size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); ++i) {
-        double pose_xy[] = {frames[i].pose_x, frames[i].pose_y};
-        double goal_xy[] = {frames[i].goal_x, frames[i].goal_y};
+    cxpr_context* input_ctx = cxpr_context_new();
+    const char* slot_names[] = {
+        "distance_front", "battery", "heading_error", "slip_ratio",
+        "pose_x", "pose_y", "goal_x", "goal_y"
+    };
+    cxpr_context_slot slots[CXPR_ARRAY_COUNT(slot_names)];
+    for (size_t i = 0; i < CXPR_ARRAY_COUNT(slot_names); ++i) {
+        cxpr_context_set(input_ctx, slot_names[i], 0.0);
+    }
+    if (!cxpr_context_slots_bind(input_ctx, slot_names, slots, CXPR_ARRAY_COUNT(slots))) {
+        return 1;
+    }
 
-        cxpr_context_set(ctx, "distance_front", frames[i].distance_front);
-        cxpr_context_set(ctx, "battery", frames[i].battery);
-        cxpr_context_set(ctx, "heading_error", frames[i].heading_error);
-        cxpr_context_set(ctx, "slip_ratio", frames[i].slip_ratio);
-        cxpr_context_set_fields(ctx, "pose", xy, pose_xy, 2);
-        cxpr_context_set_fields(ctx, "goal", xy, goal_xy, 2);
+    for (size_t i = 0; i < CXPR_ARRAY_COUNT(frames); ++i) {
+        const double values[] = {
+            frames[i].distance_front, frames[i].battery,
+            frames[i].heading_error, frames[i].slip_ratio,
+            frames[i].pose_x, frames[i].pose_y,
+            frames[i].goal_x, frames[i].goal_y
+        };
+        const cxpr_engine_event* events = NULL;
+        size_t event_count = 0;
+        bool found = false;
+
+        cxpr_context_slots_set(slots, values, CXPR_ARRAY_COUNT(slots));
+        if (!cxpr_engine_tick_fallback(session, input_ctx, &events, &event_count, &err)) return 1;
 
         printf("frame %zu cmd=%.2f guard=%d reached=%d\n",
                i,
-               cxpr_ast_eval_double(cmd_expr, ctx, reg, &err),
-               cxpr_ast_eval_bool(guard_expr, ctx, reg, &err),
-               cxpr_ast_eval_bool(reached_expr, ctx, reg, &err));
+               as_number(cxpr_engine_get(session, "cmd_vel", &found)),
+               as_bool(cxpr_engine_get(session, "fault_guard", &found)),
+               as_bool(cxpr_engine_get(session, "reached_goal", &found)));
+
+        for (size_t e = 0; e < event_count; ++e) {
+            printf("  event %s\n", events[e].expr_name);
+        }
     }
 
-    cxpr_ast_free(reached_expr);
-    cxpr_ast_free(guard_expr);
-    cxpr_ast_free(cmd_expr);
-    cxpr_context_free(ctx);
+    cxpr_context_free(input_ctx);
+    cxpr_engine_session_free(session);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
     return 0;
 }
 ```
 
-When each cycle writes the same set of sensor keys, overwriting is enough. Use `cxpr_context_clear(ctx)` only if keys appear and disappear between frames and you want to avoid stale data.
+When each cycle writes the same set of sensor keys, pre-bound slots avoid repeated
+name lookup. Use column or view sources instead when your sensor data is already
+stored as indexed arrays and you want engine-owned lookback over the series.
 
 ## Run Test
 

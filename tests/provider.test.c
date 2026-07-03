@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include <cxpr/provider.h>
+#include <cxpr/typecheck.h>
 
 static const cxpr_provider_fn_spec* const* test_provider_fn_specs(
     const void* userdata,
@@ -418,6 +419,7 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
         cxpr_context* ctx = cxpr_context_new();
         cxpr_error err = {0};
         cxpr_ast* ast;
+        cxpr_ast* bool_ast;
         double out = 0.0;
 
         assert(parser != NULL);
@@ -427,6 +429,14 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
         assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
         assert(isnan(out));
         cxpr_ast_free(ast);
+
+        err = (cxpr_error){0};
+        bool_ast = cxpr_parse(parser, "ema(10) and true", &err);
+        assert(bool_ast != NULL);
+        assert(!cxpr_typecheck_bool_root(bool_ast, reg, &err));
+        assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+        cxpr_ast_free(bool_ast);
+
         cxpr_context_free(ctx);
         cxpr_parser_free(parser);
     }

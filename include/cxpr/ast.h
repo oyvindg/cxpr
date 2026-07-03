@@ -6,97 +6,13 @@
 #ifndef CXPR_AST_H
 #define CXPR_AST_H
 
+#include <cxpr/token.h>
 #include <cxpr/types.h>
 #include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Operator / token tags shared with AST nodes
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/**
- * @brief Token/operator tags used by the parser and stored on operator AST nodes.
- *
- * These values are part of the public AST surface because `cxpr_ast_operator()`
- * returns them for unary and binary operator nodes.
- */
-typedef enum {
-    /* Literals */
-    CXPR_TOK_NUMBER,            /**< Numeric literal */
-    CXPR_TOK_IDENTIFIER,        /**< Identifier (e.g. "rsi", "ema_fast") */
-    CXPR_TOK_VARIABLE,          /**< Parameter variable ($name) */
-    CXPR_TOK_TRUE,              /**< true */
-    CXPR_TOK_FALSE,             /**< false */
-    CXPR_TOK_STRING,            /**< String literal */
-
-    /* Arithmetic operators */
-    CXPR_TOK_PLUS,              /**< + */
-    CXPR_TOK_MINUS,             /**< - */
-    CXPR_TOK_STAR,              /**< * */
-    CXPR_TOK_SLASH,             /**< / */
-    CXPR_TOK_PERCENT,           /**< % */
-    CXPR_TOK_POWER,             /**< ^ or ** */
-
-    /* Comparison / assignment operators */
-    CXPR_TOK_ASSIGN,            /**< = */
-    CXPR_TOK_EQ,                /**< == */
-    CXPR_TOK_NEQ,               /**< != */
-    CXPR_TOK_LT,                /**< < */
-    CXPR_TOK_GT,                /**< > */
-    CXPR_TOK_LTE,               /**< <= */
-    CXPR_TOK_GTE,               /**< >= */
-
-    /* Logical operators */
-    CXPR_TOK_AND,               /**< && or and */
-    CXPR_TOK_OR,                /**< || or or */
-    CXPR_TOK_NOT,               /**< ! or not */
-    CXPR_TOK_IN,                /**< in (set membership) */
-
-    /* Delimiters */
-    CXPR_TOK_LPAREN,            /**< ( */
-    CXPR_TOK_RPAREN,            /**< ) */
-    CXPR_TOK_LBRACKET,          /**< [ */
-    CXPR_TOK_RBRACKET,          /**< ] */
-    CXPR_TOK_COMMA,             /**< , */
-    CXPR_TOK_DOT,               /**< . */
-    CXPR_TOK_PIPE,              /**< |> */
-    CXPR_TOK_QUESTION,          /**< ? */
-    CXPR_TOK_COLON,             /**< : */
-
-    /* Special */
-    CXPR_TOK_EOF,               /**< End of input */
-    CXPR_TOK_ERROR              /**< Lexer error */
-} cxpr_token_type;
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Parser API
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/**
- * @brief Create a parser instance.
- * @return Newly allocated parser, or NULL on allocation failure.
- */
-cxpr_parser* cxpr_parser_new(void);
-/**
- * @brief Free a parser instance.
- * @param p Parser to free. May be NULL.
- */
-void cxpr_parser_free(cxpr_parser* p);
-/**
- * @brief Parse an expression string into an AST.
- * @param p Parser instance to use.
- * @param expression NUL-terminated expression source.
- * @param err Optional error output.
- * @return Newly allocated AST on success, or NULL on parse failure.
- */
-cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err);
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * AST Construction API
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
  * @brief Free an AST and all owned descendants.
@@ -219,10 +135,6 @@ cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index);
 cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch,
                                cxpr_ast* false_branch);
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * AST Inspection API
- * ═══════════════════════════════════════════════════════════════════════════ */
-
 typedef enum {
     CXPR_NODE_NUMBER,
     CXPR_NODE_BOOL,
@@ -239,33 +151,6 @@ typedef enum {
     CXPR_NODE_LOOKBACK,
     CXPR_NODE_TERNARY
 } cxpr_node_type;
-
-typedef enum {
-    CXPR_EXPR_UNKNOWN = 0,
-    CXPR_EXPR_BOOL,
-    CXPR_EXPR_NUMBER,
-    CXPR_EXPR_STRUCT
-} cxpr_expr_type;
-
-typedef struct {
-    cxpr_expr_type result_type;          /**< Best-effort root result type of the expression. */
-    bool is_constant;                    /**< True if the expression depends on no runtime inputs or parameters. */
-    bool is_predicate;                   /**< True if the root expression evaluates to a boolean predicate. */
-    bool uses_variables;                 /**< True if plain identifier/context lookups such as `rsi` are used. */
-    bool uses_parameters;                /**< True if `$param` lookups are used. */
-    bool uses_functions;                 /**< True if function or producer calls appear in the AST. */
-    bool uses_expressions;                  /**< True if semantic analysis resolved at least one registry-defined expression. */
-    bool uses_field_access;              /**< True if dotted or producer-style field access appears in the AST. */
-    bool can_short_circuit;              /**< True if evaluation may short-circuit (`and`, `or`, ternary). */
-    unsigned node_count;                 /**< Total number of AST nodes in the expression tree. */
-    unsigned max_depth;                  /**< Maximum AST depth, with the root counted as depth 1. */
-    size_t reference_count;              /**< Unique runtime references used by the AST: plain identifiers and full field paths. */
-    size_t function_count;               /**< Unique function or producer names referenced by the AST. */
-    size_t parameter_count;              /**< Unique `$param` names referenced by the AST. */
-    size_t field_path_count;             /**< Unique dotted or field-style reference paths. */
-    bool has_unknown_functions;          /**< True if registry-backed analysis found unresolved calls. */
-    const char* first_unknown_function;  /**< First unresolved function/producer name, or NULL if none. */
-} cxpr_analysis;
 
 typedef struct {
     const char* producer_name;           /**< Producer/function name, e.g. `ichimoku`. */
@@ -467,10 +352,6 @@ const cxpr_ast* cxpr_ast_ternary_false_branch(const cxpr_ast* ast);
  */
 bool cxpr_ast_is_boolean_expression(const cxpr_ast* ast);
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * AST Source Rendering API
- * ═══════════════════════════════════════════════════════════════════════════ */
-
 /**
  * @brief Render an AST to an allocated expression string.
  * @param ast AST to render.
@@ -487,10 +368,6 @@ char* cxpr_ast_to_string(const cxpr_ast* ast);
  * @param out Output stream.
  */
 void cxpr_ast_dump(const cxpr_ast* ast, FILE* out);
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * AST Reference Extraction API
- * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
  * @brief Collect unique runtime references used by an AST.
@@ -564,205 +441,14 @@ size_t cxpr_ast_call_arg_contexts_for_variable(const cxpr_ast* ast,
                                                const char* variable,
                                                const char** names,
                                                size_t max_names);
-/**
- * @brief Perform structural and registry-backed semantic analysis on an AST.
- * @param ast AST to inspect.
- * @param reg Optional registry used to resolve functions and expressions.
- * @param out_analysis Output analysis struct to fill.
- * @param err Optional error output.
- * @return True on success, false on semantic-analysis failure.
- */
-bool cxpr_analyze(const cxpr_ast* ast, const cxpr_registry* reg,
-                  cxpr_analysis* out_analysis, cxpr_error* err);
-/**
- * @brief Parse and analyze one expression string in a single call.
- * @param expression NUL-terminated expression source.
- * @param reg Optional registry used to resolve functions and expressions.
- * @param out_analysis Output analysis struct to fill.
- * @param err Optional error output.
- * @return True on success, false on parse or semantic-analysis failure.
- */
-bool cxpr_analyze_expr(const char* expression, const cxpr_registry* reg,
-                       cxpr_analysis* out_analysis, cxpr_error* err);
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Evaluator API
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/**
- * @brief Evaluate an AST to a typed runtime value.
- * @param ast AST to evaluate.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output value on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure.
- */
-bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
-                   const cxpr_registry* reg, cxpr_value* out_value, cxpr_error* err);
-/**
- * @brief Evaluate an AST and require a numeric result.
- * @param ast AST to evaluate.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output number on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure or type mismatch.
- */
-bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
-                          const cxpr_registry* reg, double* out_value, cxpr_error* err);
-/**
- * @brief Evaluate an AST and require a boolean result.
- * @param ast AST to evaluate.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output boolean on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure or type mismatch.
- */
-bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
-                        const cxpr_registry* reg, bool* out_value, cxpr_error* err);
-/**
- * @brief Evaluate an AST at a lookback expression (`ast[index_ast]`).
- * @param ast Target AST to evaluate.
- * @param index_ast AST that evaluates to the desired lookback index.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output value on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure.
- */
-bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
-                               const cxpr_ast* index_ast,
-                               const cxpr_context* ctx,
-                               const cxpr_registry* reg,
-                               cxpr_value* out_value,
-                               cxpr_error* err);
-/**
- * @brief Evaluate an AST at one numeric lookback offset (`ast[offset]`).
- * @param ast Target AST to evaluate.
- * @param lookback Non-negative lookback offset.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output value on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure.
- */
-bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
-                             double lookback,
-                             const cxpr_context* ctx,
-                             const cxpr_registry* reg,
-                             cxpr_value* out_value,
-                             cxpr_error* err);
-/**
- * @brief Evaluate an AST at one numeric lookback offset without constructing
- *        a temporary lookback AST.
- * @param ast Target AST to evaluate.
- * @param lookback Non-negative lookback offset.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry with a lookback resolver.
- * @param out_value Output value on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure.
- */
-bool cxpr_eval_at_offset(const cxpr_ast* ast,
-                         double lookback,
-                         const cxpr_context* ctx,
-                         const cxpr_registry* reg,
-                         cxpr_value* out_value,
-                         cxpr_error* err);
-/**
- * @brief Evaluate an AST to a number at one numeric lookback offset.
- * @param ast Target AST to evaluate.
- * @param lookback Non-negative lookback offset.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output number on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure or type mismatch.
- */
-bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
-                                    double lookback,
-                                    const cxpr_context* ctx,
-                                    const cxpr_registry* reg,
-                                    double* out_value,
-                                    cxpr_error* err);
-/**
- * @brief Evaluate an AST to a bool at one numeric lookback offset.
- * @param ast Target AST to evaluate.
- * @param lookback Non-negative lookback offset.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output bool on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure or type mismatch.
- */
-bool cxpr_eval_ast_bool_at_offset(const cxpr_ast* ast,
-                                  double lookback,
-                                  const cxpr_context* ctx,
-                                  const cxpr_registry* reg,
-                                  bool* out_value,
-                                  cxpr_error* err);
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * Compiled Program API
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/**
- * @brief Compile an AST into an executable program.
- * @param ast AST to compile.
- * @param reg Function registry used for resolution and codegen.
- * @param err Optional error output.
- * @return Newly allocated program on success, or NULL on failure.
- */
-cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_error* err);
-/**
- * @brief Evaluate a compiled program to a typed runtime value.
- * @param prog Program to evaluate.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output value on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure.
- */
-bool cxpr_eval_program(const cxpr_program* prog, const cxpr_context* ctx,
-                       const cxpr_registry* reg, cxpr_value* out_value, cxpr_error* err);
-/**
- * @brief Evaluate a compiled program and require a numeric result.
- * @param prog Program to evaluate.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output number on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure or type mismatch.
- */
-bool cxpr_eval_program_number(const cxpr_program* prog, const cxpr_context* ctx,
-                              const cxpr_registry* reg, double* out_value, cxpr_error* err);
-/**
- * @brief Evaluate a compiled program and require a boolean result.
- * @param prog Program to evaluate.
- * @param ctx Runtime context providing variables and params.
- * @param reg Function registry used during evaluation.
- * @param out_value Output boolean on success.
- * @param err Optional error output.
- * @return True on success, false on evaluation failure or type mismatch.
- */
-bool cxpr_eval_program_bool(const cxpr_program* prog, const cxpr_context* ctx,
-                            const cxpr_registry* reg, bool* out_value, cxpr_error* err);
-/**
- * @brief Free a compiled program.
- * @param prog Program to free. May be NULL.
- */
-void cxpr_program_free(cxpr_program* prog);
-/**
- * @brief Dump a human-readable representation of a compiled program.
- * @param prog Program to dump.
- * @param out Output stream to write to.
- */
-void cxpr_program_dump(const cxpr_program* prog, FILE* out);
 
 #ifdef __cplusplus
 }
 #endif
+
+#include <cxpr/analysis.h>
+#include <cxpr/eval.h>
+#include <cxpr/parser.h>
+#include <cxpr/program.h>
 
 #endif /* CXPR_AST_H */

@@ -173,12 +173,6 @@ static void cxpr_basket_free_names(char** names, size_t count) {
 
 static cxpr_value cxpr_basket_eval_error(cxpr_error* err, const char* message);
 
-static bool cxpr_basket_value_truthy(cxpr_value value) {
-    return value.type == CXPR_VALUE_BOOL ? value.b :
-           value.type == CXPR_VALUE_NUMBER ? (value.d != 0.0) :
-           false;
-}
-
 static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
                                                   const cxpr_value* results,
                                                   size_t count,
@@ -203,14 +197,20 @@ static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
 
     if (strcmp(fn, "any") == 0) {
         for (i = 0; i < count; ++i) {
-            if (cxpr_basket_value_truthy(results[i])) return cxpr_bool(true);
+            if (results[i].type != CXPR_VALUE_BOOL) {
+                return cxpr_basket_eval_error(err, "any() requires boolean results");
+            }
+            if (results[i].b) return cxpr_bool(true);
         }
         return cxpr_bool(false);
     }
 
     if (strcmp(fn, "all") == 0) {
         for (i = 0; i < count; ++i) {
-            if (!cxpr_basket_value_truthy(results[i])) return cxpr_bool(false);
+            if (results[i].type != CXPR_VALUE_BOOL) {
+                return cxpr_basket_eval_error(err, "all() requires boolean results");
+            }
+            if (!results[i].b) return cxpr_bool(false);
         }
         return cxpr_bool(true);
     }

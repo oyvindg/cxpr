@@ -121,6 +121,16 @@ option(CXPR_BUILD_TESTS "Build cxpr tests" ${PROJECT_IS_TOP_LEVEL})
 if(CXPR_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+
+    add_executable(cxpr_example_engine_lookback
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/engine_lookback.c")
+    target_link_libraries(cxpr_example_engine_lookback PRIVATE cxpr)
+    add_test(NAME examples_engine_lookback
+             COMMAND "$<TARGET_FILE:cxpr_example_engine_lookback>")
+
+    add_executable(cxpr_example_ast_snapshot_cytoscape
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/ast_snapshot_cytoscape.c")
+    target_link_libraries(cxpr_example_ast_snapshot_cytoscape PRIVATE cxpr)
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -63,6 +63,12 @@ static void test_eval_api_wrappers(void) {
     assert(boolean);
     cxpr_ast_free(ast);
 
+    ast = cxpr_parse(p, "1 + (x > 3)", &err);
+    assert(ast);
+    assert(!cxpr_eval_ast(ast, ctx, reg, &value, &err));
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+    cxpr_ast_free(ast);
+
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);

@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [3.0.0] - 2026-06-30
+
+### Added
+
+- **Shared AST typecheck pass** exposed via `<cxpr/typecheck.h>`. `cxpr_compile`,
+  tree eval, bool eval, C codegen, engine watches, basket folds, and dyn CUDA
+  lowering now share the same bool/numeric rules before backend execution.
+- **Literal lookback IR resolution** for `expr[n]`. Literal and nested literal
+  lookbacks compile to `LOOKBACK_RESOLVE` instead of the generic `CALL_AST`
+  fallback, while dynamic lookbacks still fall back to AST evaluation.
+- `cxpr_analysis.max_lookback_depth`, reporting the accumulated literal lookback
+  depth across an AST.
+
+### Changed
+
+- **Breaking:** numeric truthiness is removed. Boolean positions now require
+  `bool`: `and`/`or`/`not`, ternary conditions, `any(...)`/`all(...)` arguments,
+  engine watch roots, basket results, and bool eval entrypoints. Numeric
+  expressions such as `not 1`, `1 and 2`, or `any(atr(14))` now fail with
+  `CXPR_ERR_TYPE_MISMATCH`.
+- Typed IR conditional jumps and `NOT` now require `CXPR_VALUE_BOOL` at runtime
+  as a defense-in-depth check.
+- Basket `any`/`all` now require bool child results instead of coercing numeric
+  results.
+
 ## [2.7.0] - 2026-06-29
 
 ### Added

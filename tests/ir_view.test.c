@@ -89,9 +89,56 @@ static void test_ir_view_compiled_expression(void) {
     printf("  ok test_ir_view_compiled_expression\n");
 }
 
+static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(parser, "close[1]", &err);
+    cxpr_program* program;
+    cxpr_ir_view_instr instr = {0};
+
+    assert(ast);
+    program = cxpr_compile(ast, registry, &err);
+    assert(program);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_ir_view_count(program) >= 4u);
+    assert(cxpr_ir_view_instr_at(program, 0u, &instr));
+    assert(instr.op == CXPR_IR_VIEW_OP_LOOKBACK_PUSH);
+    assert(instr.has_index);
+    assert(instr.index == 1u);
+    assert(cxpr_ir_view_instr_at(program, 1u, &instr));
+    assert(instr.op == CXPR_IR_VIEW_OP_LOAD_VAR);
+    assert(cxpr_ir_view_instr_at(program, 2u, &instr));
+    assert(instr.op == CXPR_IR_VIEW_OP_LOOKBACK_POP);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(parser, "close[1][2]", &err);
+    assert(ast);
+    program = cxpr_compile(ast, registry, &err);
+    assert(program);
+    assert(cxpr_ir_view_instr_at(program, 0u, &instr));
+    assert(instr.op == CXPR_IR_VIEW_OP_LOOKBACK_PUSH);
+    assert(instr.has_index);
+    assert(instr.index == 2u);
+    assert(cxpr_ir_view_instr_at(program, 1u, &instr));
+    assert(instr.op == CXPR_IR_VIEW_OP_LOOKBACK_PUSH);
+    assert(instr.has_index);
+    assert(instr.index == 1u);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(registry);
+    cxpr_parser_free(parser);
+
+    printf("  ok test_ir_view_lookback_uses_push_pop_opcodes\n");
+}
+
 int main(void) {
     test_ir_view_null_inputs();
     test_ir_view_compiled_expression();
+    test_ir_view_lookback_uses_push_pop_opcodes();
     printf("ir_view tests passed\n");
     return 0;
 }

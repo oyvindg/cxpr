@@ -6,6 +6,7 @@
 #include "call/args.h"
 #include "internal.h"
 #include "core.h"
+#include "lookback.h"
 
 #include <stdio.h>
 
@@ -161,6 +162,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_VAR,
                                 .name = ast->data.identifier.name,
+                                .payload = ast,
                                 .hash = cxpr_hash_string(ast->data.identifier.name),
                             },
                             err);
@@ -179,6 +181,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_FIELD,
                                 .name = ast->data.field_access.full_key,
+                                .payload = ast,
                                 .hash = cxpr_hash_string(ast->data.field_access.full_key),
                             },
                             err);
@@ -188,6 +191,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_CHAIN,
                                 .name = ast->data.chain_access.full_key,
+                                .payload = ast,
                                 .hash = cxpr_hash_string(ast->data.chain_access.full_key),
                             },
                             err);
@@ -290,12 +294,34 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     }
 
     case CXPR_NODE_LOOKBACK:
+    {
+        unsigned offset;
+        const cxpr_ast* target = ast->data.lookback.target;
+        if (cxpr_lookback_literal_offset(
+                ast->data.lookback.index, &offset, NULL, NULL)) {
+            if (!cxpr_ir_emit(program,
+                              (cxpr_ir_instr){
+                                  .op = CXPR_OP_LOOKBACK_PUSH,
+                                  .index = offset,
+                              },
+                              err)) {
+                return false;
+            }
+            if (!cxpr_ir_compile_node(target, program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){ .op = CXPR_OP_LOOKBACK_POP },
+                                err);
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_CALL_AST,
                                 .ast = ast,
                             },
                             err);
+    }
 
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);

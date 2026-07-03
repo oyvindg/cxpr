@@ -263,6 +263,23 @@ static void test_unsupported(void) {
     printf("  unsupported rejected OK\n");
 }
 
+static void test_typecheck_rejection(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "not 1", &err);
+    char* out;
+
+    assert(ast && err.code == CXPR_OK);
+    err = (cxpr_error){0};
+    out = cxpr_ast_to_c(ast, NULL, &err);
+    assert(out == NULL);
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  typecheck rejection OK\n");
+}
+
 static void test_exprset_topo(void) {
     /* Interdependent set, declared out of order. Must emit in dependency
      * order: r_s before f before dr_dl. */
@@ -364,6 +381,7 @@ int main(void) {
     test_emit_call_hook();
     test_membership_desugar();
     test_unsupported();
+    test_typecheck_rejection();
     test_exprset_topo();
     test_exprset_cycle();
     test_exprset_to_c_function();

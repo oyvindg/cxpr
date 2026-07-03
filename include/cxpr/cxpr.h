@@ -10,7 +10,13 @@
 
 #include <cxpr/version.h>
 #include <cxpr/types.h>
+#include <cxpr/token.h>
 #include <cxpr/ast.h>
+#include <cxpr/parser.h>
+#include <cxpr/analysis.h>
+#include <cxpr/eval.h>
+#include <cxpr/eval_snapshot.h>
+#include <cxpr/program.h>
 #include <cxpr/codegen.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
@@ -23,5 +29,6 @@
 #include <cxpr/runtime_call.h>
 #include <cxpr/source_plan.h>
 #include <cxpr/thread.h>
+#include <cxpr/typecheck.h>
 
 #endif /* CXPR_H */

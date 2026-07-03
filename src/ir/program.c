@@ -7,6 +7,8 @@
 #include "internal.h"
 #include "ast/internal.h"
 #include "context/internal.h"
+#include "lookback.h"
+#include <cxpr/typecheck.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -118,6 +120,9 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_JUMP: return "JUMP";
     case CXPR_OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
     case CXPR_OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
+    case CXPR_OP_LOOKBACK_PUSH: return "LOOKBACK_PUSH";
+    case CXPR_OP_LOOKBACK_POP: return "LOOKBACK_POP";
+    case CXPR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
     case CXPR_OP_RETURN: return "RETURN";
     default: return "UNKNOWN";
     }
@@ -152,8 +157,17 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         *out = cxpr_string(ast->data.string.value);
         return true;
 
-    case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_LOOKBACK:
+    {
+        unsigned offset;
+        if (!cxpr_lookback_literal_offset(ast->data.lookback.index, &offset, NULL, NULL)) {
+            return false;
+        }
+        (void)offset;
+        return cxpr_ir_constant_typed_value(ast->data.lookback.target, reg, out);
+    }
+
+    case CXPR_NODE_CHAIN_ACCESS:
         return false;
 
     case CXPR_NODE_UNARY_OP:
@@ -628,13 +642,26 @@ bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
 cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
                            cxpr_error* err) {
     cxpr_ast* owned_ast = NULL;
-    (void)reg;
+    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    const unsigned long version = reg ? reg->version : 0u;
     if (err) *err = (cxpr_error){0};
     if (!ast) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
             err->message = "NULL AST";
         }
+        return NULL;
+    }
+    if (!mutable_ast->typecheck_cache_valid ||
+        mutable_ast->typecheck_registry != reg ||
+        mutable_ast->typecheck_registry_version != version) {
+        mutable_ast->typecheck_registry = reg;
+        mutable_ast->typecheck_registry_version = version;
+        mutable_ast->typecheck_cache_ok = cxpr_typecheck(ast, reg, NULL, err);
+        mutable_ast->typecheck_cache_valid = true;
+        if (!mutable_ast->typecheck_cache_ok) return NULL;
+    } else if (!mutable_ast->typecheck_cache_ok) {
+        (void)cxpr_typecheck(ast, reg, NULL, err);
         return NULL;
     }
 
@@ -693,7 +720,9 @@ void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
         else if (instr->op == CXPR_OP_PUSH_CONST) fprintf(stream, " value=%.17g", instr->value);
         else if (instr->op == CXPR_OP_PUSH_STRING) fprintf(stream, " value=\"%s\"", instr->name ? instr->name : "");
         else if (instr->op == CXPR_OP_JUMP || instr->op == CXPR_OP_JUMP_IF_FALSE ||
-                 instr->op == CXPR_OP_JUMP_IF_TRUE || instr->op == CXPR_OP_LOAD_LOCAL ||
+                 instr->op == CXPR_OP_JUMP_IF_TRUE || instr->op == CXPR_OP_LOOKBACK_PUSH ||
+                 instr->op == CXPR_OP_LOOKBACK_RESOLVE ||
+                 instr->op == CXPR_OP_LOAD_LOCAL ||
                  instr->op == CXPR_OP_LOAD_LOCAL_SQUARE) {
             fprintf(stream, " index=%zu", instr->index);
         }

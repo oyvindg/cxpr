@@ -7,6 +7,7 @@
 #include "core.h"
 #include "registry/internal.h"
 #include "call/args.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -38,9 +39,16 @@ static cxpr_expr_type cxpr_expr_type_from_value(cxpr_value_type type) {
     return CXPR_EXPR_NUMBER;
 }
 
+static void cxpr_ast_note_unsupported_codegen(cxpr_analysis* out, const char* node_kind) {
+    if (!out || out->has_unsupported_codegen_nodes) return;
+    out->has_unsupported_codegen_nodes = true;
+    out->first_unsupported_codegen_node = node_kind;
+}
+
 static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                                             cxpr_ast_analyze_state* state,
                                             unsigned depth,
+                                            unsigned lookback_depth,
                                             bool* ok) {
     cxpr_analysis* out;
     cxpr_expr_type left_type;
@@ -58,8 +66,10 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
         case CXPR_NODE_BOOL:
             return CXPR_EXPR_BOOL;
         case CXPR_NODE_ARRAY:
+            cxpr_ast_note_unsupported_codegen(out, "array");
             for (size_t i = 0; i < ast->data.array.count; ++i) {
-                (void)cxpr_ast_analyze_node(ast->data.array.elements[i], state, depth + 1, ok);
+                (void)cxpr_ast_analyze_node(
+                    ast->data.array.elements[i], state, depth + 1, lookback_depth, ok);
                 if (!*ok) return CXPR_EXPR_UNKNOWN;
             }
             return CXPR_EXPR_UNKNOWN;
@@ -75,17 +85,21 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
             return CXPR_EXPR_NUMBER;
         case CXPR_NODE_FIELD_ACCESS:
         case CXPR_NODE_CHAIN_ACCESS:
+            cxpr_ast_note_unsupported_codegen(
+                out, ast->type == CXPR_NODE_FIELD_ACCESS ? "field_access" : "chain_access");
             out->uses_field_access = true;
             out->is_constant = false;
             return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_PRODUCER_ACCESS: {
             cxpr_func_entry* entry = NULL;
+            cxpr_ast_note_unsupported_codegen(out, "producer_access");
             out->uses_functions = true;
             out->uses_field_access = true;
             out->is_constant = false;
 
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                (void)cxpr_ast_analyze_node(ast->data.producer_access.args[i], state, depth + 1, ok);
+                (void)cxpr_ast_analyze_node(
+                    ast->data.producer_access.args[i], state, depth + 1, lookback_depth, ok);
                 if (!*ok) return CXPR_EXPR_UNKNOWN;
             }
 
@@ -121,9 +135,11 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
             return CXPR_EXPR_UNKNOWN;
         }
         case CXPR_NODE_BINARY_OP:
-            left_type = cxpr_ast_analyze_node(ast->data.binary_op.left, state, depth + 1, ok);
+            left_type = cxpr_ast_analyze_node(
+                ast->data.binary_op.left, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
-            right_type = cxpr_ast_analyze_node(ast->data.binary_op.right, state, depth + 1, ok);
+            right_type = cxpr_ast_analyze_node(
+                ast->data.binary_op.right, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
             switch (ast->data.binary_op.op) {
                 case CXPR_TOK_AND:
@@ -144,7 +160,8 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                     return CXPR_EXPR_NUMBER;
             }
         case CXPR_NODE_UNARY_OP:
-            left_type = cxpr_ast_analyze_node(ast->data.unary_op.operand, state, depth + 1, ok);
+            left_type = cxpr_ast_analyze_node(
+                ast->data.unary_op.operand, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
             return (ast->data.unary_op.op == CXPR_TOK_NOT) ? CXPR_EXPR_BOOL : left_type;
         case CXPR_NODE_FUNCTION_CALL: {
@@ -153,7 +170,8 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
             out->is_constant = false;
 
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
-                (void)cxpr_ast_analyze_node(ast->data.function_call.args[i], state, depth + 1, ok);
+                (void)cxpr_ast_analyze_node(
+                    ast->data.function_call.args[i], state, depth + 1, lookback_depth, ok);
                 if (!*ok) return CXPR_EXPR_UNKNOWN;
             }
 
@@ -191,17 +209,39 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
         }
         case CXPR_NODE_LOOKBACK:
             out->is_constant = false;
-            (void)cxpr_ast_analyze_node(ast->data.lookback.target, state, depth + 1, ok);
+            if (ast->data.lookback.index &&
+                ast->data.lookback.index->type == CXPR_NODE_NUMBER &&
+                isfinite(ast->data.lookback.index->data.number.value) &&
+                ast->data.lookback.index->data.number.value >= 0.0 &&
+                floor(ast->data.lookback.index->data.number.value) ==
+                    ast->data.lookback.index->data.number.value) {
+                const unsigned max_unsigned = ~0u;
+                double value = ast->data.lookback.index->data.number.value;
+                if (value <= (double)(max_unsigned - lookback_depth)) {
+                    lookback_depth += (unsigned)value;
+                    if (lookback_depth > out->max_lookback_depth) {
+                        out->max_lookback_depth = lookback_depth;
+                    }
+                }
+            } else {
+                cxpr_ast_note_unsupported_codegen(out, "lookback_index");
+            }
+            (void)cxpr_ast_analyze_node(
+                ast->data.lookback.target, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
-            (void)cxpr_ast_analyze_node(ast->data.lookback.index, state, depth + 1, ok);
+            (void)cxpr_ast_analyze_node(
+                ast->data.lookback.index, state, depth + 1, 0u, ok);
             return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_TERNARY:
             out->can_short_circuit = true;
-            (void)cxpr_ast_analyze_node(ast->data.ternary.condition, state, depth + 1, ok);
+            (void)cxpr_ast_analyze_node(
+                ast->data.ternary.condition, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
-            left_type = cxpr_ast_analyze_node(ast->data.ternary.true_branch, state, depth + 1, ok);
+            left_type = cxpr_ast_analyze_node(
+                ast->data.ternary.true_branch, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
-            right_type = cxpr_ast_analyze_node(ast->data.ternary.false_branch, state, depth + 1, ok);
+            right_type = cxpr_ast_analyze_node(
+                ast->data.ternary.false_branch, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
             return (left_type == right_type) ? left_type : CXPR_EXPR_UNKNOWN;
     }
@@ -231,7 +271,7 @@ bool cxpr_analyze(const cxpr_ast* ast, const cxpr_registry* reg,
     state.reg = reg;
     state.err = err;
 
-    result_type = cxpr_ast_analyze_node(ast, &state, 1, &ok);
+    result_type = cxpr_ast_analyze_node(ast, &state, 1, 0u, &ok);
     out_analysis->result_type = result_type;
     out_analysis->is_predicate = (result_type == CXPR_EXPR_BOOL);
     out_analysis->reference_count = cxpr_ast_references(ast, refs, 256);

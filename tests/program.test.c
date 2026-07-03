@@ -318,21 +318,15 @@ static void test_program_eval_double_rejects_bool_intermediate_arithmetic(void) 
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(p, "1 + (price > $limit)", &err);
     cxpr_program* prog;
-    double result;
 
     assert(ast);
     cxpr_context_set(ctx, "price", 10.0);
     cxpr_context_set_param(ctx, "limit", 5.0);
 
     prog = cxpr_compile(ast, reg, &err);
-    assert(prog);
-    assert(err.code == CXPR_OK);
-
-    result = cxpr_test_eval_program_number(prog, ctx, reg, &err);
-    assert(isnan(result));
+    assert(!prog);
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
-    cxpr_program_free(prog);
     cxpr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);

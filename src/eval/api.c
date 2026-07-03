@@ -7,6 +7,7 @@
 #include "context/state.h"
 #include "ir/exec/internal.h"
 #include "ir/internal.h"
+#include <cxpr/typecheck.h>
 #include <math.h>
 #include <string.h>
 
@@ -530,6 +531,8 @@ bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
         }
         return false;
     }
+    if (err) *err = (cxpr_error){0};
+    if (!cxpr_typecheck(ast, reg, NULL, err)) return false;
 
     value = cxpr_eval_ast_value(ast, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;
@@ -591,6 +594,8 @@ bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
         }
         return false;
     }
+    if (err) *err = (cxpr_error){0};
+    if (!cxpr_typecheck_bool_root(ast, reg, err)) return false;
 
     value = cxpr_eval_ast_value(ast, ctx, reg, err);
     if (err && err->code != CXPR_OK) return false;
@@ -729,6 +734,7 @@ bool cxpr_eval_ast_bool_at_offset(const cxpr_ast* ast,
         }
         return false;
     }
+    if (!cxpr_typecheck_bool_root(ast, reg, err)) return false;
     if (!cxpr_eval_ast_at_offset(ast, lookback, ctx, reg, &value, err)) return false;
     if (value.type != CXPR_VALUE_BOOL) {
         if (err) {
