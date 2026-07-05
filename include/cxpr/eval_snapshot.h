@@ -56,6 +56,8 @@ typedef struct {
     char* kind;
     char* display_label;
     char* value_text;
+    cxpr_value value;
+    int has_value;
     cxpr_snapshot_state state;
     cxpr_eval_snapshot ast;
 } cxpr_eval_snapshot_flow_node;
@@ -75,6 +77,26 @@ typedef struct {
     size_t edge_count;
     size_t edge_capacity;
 } cxpr_eval_snapshot_flow;
+
+typedef bool (*cxpr_snapshot_flow_node_host_json_fn)(
+    FILE* out,
+    const cxpr_eval_snapshot_flow* flow,
+    size_t node_index,
+    void* userdata);
+
+typedef bool (*cxpr_snapshot_ast_node_host_json_fn)(
+    FILE* out,
+    const cxpr_eval_snapshot* snapshot,
+    size_t node_index,
+    void* userdata);
+
+typedef struct {
+    const char* host_name;
+    const char* host_schema;
+    cxpr_snapshot_flow_node_host_json_fn write_flow_node_host_json;
+    cxpr_snapshot_ast_node_host_json_fn write_ast_node_host_json;
+    void* userdata;
+} cxpr_snapshot_json_hooks;
 
 /**
  * @brief Build a single-context diagnostic snapshot for an AST.
@@ -116,8 +138,29 @@ const char* cxpr_snapshot_state_name(cxpr_snapshot_state state);
  */
 bool cxpr_eval_snapshot_write_json(const cxpr_eval_snapshot* snapshot, FILE* out);
 
+/**
+ * @brief Write a snapshot JSON representation with optional host metadata.
+ *
+ * Host callbacks must write a complete JSON object value, for example
+ * `{ "role": "entry" }`. cxpr treats the object as opaque host-owned data.
+ */
+bool cxpr_eval_snapshot_write_json_ex(const cxpr_eval_snapshot* snapshot,
+                                      const cxpr_snapshot_json_hooks* hooks,
+                                      FILE* out);
+
 /** @brief Write flow-level JSON with expression graph and AST drilldowns. */
 bool cxpr_eval_snapshot_flow_write_json(const cxpr_eval_snapshot_flow* flow, FILE* out);
+
+/**
+ * @brief Write flow-level JSON with optional host metadata.
+ *
+ * Host callbacks must write complete JSON object values. The host data is
+ * emitted under `host` on matching flow/AST nodes and is otherwise ignored by
+ * cxpr.
+ */
+bool cxpr_eval_snapshot_flow_write_json_ex(const cxpr_eval_snapshot_flow* flow,
+                                           const cxpr_snapshot_json_hooks* hooks,
+                                           FILE* out);
 
 #ifdef __cplusplus
 }

@@ -1,2 +1,3 @@
 build*
 plans/
+examples/ast_snapshot_cytoscape/*.json
