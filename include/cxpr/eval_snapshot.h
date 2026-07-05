@@ -1,0 +1,126 @@
+/**
+ * @file eval_snapshot.h
+ * @brief Single-evaluation AST diagnostics for cxpr.
+ */
+
+#ifndef CXPR_EVAL_SNAPSHOT_H
+#define CXPR_EVAL_SNAPSHOT_H
+
+#include <cxpr/types.h>
+#include <stdio.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+    CXPR_SNAPSHOT_STATE_UNKNOWN = 0,
+    CXPR_SNAPSHOT_STATE_TRUE,
+    CXPR_SNAPSHOT_STATE_FALSE,
+    CXPR_SNAPSHOT_STATE_NUMBER,
+    CXPR_SNAPSHOT_STATE_VALUE,
+    CXPR_SNAPSHOT_STATE_SKIPPED,
+    CXPR_SNAPSHOT_STATE_ERROR
+} cxpr_snapshot_state;
+
+typedef struct {
+    size_t id;
+    size_t parent_id;
+    int has_parent;
+    char* role;
+    char* kind;
+    char* label;
+    char* display_label;
+    char* source;
+    char* resolved;
+    char* value_text;
+    cxpr_value value;
+    int has_value;
+    int active;
+    cxpr_snapshot_state state;
+} cxpr_snapshot_node;
+
+typedef struct {
+    char* expression;
+    char* resolved;
+    cxpr_value result;
+    int has_result;
+    cxpr_snapshot_state state;
+    cxpr_snapshot_node* nodes;
+    size_t node_count;
+    size_t node_capacity;
+} cxpr_eval_snapshot;
+
+typedef struct {
+    char* name;
+    char* kind;
+    char* display_label;
+    char* value_text;
+    cxpr_snapshot_state state;
+    cxpr_eval_snapshot ast;
+} cxpr_eval_snapshot_flow_node;
+
+typedef struct {
+    size_t source_index;
+    size_t target_index;
+    char* source_name;
+    char* target_name;
+} cxpr_eval_snapshot_flow_edge;
+
+typedef struct {
+    cxpr_eval_snapshot_flow_node* nodes;
+    size_t node_count;
+    size_t node_capacity;
+    cxpr_eval_snapshot_flow_edge* edges;
+    size_t edge_count;
+    size_t edge_capacity;
+} cxpr_eval_snapshot_flow;
+
+/**
+ * @brief Build a single-context diagnostic snapshot for an AST.
+ *
+ * The snapshot records the AST tree, which nodes were active for this
+ * evaluation, each active node's value when available, and skipped branches for
+ * short-circuit boolean operators and ternaries.
+ */
+bool cxpr_eval_snapshot_build(const cxpr_ast* ast,
+                              const cxpr_context* ctx,
+                              const cxpr_registry* reg,
+                              cxpr_eval_snapshot* out_snapshot,
+                              cxpr_error* err);
+
+/**
+ * @brief Build a snapshot for every named expression in evaluator order.
+ *
+ * The returned flow contains one node per named expression plus dependency
+ * edges from dependency to dependent expression. Each flow node also owns an
+ * AST snapshot for drilldown.
+ */
+bool cxpr_eval_snapshot_build_flow(const cxpr_evaluator* evaluator,
+                                   cxpr_context* ctx,
+                                   const cxpr_registry* reg,
+                                   cxpr_eval_snapshot_flow* out_flow,
+                                   cxpr_error* err);
+
+/** @brief Release all storage owned by a snapshot. */
+void cxpr_eval_snapshot_free(cxpr_eval_snapshot* snapshot);
+
+/** @brief Release all storage owned by a flow snapshot. */
+void cxpr_eval_snapshot_flow_free(cxpr_eval_snapshot_flow* flow);
+
+/** @brief Return a readable name for a snapshot state. */
+const char* cxpr_snapshot_state_name(cxpr_snapshot_state state);
+
+/**
+ * @brief Write a generic JSON representation suitable for Cytoscape mapping.
+ */
+bool cxpr_eval_snapshot_write_json(const cxpr_eval_snapshot* snapshot, FILE* out);
+
+/** @brief Write flow-level JSON with expression graph and AST drilldowns. */
+bool cxpr_eval_snapshot_flow_write_json(const cxpr_eval_snapshot_flow* flow, FILE* out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CXPR_EVAL_SNAPSHOT_H */

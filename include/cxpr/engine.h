@@ -55,6 +55,7 @@
 #ifndef CXPR_ENGINE_H
 #define CXPR_ENGINE_H
 
+#include <cxpr/eval_snapshot.h>
 #include <cxpr/types.h>
 #include <cxpr/registry.h>
 #include <cxpr/expression.h>
@@ -615,6 +616,17 @@ size_t cxpr_engine_expression_dependency_instruction_count(
  * @brief Return total compiled IR instructions for the engine expression batch.
  */
 size_t cxpr_engine_expression_total_instruction_count(const cxpr_engine_session* session);
+
+/**
+ * @brief Build a diagnostic flow snapshot for all expressions at the current tick.
+ *
+ * The flow contains expression-level dependency edges plus one AST snapshot per
+ * expression for drilldown. This is intended for debugging/visualization and is
+ * not part of the hot tick path.
+ */
+bool cxpr_engine_snapshot_flow(const cxpr_engine_session* session,
+                               cxpr_eval_snapshot_flow* out_flow,
+                               cxpr_error* err);
 
 #ifdef __cplusplus
 }
