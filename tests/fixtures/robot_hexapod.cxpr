@@ -1,0 +1,99 @@
+# Full hexapod robot controller fixture.
+# Inputs model a 6-axis IMU: 3-axis gyro plus 3-axis accelerometer.
+# Top-level bindings intentionally delegate calculations to fn definitions.
+
+name robot_hexapod
+
+use robotics
+
+in {
+    gyro,
+    accel,
+    gait_phase,
+    stride_command,
+    turn_command,
+    body_height
+}
+
+$dt = 0.01
+$accel_blend = 0.04
+$min_norm = 0.000001
+$max_stride = 1.0
+$max_turn = 0.6
+$neutral_height = 0.18
+$lift_height = 0.045
+$hip_gain = 0.32
+$knee_gain = 0.70
+$ankle_gain = 0.48
+$roll_balance_gain = 0.42
+$pitch_balance_gain = 0.38
+$yaw_balance_gain = 0.18
+$max_roll = 0.45
+$max_pitch = 0.45
+$max_gyro = 8.0
+
+state {
+    orientation = quat(1, 0, 0, 0)
+}
+
+gyro_step = gyrodeltaquat(gyro, $dt)
+predicted_raw = quatmul(orientation, gyro_step)
+predicted_q = normalizequat(predicted_raw, $min_norm)
+accel_q = quatfromrollpitch(accelroll(accel), accelpitch(accel))
+orientation_q = quatblend(predicted_q, accel_q, $accel_blend, $min_norm)
+attitude = attitudequat(orientation_q)
+imu_ready = imuhealth(accel, gyro, $min_norm, $max_gyro)
+stable = stabilitygate(attitude, imu_ready, $max_roll, $max_pitch)
+stride = clampvalue(stride_command, 0 - $max_stride, $max_stride)
+turn = clampvalue(turn_command, 0 - $max_turn, $max_turn)
+height = clampvalue(body_height, $neutral_height * 0.5, $neutral_height * 1.5)
+
+front_left_mount = vec3(1, 1, 0)
+middle_right_mount = vec3(0, 0 - 1, 0)
+rear_left_mount = vec3(0 - 1, 1, 0)
+front_right_mount = vec3(1, 0 - 1, 0)
+middle_left_mount = vec3(0, 1, 0)
+rear_right_mount = vec3(0 - 1, 0 - 1, 0)
+
+front_left = legcommand(front_left_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro)
+middle_right = legcommand(middle_right_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro)
+rear_left = legcommand(rear_left_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro)
+front_right = legcommand(front_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
+middle_left = legcommand(middle_left_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
+rear_right = legcommand(rear_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
+
+update state {
+    orientation = orientation_q
+}
+
+roll = attitude.roll
+pitch = attitude.pitch
+yaw = attitude.yaw
+attitude_vec = vec3(attitude.roll, attitude.pitch, attitude.yaw)
+front_left_joint = vec3(front_left.coxa, front_left.knee, front_left.ankle)
+middle_left_joint = vec3(middle_left.coxa, middle_left.knee, middle_left.ankle)
+rear_left_joint = vec3(rear_left.coxa, rear_left.knee, rear_left.ankle)
+front_right_joint = vec3(front_right.coxa, front_right.knee, front_right.ankle)
+middle_right_joint = vec3(middle_right.coxa, middle_right.knee, middle_right.ankle)
+rear_right_joint = vec3(rear_right.coxa, rear_right.knee, rear_right.ankle)
+out {
+    imu_ready,
+    stable,
+    orientation,
+    attitude_vec,
+    front_left,
+    middle_left,
+    rear_left,
+    front_right,
+    middle_right,
+    rear_right,
+    front_left_joint,
+    middle_left_joint,
+    rear_left_joint,
+    front_right_joint,
+    middle_right_joint,
+    rear_right_joint,
+    roll,
+    pitch,
+    yaw
+}

@@ -77,7 +77,7 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         const cxpr_array_value* array_value = cxpr_context_lookup_array_map(&ctx->arrays, name);
         if (array_value) {
             if (found) *found = true;
-            return cxpr_array((cxpr_array_value*)array_value);
+            return cxpr_array(cxpr_array_value_new(array_value->values, array_value->count));
         }
     }
 
@@ -106,7 +106,10 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         }
         if (struct_value) {
             if (found) *found = true;
-            return cxpr_struct((cxpr_struct_value*)struct_value);
+            return cxpr_struct(cxpr_struct_value_new(
+                (const char* const*)struct_value->field_names,
+                struct_value->field_values,
+                struct_value->field_count));
         }
     }
 
@@ -142,7 +145,7 @@ cxpr_value cxpr_context_get_param_typed(const cxpr_context* ctx, const char* nam
             cxpr_context_lookup_array_map(&ctx->array_params, name);
         if (array_value) {
             if (found) *found = true;
-            return cxpr_array((cxpr_array_value*)array_value);
+            return cxpr_array(cxpr_array_value_new(array_value->values, array_value->count));
         }
     }
     {
@@ -180,7 +183,7 @@ cxpr_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
     for (i = 0; i < s->field_count; i++) {
         if (strcmp(s->field_names[i], field) == 0) {
             if (found) *found = true;
-            return s->field_values[i];
+            return cxpr_value_clone(&s->field_values[i]);
         }
     }
 

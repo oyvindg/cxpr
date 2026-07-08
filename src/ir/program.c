@@ -75,6 +75,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
     case CXPR_OP_PUSH_BOOL: return "PUSH_BOOL";
     case CXPR_OP_PUSH_STRING: return "PUSH_STRING";
+    case CXPR_OP_BUILD_ARRAY: return "BUILD_ARRAY";
     case CXPR_OP_LOAD_LOCAL: return "LOAD_LOCAL";
     case CXPR_OP_LOAD_LOCAL_SQUARE: return "LOAD_LOCAL_SQUARE";
     case CXPR_OP_LOAD_VAR: return "LOAD_VAR";
@@ -123,6 +124,7 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_LOOKBACK_PUSH: return "LOOKBACK_PUSH";
     case CXPR_OP_LOOKBACK_POP: return "LOOKBACK_POP";
     case CXPR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
+    case CXPR_OP_STORE_LOCAL: return "STORE_LOCAL";
     case CXPR_OP_RETURN: return "RETURN";
     default: return "UNKNOWN";
     }

@@ -4,8 +4,10 @@
  */
 
 #include "internal.h"
+#include "ir/internal.h"
 #include "core.h"
 #include "ast/internal.h"
+#include <cxpr/codegen.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -373,6 +375,210 @@ oom:
     }
     free(owned_counts);
     for (size_t i = 0; i < CXPR_DEF_MAX_PARAMS; i++) {
+        cxpr_def_field_set_destroy(&sets[i]);
+    }
+    err.code = CXPR_ERR_OUT_OF_MEMORY;
+    err.message = "Out of memory";
+    return err;
+}
+
+char* cxpr_registry_defined_fn_to_c_function(const cxpr_registry* reg,
+                                             const char* name,
+                                             const char* qualifiers,
+                                             const char* return_type,
+                                             const char* function_name,
+                                             cxpr_error* err) {
+    cxpr_func_entry* entry;
+    cxpr_program program = {0};
+    cxpr_c_program_arg args[CXPR_DEF_MAX_PARAMS];
+    char* code;
+
+    if (err) *err = (cxpr_error){0};
+    if (!reg || !name || !function_name) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "Invalid defined function C backend arguments";
+        }
+        return NULL;
+    }
+    entry = cxpr_registry_find(reg, name);
+    if (!entry || !entry->defined_body || entry->defined_return_field_count > 0u) {
+        if (err) {
+            err->code = CXPR_ERR_UNKNOWN_FUNCTION;
+            err->message = "Unknown scalar expression-defined function";
+        }
+        return NULL;
+    }
+    if (entry->defined_param_count > CXPR_DEF_MAX_PARAMS) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "Too many defined function parameters";
+        }
+        return NULL;
+    }
+
+    for (size_t i = 0u; i < entry->defined_param_count; ++i) {
+        args[i] = (cxpr_c_program_arg){
+            .kind = CXPR_C_PROGRAM_ARG_LOCAL,
+            .name = entry->defined_param_names[i],
+            .c_name = entry->defined_param_names[i],
+            .local_index = i,
+        };
+    }
+
+    if (!cxpr_ir_compile_with_locals(entry->defined_body, reg,
+                                     (const char* const*)entry->defined_param_names,
+                                     entry->defined_param_count,
+                                     &program.ir,
+                                     err)) {
+        cxpr_ir_program_reset(&program.ir);
+        return NULL;
+    }
+    program.ast = entry->defined_body;
+    code = cxpr_program_to_c_function(&program,
+                                      qualifiers,
+                                      return_type,
+                                      function_name,
+                                      args,
+                                      entry->defined_param_count,
+                                      err);
+    cxpr_ir_program_reset(&program.ir);
+    return code;
+}
+
+cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
+                                          const char* const* param_names,
+                                          size_t param_count,
+                                          const char* const* field_names,
+                                          const cxpr_ast* const* field_bodies,
+                                          size_t field_count) {
+    cxpr_error err = {0};
+    cxpr_def_field_set sets[CXPR_DEF_MAX_PARAMS];
+    char** owned_params = NULL;
+    char*** owned_fields = NULL;
+    size_t* owned_counts = NULL;
+    char** owned_return_names = NULL;
+    cxpr_ast** owned_return_bodies = NULL;
+
+    memset(sets, 0, sizeof(sets));
+    if (!reg || !name || (!param_names && param_count > 0u) ||
+        !field_names || !field_bodies || field_count == 0u ||
+        param_count > CXPR_DEF_MAX_PARAMS) {
+        err.code = CXPR_ERR_SYNTAX;
+        err.message = "Invalid record function";
+        return err;
+    }
+
+    for (size_t i = 0; i < field_count; ++i) {
+        if (!field_names[i] || !field_bodies[i]) {
+            err.code = CXPR_ERR_SYNTAX;
+            err.message = "Invalid record function field";
+            return err;
+        }
+        if (!collect_fields_in_ast(field_bodies[i], param_names, param_count, sets) ||
+            !collect_transitive_fields_in_ast(field_bodies[i], reg,
+                                              param_names, param_count, sets)) {
+            goto oom;
+        }
+    }
+
+    owned_params = (char**)calloc(param_count ? param_count : 1u, sizeof(char*));
+    owned_fields = (char***)calloc(param_count ? param_count : 1u, sizeof(char**));
+    owned_counts = (size_t*)calloc(param_count ? param_count : 1u, sizeof(size_t));
+    owned_return_names = (char**)calloc(field_count, sizeof(char*));
+    owned_return_bodies = (cxpr_ast**)calloc(field_count, sizeof(cxpr_ast*));
+    if (!owned_params || !owned_fields || !owned_counts ||
+        !owned_return_names || !owned_return_bodies) {
+        goto oom;
+    }
+
+    for (size_t i = 0; i < param_count; ++i) {
+        owned_params[i] = cxpr_strdup(param_names[i]);
+        if (!owned_params[i]) goto oom;
+        owned_counts[i] = sets[i].count;
+        if (sets[i].count > 0u) {
+            owned_fields[i] = (char**)calloc(sets[i].count, sizeof(char*));
+            if (!owned_fields[i]) goto oom;
+            for (size_t f = 0; f < sets[i].count; ++f) {
+                owned_fields[i][f] = cxpr_strdup(sets[i].fields[f]);
+                if (!owned_fields[i][f]) goto oom;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < field_count; ++i) {
+        owned_return_names[i] = cxpr_strdup(field_names[i]);
+        owned_return_bodies[i] = cxpr_ast_clone(field_bodies[i]);
+        if (!owned_return_names[i] || !owned_return_bodies[i]) goto oom;
+    }
+
+    {
+        cxpr_func_entry* entry = cxpr_registry_find(reg, name);
+        if (entry) {
+            cxpr_registry_clear_owned_entry(entry);
+        } else {
+            if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) goto oom;
+            entry = &reg->entries[reg->count++];
+            cxpr_registry_prepare_entry(entry, name);
+            if (!entry->name) goto oom;
+        }
+
+        entry->sync_func = NULL;
+        entry->value_func = NULL;
+        entry->typed_func = NULL;
+        entry->ast_func = NULL;
+        entry->struct_producer = NULL;
+        entry->ast_func_handler = NULL;
+        entry->native_kind = CXPR_NATIVE_KIND_NONE;
+        memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
+        entry->min_args = param_count;
+        entry->max_args = param_count;
+        entry->return_type = CXPR_VALUE_STRUCT;
+        entry->has_return_type = true;
+        entry->defined_body = NULL;
+        entry->defined_program = NULL;
+        entry->defined_program_failed = false;
+        entry->defined_param_names = owned_params;
+        entry->defined_param_count = param_count;
+        entry->defined_param_fields = owned_fields;
+        entry->defined_param_field_counts = owned_counts;
+        entry->defined_return_field_names = owned_return_names;
+        entry->defined_return_field_bodies = owned_return_bodies;
+        entry->defined_return_field_count = field_count;
+        reg->version++;
+
+        for (size_t i = 0; i < CXPR_DEF_MAX_PARAMS; ++i) {
+            cxpr_def_field_set_destroy(&sets[i]);
+        }
+        return err;
+    }
+
+oom:
+    if (owned_params) {
+        for (size_t i = 0; i < param_count; ++i) free(owned_params[i]);
+        free(owned_params);
+    }
+    if (owned_fields) {
+        for (size_t i = 0; i < param_count; ++i) {
+            if (owned_fields[i]) {
+                for (size_t f = 0; f < (owned_counts ? owned_counts[i] : 0u); ++f) {
+                    free(owned_fields[i][f]);
+                }
+                free(owned_fields[i]);
+            }
+        }
+        free(owned_fields);
+    }
+    free(owned_counts);
+    if (owned_return_names) {
+        for (size_t i = 0; i < field_count; ++i) free(owned_return_names[i]);
+        free(owned_return_names);
+    }
+    if (owned_return_bodies) {
+        for (size_t i = 0; i < field_count; ++i) cxpr_ast_free(owned_return_bodies[i]);
+        free(owned_return_bodies);
+    }
+    for (size_t i = 0; i < CXPR_DEF_MAX_PARAMS; ++i) {
         cxpr_def_field_set_destroy(&sets[i]);
     }
     err.code = CXPR_ERR_OUT_OF_MEMORY;

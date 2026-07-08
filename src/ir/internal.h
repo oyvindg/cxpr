@@ -25,6 +25,7 @@ typedef enum {
     CXPR_OP_PUSH_CONST,
     CXPR_OP_PUSH_BOOL,
     CXPR_OP_PUSH_STRING,
+    CXPR_OP_BUILD_ARRAY,
     CXPR_OP_LOAD_LOCAL,
     CXPR_OP_LOAD_LOCAL_SQUARE,
     CXPR_OP_LOAD_VAR,
@@ -73,6 +74,7 @@ typedef enum {
     CXPR_OP_LOOKBACK_PUSH,
     CXPR_OP_LOOKBACK_POP,
     CXPR_OP_LOOKBACK_RESOLVE,
+    CXPR_OP_STORE_LOCAL,
     CXPR_OP_RETURN
 } cxpr_opcode;
 
@@ -82,6 +84,7 @@ typedef enum {
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
  * - PUSH_STRING: borrowed string literal in name
+ * - BUILD_ARRAY: number of stack values to collect in index
  * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
  * - LOAD_NAMED_FIELD: borrowed root in name, borrowed field in aux_name, flat-key hash in hash
  * - CALL_PRODUCER_CONST_FIELD: cache key in name, field name in aux_name

@@ -1,6 +1,6 @@
 /**
  * @file cxpr.h
- * @brief C API for cxpr expression evaluator.
+ * @brief C API for cxpr expression and model compiler infrastructure.
  *
  * Pure C11 interface for maximum portability and FFI compatibility.
  */
@@ -18,6 +18,7 @@
 #include <cxpr/eval_snapshot.h>
 #include <cxpr/program.h>
 #include <cxpr/codegen.h>
+#include <cxpr/model.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
 #include <cxpr/ir_view.h>
@@ -26,6 +27,11 @@
 #include <cxpr/evaluator.h>
 #include <cxpr/expression.h>
 #include <cxpr/provider.h>
+#include <cxpr/plugin.h>
+#include <cxpr/plugins/c.h>
+#include <cxpr/plugins/cuda.h>
+#include <cxpr/plugins/graph.h>
+#include <cxpr/plugins/meta.h>
 #include <cxpr/runtime_call.h>
 #include <cxpr/source_plan.h>
 #include <cxpr/thread.h>

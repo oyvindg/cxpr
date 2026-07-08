@@ -121,7 +121,7 @@ static void test_snapshot_writes_host_metadata(void) {
     rewind(json);
     nread = fread(buf, 1, sizeof(buf) - 1u, json);
     buf[nread] = '\0';
-    assert(strstr(buf, "\"schema\": \"cxpr.eval_snapshot.v1\"") != NULL);
+    assert(strstr(buf, "\"schema\": \"cxpr.eval_snapshot.v2\"") != NULL);
     assert(strstr(buf, "\"name\": \"test-host\"") != NULL);
     assert(strstr(buf, "\"role\": \"test-ast-node\"") != NULL);
     assert(strstr(buf, "\"has_value\": true") != NULL);
@@ -194,9 +194,8 @@ static void test_snapshot_labels_lookback_index_role(void) {
             assert(node->label);
             assert(node->source);
             assert(node->display_label);
-            assert(strcmp(node->label, "source") == 0);
+            assert(strcmp(node->label, "close") == 0);
             assert(strcmp(node->source, "close") == 0);
-            assert(strstr(node->display_label, "source") != NULL);
             assert(strstr(node->display_label, "close") != NULL);
             saw_source = 1;
         } else if (node->role && strcmp(node->role, "index") == 0) {
@@ -632,6 +631,177 @@ static void test_snapshot_producer_args_attach_to_function_node(void) {
     cxpr_ast_free(ast);
 }
 
+static void test_snapshot_field_access_has_object_and_field_children(void) {
+    cxpr_ast* ast = parse_required("account.balance");
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    int saw_object = 0;
+    int saw_field = 0;
+
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    cxpr_context_set(ctx, "account.balance", 1250.0);
+    assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+
+    for (size_t i = 0; i < snapshot.node_count; ++i) {
+        const cxpr_snapshot_node* node = &snapshot.nodes[i];
+        if (node->role && strcmp(node->role, "object") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "object =\naccount") == 0);
+            saw_object = 1;
+        } else if (node->role && strcmp(node->role, "field") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "field =\nbalance") == 0);
+            saw_field = 1;
+        }
+    }
+
+    assert(saw_object);
+    assert(saw_field);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_ast_free(ast);
+}
+
+static void test_snapshot_chain_access_has_segment_children(void) {
+    cxpr_ast* ast = parse_required("risk.model.score");
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    int saw_segment0 = 0;
+    int saw_segment1 = 0;
+    int saw_segment2 = 0;
+
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    cxpr_context_set(ctx, "risk.model.score", 0.82);
+    assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+
+    for (size_t i = 0; i < snapshot.node_count; ++i) {
+        const cxpr_snapshot_node* node = &snapshot.nodes[i];
+        if (node->role && strcmp(node->role, "segment[0]") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "segment[0] =\nrisk") == 0);
+            saw_segment0 = 1;
+        } else if (node->role && strcmp(node->role, "segment[1]") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "segment[1] =\nmodel") == 0);
+            saw_segment1 = 1;
+        } else if (node->role && strcmp(node->role, "segment[2]") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "segment[2] =\nscore") == 0);
+            saw_segment2 = 1;
+        }
+    }
+
+    assert(saw_segment0);
+    assert(saw_segment1);
+    assert(saw_segment2);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_ast_free(ast);
+}
+
+static void test_snapshot_array_literal_has_item_children(void) {
+    cxpr_ast* ast = parse_required("[1, 2, 3]");
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    int saw_item0 = 0;
+    int saw_item1 = 0;
+    int saw_item2 = 0;
+
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+
+    for (size_t i = 0; i < snapshot.node_count; ++i) {
+        const cxpr_snapshot_node* node = &snapshot.nodes[i];
+        if (node->role && strcmp(node->role, "item[0]") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "item[0]: 1") == 0);
+            saw_item0 = 1;
+        } else if (node->role && strcmp(node->role, "item[1]") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "item[1]: 2") == 0);
+            saw_item1 = 1;
+        } else if (node->role && strcmp(node->role, "item[2]") == 0) {
+            assert(node->parent_id == 0u);
+            assert(strcmp(node->display_label, "item[2]: 3") == 0);
+            saw_item2 = 1;
+        }
+    }
+
+    assert(saw_item0);
+    assert(saw_item1);
+    assert(saw_item2);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_ast_free(ast);
+}
+
+static void test_snapshot_complex_lookback_preserves_target_structure(void) {
+    cxpr_ast* ast = parse_required("account.balance[1]");
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    size_t source_id = (size_t)-1;
+    int saw_source = 0;
+    int saw_object = 0;
+    int saw_field = 0;
+
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+
+    for (size_t i = 0; i < snapshot.node_count; ++i) {
+        const cxpr_snapshot_node* node = &snapshot.nodes[i];
+        if (node->role && strcmp(node->role, "source") == 0 &&
+            node->kind && strcmp(node->kind, "field_access") == 0) {
+            assert(node->parent_id == 0u);
+            source_id = node->id;
+            saw_source = 1;
+        }
+    }
+    assert(saw_source);
+
+    for (size_t i = 0; i < snapshot.node_count; ++i) {
+        const cxpr_snapshot_node* node = &snapshot.nodes[i];
+        if (node->parent_id == source_id &&
+            node->role && strcmp(node->role, "object") == 0) {
+            assert(strcmp(node->display_label, "object =\naccount") == 0);
+            saw_object = 1;
+        } else if (node->parent_id == source_id &&
+                   node->role && strcmp(node->role, "field") == 0) {
+            assert(strcmp(node->display_label, "field =\nbalance") == 0);
+            saw_field = 1;
+        }
+    }
+
+    assert(saw_object);
+    assert(saw_field);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_ast_free(ast);
+}
+
 static void test_flow_snapshot_links_named_expressions(void) {
     const cxpr_expression_def defs[] = {
         { "trend", "ema_fast > ema_slow" },
@@ -772,7 +942,7 @@ static void test_flow_snapshot_writes_host_metadata(void) {
     rewind(json);
     nread = fread(buf, 1, sizeof(buf) - 1u, json);
     buf[nread] = '\0';
-    assert(strstr(buf, "\"schema\": \"cxpr.eval_snapshot_flow.v1\"") != NULL);
+    assert(strstr(buf, "\"schema\": \"cxpr.eval_snapshot_flow.v2\"") != NULL);
     assert(strstr(buf, "\"name\": \"test-host\"") != NULL);
     assert(strstr(buf, "\"role\": \"test-flow-node\"") != NULL);
     assert(strstr(buf, "\"role\": \"test-ast-node\"") != NULL);
@@ -841,6 +1011,10 @@ int main(void) {
     test_snapshot_nested_function_args_attach_to_function_node();
     test_snapshot_contains_args_attach_to_function_node();
     test_snapshot_producer_args_attach_to_function_node();
+    test_snapshot_field_access_has_object_and_field_children();
+    test_snapshot_chain_access_has_segment_children();
+    test_snapshot_array_literal_has_item_children();
+    test_snapshot_complex_lookback_preserves_target_structure();
     test_flow_snapshot_links_named_expressions();
     test_flow_snapshot_displays_resolved_and_final_value();
     test_flow_snapshot_writes_host_metadata();

@@ -196,8 +196,7 @@ function dedupeAstLeafNodes(elements) {
   elements.nodes.forEach((node) => {
     const count = reuseCountById.get(node.data.id) || 1;
     if (count <= 1) return;
-    const base = node.data.display_label || node.data.label || node.data.source || "";
-    node.data.display_label = `${base}\nx${count}`;
+    node.data.reuse_count = count;
   });
 
   const edgeKeys = new Set();

@@ -1,0 +1,119 @@
+# Shared robotics helpers for .cxpr fixtures.
+# Conventions:
+# - vec3 records expose { x, y, z }
+# - quat records expose { w, x, y, z }
+# - gyro inputs are angular rates in rad/s
+# - roll/pitch/yaw are radians
+# - phase values are normalized to [0, 1)
+
+# Clamp scalar v into [lo, hi].
+fn clampvalue(v, lo, hi) = max(lo, min(hi, v))
+
+# Wrap scalar v to normalized phase [0, 1).
+fn wrap01(v) = v - floor(v)
+
+# Euclidean length of a vec3 record.
+fn veclen(v) = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+
+# Euclidean length of a quat record.
+fn quatlen(q) = sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z)
+
+# Divide num by den, returning fallback when abs(den) <= eps.
+fn safediv(num, den, fallback, eps) = if(abs(den) <= eps, fallback, num / den)
+
+# Normalize quat record q, falling back to identity if norm <= eps.
+fn normalizequat(q, eps) {
+    n = quatlen(q)
+    invalid = abs(n) <= eps
+    return { w = invalid ? 1 : q.w / n, x = invalid ? 0 : q.x / n, y = invalid ? 0 : q.y / n, z = invalid ? 0 : q.z / n }
+}
+
+# Integrate gyro vec3 angular rates for dt seconds as a small delta quat.
+fn gyrodeltaquat(gyro, dt) {
+    half_dt = dt * 0.5
+    return { w = 1, x = gyro.x * half_dt, y = gyro.y * half_dt, z = gyro.z * half_dt }
+}
+
+# Hamilton product of quaternions a and b.
+fn quatmul(a, b) {
+    return { w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z, x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x, z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w }
+}
+
+# Construct a vec3 record.
+fn vec3(x, y, z) = x, y, z
+
+# Construct a quat record.
+fn quat(w, x, y, z) = w, x, y, z
+
+# Estimate roll from accelerometer vec3.
+fn accelroll(accel) = atan2(accel.y, accel.z)
+
+# Estimate pitch from accelerometer vec3.
+fn accelpitch(accel) = atan2(0 - accel.x, sqrt(accel.y * accel.y + accel.z * accel.z))
+
+# Convert roll/pitch angles to a yaw-free quaternion.
+fn quatfromrollpitch(roll, pitch) {
+    cr = cos(roll * 0.5)
+    sr = sin(roll * 0.5)
+    cp = cos(pitch * 0.5)
+    sp = sin(pitch * 0.5)
+    return { w = cr * cp, x = sr * cp, y = cr * sp, z = 0 - sr * sp }
+}
+
+# Blend quat a toward quat b by weight and normalize with eps guard.
+fn quatblend(a, b, weight, eps) {
+    inv = 1 - weight
+    tw = a.w * inv + b.w * weight
+    tx = a.x * inv + b.x * weight
+    ty = a.y * inv + b.y * weight
+    tz = a.z * inv + b.z * weight
+    n = sqrt(tw * tw + tx * tx + ty * ty + tz * tz)
+    invalid = abs(n) <= eps
+    return { w = invalid ? 1 : tw / n, x = invalid ? 0 : tx / n, y = invalid ? 0 : ty / n, z = invalid ? 0 : tz / n }
+}
+
+# Convert quat record q to roll/pitch/yaw attitude.
+fn attitudequat(q) {
+    roll = atan2(2 * (q.w * q.x + q.y * q.z), 1 - 2 * (q.x * q.x + q.y * q.y))
+    pitch = asin(clampvalue(2 * (q.w * q.y - q.z * q.x), -1, 1))
+    yaw = atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+    return { roll, pitch, yaw }
+}
+
+# Validate IMU magnitudes: accel norm must be live, gyro norm must be bounded.
+fn imuhealth(accel, gyro, min_norm, max_gyro) = veclen(accel) > min_norm and veclen(gyro) <= max_gyro
+
+# Gate control when attitude exceeds max_roll/max_pitch or IMU is unhealthy.
+fn stabilitygate(attitude, imu_ok, max_roll, max_pitch) = imu_ok and abs(attitude.roll) <= max_roll and abs(attitude.pitch) <= max_pitch
+
+# Positive sinusoidal swing lift for a leg phase and offset.
+fn tripodwave(phase, offset) = max(0, sin((wrap01(phase + offset)) * 6.283185307179586))
+
+# Cosine stance wave for fore/aft foot placement.
+fn stancewave(phase, offset) = cos((wrap01(phase + offset)) * 6.283185307179586)
+
+# Compute one hexapod leg command.
+# mount: vec3 normalized leg mount position on body.
+# phase_offset: tripod offset, usually 0.0 or 0.5.
+# phase: global gait phase in [0, 1).
+# stride/turn: normalized motion commands.
+# height: commanded body height.
+# attitude/gyro: balance feedback records.
+fn legcommand(mount,
+               phase_offset,
+               phase,
+               stride,
+               turn,
+               height,
+               attitude,
+               gyro) {
+    lift = tripodwave(phase, phase_offset) * $lift_height
+    stance = stancewave(phase, phase_offset)
+    balance = attitude.roll * mount.y * $roll_balance_gain + attitude.pitch * mount.x * $pitch_balance_gain
+    yaw_trim = gyro.z * mount.y * $yaw_balance_gain
+    reach = stride * stance + turn * mount.y
+    coxa = $hip_gain * reach + yaw_trim
+    knee = $knee_gain * (height + lift + balance)
+    ankle = $ankle_gain * (height - lift - balance)
+    return { coxa, knee, ankle, lift, stance }
+}

@@ -93,7 +93,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                               size_t local_count, cxpr_error* err);
 /** @brief Execute the scalar fast-path IR interpreter. */
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                                const cxpr_registry* reg, const double* locals,
+                                const cxpr_registry* reg, double* locals,
                                 size_t local_count, cxpr_error* err);
 /** @brief Execute a boolean fast-path IR program with separate number/bool stacks. */
 bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* ctx,

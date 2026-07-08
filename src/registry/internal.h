@@ -57,6 +57,9 @@ typedef struct cxpr_func_entry {
     size_t     defined_param_count;        /**< Number of parameters */
     char***    defined_param_fields;       /**< Per-param field lists; NULL entry = scalar */
     size_t*    defined_param_field_counts; /**< Per-param field counts */
+    char**     defined_return_field_names; /**< Struct-return field names, owned */
+    cxpr_ast** defined_return_field_bodies; /**< Struct-return field ASTs, owned */
+    size_t     defined_return_field_count; /**< Number of struct-return fields */
 } cxpr_func_entry;
 
 /** @brief Initial owned entry capacity for new registries. */
@@ -122,5 +125,14 @@ double cxpr_ternary_adapter(const double* args, size_t argc, void* userdata);
 double cxpr_min(const double* args, size_t argc, void* userdata);
 /** @brief Internal variadic `max` builtin implementation. */
 double cxpr_max(const double* args, size_t argc, void* userdata);
+/** @brief Register one cxpr-owned default function by name. */
+bool cxpr_register_default_named(cxpr_registry* reg, const char* name);
+/** @brief Register an expression-defined struct-return function. */
+cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
+                                          const char* const* param_names,
+                                          size_t param_count,
+                                          const char* const* field_names,
+                                          const cxpr_ast* const* field_bodies,
+                                          size_t field_count);
 
 #endif /* CXPR_REGISTRY_INTERNAL_H */

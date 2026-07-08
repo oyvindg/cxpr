@@ -65,6 +65,11 @@ endif()
 file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
+list(APPEND CXPR_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/c.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/cuda.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/graph.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/meta.c")
 list(SORT CXPR_SOURCES)
 
 add_library(cxpr STATIC ${CXPR_SOURCES})
@@ -115,6 +120,16 @@ endif()
 target_link_libraries(cxpr PRIVATE m)
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Tools
+# ═══════════════════════════════════════════════════════════════════════════
+option(CXPR_BUILD_TOOLS "Build cxpr command-line tools" ON)
+if(CXPR_BUILD_TOOLS)
+    add_executable(cxpr_model_codegen
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_model_codegen.c")
+    target_link_libraries(cxpr_model_codegen PRIVATE cxpr)
+endif()
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Tests
 # ═══════════════════════════════════════════════════════════════════════════
 option(CXPR_BUILD_TESTS "Build cxpr tests" ${PROJECT_IS_TOP_LEVEL})
@@ -146,7 +161,7 @@ endif()
 # ═══════════════════════════════════════════════════════════════════════════
 option(CXPR_BUILD_FUZZERS "Build cxpr libFuzzer targets (requires Clang)" OFF)
 if(CXPR_BUILD_FUZZERS)
-    add_subdirectory(fuzz)
+    add_subdirectory(tests/fuzz)
 endif()
 
 if(CXPR_ENABLE_COVERAGE)

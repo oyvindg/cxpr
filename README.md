@@ -213,7 +213,7 @@ the full parse → compile → evaluate pipeline:
 ```bash
 cmake --preset fuzz                 # configure (needs clang)
 cmake --build --preset fuzz         # build
-./build-fuzz/fuzz/cxpr_fuzz_parse build-fuzz/fuzz/corpus   # run
+./build-fuzz/tests/fuzz/cxpr_fuzz_parse build-fuzz/tests/fuzz/corpus   # run
 ```
 
 ## Installation
@@ -561,8 +561,13 @@ such as `region == "EU"`. Cross-type equality still fails with a type mismatch.
 Arrays (`CXPR_VALUE_ARRAY`) are transport values for callbacks, structs, and
 membership predicates. Bracketed lists are first-class array literals, so
 `x in [$a, $b]` desugars to `contains(x, [$a, $b])`, while
-`contains(x, $allowed)` can use an array bound in the context. Deep array
-equality is not part of the expression language.
+`contains(x, $allowed)` can use an array bound in the context. Array literals
+may also be the top-level expression and may contain nested arrays or any other
+`cxpr_value` produced by their element expressions. `cxpr` does not attach host
+meaning to a top-level array; callers that expect a scalar should validate the
+returned type. Array values returned from `cxpr_eval_program` are owned by the
+caller and should be released with `cxpr_value_free`. Deep array equality is not
+part of the expression language.
 
 Timestamps and durations also carry a closed arithmetic and ordering algebra
 (see [Timestamps and Durations](#timestamps-and-durations)), and `null` values

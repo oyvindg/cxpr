@@ -212,7 +212,8 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                        const cxpr_value* args,
                                        size_t argc, cxpr_error* err) {
     double locals[CXPR_MAX_CALL_ARGS];
-    if (!entry || !entry->defined_body) {
+    bool scalar_only = true;
+    if (!entry || (!entry->defined_body && entry->defined_return_field_count == 0u)) {
         return cxpr_ir_runtime_error(err, "NULL IR defined function entry");
     }
     if (argc != entry->defined_param_count) {
@@ -224,17 +225,74 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
     }
 
     for (size_t i = 0; i < argc; ++i) {
-        if (args[i].type != CXPR_VALUE_NUMBER) {
+        if (args[i].type == CXPR_VALUE_NUMBER) {
+            locals[i] = args[i].d;
+        } else {
+            scalar_only = false;
+        }
+    }
+
+    if (entry->defined_return_field_count > 0u) {
+        cxpr_context* tmp = cxpr_context_overlay_new(ctx);
+        cxpr_value* fields;
+        cxpr_struct_value* record;
+        cxpr_value result;
+
+        if (!tmp) {
             if (err) {
-                err->code = CXPR_ERR_TYPE_MISMATCH;
-                err->message = "Defined function arguments must be doubles";
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
             }
             return cxpr_num(NAN);
         }
-        locals[i] = args[i].d;
+        for (size_t i = 0; i < argc; ++i) {
+            if (args[i].type == CXPR_VALUE_NUMBER) {
+                cxpr_context_set(tmp, entry->defined_param_names[i], args[i].d);
+            } else {
+                cxpr_context_set_value(tmp, entry->defined_param_names[i], &args[i]);
+            }
+        }
+
+        fields = (cxpr_value*)calloc(entry->defined_return_field_count, sizeof(cxpr_value));
+        if (!fields) {
+            cxpr_context_free(tmp);
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return cxpr_num(NAN);
+        }
+
+        for (size_t i = 0; i < entry->defined_return_field_count; ++i) {
+            if (!cxpr_eval_ast(entry->defined_return_field_bodies[i], tmp, reg,
+                               &fields[i], err)) {
+                for (size_t j = 0; j < i; ++j) cxpr_value_free(&fields[j]);
+                free(fields);
+                cxpr_context_free(tmp);
+                return cxpr_num(NAN);
+            }
+        }
+
+        record = cxpr_struct_value_new((const char* const*)entry->defined_return_field_names,
+                                       fields, entry->defined_return_field_count);
+        for (size_t i = 0; i < entry->defined_return_field_count; ++i) {
+            cxpr_value_free(&fields[i]);
+        }
+        free(fields);
+        cxpr_context_free(tmp);
+        if (!record) {
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return cxpr_num(NAN);
+        }
+        result = cxpr_struct(record);
+        return result;
     }
 
-    if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
+    if (scalar_only &&
+        cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
         return cxpr_num(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
                                                        locals, argc, err));
     }
@@ -249,7 +307,11 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
             return cxpr_num(NAN);
         }
         for (size_t i = 0; i < argc; ++i) {
-            cxpr_context_set(tmp, entry->defined_param_names[i], locals[i]);
+            if (args[i].type == CXPR_VALUE_NUMBER) {
+                cxpr_context_set(tmp, entry->defined_param_names[i], args[i].d);
+            } else {
+                cxpr_context_set_value(tmp, entry->defined_param_names[i], &args[i]);
+            }
         }
         {
             cxpr_value result = {0};

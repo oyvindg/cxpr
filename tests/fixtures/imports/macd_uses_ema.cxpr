@@ -1,0 +1,21 @@
+name macd_uses_ema
+
+use ema
+
+in source
+
+$period = 9
+
+state {
+    initialized = 0
+    signal = 0
+}
+
+next_signal = if(initialized > 0, ema_step(signal, source, $period), source)
+
+update state {
+    initialized = 1
+    signal = next_signal
+}
+
+out signal

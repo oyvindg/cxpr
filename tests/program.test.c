@@ -215,6 +215,44 @@ static void test_program_eval_extended_scalar_equality(void) {
     printf("  ✓ test_program_eval_extended_scalar_equality\n");
 }
 
+static void test_program_eval_top_level_nested_array(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "[1, [2, 3], flag]", &err);
+    cxpr_program* prog;
+    cxpr_value result = cxpr_null();
+
+    assert(ast);
+    cxpr_context_set_bool(ctx, "flag", true);
+
+    prog = cxpr_compile(ast, reg, &err);
+    assert(prog);
+    assert(cxpr_eval_program(prog, ctx, reg, &result, &err));
+    assert(err.code == CXPR_OK);
+    assert(result.type == CXPR_VALUE_ARRAY);
+    assert(result.a != NULL);
+    assert(result.a->count == 3u);
+    assert(result.a->values[0].type == CXPR_VALUE_NUMBER);
+    ASSERT_DOUBLE_EQ(result.a->values[0].d, 1.0);
+    assert(result.a->values[1].type == CXPR_VALUE_ARRAY);
+    assert(result.a->values[1].a != NULL);
+    assert(result.a->values[1].a->count == 2u);
+    ASSERT_DOUBLE_EQ(result.a->values[1].a->values[0].d, 2.0);
+    ASSERT_DOUBLE_EQ(result.a->values[1].a->values[1].d, 3.0);
+    assert(result.a->values[2].type == CXPR_VALUE_BOOL);
+    assert(result.a->values[2].b == true);
+
+    cxpr_value_free(&result);
+    cxpr_program_free(prog);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_program_eval_top_level_nested_array\n");
+}
+
 static void test_program_eval_out_api(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -375,6 +413,7 @@ int main(void) {
     test_program_eval_root_bool_param();
     test_program_eval_string_equality();
     test_program_eval_extended_scalar_equality();
+    test_program_eval_top_level_nested_array();
     test_program_eval_out_api();
     test_program_eval_number_rejects_bool_result();
     test_program_if_requires_bool_condition();

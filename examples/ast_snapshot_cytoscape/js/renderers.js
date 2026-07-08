@@ -648,3 +648,5 @@ window.addEventListener("resize", () => {
     cy.fit(undefined, 24);
   });
 });
+
+loadScenario(document.getElementById("scenario").value || "trading");

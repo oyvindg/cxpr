@@ -35,6 +35,12 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     add_executable("${target_name}" "${test_file}")
     target_link_libraries("${target_name}" PRIVATE cxpr)
     target_include_directories("${target_name}" PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions("${target_name}" PRIVATE
+        CXPR_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    if("${target_name}" STREQUAL "test_model" AND TARGET cxta)
+        target_link_libraries("${target_name}" PRIVATE cxta)
+        target_compile_definitions("${target_name}" PRIVATE CXPR_TEST_WITH_CXTA=1)
+    endif()
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         target_compile_options("${target_name}" PRIVATE
             -UNDEBUG
@@ -52,6 +58,18 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     add_test(NAME "${test_base}" COMMAND "$<TARGET_FILE:${target_name}>")
     list(APPEND CXPR_C_TEST_NAMES "${test_base}")
 endforeach()
+
+if(TARGET cxpr_model_codegen)
+    add_test(NAME model_codegen_imports
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/imports/macd_uses_ema.cxpr"
+            --output "${CMAKE_CURRENT_BINARY_DIR}/macd_uses_ema.gen.c"
+            --meta-output "${CMAKE_CURRENT_BINARY_DIR}/macd_uses_ema.meta.json"
+            --graph-output "${CMAKE_CURRENT_BINARY_DIR}/macd_uses_ema.graph.json"
+            --function cxpr_test_macd_uses_ema_tick
+            --qualifiers "static inline"
+            --specialize-defaults)
+endif()
 
 if(CXPR_ENABLE_ASAN)
     set_tests_properties(${CXPR_C_TEST_NAMES} PROPERTIES

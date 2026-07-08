@@ -1,0 +1,23 @@
+# MACD-like record fixture for .cxpr model syntax and lookback coverage.
+# This is intentionally small: it validates record fields and field lookback,
+# not full indicator parity.
+
+name macd_record_cross_model
+
+in {
+    close
+}
+
+fn macd_like(src) {
+    line = src - 10
+    signal = 0
+    histogram = line - signal
+    out { line, signal, histogram }
+}
+
+m = macd_like(close)
+histogram = m.histogram
+entry = m.histogram > 0 and m.histogram[1] <= 0
+exit = m.histogram < 0 and m.histogram[1] >= 0
+
+out { entry, exit, histogram }

@@ -421,6 +421,132 @@ double cxpr_max(const double* args, size_t argc, void* userdata) {
     return cxpr_max_n(args, argc);
 }
 
+typedef enum {
+    CXPR_DEFAULT_VARIADIC,
+    CXPR_DEFAULT_NULLARY,
+    CXPR_DEFAULT_UNARY,
+    CXPR_DEFAULT_BINARY,
+    CXPR_DEFAULT_TERNARY
+} cxpr_default_kind;
+
+typedef struct {
+    const char* name;
+    cxpr_default_kind kind;
+    union {
+        cxpr_func_ptr variadic;
+        double (*nullary)(void);
+        double (*unary)(double);
+        double (*binary)(double, double);
+        double (*ternary)(double, double, double);
+    } fn;
+    size_t min_args;
+    size_t max_args;
+} cxpr_default_entry;
+
+static const cxpr_default_entry cxpr_default_entries[] = {
+    {"min", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_min}, 1, 8},
+    {"max", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_max}, 1, 8},
+    {"clamp", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_clamp}, 3, 3},
+    {"sign", CXPR_DEFAULT_UNARY, {.unary = cxpr_sign}, 1, 1},
+    {"add", CXPR_DEFAULT_BINARY, {.binary = cxpr_add}, 2, 2},
+    {"sub", CXPR_DEFAULT_BINARY, {.binary = cxpr_sub}, 2, 2},
+    {"mul", CXPR_DEFAULT_BINARY, {.binary = cxpr_mul}, 2, 2},
+    {"div", CXPR_DEFAULT_BINARY, {.binary = cxpr_div}, 2, 2},
+    {"lerp", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_lerp}, 3, 3},
+    {"smoothstep", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_smoothstep}, 3, 3},
+    {"sigmoid", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_sigmoid}, 3, 3},
+    {"abs", CXPR_DEFAULT_UNARY, {.unary = fabs}, 1, 1},
+    {"floor", CXPR_DEFAULT_UNARY, {.unary = floor}, 1, 1},
+    {"ceil", CXPR_DEFAULT_UNARY, {.unary = ceil}, 1, 1},
+    {"round", CXPR_DEFAULT_UNARY, {.unary = round}, 1, 1},
+    {"trunc", CXPR_DEFAULT_UNARY, {.unary = trunc}, 1, 1},
+    {"sqrt", CXPR_DEFAULT_UNARY, {.unary = sqrt}, 1, 1},
+    {"cbrt", CXPR_DEFAULT_UNARY, {.unary = cbrt}, 1, 1},
+    {"hypot", CXPR_DEFAULT_BINARY, {.binary = hypot}, 2, 2},
+    {"pow", CXPR_DEFAULT_BINARY, {.binary = pow}, 2, 2},
+    {"exp", CXPR_DEFAULT_UNARY, {.unary = exp}, 1, 1},
+    {"exp2", CXPR_DEFAULT_UNARY, {.unary = exp2}, 1, 1},
+    {"expm1", CXPR_DEFAULT_UNARY, {.unary = expm1}, 1, 1},
+    {"log", CXPR_DEFAULT_UNARY, {.unary = log}, 1, 1},
+    {"log10", CXPR_DEFAULT_UNARY, {.unary = log10}, 1, 1},
+    {"log2", CXPR_DEFAULT_UNARY, {.unary = log2}, 1, 1},
+    {"log1p", CXPR_DEFAULT_UNARY, {.unary = log1p}, 1, 1},
+    {"mod", CXPR_DEFAULT_BINARY, {.binary = fmod}, 2, 2},
+    {"copysign", CXPR_DEFAULT_BINARY, {.binary = copysign}, 2, 2},
+    {"radians", CXPR_DEFAULT_UNARY, {.unary = cxpr_radians}, 1, 1},
+    {"degrees", CXPR_DEFAULT_UNARY, {.unary = cxpr_degrees}, 1, 1},
+    {"sin", CXPR_DEFAULT_UNARY, {.unary = sin}, 1, 1},
+    {"cos", CXPR_DEFAULT_UNARY, {.unary = cos}, 1, 1},
+    {"tan", CXPR_DEFAULT_UNARY, {.unary = tan}, 1, 1},
+    {"asin", CXPR_DEFAULT_UNARY, {.unary = asin}, 1, 1},
+    {"acos", CXPR_DEFAULT_UNARY, {.unary = acos}, 1, 1},
+    {"atan", CXPR_DEFAULT_UNARY, {.unary = atan}, 1, 1},
+    {"atan2", CXPR_DEFAULT_BINARY, {.binary = atan2}, 2, 2},
+    {"sinh", CXPR_DEFAULT_UNARY, {.unary = sinh}, 1, 1},
+    {"cosh", CXPR_DEFAULT_UNARY, {.unary = cosh}, 1, 1},
+    {"tanh", CXPR_DEFAULT_UNARY, {.unary = tanh}, 1, 1},
+    {"pi", CXPR_DEFAULT_NULLARY, {.nullary = cxpr_pi}, 0, 0},
+    {"e", CXPR_DEFAULT_NULLARY, {.nullary = cxpr_e}, 0, 0},
+    {"nan", CXPR_DEFAULT_NULLARY, {.nullary = cxpr_nan}, 0, 0},
+    {"inf", CXPR_DEFAULT_NULLARY, {.nullary = cxpr_inf}, 0, 0},
+    {"if", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_if}, 3, 3},
+};
+
+bool cxpr_register_default_named(cxpr_registry* reg, const char* name) {
+    if (!reg || !name || cxpr_registry_find(reg, name)) return true;
+
+    for (size_t i = 0; i < CXPR_ARRAY_COUNT(cxpr_default_entries); ++i) {
+        const cxpr_default_entry* entry = &cxpr_default_entries[i];
+        if (strcmp(name, entry->name) != 0) continue;
+        switch (entry->kind) {
+        case CXPR_DEFAULT_VARIADIC:
+            cxpr_registry_add(reg, entry->name, entry->fn.variadic,
+                              entry->min_args, entry->max_args, NULL, NULL);
+            break;
+        case CXPR_DEFAULT_NULLARY:
+            cxpr_registry_add_nullary(reg, entry->name, entry->fn.nullary);
+            break;
+        case CXPR_DEFAULT_UNARY:
+            cxpr_registry_add_unary(reg, entry->name, entry->fn.unary);
+            break;
+        case CXPR_DEFAULT_BINARY:
+            cxpr_registry_add_binary(reg, entry->name, entry->fn.binary);
+            break;
+        case CXPR_DEFAULT_TERNARY:
+            cxpr_registry_add_ternary(reg, entry->name, entry->fn.ternary);
+            break;
+        }
+        return cxpr_registry_find(reg, name) != NULL;
+    }
+
+    if (strcmp(name, "contains") == 0) {
+        cxpr_registry_add_ast(reg, "contains", cxpr_fn_contains, 2, 2,
+                              CXPR_VALUE_BOOL, NULL, NULL);
+    } else if (strcmp(name, "within") == 0) {
+        cxpr_registry_add_ast(reg, "within", cxpr_fn_within, 3, 5,
+                              CXPR_VALUE_BOOL, NULL, NULL);
+    } else if (strcmp(name, "isnan") == 0) {
+        static const cxpr_value_type number_arg[] = { CXPR_VALUE_NUMBER };
+        cxpr_registry_add_typed(reg, "isnan", cxpr_fn_isnan, 1, 1, number_arg,
+                                CXPR_VALUE_BOOL, NULL, NULL);
+    } else if (strcmp(name, "isfinite") == 0) {
+        static const cxpr_value_type number_arg[] = { CXPR_VALUE_NUMBER };
+        cxpr_registry_add_typed(reg, "isfinite", cxpr_fn_isfinite, 1, 1, number_arg,
+                                CXPR_VALUE_BOOL, NULL, NULL);
+    } else if (strcmp(name, "coalesce") == 0) {
+        cxpr_registry_add_value(reg, "coalesce", cxpr_fn_coalesce, 1, 8, NULL, NULL);
+    } else if (strcmp(name, "is_null") == 0) {
+        cxpr_registry_add_typed(reg, "is_null", cxpr_fn_is_null, 1, 1, NULL,
+                                CXPR_VALUE_BOOL, NULL, NULL);
+    } else if (cxpr_timeseries_is_builtin(name)) {
+        cxpr_register_timeseries(reg);
+    } else {
+        return false;
+    }
+
+    return cxpr_registry_find(reg, name) != NULL;
+}
+
 void cxpr_register_math(cxpr_registry* reg) {
     if (!reg) return;
 

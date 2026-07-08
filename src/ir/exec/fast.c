@@ -106,7 +106,7 @@ static inline bool cxpr_ir_exec_lookup_root_cached(const cxpr_context* ctx,
 }
 
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                                const cxpr_registry* reg, const double* locals,
+                                const cxpr_registry* reg, double* locals,
                                 size_t local_count, cxpr_error* err) {
     double stack[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
@@ -182,6 +182,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         [CXPR_OP_LOOKBACK_PUSH] = &&op_unsupported,
         [CXPR_OP_LOOKBACK_POP] = &&op_unsupported,
         [CXPR_OP_LOOKBACK_RESOLVE] = &&op_unsupported,
+        [CXPR_OP_STORE_LOCAL] = &&op_store_local,
         [CXPR_OP_RETURN] = &&op_return
     };
     const cxpr_ir_instr* instr;
@@ -495,6 +496,10 @@ op_jump_if_true:
         CXPR_FAST_DISPATCH();
     }
     CXPR_FAST_NEXT();
+op_store_local:
+    if (instr->index >= local_count) return cxpr_ir_runtime_error(err, "Unknown local variable").d;
+    locals[instr->index] = stack[--sp];
+    CXPR_FAST_NEXT();
 op_return:
     if (sp != 1) return cxpr_ir_runtime_error(err, "IR stack imbalance on return").d;
     return stack[--sp];
@@ -591,6 +596,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         [CXPR_OP_LOOKBACK_PUSH] = &&opb_unsupported,
         [CXPR_OP_LOOKBACK_POP] = &&opb_unsupported,
         [CXPR_OP_LOOKBACK_RESOLVE] = &&opb_unsupported,
+        [CXPR_OP_STORE_LOCAL] = &&opb_unsupported,
         [CXPR_OP_RETURN] = &&opb_return
     };
     const cxpr_ir_instr* instr;

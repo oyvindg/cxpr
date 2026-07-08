@@ -98,10 +98,24 @@ static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
     return cxpr_ir_resolve_lookback_target(target_ptr, offset, ctx, reg, out, err);
 }
 
+static void cxpr_ir_release_owned_stack_values(cxpr_value* stack,
+                                               bool* owned,
+                                               size_t start,
+                                               size_t count) {
+    for (size_t i = 0u; i < count; ++i) {
+        size_t index = start + i;
+        if (owned[index]) {
+            cxpr_value_free(&stack[index]);
+            owned[index] = false;
+        }
+    }
+}
+
 cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                               const cxpr_registry* reg, const double* locals,
                               size_t local_count, cxpr_error* err) {
     cxpr_value stack[CXPR_IR_STACK_CAPACITY];
+    bool stack_owned[CXPR_IR_STACK_CAPACITY] = {false};
     size_t lookback_stack[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
     size_t lookback_sp = 0;
@@ -114,6 +128,30 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         return cxpr_ir_runtime_error(err, "Empty IR program");
     }
 
+#define CXPR_TYPED_PUSH(VALUE_EXPR)                                                     \
+    do {                                                                                \
+        if (!cxpr_ir_stack_push(stack, &sp, (VALUE_EXPR), CXPR_IR_STACK_CAPACITY, err)) { \
+            return cxpr_num(NAN);                                                       \
+        }                                                                               \
+        stack_owned[sp - 1u] = false;                                                   \
+    } while (0)
+
+#define CXPR_TYPED_PUSH_OWNED(VALUE_EXPR)                                               \
+    do {                                                                                \
+        if (!cxpr_ir_stack_push(stack, &sp, (VALUE_EXPR), CXPR_IR_STACK_CAPACITY, err)) { \
+            return cxpr_num(NAN);                                                       \
+        }                                                                               \
+        stack_owned[sp - 1u] = true;                                                    \
+    } while (0)
+
+#define CXPR_TYPED_PUSH_SQUARED(VALUE_EXPR)                                             \
+    do {                                                                                \
+        if (!cxpr_ir_push_squared(stack, &sp, (VALUE_EXPR), err)) {                     \
+            return cxpr_num(NAN);                                                       \
+        }                                                                               \
+        stack_owned[sp - 1u] = false;                                                   \
+    } while (0)
+
     while (ip < program->count) {
         const cxpr_ir_instr* instr = &program->code[ip];
         cxpr_value a, b, result;
@@ -121,39 +159,44 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
 
         switch (instr->op) {
         case CXPR_OP_PUSH_CONST:
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_num(instr->value),
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(cxpr_num(instr->value));
             break;
         case CXPR_OP_PUSH_BOOL:
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_bool(instr->value != 0.0),
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(cxpr_bool(instr->value != 0.0));
             break;
         case CXPR_OP_PUSH_STRING:
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_string(instr->name),
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
+            CXPR_TYPED_PUSH(cxpr_string(instr->name));
+            break;
+        case CXPR_OP_BUILD_ARRAY:
+            {
+                size_t start;
+                cxpr_array_value* array;
+                if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_num(NAN);
+                start = sp - instr->index;
+                array = cxpr_array_value_new(instr->index ? &stack[start] : NULL, instr->index);
+                cxpr_ir_release_owned_stack_values(stack, stack_owned, start, instr->index);
+                sp = start;
+                if (!array) {
+                    if (err) {
+                        err->code = CXPR_ERR_OUT_OF_MEMORY;
+                        err->message = "Out of memory";
+                    }
+                    return cxpr_num(NAN);
+                }
+                CXPR_TYPED_PUSH_OWNED(cxpr_array(array));
             }
             break;
         case CXPR_OP_LOAD_LOCAL:
             if (instr->index >= local_count) {
                 return cxpr_ir_runtime_error(err, "Unknown local variable");
             }
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_num(locals[instr->index]),
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(cxpr_num(locals[instr->index]));
             break;
         case CXPR_OP_LOAD_LOCAL_SQUARE:
             if (instr->index >= local_count) {
                 return cxpr_ir_runtime_error(err, "Unknown local variable");
             }
-            if (!cxpr_ir_push_squared(stack, &sp, cxpr_num(locals[instr->index]), err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH_SQUARED(cxpr_num(locals[instr->index]));
             break;
         case CXPR_OP_LOAD_VAR:
             {
@@ -169,9 +212,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
                 }
             }
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_LOAD_VAR_SQUARE:
             {
@@ -187,7 +228,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
                 }
             }
-            if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_num(NAN);
+            CXPR_TYPED_PUSH_SQUARED(result);
             break;
         case CXPR_OP_LOAD_PARAM:
             {
@@ -207,9 +248,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 }
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
             }
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_LOAD_PARAM_SQUARE:
             {
@@ -219,7 +258,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     &found));
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
             }
-            if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_num(NAN);
+            CXPR_TYPED_PUSH_SQUARED(result);
             break;
         case CXPR_OP_LOAD_FIELD:
             if (lookback_depth > 0u) {
@@ -232,9 +271,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 result = cxpr_ir_load_field_value(ctx, reg, instr, err);
             }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_LOAD_FIELD_SQUARE:
             if (lookback_depth > 0u) {
@@ -247,7 +284,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 result = cxpr_ir_load_field_value(ctx, reg, instr, err);
             }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_ir_push_squared(stack, &sp, result, err)) return cxpr_num(NAN);
+            CXPR_TYPED_PUSH_SQUARED(result);
             break;
         case CXPR_OP_LOAD_NAMED_FIELD:
             if (lookback_depth > 0u) {
@@ -260,9 +297,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 result = cxpr_ir_load_named_field_value(ctx, instr, err);
             }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_LOAD_CHAIN:
             if (lookback_depth > 0u) {
@@ -275,9 +310,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 result = cxpr_ir_load_chain_value(ctx, instr, err);
             }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_ADD:
         case CXPR_OP_SUB:
@@ -396,9 +429,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 }
                 break;
             }
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_SQUARE:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
@@ -406,10 +437,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                       "Square operation requires double operand")) {
                 return cxpr_num(NAN);
             }
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_num(a.d * a.d),
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(cxpr_num(a.d * a.d));
             break;
         case CXPR_OP_NOT:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
@@ -417,10 +445,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                       "Logical not requires bool operand")) {
                 return cxpr_num(NAN);
             }
-            if (!cxpr_ir_stack_push(stack, &sp, cxpr_bool(!a.b),
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(cxpr_bool(!a.b));
             break;
         case CXPR_OP_NEG:
         case CXPR_OP_SIGN:
@@ -443,9 +468,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             case CXPR_OP_CEIL: result = cxpr_num(ceil(a.d)); break;
             default: result = cxpr_num(round(a.d)); break;
             }
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CLAMP:
             if (!cxpr_ir_pop2(stack, &sp, &result, &b, err)) return cxpr_num(NAN);
@@ -460,9 +483,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             }
             if (a.d < result.d) a.d = result.d;
             if (a.d > b.d) a.d = b.d;
-            if (!cxpr_ir_stack_push(stack, &sp, a, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(a);
             break;
         case CXPR_OP_CALL_UNARY:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
@@ -471,18 +492,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 return cxpr_num(NAN);
             }
             if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 break;
             }
             result = cxpr_num(instr->func->native_scalar.unary(a.d));
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
-            if (!cxpr_ir_stack_push(stack, &sp,
-                                    result,
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_BINARY:
             if (!cxpr_ir_pop2(stack, &sp, &a, &b, err)) return cxpr_num(NAN);
@@ -493,18 +508,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 return cxpr_num(NAN);
             }
             if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 break;
             }
             result = cxpr_num(instr->func->native_scalar.binary(a.d, b.d));
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
-            if (!cxpr_ir_stack_push(stack, &sp,
-                                    result,
-                                    CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_TERNARY:
             if (!cxpr_ir_pop2(stack, &sp, &b, &result, err)) return cxpr_num(NAN);
@@ -518,16 +527,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 return cxpr_num(NAN);
             }
             if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 break;
             }
             result = cxpr_num(instr->func->native_scalar.ternary(a.d, b.d, result.d));
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_FUNC:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_num(NAN);
@@ -539,25 +544,19 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             }
             sp -= instr->index;
             if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 break;
             }
             result = cxpr_registry_call_typed(reg, instr->func->name, typed_args, instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_DEFINED:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_num(NAN);
             if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
                 sp -= instr->index;
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 break;
             }
             result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
@@ -565,9 +564,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             sp -= instr->index;
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_PRODUCER:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_num(NAN);
@@ -577,9 +574,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                                      program->code[ip + 1].name, err);
                 if (err && err->code != CXPR_OK) return cxpr_num(NAN);
                 sp -= instr->index;
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 ++ip;
                 break;
             }
@@ -587,9 +582,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                            &stack[sp - instr->index], instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             sp -= instr->index;
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_PRODUCER_CONST:
             if (!cxpr_ir_require_stack(sp, instr->index, err)) return cxpr_num(NAN);
@@ -600,9 +593,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                                             program->code[ip + 1].name, err);
                 if (err && err->code != CXPR_OK) return cxpr_num(NAN);
                 sp -= instr->index;
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
                 ++ip;
                 break;
             }
@@ -611,9 +602,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                                   &stack[sp - instr->index], instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             sp -= instr->index;
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_PRODUCER_CONST_FIELD:
             result = cxpr_ir_call_producer_const_field((cxpr_func_entry*)instr->func,
@@ -621,9 +610,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                                                        (const double*)instr->payload,
                                                        instr->index, instr->aux_name, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_GET_FIELD:
             {
@@ -636,9 +623,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 }
                 result = cxpr_ir_struct_get_field(a.s, instr->name, &found);
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown field access");
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
             }
             break;
         case CXPR_OP_CALL_AST:
@@ -652,9 +637,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 (void)cxpr_eval_ast(instr->ast, ctx, reg, &result, err);
             }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                return cxpr_num(NAN);
-            }
+            CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_JUMP:
             ip = instr->index;
@@ -714,11 +697,11 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     return cxpr_ir_runtime_error(err, "Lookback resolver failed");
                 }
                 if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-                if (!cxpr_ir_stack_push(stack, &sp, result, CXPR_IR_STACK_CAPACITY, err)) {
-                    return cxpr_num(NAN);
-                }
+                CXPR_TYPED_PUSH(result);
             }
             break;
+        case CXPR_OP_STORE_LOCAL:
+            return cxpr_ir_runtime_error(err, "STORE_LOCAL requires scalar fast execution");
         case CXPR_OP_RETURN:
             if (!cxpr_ir_pop1(stack, &sp, &result, err)) return cxpr_num(NAN);
             if (sp != 0) {
@@ -731,6 +714,10 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
 
         ++ip;
     }
+
+#undef CXPR_TYPED_PUSH
+#undef CXPR_TYPED_PUSH_OWNED
+#undef CXPR_TYPED_PUSH_SQUARED
 
     return cxpr_ir_runtime_error(err, "IR program fell off end without return");
 }

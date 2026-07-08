@@ -88,26 +88,28 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     if (cxpr_ir_constant_typed_value(ast, reg, &constant)) {
         if (constant.type != CXPR_VALUE_NUMBER && constant.type != CXPR_VALUE_BOOL &&
             constant.type != CXPR_VALUE_STRING) {
-            return false;
-        }
-        if (constant.type == CXPR_VALUE_STRING) {
+            cxpr_value_free(&constant);
+            constant = (cxpr_value){0};
+        } else {
+            if (constant.type == CXPR_VALUE_STRING) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_PUSH_STRING,
+                                        .name = constant.str,
+                                    },
+                                    err);
+            }
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
-                                    .op = CXPR_OP_PUSH_STRING,
-                                    .name = constant.str,
+                                    .op = constant.type == CXPR_VALUE_BOOL
+                                              ? CXPR_OP_PUSH_BOOL
+                                              : CXPR_OP_PUSH_CONST,
+                                    .value = constant.type == CXPR_VALUE_BOOL
+                                                 ? (constant.b ? 1.0 : 0.0)
+                                                 : constant.d,
                                 },
                                 err);
         }
-        return cxpr_ir_emit(program,
-                            (cxpr_ir_instr){
-                                .op = constant.type == CXPR_VALUE_BOOL
-                                          ? CXPR_OP_PUSH_BOOL
-                                          : CXPR_OP_PUSH_CONST,
-                                .value = constant.type == CXPR_VALUE_BOOL
-                                             ? (constant.b ? 1.0 : 0.0)
-                                             : constant.d,
-                            },
-                            err);
     }
 
     switch (ast->type) {
@@ -134,6 +136,20 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_PUSH_STRING,
                                 .name = ast->data.string.value,
+                            },
+                            err);
+
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0; i < ast->data.array.count; ++i) {
+            if (!cxpr_ir_compile_node(ast->data.array.elements[i], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+        }
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_BUILD_ARRAY,
+                                .index = ast->data.array.count,
                             },
                             err);
 
@@ -203,7 +219,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_error_code bind_code = CXPR_OK;
         const char* bind_message = NULL;
-        if (!entry || !entry->struct_producer) {
+        if (!entry || (!entry->struct_producer && entry->defined_return_field_count == 0u)) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_FUNCTION;
                 err->message = cxpr_ir_unknown_function_message(ast->data.producer_access.name);
@@ -226,6 +242,30 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 err->message = bind_message;
             }
             return false;
+        }
+        if (entry->defined_return_field_count > 0u) {
+            for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
+                if (!cxpr_ir_compile_node(ordered_args[i], program, reg,
+                                          local_names, local_count, subst, inline_depth, err)) {
+                    return false;
+                }
+            }
+            if (!cxpr_ir_emit(program,
+                              (cxpr_ir_instr){
+                                  .op = CXPR_OP_CALL_DEFINED,
+                                  .func = entry,
+                                  .payload = ast,
+                                  .index = ast->data.producer_access.argc,
+                              },
+                              err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_GET_FIELD,
+                                    .name = ast->data.producer_access.field,
+                                },
+                                err);
         }
         const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
                                                         ordered_args,
@@ -334,6 +374,34 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
+        if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
+            size_t false_jump, end_jump;
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            false_jump = cxpr_ir_next_index(program);
+            if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP_IF_FALSE }, err)) {
+                return false;
+            }
+
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[1], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            end_jump = cxpr_ir_next_index(program);
+            if (!cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_JUMP }, err)) {
+                return false;
+            }
+
+            cxpr_ir_patch_target(program, false_jump, cxpr_ir_next_index(program));
+            if (!cxpr_ir_compile_node(ast->data.function_call.args[2], program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            cxpr_ir_patch_target(program, end_jump, cxpr_ir_next_index(program));
+            return true;
+        }
         if (!entry) {
             if (!cxpr_ir_is_special_builtin_name(fname)) {
                 if (err) {
@@ -352,18 +420,6 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
 
         if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
             size_t false_jump, end_jump;
-            unsigned char cond_kind = cxpr_ir_infer_fast_result_kind(
-                ast->data.function_call.args[0], reg, inline_depth + 1);
-
-            if (cond_kind != CXPR_IR_RESULT_BOOL) {
-                return cxpr_ir_emit(program,
-                                    (cxpr_ir_instr){
-                                        .op = CXPR_OP_CALL_AST,
-                                        .ast = ast,
-                                    },
-                                    err);
-            }
-
             if (!cxpr_ir_compile_node(ast->data.function_call.args[0], program, reg,
                                       local_names, local_count, subst, inline_depth, err)) {
                 return false;
@@ -565,6 +621,24 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         if (entry->defined_body &&
             cxpr_ir_emit_defined_direct_field_call(entry, ast, program, err)) {
             return true;
+        }
+
+        if (entry->defined_return_field_count > 0u) {
+            size_t i;
+            for (i = 0; i < ast->data.function_call.argc; ++i) {
+                if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
+                                          local_names, local_count, subst, inline_depth, err)) {
+                    return false;
+                }
+            }
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_DEFINED,
+                                    .func = entry,
+                                    .payload = ast,
+                                    .index = ast->data.function_call.argc,
+                                },
+                                err);
         }
 
         if (entry->defined_body && cxpr_ir_defined_is_scalar_only(entry)) {

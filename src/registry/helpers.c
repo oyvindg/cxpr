@@ -37,12 +37,28 @@ static void cxpr_registry_free_param_names(cxpr_func_entry* entry) {
 }
 
 static void cxpr_registry_free_defined_fn(cxpr_func_entry* entry) {
-    if (!entry->defined_body) return;
     cxpr_program_free(entry->defined_program);
     entry->defined_program = NULL;
     entry->defined_program_failed = false;
-    cxpr_ast_free(entry->defined_body);
-    entry->defined_body = NULL;
+    if (entry->defined_body) {
+        cxpr_ast_free(entry->defined_body);
+        entry->defined_body = NULL;
+    }
+    if (entry->defined_return_field_names) {
+        for (size_t i = 0; i < entry->defined_return_field_count; i++) {
+            free(entry->defined_return_field_names[i]);
+        }
+        free(entry->defined_return_field_names);
+        entry->defined_return_field_names = NULL;
+    }
+    if (entry->defined_return_field_bodies) {
+        for (size_t i = 0; i < entry->defined_return_field_count; i++) {
+            cxpr_ast_free(entry->defined_return_field_bodies[i]);
+        }
+        free(entry->defined_return_field_bodies);
+        entry->defined_return_field_bodies = NULL;
+    }
+    entry->defined_return_field_count = 0;
     if (entry->defined_param_fields) {
         for (size_t i = 0; i < entry->defined_param_count; i++) {
             if (entry->defined_param_fields[i]) {
@@ -167,6 +183,9 @@ void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
     entry->defined_param_count = 0;
     entry->defined_param_fields = NULL;
     entry->defined_param_field_counts = NULL;
+    entry->defined_return_field_names = NULL;
+    entry->defined_return_field_bodies = NULL;
+    entry->defined_return_field_count = 0;
 }
 
 void cxpr_registry_clear_owned_entry(cxpr_func_entry* entry) {

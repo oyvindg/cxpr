@@ -101,6 +101,53 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
         return cxpr_num(NAN);
     }
 
+    if (entry->defined_return_field_count > 0u) {
+        cxpr_value* fields;
+        cxpr_struct_value* record;
+        cxpr_value result;
+
+        tmp = cxpr_context_overlay_new(ctx);
+        if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        for (size_t i = 0; i < entry->defined_param_count; ++i) {
+            cxpr_value value = cxpr_eval_node(ordered_args[i], ctx, reg, err);
+            if (err && err->code != CXPR_OK) {
+                cxpr_context_free(tmp);
+                return cxpr_num(NAN);
+            }
+            if (value.type == CXPR_VALUE_NUMBER) {
+                cxpr_context_set(tmp, entry->defined_param_names[i], value.d);
+            } else {
+                cxpr_context_set_value(tmp, entry->defined_param_names[i], &value);
+            }
+            cxpr_value_free(&value);
+        }
+
+        fields = (cxpr_value*)calloc(entry->defined_return_field_count, sizeof(cxpr_value));
+        if (!fields) {
+            cxpr_context_free(tmp);
+            return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        }
+        for (size_t i = 0; i < entry->defined_return_field_count; ++i) {
+            fields[i] = cxpr_eval_node(entry->defined_return_field_bodies[i], tmp, reg, err);
+            if (err && err->code != CXPR_OK) {
+                for (size_t j = 0; j <= i; ++j) cxpr_value_free(&fields[j]);
+                free(fields);
+                cxpr_context_free(tmp);
+                return cxpr_num(NAN);
+            }
+        }
+        record = cxpr_struct_value_new((const char* const*)entry->defined_return_field_names,
+                                       fields, entry->defined_return_field_count);
+        for (size_t i = 0; i < entry->defined_return_field_count; ++i) {
+            cxpr_value_free(&fields[i]);
+        }
+        free(fields);
+        cxpr_context_free(tmp);
+        if (!record) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        result = cxpr_struct(record);
+        return result;
+    }
+
     for (size_t i = 0; i < entry->defined_param_count; i++) {
         if (entry->defined_param_fields[i] && entry->defined_param_field_counts[i] > 0) {
             scalar_only = false;
@@ -130,14 +177,29 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
     }
 
     if (scalar_only && !needs_catchor_passthrough) {
+        bool all_numbers = true;
+        tmp = cxpr_context_overlay_new(ctx);
+        if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         for (size_t i = 0; i < entry->defined_param_count; i++) {
             cxpr_value v = cxpr_eval_node(ordered_args[i], ctx, reg, err);
-            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            if (!cxpr_require_type(v, CXPR_VALUE_NUMBER, err,
-                                   "Defined function locals must be doubles")) {
+            if (err && err->code != CXPR_OK) {
+                cxpr_context_free(tmp);
                 return cxpr_num(NAN);
             }
-            scalar_locals[i] = v.d;
+            if (v.type == CXPR_VALUE_NUMBER) {
+                scalar_locals[i] = v.d;
+                cxpr_context_set(tmp, entry->defined_param_names[i], v.d);
+            } else {
+                all_numbers = false;
+                cxpr_context_set_value(tmp, entry->defined_param_names[i], &v);
+            }
+            cxpr_value_free(&v);
+        }
+        if (all_numbers) {
+            cxpr_context_free(tmp);
+            tmp = NULL;
+        } else {
+            scalar_only = false;
         }
     } else if (!scalar_only) {
         tmp = cxpr_context_overlay_new(ctx);
@@ -191,12 +253,12 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
                     cxpr_context_free(tmp);
                     return cxpr_num(NAN);
                 }
-                if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err,
-                                       "Defined function locals must be doubles")) {
-                    cxpr_context_free(tmp);
-                    return cxpr_num(NAN);
+                if (value.type == CXPR_VALUE_NUMBER) {
+                    cxpr_context_set(tmp, pname, value.d);
+                } else {
+                    cxpr_context_set_value(tmp, pname, &value);
                 }
-                cxpr_context_set(tmp, pname, value.d);
+                cxpr_value_free(&value);
             }
         }
     }
@@ -369,12 +431,12 @@ cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
                 cxpr_context_free(tmp);
                 return cxpr_num(NAN);
             }
-            if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err,
-                                   "Defined function locals must be doubles")) {
-                cxpr_context_free(tmp);
-                return cxpr_num(NAN);
+            if (value.type == CXPR_VALUE_NUMBER) {
+                cxpr_context_set(tmp, pname, value.d);
+            } else {
+                cxpr_context_set_value(tmp, pname, &value);
             }
-            cxpr_context_set(tmp, pname, value.d);
+            cxpr_value_free(&value);
         }
     }
 
@@ -398,7 +460,7 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
     const char* const_key;
     bool found = false;
 
-    if (!entry || !entry->struct_producer) {
+    if (!entry || (!entry->struct_producer && entry->defined_return_field_count == 0u)) {
         return cxpr_eval_error(
             err,
             CXPR_ERR_UNKNOWN_FUNCTION,
@@ -406,6 +468,58 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
     }
     if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
         return cxpr_num(NAN);
+    }
+
+    if (entry->defined_return_field_count > 0u) {
+        cxpr_context* tmp = cxpr_context_overlay_new(ctx);
+        cxpr_value* fields;
+        cxpr_struct_value* record;
+        cxpr_value result;
+
+        if (!tmp) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        for (size_t i = 0; i < entry->defined_param_count; ++i) {
+            cxpr_value arg = cxpr_eval_node(ordered_args[i], ctx, reg, err);
+            if (err && err->code != CXPR_OK) {
+                cxpr_context_free(tmp);
+                return cxpr_num(NAN);
+            }
+            if (arg.type == CXPR_VALUE_NUMBER) {
+                cxpr_context_set(tmp, entry->defined_param_names[i], arg.d);
+            } else {
+                cxpr_context_set_value(tmp, entry->defined_param_names[i], &arg);
+            }
+            cxpr_value_free(&arg);
+        }
+
+        fields = (cxpr_value*)calloc(entry->defined_return_field_count, sizeof(cxpr_value));
+        if (!fields) {
+            cxpr_context_free(tmp);
+            return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        }
+        for (size_t i = 0; i < entry->defined_return_field_count; ++i) {
+            fields[i] = cxpr_eval_node(entry->defined_return_field_bodies[i], tmp, reg, err);
+            if (err && err->code != CXPR_OK) {
+                for (size_t j = 0; j <= i; ++j) cxpr_value_free(&fields[j]);
+                free(fields);
+                cxpr_context_free(tmp);
+                return cxpr_num(NAN);
+            }
+        }
+        record = cxpr_struct_value_new((const char* const*)entry->defined_return_field_names,
+                                       fields, entry->defined_return_field_count);
+        for (size_t i = 0; i < entry->defined_return_field_count; ++i) {
+            cxpr_value_free(&fields[i]);
+        }
+        free(fields);
+        cxpr_context_free(tmp);
+        if (!record) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        result = cxpr_struct_get_field(record, ast->data.producer_access.field, &found);
+        if (found) result = cxpr_value_clone(&result);
+        cxpr_struct_value_free(record);
+        if (!found) {
+            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
+        }
+        return result;
     }
 
     const_key = cxpr_eval_prepare_const_key_for_producer(ast,

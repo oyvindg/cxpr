@@ -79,6 +79,21 @@ typedef struct cxpr_c_target {
     cxpr_c_emit_call_at_offset_fn emit_call_at_offset;
 } cxpr_c_target;
 
+/** @brief Source category for one generated cxpr_program C function argument. */
+typedef enum {
+    CXPR_C_PROGRAM_ARG_VAR = 0,   /**< Binds IR LOAD_VAR by name. */
+    CXPR_C_PROGRAM_ARG_PARAM = 1, /**< Binds IR LOAD_PARAM by name. */
+    CXPR_C_PROGRAM_ARG_LOCAL = 2  /**< Binds IR LOAD_LOCAL by zero-based local_index. */
+} cxpr_c_program_arg_kind;
+
+/** @brief One explicit argument binding for `cxpr_program_to_c_function`. */
+typedef struct cxpr_c_program_arg {
+    cxpr_c_program_arg_kind kind;
+    const char* name;      /**< cxpr symbol/param name; optional for LOCAL. */
+    const char* c_name;    /**< C parameter name. NULL derives a safe identifier from name/kind. */
+    size_t local_index;    /**< LOAD_LOCAL index when kind is LOCAL. */
+} cxpr_c_program_arg;
+
 /**
  * @brief Transpile a single AST into a C expression string.
  *
@@ -97,6 +112,32 @@ typedef struct cxpr_c_target {
  *         an unsupported node, operator, or function.
  */
 char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
+
+/**
+ * @brief Emit a scalar `cxpr_program` IR as a standalone C function.
+ *
+ * This is an optimization/codegen backend, not a replacement for IR execution.
+ * It supports deterministic scalar IR opcodes such as constants, explicit
+ * variables/params/locals, arithmetic, comparisons, math builtins lowered to
+ * opcodes, and IR jumps. Unsupported dynamic calls return NULL with @p err set,
+ * allowing callers to fall back to the interpreter.
+ *
+ * @param prog Compiled program to emit.
+ * @param qualifiers Leading function qualifiers, e.g. "static inline"; NULL emits none.
+ * @param return_type C return type, e.g. "double" or "bool"; NULL defaults to "double".
+ * @param function_name C function name.
+ * @param args Explicit bindings for LOAD_VAR/LOAD_PARAM/LOAD_LOCAL.
+ * @param arg_count Number of argument bindings.
+ * @param err Optional error output.
+ * @return Newly allocated C function source (free with `free`), or NULL on unsupported IR.
+ */
+char* cxpr_program_to_c_function(const cxpr_program* prog,
+                                 const char* qualifiers,
+                                 const char* return_type,
+                                 const char* function_name,
+                                 const cxpr_c_program_arg* args,
+                                 size_t arg_count,
+                                 cxpr_error* err);
 
 /**
  * @brief Transpile a single AST into a C expression string at a lookback offset.

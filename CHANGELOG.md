@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Array literals now compile to typed IR with `BUILD_ARRAY`, including
+  top-level and nested array literals that evaluate to owned `CXPR_VALUE_ARRAY`
+  results.
+
 ## [3.0.0] - 2026-06-30
 
 ### Added
@@ -263,7 +269,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semantics. Output is self-contained and safe to retain.
 - `cxpr_thread_cleanup` — release the calling thread's thread-local overlay
   cache; optional and only affects when memory is reclaimed, never correctness.
-- libFuzzer harness (`fuzz/parse_fuzzer.c`, `CXPR_BUILD_FUZZERS` option and
+- libFuzzer harness (`tests/fuzz/parse_fuzzer.c`, `CXPR_BUILD_FUZZERS` option and
   `fuzz` preset) driving untrusted input through parse → compile → evaluate
   under ASan/UBSan, plus a CI smoke run.
 

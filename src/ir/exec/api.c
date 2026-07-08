@@ -51,7 +51,8 @@ double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_conte
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err) {
     if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
-        return cxpr_ir_exec_scalar_fast(program, ctx, reg, locals, local_count, err);
+        return cxpr_ir_exec_scalar_fast(
+            program, ctx, reg, (double*)locals, local_count, err);
     }
     cxpr_value value = cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
     if (err && err->code != CXPR_OK) return NAN;

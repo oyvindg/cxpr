@@ -1,0 +1,76 @@
+# Converted from tests/configs/strategies/feature-lab/ensemble_score_model.yaml.
+# Indicator outputs are explicit inputs so this fixture stays host agnostic.
+
+name ensemble_score_model
+
+in {
+    close,
+    ema_f,
+    ema_s,
+    macd_histogram,
+    rsi_value,
+    bb_lower,
+    volume,
+    vol_ma,
+    atr_value
+}
+
+$trend_weight = 0.35
+$momentum_weight = 0.30
+$pullback_weight = 0.20
+$volume_weight = 0.15
+$exit_momentum_weight = 0.45
+$exit_trend_weight = 0.35
+$exit_risk_weight = 0.20
+
+$trend_spread_to = 0.025
+$macd_hist_to = 0.35
+$rsi_pullback_from = 58
+$rsi_pullback_to = 42
+$volume_ratio_to = 1.8
+$atr_risk_to = 0.080
+$entry_score_min = 0.62
+$exit_score_min = 0.55
+
+fn score(value, from, to) =
+    if(from == to,
+       0,
+       if(from < to,
+          if(value <= from, 0, if(value >= to, 1, (value - from) / (to - from))),
+          if(value >= from, 0, if(value <= to, 1, (from - value) / (from - to)))))
+
+trend_spread = (ema_f - ema_s) / close
+trend_score = score(trend_spread, 0, $trend_spread_to)
+momentum_score = score(macd_histogram, 0, $macd_hist_to)
+pullback_score = score(rsi_value, $rsi_pullback_from, $rsi_pullback_to)
+volume_ratio = volume / max(vol_ma, 1)
+volume_score = score(volume_ratio, 1.0, $volume_ratio_to)
+
+entry_weight_sum = $trend_weight + $momentum_weight + $pullback_weight + $volume_weight
+entry_score =
+    (
+      $trend_weight * trend_score +
+      $momentum_weight * momentum_score +
+      $pullback_weight * pullback_score +
+      $volume_weight * volume_score
+    ) / max(entry_weight_sum, 0.000001)
+
+atr_pct = atr_value / close
+momentum_exit_score = score(0 - macd_histogram, 0, $macd_hist_to)
+trend_exit_score = score(0 - trend_spread, 0, $trend_spread_to)
+risk_exit_score = score(atr_pct, 0.030, $atr_risk_to)
+exit_weight_sum = $exit_momentum_weight + $exit_trend_weight + $exit_risk_weight
+exit_score =
+    (
+      $exit_momentum_weight * momentum_exit_score +
+      $exit_trend_weight * trend_exit_score +
+      $exit_risk_weight * risk_exit_score
+    ) / max(exit_weight_sum, 0.000001)
+
+hard_regime_gate = close > bb_lower and ema_f > ema_s * 0.985
+hard_risk_off = close < bb_lower or atr_pct > $atr_risk_to
+
+entry = hard_regime_gate and entry_score >= $entry_score_min
+exit = hard_risk_off or exit_score >= $exit_score_min
+
+out { entry, exit, entry_score, exit_score }

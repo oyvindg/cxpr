@@ -459,6 +459,30 @@ bool cxpr_timeseries_is_builtin(const char* name);
  */
 cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def);
 
+/**
+ * @brief Emit an expression-defined function as a standalone scalar C function.
+ *
+ * The function must have been registered with `cxpr_registry_define_fn`.
+ * Parameters are emitted as direct C parameters and the body is compiled via IR
+ * locals, so no runtime function registry lookup is needed in the generated C.
+ * Unsupported dynamic IR returns NULL with @p err set, allowing callers to keep
+ * using the IR fallback.
+ *
+ * @param reg Registry containing the defined function.
+ * @param name Defined function name.
+ * @param qualifiers Leading function qualifiers, e.g. "static inline"; NULL emits none.
+ * @param return_type C return type; NULL defaults to "double".
+ * @param function_name C function name to emit.
+ * @param err Optional error output.
+ * @return Newly allocated C function source (free with `free`), or NULL on error/unsupported IR.
+ */
+char* cxpr_registry_defined_fn_to_c_function(const cxpr_registry* reg,
+                                             const char* name,
+                                             const char* qualifiers,
+                                             const char* return_type,
+                                             const char* function_name,
+                                             cxpr_error* err);
+
 #ifdef __cplusplus
 }
 #endif

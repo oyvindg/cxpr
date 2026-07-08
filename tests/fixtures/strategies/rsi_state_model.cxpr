@@ -1,0 +1,68 @@
+# RSI example strategy for .cxpr model syntax and benchmark coverage.
+# The host provides market inputs only; RSI math is defined in this model.
+
+name rsi_state_model
+
+in {
+    close,
+    trend
+}
+
+$rsi_period = 3
+$entry_rsi = 60
+$exit_rsi = 45
+
+fn rsi(avg_gain, avg_loss) =
+    if(avg_gain == 0 and avg_loss == 0,
+       50,
+       if(avg_loss == 0,
+          100,
+          100 - 100 / (1 + avg_gain / avg_loss)))
+
+state {
+    initialized = 0
+    bars = 0
+    prev_close = 0
+    gain_sum = 0
+    loss_sum = 0
+    avg_gain = 0
+    avg_loss = 0
+}
+
+change = if(initialized > 0, close - prev_close, 0)
+gain = max(change, 0)
+loss = max(0 - change, 0)
+next_bars = bars + 1
+next_delta_count = if(bars > $rsi_period, $rsi_period, bars)
+next_gain_sum = if(bars <= $rsi_period, gain_sum + gain, gain_sum)
+next_loss_sum = if(bars <= $rsi_period, loss_sum + loss, loss_sum)
+warmed = next_delta_count >= $rsi_period
+seed_tick = bars == $rsi_period
+next_avg_gain =
+    if(not warmed,
+       avg_gain,
+       if(seed_tick,
+          next_gain_sum / $rsi_period,
+          (avg_gain * ($rsi_period - 1) + gain) / $rsi_period))
+next_avg_loss =
+    if(not warmed,
+       avg_loss,
+       if(seed_tick,
+          next_loss_sum / $rsi_period,
+          (avg_loss * ($rsi_period - 1) + loss) / $rsi_period))
+r = if(warmed, rsi(next_avg_gain, next_avg_loss), 50)
+
+update state {
+    initialized = 1
+    bars = next_bars
+    prev_close = close
+    gain_sum = next_gain_sum
+    loss_sum = next_loss_sum
+    avg_gain = next_avg_gain
+    avg_loss = next_avg_loss
+}
+
+entry = r > $entry_rsi and close > trend
+exit = r < $exit_rsi or close < trend
+
+out { entry, exit, r, avg_gain, avg_loss }

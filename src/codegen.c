@@ -56,6 +56,14 @@ static int cxpr_cg_err(cxpr_error* err, cxpr_error_code code, const char* msg) {
     return 0; /* false */
 }
 
+static void cxpr_cg_format_double(char* out, size_t out_size, double value) {
+    if (isfinite(value) && floor(value) == value) {
+        snprintf(out, out_size, "%.1f", value);
+    } else {
+        snprintf(out, out_size, "%.17g", value);
+    }
+}
+
 static int cxpr_cg_target_has_offset_leaf(const cxpr_c_target* target) {
     return target &&
            target->api_version == CXPR_C_TARGET_API_VERSION &&
@@ -288,7 +296,7 @@ static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
     switch (cxpr_ast_type(ast)) {
     case CXPR_NODE_NUMBER: {
         char num[32];
-        snprintf(num, sizeof(num), "%.17g", cxpr_ast_number_value(ast));
+        cxpr_cg_format_double(num, sizeof(num), cxpr_ast_number_value(ast));
         cxpr_cg_puts(b, num);
         return 1;
     }
@@ -391,7 +399,22 @@ static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
         }
         /* fallthrough */
     case CXPR_NODE_CHAIN_ACCESS:
+        if (cxpr_cg_target_has_offset_leaf(target)) {
+            return cxpr_cg_emit_hooked_leaf(ast, lookback_offset, b, target, err);
+        }
+        if (lookback_offset > 0u) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "lookback codegen requires cxpr_c_target.emit_leaf_at_offset");
+        }
+        /* fallthrough */
     case CXPR_NODE_PRODUCER_ACCESS:
+        if (cxpr_cg_target_has_offset_leaf(target)) {
+            return cxpr_cg_emit_hooked_leaf(ast, lookback_offset, b, target, err);
+        }
+        if (lookback_offset > 0u) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "lookback codegen requires cxpr_c_target.emit_leaf_at_offset");
+        }
         return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
                       "field/chain/producer nodes have no standalone C form");
     default:

@@ -40,7 +40,7 @@ cxpr_value cxpr_ir_struct_get_field(const cxpr_struct_value* value,
     for (size_t i = 0; i < value->field_count; ++i) {
         if (strcmp(value->field_names[i], field) == 0) {
             if (found) *found = true;
-            return value->field_values[i];
+            return cxpr_value_clone(&value->field_values[i]);
         }
     }
 
@@ -200,7 +200,7 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
                 }
                 if (!next) {
                     free(path);
-                    return value;
+                    return cxpr_value_clone(&value);
                 }
                 if (!cxpr_ir_require_type(value, CXPR_VALUE_STRUCT, err,
                                           "Chained access requires struct intermediate")) {
@@ -255,7 +255,7 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
         }
         if (!next) {
             free(path);
-            return value;
+            return cxpr_value_clone(&value);
         }
         if (!cxpr_ir_require_type(value, CXPR_VALUE_STRUCT, err,
                                   "Chained access requires struct intermediate")) {

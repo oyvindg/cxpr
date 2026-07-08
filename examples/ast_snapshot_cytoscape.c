@@ -59,7 +59,8 @@ static const char* demo_expression_role(const char* name) {
         strcmp(name, "reaction_ok") == 0 || strcmp(name, "drive_allowed") == 0 ||
         strcmp(name, "experiment_accept") == 0 || strcmp(name, "observation_safe") == 0 ||
         strcmp(name, "reactor_stable") == 0 || strcmp(name, "policy_green") == 0 ||
-        strcmp(name, "decision_code") == 0) {
+        strcmp(name, "decision_code") == 0 || strcmp(name, "stable_orbit") == 0 ||
+        strcmp(name, "touchdown_ok") == 0) {
         return "decision";
     }
     if (strcmp(name, "exit") == 0 || strcmp(name, "safety_stop") == 0 ||
@@ -83,6 +84,16 @@ static const char* demo_output_label(const char* scenario, const char* name) {
         if (strcmp(name, "experiment_ok") == 0) return "Experiment OK";
         if (strcmp(name, "force") == 0) return "Force";
         if (strcmp(name, "energy_score") == 0) return "Energy Score";
+    } else if (strcmp(scenario, "orbital") == 0) {
+        if (strcmp(name, "kepler_law_ok") == 0) return "Kepler Law OK";
+        if (strcmp(name, "newton_law_ok") == 0) return "Newton Law OK";
+        if (strcmp(name, "stable_orbit") == 0) return "Stable Orbit";
+        if (strcmp(name, "kepler_ratio") == 0) return "Kepler Ratio";
+    } else if (strcmp(scenario, "apollo11") == 0) {
+        if (strcmp(name, "descent_profile_ok") == 0) return "Descent Profile OK";
+        if (strcmp(name, "landing_energy_score") == 0) return "Landing Energy Score";
+        if (strcmp(name, "fuel_margin_ok") == 0) return "Fuel Margin OK";
+        if (strcmp(name, "touchdown_ok") == 0) return "Touchdown OK";
     } else if (strcmp(scenario, "chemistry") == 0) {
         if (strcmp(name, "reaction_ok") == 0) return "Reaction OK";
         if (strcmp(name, "yield_score") == 0) return "Yield Score";
@@ -242,6 +253,7 @@ static void demo_macd(const double* args,
 
 static const double trading_close[] = {100.0, 101.2, 100.8, 103.4, 104.1};
 static const double trading_volume[] = {900.0, 1200.0, 1600.0, 1300.0, 1800.0};
+static const double trading_account_balance[] = {42000.0, 43600.0, 45100.0, 46800.0, 48250.0};
 static const demo_macd_context trading_macd_context = {
     trading_close,
     sizeof(trading_close) / sizeof(trading_close[0]),
@@ -261,6 +273,12 @@ static const cxpr_expression_def trading_expressions[] = {
         { "range_ok", "range_ceiling - range_floor > $min_range" },
         { "pullback", "falling(close, 2)" },
         { "regime_allowed", "contains(2, [1, 2, 3])" },
+        { "field_access_demo", "account.balance > 45000" },
+        { "chain_access_demo", "risk.model.score > 0.75" },
+        { "array_literal_demo", "contains(3, [1, 2, 3])" },
+        { "top_level_array_demo", "[1, [2, 3], volume_ok]" },
+        { "complex_lookback_demo", "macd(fast=12, slow=26, signal=9).line[1]" },
+        { "ternary_demo", "range_ok ? range_ceiling : range_floor" },
         { "pipe_score", "(close - close[3]) |> abs |> clamp(0, 3)" },
         { "pipe_ok", "pipe_score > $min_range" },
         { "entry", "trend and breakout and momentum_ok and macd_bullish and volume_ok and range_ok and regime_allowed and pipe_ok" },
@@ -271,6 +289,7 @@ static const cxpr_expression_def trading_expressions[] = {
 static const cxpr_engine_column_source_def trading_columns[] = {
     { "close", &trading_close[0], sizeof(trading_close[0]), sizeof(trading_close) / sizeof(trading_close[0]) },
     { "volume", &trading_volume[0], sizeof(trading_volume[0]), sizeof(trading_volume) / sizeof(trading_volume[0]) },
+    { "account.balance", &trading_account_balance[0], sizeof(trading_account_balance[0]), sizeof(trading_account_balance) / sizeof(trading_account_balance[0]) },
 };
 
 static const double physics_position[] = {0.0, 2.1, 4.7, 7.8, 11.6};
@@ -291,6 +310,56 @@ static const cxpr_expression_def physics_expressions[] = {
 static const cxpr_engine_column_source_def physics_columns[] = {
     { "position", &physics_position[0], sizeof(physics_position[0]), sizeof(physics_position) / sizeof(physics_position[0]) },
     { "temperature", &physics_temperature[0], sizeof(physics_temperature[0]), sizeof(physics_temperature) / sizeof(physics_temperature[0]) },
+};
+
+static const double orbital_semi_major_axis_au[] = {1.00, 1.52, 2.77, 5.20, 9.58};
+static const double orbital_period_years[] = {1.00, 1.88, 4.61, 11.86, 29.46};
+static const double orbital_radius_au[] = {1.00, 1.52, 2.77, 5.20, 9.58};
+static const double orbital_speed_au_year[] = {6.28, 5.08, 3.77, 2.75, 2.04};
+static const double orbital_central_mass_solar[] = {1.0, 1.0, 1.0, 1.0, 1.0};
+static const cxpr_expression_def orbital_expressions[] = {
+    { "kepler_period_sq", "square(orbital_period_years)" },
+    { "kepler_axis_cubed", "semi_major_axis_au * semi_major_axis_au * semi_major_axis_au" },
+    { "kepler_ratio", "kepler_period_sq / kepler_axis_cubed" },
+    { "kepler_law_ok", "abs(kepler_ratio - 1) < $kepler_tolerance" },
+    { "orbital_speed_expected", "$two_pi * semi_major_axis_au / orbital_period_years" },
+    { "speed_match", "abs(orbital_speed_au_year - orbital_speed_expected) < $speed_tolerance" },
+    { "newton_gravity", "$gravity_au3_solar_year2 * central_mass_solar / square(radius_au)" },
+    { "centripetal_accel", "square(orbital_speed_au_year) / radius_au" },
+    { "newton_law_ok", "abs(centripetal_accel - newton_gravity) < $accel_tolerance" },
+    { "stable_orbit", "kepler_law_ok and speed_match and newton_law_ok" },
+};
+static const cxpr_engine_column_source_def orbital_columns[] = {
+    { "semi_major_axis_au", &orbital_semi_major_axis_au[0], sizeof(orbital_semi_major_axis_au[0]), sizeof(orbital_semi_major_axis_au) / sizeof(orbital_semi_major_axis_au[0]) },
+    { "orbital_period_years", &orbital_period_years[0], sizeof(orbital_period_years[0]), sizeof(orbital_period_years) / sizeof(orbital_period_years[0]) },
+    { "radius_au", &orbital_radius_au[0], sizeof(orbital_radius_au[0]), sizeof(orbital_radius_au) / sizeof(orbital_radius_au[0]) },
+    { "orbital_speed_au_year", &orbital_speed_au_year[0], sizeof(orbital_speed_au_year[0]), sizeof(orbital_speed_au_year) / sizeof(orbital_speed_au_year[0]) },
+    { "central_mass_solar", &orbital_central_mass_solar[0], sizeof(orbital_central_mass_solar[0]), sizeof(orbital_central_mass_solar) / sizeof(orbital_central_mass_solar[0]) },
+};
+
+static const double apollo11_altitude_km[] = {110.0, 15.0, 2.5, 0.15, 0.003};
+static const double apollo11_vertical_speed_m_s[] = {0.0, 45.0, 25.0, 5.0, 0.7};
+static const double apollo11_horizontal_speed_m_s[] = {1600.0, 450.0, 75.0, 8.0, 0.2};
+static const double apollo11_fuel_pct[] = {100.0, 62.0, 28.0, 9.0, 5.6};
+static const double apollo11_guidance_error_m[] = {1200.0, 250.0, 80.0, 18.0, 1.5};
+static const cxpr_expression_def apollo11_expressions[] = {
+    { "speed_total_m_s", "sqrt(square(vertical_speed_m_s) + square(horizontal_speed_m_s))" },
+    { "descent_profile_ok", "falling(altitude_km, 3) and altitude_km < altitude_km[1]" },
+    { "vertical_rate_ok", "vertical_speed_m_s < $max_touchdown_vertical_speed_m_s" },
+    { "horizontal_rate_ok", "horizontal_speed_m_s < $max_touchdown_horizontal_speed_m_s" },
+    { "fuel_margin_ok", "fuel_pct > $min_touchdown_fuel_pct" },
+    { "guidance_ok", "guidance_error_m < $max_touchdown_guidance_error_m" },
+    { "near_surface", "altitude_km < $touchdown_altitude_km" },
+    { "landing_energy_score", "(0.5 * $lunar_module_mass_kg * square(speed_total_m_s) / $energy_scale) |> clamp(0, 100)" },
+    { "soft_landing_energy_ok", "landing_energy_score < $max_landing_energy_score" },
+    { "touchdown_ok", "near_surface and vertical_rate_ok and horizontal_rate_ok and fuel_margin_ok and guidance_ok and soft_landing_energy_ok" },
+};
+static const cxpr_engine_column_source_def apollo11_columns[] = {
+    { "altitude_km", &apollo11_altitude_km[0], sizeof(apollo11_altitude_km[0]), sizeof(apollo11_altitude_km) / sizeof(apollo11_altitude_km[0]) },
+    { "vertical_speed_m_s", &apollo11_vertical_speed_m_s[0], sizeof(apollo11_vertical_speed_m_s[0]), sizeof(apollo11_vertical_speed_m_s) / sizeof(apollo11_vertical_speed_m_s[0]) },
+    { "horizontal_speed_m_s", &apollo11_horizontal_speed_m_s[0], sizeof(apollo11_horizontal_speed_m_s[0]), sizeof(apollo11_horizontal_speed_m_s) / sizeof(apollo11_horizontal_speed_m_s[0]) },
+    { "fuel_pct", &apollo11_fuel_pct[0], sizeof(apollo11_fuel_pct[0]), sizeof(apollo11_fuel_pct) / sizeof(apollo11_fuel_pct[0]) },
+    { "guidance_error_m", &apollo11_guidance_error_m[0], sizeof(apollo11_guidance_error_m[0]), sizeof(apollo11_guidance_error_m) / sizeof(apollo11_guidance_error_m[0]) },
 };
 
 static const double chemistry_concentration[] = {0.42, 0.47, 0.55, 0.61, 0.66};
@@ -565,11 +634,29 @@ static const cxpr_engine_column_source_def credit_policy_columns[] = {
 };
 
 static void set_trading_context(cxpr_context* ctx) {
+    const char* model_fields[] = { "score" };
+    const cxpr_value model_values[] = { cxpr_num(0.82) };
+    const char* risk_fields[] = { "model" };
+    cxpr_struct_value* model;
+    cxpr_value risk_values[1];
+    cxpr_struct_value* risk;
+
     cxpr_context_set(ctx, "ema_fast", 104.5);
     cxpr_context_set(ctx, "ema_slow", 102.0);
+    cxpr_context_set(ctx, "account.balance", 48250.0);
     cxpr_context_set_param(ctx, "min_volume", 1500.0);
     cxpr_context_set_param(ctx, "min_range", 2.0);
     cxpr_context_set_param(ctx, "rsi_exit", 70.0);
+
+    model = cxpr_struct_value_new(model_fields, model_values, 1u);
+    if (!model) return;
+    risk_values[0] = cxpr_struct(model);
+    risk = cxpr_struct_value_new(risk_fields, risk_values, 1u);
+    if (risk) {
+        cxpr_context_set_struct(ctx, "risk", risk);
+        cxpr_struct_value_free(risk);
+    }
+    cxpr_struct_value_free(model);
 }
 
 static void set_physics_context(cxpr_context* ctx) {
@@ -579,6 +666,25 @@ static void set_physics_context(cxpr_context* ctx) {
     cxpr_context_set_param(ctx, "max_temperature", 30.0);
     cxpr_context_set_param(ctx, "max_force", 100.0);
     cxpr_context_set_param(ctx, "energy_cap", 500.0);
+}
+
+static void set_orbital_context(cxpr_context* ctx) {
+    cxpr_context_set_param(ctx, "two_pi", 6.283185307179586);
+    cxpr_context_set_param(ctx, "gravity_au3_solar_year2", 39.47841760435743);
+    cxpr_context_set_param(ctx, "kepler_tolerance", 0.02);
+    cxpr_context_set_param(ctx, "speed_tolerance", 0.08);
+    cxpr_context_set_param(ctx, "accel_tolerance", 0.05);
+}
+
+static void set_apollo11_context(cxpr_context* ctx) {
+    cxpr_context_set_param(ctx, "max_touchdown_vertical_speed_m_s", 1.0);
+    cxpr_context_set_param(ctx, "max_touchdown_horizontal_speed_m_s", 1.0);
+    cxpr_context_set_param(ctx, "min_touchdown_fuel_pct", 4.0);
+    cxpr_context_set_param(ctx, "max_touchdown_guidance_error_m", 3.0);
+    cxpr_context_set_param(ctx, "touchdown_altitude_km", 0.01);
+    cxpr_context_set_param(ctx, "lunar_module_mass_kg", 5200.0);
+    cxpr_context_set_param(ctx, "energy_scale", 1000000.0);
+    cxpr_context_set_param(ctx, "max_landing_energy_score", 2.0);
 }
 
 static void set_chemistry_context(cxpr_context* ctx) {
@@ -674,6 +780,24 @@ static const demo_scenario scenarios[] = {
         set_physics_context,
     },
     {
+        "orbital",
+        orbital_expressions,
+        sizeof(orbital_expressions) / sizeof(orbital_expressions[0]),
+        orbital_columns,
+        sizeof(orbital_columns) / sizeof(orbital_columns[0]),
+        4,
+        set_orbital_context,
+    },
+    {
+        "apollo11",
+        apollo11_expressions,
+        sizeof(apollo11_expressions) / sizeof(apollo11_expressions[0]),
+        apollo11_columns,
+        sizeof(apollo11_columns) / sizeof(apollo11_columns[0]),
+        4,
+        set_apollo11_context,
+    },
+    {
         "chemistry",
         chemistry_expressions,
         sizeof(chemistry_expressions) / sizeof(chemistry_expressions[0]),
@@ -765,7 +889,7 @@ int main(int argc, char** argv) {
             out_path = argv[argi];
         } else {
             fprintf(stderr,
-                    "usage: %s [--host-demo] [output.json] [trading|physics|chemistry|robotics|quantum|blackhole|reactor|credit_policy]\n",
+                    "usage: %s [--host-demo] [output.json] [trading|physics|orbital|apollo11|chemistry|robotics|quantum|blackhole|reactor|credit_policy]\n",
                     argv[0]);
             return 2;
         }
