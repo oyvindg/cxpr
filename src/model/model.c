@@ -4,6 +4,7 @@
  */
 
 #include "core.h"
+#include "ast/internal.h"
 #include "ir/compile/internal.h"
 #include "ir/exec/internal.h"
 #include "lookback.h"
@@ -78,6 +79,184 @@ static size_t cxpr_model_program_binding_index_for_name(const cxpr_model_program
         if (cxpr_model_names_match(program->bindings[i].name, name)) return i;
     }
     return (size_t)-1;
+}
+
+static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, const char* name) {
+    if (!name) return false;
+    for (size_t i = 0u; i < count; ++i) {
+        if (cxpr_model_names_match(inputs[i], name)) return true;
+    }
+    return false;
+}
+
+static bool cxpr_model_append_inferred_input(char*** inputs,
+                                             size_t* input_count,
+                                             const char* name,
+                                             cxpr_error* err) {
+    char** grown;
+    if (!inputs || !input_count || !name || !name[0]) return true;
+    if (cxpr_model_input_name_exists(*inputs, *input_count, name)) return true;
+    grown = (char**)realloc(*inputs, (*input_count + 1u) * sizeof(char*));
+    if (!grown) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    *inputs = grown;
+    (*inputs)[*input_count] = cxpr_strdup(name);
+    if (!(*inputs)[*input_count]) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    (*input_count)++;
+    return true;
+}
+
+static const cxpr_model_program* cxpr_model_import_program_for_name(
+    const cxpr_model_import* imports,
+    size_t import_count,
+    const char* name) {
+    if (!name) return NULL;
+    for (size_t i = 0u; i < import_count; ++i) {
+        if (cxpr_model_names_match(imports[i].name, name)) return imports[i].program;
+    }
+    return NULL;
+}
+
+static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
+                                                   const cxpr_model_import* imports,
+                                                   size_t import_count,
+                                                   char*** inputs,
+                                                   size_t* input_count,
+                                                   cxpr_error* err) {
+    if (!ast) return true;
+    switch (ast->type) {
+        case CXPR_NODE_ARRAY:
+            for (size_t i = 0u; i < ast->data.array.count; ++i) {
+                if (!cxpr_model_infer_child_inputs_from_ast(
+                        ast->data.array.elements[i], imports, import_count, inputs, input_count, err)) {
+                    return false;
+                }
+            }
+            return true;
+        case CXPR_NODE_BINARY_OP:
+            return cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.binary_op.left, imports, import_count, inputs, input_count, err) &&
+                   cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.binary_op.right, imports, import_count, inputs, input_count, err);
+        case CXPR_NODE_UNARY_OP:
+            return cxpr_model_infer_child_inputs_from_ast(
+                ast->data.unary_op.operand, imports, import_count, inputs, input_count, err);
+        case CXPR_NODE_FUNCTION_CALL:
+            for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+                if (!cxpr_model_infer_child_inputs_from_ast(
+                        ast->data.function_call.args[i], imports, import_count, inputs, input_count, err)) {
+                    return false;
+                }
+            }
+            return true;
+        case CXPR_NODE_PRODUCER_ACCESS: {
+            const cxpr_model_program* child =
+                cxpr_model_import_program_for_name(imports, import_count, ast->data.producer_access.name);
+            if (child) {
+                for (size_t i = 0u; i < child->input_count; ++i) {
+                    if (!cxpr_model_append_inferred_input(
+                            inputs, input_count, child->inputs[i], err)) {
+                        return false;
+                    }
+                }
+            }
+            for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) {
+                if (!cxpr_model_infer_child_inputs_from_ast(
+                        ast->data.producer_access.args[i], imports, import_count, inputs, input_count, err)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        case CXPR_NODE_LOOKBACK:
+            return cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.lookback.target, imports, import_count, inputs, input_count, err) &&
+                   cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.lookback.index, imports, import_count, inputs, input_count, err);
+        case CXPR_NODE_TERNARY:
+            return cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.ternary.condition, imports, import_count, inputs, input_count, err) &&
+                   cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.ternary.true_branch, imports, import_count, inputs, input_count, err) &&
+                   cxpr_model_infer_child_inputs_from_ast(
+                       ast->data.ternary.false_branch, imports, import_count, inputs, input_count, err);
+        default:
+            return true;
+    }
+}
+
+static bool cxpr_model_binding_name_exists(const cxpr_model* model, const char* name) {
+    if (!model || !name) return false;
+    for (size_t i = 0u; i < model->binding_count; ++i) {
+        if (cxpr_model_names_match(model->bindings[i].name, name)) return true;
+    }
+    return false;
+}
+
+static bool cxpr_model_constant_name_exists(const cxpr_model* model, const char* name) {
+    if (!model || !name) return false;
+    for (size_t i = 0u; i < model->constant_count; ++i) {
+        if (cxpr_model_names_match(model->constants[i].name, name)) return true;
+    }
+    return false;
+}
+
+static bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
+                                                const cxpr_model_import* imports,
+                                                size_t import_count,
+                                                char*** out_inputs,
+                                                size_t* out_input_count,
+                                                cxpr_error* err) {
+    const char* refs[256];
+    char** inputs = NULL;
+    size_t input_count = 0u;
+    bool infer_direct_refs;
+    if (out_inputs) *out_inputs = NULL;
+    if (out_input_count) *out_input_count = 0u;
+    if (!model) return true;
+
+    infer_direct_refs = model->input_count == 0u;
+    for (size_t i = 0u; i < model->input_count; ++i) {
+        if (!cxpr_model_append_inferred_input(&inputs, &input_count, model->inputs[i], err)) {
+            goto fail;
+        }
+    }
+
+    for (size_t i = 0u; i < model->binding_count; ++i) {
+        size_t nrefs;
+        if (!cxpr_model_infer_child_inputs_from_ast(
+                model->bindings[i].expr, imports, import_count, &inputs, &input_count, err)) {
+            goto fail;
+        }
+        if (!infer_direct_refs) continue;
+        nrefs = cxpr_ast_references(model->bindings[i].expr, refs, CXPR_ARRAY_COUNT(refs));
+        for (size_t j = 0u; j < nrefs && j < CXPR_ARRAY_COUNT(refs); ++j) {
+            if (cxpr_model_binding_name_exists(model, refs[j]) ||
+                cxpr_model_constant_name_exists(model, refs[j])) {
+                continue;
+            }
+            if (!cxpr_model_append_inferred_input(&inputs, &input_count, refs[j], err)) goto fail;
+        }
+    }
+    if (input_count == model->input_count) {
+        for (size_t i = 0u; i < input_count; ++i) free(inputs[i]);
+        free(inputs);
+        inputs = NULL;
+        input_count = 0u;
+    }
+    if (out_inputs) *out_inputs = inputs;
+    if (out_input_count) *out_input_count = input_count;
+    return true;
+
+fail:
+    for (size_t i = 0u; i < input_count; ++i) free(inputs[i]);
+    free(inputs);
+    return false;
 }
 
 static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* program,
@@ -559,15 +738,34 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                                                     size_t import_count,
                                                     cxpr_error* err) {
     cxpr_model_program* program;
+    cxpr_model inferred_model = {0};
     const cxpr_registry* compile_reg = reg;
+    char** inferred_inputs = NULL;
+    size_t inferred_input_count = 0u;
     char** required_defaults = NULL;
     size_t required_default_count = 0u;
     size_t* order = NULL;
 
     if (err) *err = (cxpr_error){0};
-    if (!cxpr_model_validate(model, err)) return NULL;
+    if (!cxpr_model_infer_inputs_for_compile(
+            model, imports, import_count, &inferred_inputs, &inferred_input_count, err)) {
+        return NULL;
+    }
+    if (inferred_input_count > 0u) {
+        inferred_model = *model;
+        inferred_model.inputs = inferred_inputs;
+        inferred_model.input_count = inferred_input_count;
+        model = &inferred_model;
+    }
+    if (!cxpr_model_validate(model, err)) {
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
+        return NULL;
+    }
     if (!cxpr_model_collect_required_defaults(model, &required_defaults,
                                               &required_default_count, err)) {
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
         return NULL;
     }
 
@@ -575,6 +773,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
     if (!program) {
         for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
         free(required_defaults);
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         return NULL;
     }
@@ -584,6 +784,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                                       err)) {
         for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
         free(required_defaults);
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
         cxpr_model_program_free(program);
         return NULL;
     }
@@ -595,6 +797,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         if (reg && program->history_spec_count > 0u) {
             for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
             free(required_defaults);
+            for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+            free(inferred_inputs);
             cxpr_model_program_free(program);
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                                  "model lookback with external registry is not supported yet",
@@ -605,6 +809,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         if (!program->registry) {
             for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
             free(required_defaults);
+            for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+            free(inferred_inputs);
             cxpr_model_program_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
@@ -616,6 +822,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         if (!cxpr_model_program_register_imports(program, imports, import_count, err)) {
             for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
             free(required_defaults);
+            for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+            free(inferred_inputs);
             cxpr_model_program_free(program);
             return NULL;
         }
@@ -627,6 +835,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                 }
                 for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
                 free(required_defaults);
+                for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
+                free(inferred_inputs);
                 cxpr_model_program_free(program);
                 return NULL;
             }
@@ -637,6 +847,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                 if (err) *err = fn_err;
                 for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
                 free(required_defaults);
+                for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
+                free(inferred_inputs);
                 cxpr_model_program_free(program);
                 return NULL;
             }
@@ -654,6 +866,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                 free(field_bodies);
                 for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
                 free(required_defaults);
+                for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
+                free(inferred_inputs);
                 cxpr_model_program_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
@@ -676,6 +890,8 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                 if (err) *err = fn_err;
                 for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
                 free(required_defaults);
+                for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
+                free(inferred_inputs);
                 cxpr_model_program_free(program);
                 return NULL;
             }
@@ -831,9 +1047,13 @@ compile_outputs:
 
     if (!cxpr_model_try_compile_fused_ir(program, model, compile_reg, err)) {
         cxpr_model_program_free(program);
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
         return NULL;
     }
 
+    for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+    free(inferred_inputs);
     if (err) err->code = CXPR_OK;
     return program;
 }

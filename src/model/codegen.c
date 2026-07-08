@@ -250,6 +250,8 @@ static bool cxpr_model_c_emit_defined_functions(const cxpr_model_program* progra
                                                         err);
         free(fn_name);
         if (!source) return false;
+        cxpr_model_c_printf(b, "/* Source function: %s */\n",
+                            entry->name ? entry->name : "(unnamed)");
         cxpr_model_c_puts(b, source);
         cxpr_model_c_puts(b, "\n");
         free(source);
@@ -345,6 +347,32 @@ static bool cxpr_model_c_symbol_is_binding(const cxpr_model_program* program,
 
 static char* cxpr_model_c_prefixed_name(const char* prefix, const char* name);
 
+static unsigned long cxpr_model_c_name_hash(const char* s) {
+    unsigned long h = 5381u;
+    if (!s) return h;
+    while (*s) h = ((h << 5u) + h) ^ (unsigned char)*s++;
+    return h;
+}
+
+static char* cxpr_model_c_child_tick_name(const char* function_prefix, size_t child_index) {
+    char raw[128];
+    snprintf(raw, sizeof(raw), "cxpr_c%08lx_%zu_tick",
+             cxpr_model_c_name_hash(function_prefix) & 0xfffffffful,
+             child_index);
+    return cxpr_model_c_safe_name(raw);
+}
+
+static char* cxpr_model_c_child_field_name(const char* function_prefix,
+                                           size_t child_index,
+                                           size_t field_index) {
+    char raw[128];
+    snprintf(raw, sizeof(raw), "cxpr_c%08lx_%zu_f%zu",
+             cxpr_model_c_name_hash(function_prefix) & 0xfffffffful,
+             child_index,
+             field_index);
+    return cxpr_model_c_safe_name(raw);
+}
+
 static const cxpr_ast* cxpr_model_producer_arg_for_param(const cxpr_ast* ast,
                                                          const char* param_name,
                                                          size_t param_index) {
@@ -438,18 +466,14 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         size_t child_base = cxpr_model_c_child_base_inline(program, child_index);
         const cxpr_model_program* child =
             child_index == (size_t)-1 ? NULL : program->children[child_index].program;
-        char raw_name[768];
         char* helper_name;
         cxpr_model_c_buf call = {0};
         if (!child || child_base == (size_t)-1) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Unknown child model producer", 0, 0);
             return NULL;
         }
-        snprintf(raw_name, sizeof(raw_name), "%s_child_%s_%s",
-                 function_prefix ? function_prefix : "cxpr",
-                 producer,
-                 field);
-        helper_name = cxpr_model_c_safe_name(raw_name);
+        (void)producer;
+        helper_name = cxpr_model_c_child_field_name(function_prefix, child_index, selected_field);
         if (!helper_name) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
@@ -1191,6 +1215,14 @@ static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_program* program,
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         return NULL;
     }
+    if (function_prefix && function_prefix[0]) {
+        cxpr_model_c_printf(&b, "/* Source function: %s (scope: %s) */\n",
+                            entry->name ? entry->name : "(unnamed)",
+                            function_prefix);
+    } else {
+        cxpr_model_c_printf(&b, "/* Source function: %s */\n",
+                            entry->name ? entry->name : "(unnamed)");
+    }
     cxpr_model_c_printf(&b, "static inline double %s(", fn_name);
     free(fn_name);
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
@@ -1301,17 +1333,16 @@ static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* prog
     if (!program || !function_prefix || !b) return true;
     for (size_t i = 0u; i < program->child_count; ++i) {
         const cxpr_model_program* child = program->children[i].program;
-        char raw_tick[768];
         char* tick_name;
         char* tick_source;
         if (!child) continue;
-        snprintf(raw_tick, sizeof(raw_tick), "%s_child_%s_tick",
-                 function_prefix, program->children[i].name);
-        tick_name = cxpr_model_c_safe_name(raw_tick);
+        tick_name = cxpr_model_c_child_tick_name(function_prefix, i);
         if (!tick_name) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
+        cxpr_model_c_printf(b, "/* Source model tick: %s */\n",
+                            program->children[i].name ? program->children[i].name : "(unnamed)");
         tick_source = cxpr_model_program_to_c_tick_function_select_outputs(
             child, "static inline", tick_name, NULL, 0u, err);
         if (!tick_source) {
@@ -1323,18 +1354,16 @@ static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* prog
         free(tick_source);
 
         for (size_t field_i = 0u; field_i < child->output_count; ++field_i) {
-            char raw_helper[768];
             char* helper_name;
-            snprintf(raw_helper, sizeof(raw_helper), "%s_child_%s_%s",
-                     function_prefix,
-                     program->children[i].name,
-                     child->outputs[field_i]);
-            helper_name = cxpr_model_c_safe_name(raw_helper);
+            helper_name = cxpr_model_c_child_field_name(function_prefix, i, field_i);
             if (!helper_name) {
                 free(tick_name);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
+            cxpr_model_c_printf(b, "/* Source model field: %s.%s */\n",
+                                program->children[i].name ? program->children[i].name : "(unnamed)",
+                                child->outputs[field_i] ? child->outputs[field_i] : "(unnamed)");
             cxpr_model_c_printf(b, "static inline double %s(double* restrict _cx_child_slots",
                                 helper_name);
             for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
@@ -1465,6 +1494,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         goto fail;
     }
+    cxpr_model_c_printf(&b, "/* Source model tick: %s */\n", function_name);
     if (qualifiers && qualifiers[0]) cxpr_model_c_printf(&b, "%s ", qualifiers);
     cxpr_model_c_printf(
         &b,
@@ -1910,6 +1940,7 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
         goto fail;
     }
 
+    cxpr_model_c_printf(&b, "/* Source model tick: %s */\n", function_name);
     if (qualifiers && qualifiers[0]) cxpr_model_c_printf(&b, "%s ", qualifiers);
     cxpr_model_c_printf(
         &b,

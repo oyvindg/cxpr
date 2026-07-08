@@ -1148,6 +1148,48 @@ static void test_session_direct_record_producer_lookback(void) {
     printf("  ✓ test_session_direct_record_producer_lookback\n");
 }
 
+static void test_compile_imported_producer_infers_missing_child_inputs(void) {
+    cxpr_error err = {0};
+    cxpr_model* child = parse_model_ok(
+        "name child\n"
+        "in high, low, close\n"
+        "value = high + low + close\n"
+        "out value\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+
+    if (!child_program) {
+        fprintf(stderr, "child compile failed: %s\n", err.message ? err.message : "(null)");
+    }
+    assert(child_program != NULL);
+
+    imports[0].name = "child";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "name parent\n"
+        "use child\n"
+        "in close\n"
+        "value = child().value + close\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "parent compile failed: %s\n", err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    assert(cxpr_model_program_input_count(parent_program) == 3u);
+    assert(strcmp(cxpr_model_program_input_name(parent_program, 0u), "close") == 0);
+    assert(strcmp(cxpr_model_program_input_name(parent_program, 1u), "high") == 0);
+    assert(strcmp(cxpr_model_program_input_name(parent_program, 2u), "low") == 0);
+
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_compile_imported_producer_infers_missing_child_inputs\n");
+}
+
 static void test_macd_record_cross_strategy_fixture(void) {
     cxpr_error err = {0};
     bool value = false;
@@ -1777,6 +1819,7 @@ int main(void) {
     test_session_expression_lookback();
     test_session_record_field_lookback();
     test_session_direct_record_producer_lookback();
+    test_compile_imported_producer_infers_missing_child_inputs();
     test_macd_record_cross_strategy_fixture();
     test_robot_hexapod_fixture_simulates_vec3_io();
     test_advanced_strategy_syntax_compiles_and_ticks();

@@ -117,6 +117,58 @@ static char* join_import_path(const char* dir, const char* name) {
     return out;
 }
 
+static int file_exists(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
+}
+
+static char* join_dyn_cxpr_import_path(const char* root, const char* use_name) {
+    size_t root_len = strlen(root);
+    size_t use_len = strlen(use_name);
+    int need_slash = root_len > 0u && root[root_len - 1u] != '/';
+    int has_suffix = use_len > 5u && strcmp(use_name + use_len - 5u, ".cxpr") == 0;
+    size_t len = root_len + (need_slash ? 1u : 0u) +
+                 strlen("libs/dyn/cxpr/") + use_len + (has_suffix ? 0u : 5u) + 1u;
+    char* out = (char*)malloc(len);
+    if (!out) return NULL;
+    snprintf(out, len, "%s%slibs/dyn/cxpr/%s%s",
+             root, need_slash ? "/" : "", use_name, has_suffix ? "" : ".cxpr");
+    return out;
+}
+
+static char* resolve_dyn_cxpr_import_from_ancestors(const char* dir, const char* use_name) {
+    char* cursor = xstrdup(dir ? dir : ".");
+    if (!cursor) return NULL;
+    for (;;) {
+        char* candidate = join_dyn_cxpr_import_path(cursor, use_name);
+        if (!candidate) {
+            free(cursor);
+            return NULL;
+        }
+        if (file_exists(candidate)) {
+            free(cursor);
+            return candidate;
+        }
+        free(candidate);
+        if (strcmp(cursor, ".") == 0 || strcmp(cursor, "/") == 0) break;
+        char* parent = path_dirname(cursor);
+        if (!parent) {
+            free(cursor);
+            return NULL;
+        }
+        if (strcmp(parent, cursor) == 0) {
+            free(parent);
+            break;
+        }
+        free(cursor);
+        cursor = parent;
+    }
+    free(cursor);
+    return NULL;
+}
+
 static int string_list_contains(char* const* values, size_t count, const char* value) {
     for (size_t i = 0u; i < count; ++i) {
         if (strcmp(values[i], value) == 0) return 1;
@@ -416,11 +468,13 @@ static int output_selection_parse(const cxpr_model_program* program,
 
 typedef struct artifact_file_sink {
     const char* path;
+    const char* preamble;
     FILE* file;
 } artifact_file_sink;
 
 typedef struct compiled_model_import {
     cxpr_model_import api;
+    char* path;
     char* source;
     cxpr_model* model;
     cxpr_model_program* program;
@@ -428,25 +482,14 @@ typedef struct compiled_model_import {
 
 static char* resolve_import_path_for_model(const char* dir, const char* use_name) {
     char* path = join_import_path(dir, use_name);
-    FILE* f;
     if (!path) return NULL;
-    f = fopen(path, "rb");
-    if (f) {
-        fclose(f);
+    if (file_exists(path)) {
         return path;
     }
     free(path);
     if (strncmp(use_name, "indicators/", strlen("indicators/")) == 0) {
-        size_t len = strlen("libs/dyn/cxpr/") + strlen(use_name) + strlen(".cxpr") + 1u;
-        path = (char*)malloc(len);
-        if (!path) return NULL;
-        snprintf(path, len, "libs/dyn/cxpr/%s.cxpr", use_name);
-        f = fopen(path, "rb");
-        if (f) {
-            fclose(f);
-            return path;
-        }
-        free(path);
+        path = resolve_dyn_cxpr_import_from_ancestors(dir, use_name);
+        if (path) return path;
     }
     return join_import_path(dir, use_name);
 }
@@ -456,6 +499,7 @@ static void compiled_imports_free(compiled_model_import* imports, size_t count) 
     for (size_t i = 0u; i < count; ++i) {
         cxpr_model_program_free(imports[i].program);
         cxpr_model_free(imports[i].model);
+        free(imports[i].path);
         free(imports[i].source);
     }
     free(imports);
@@ -531,11 +575,11 @@ static int build_model_imports(const char* model_path,
         model_name = cxpr_model_name(import_model);
         imports[count].api.name = model_name ? model_name : use_name;
         imports[count].api.program = import_program;
+        imports[count].path = import_path;
         imports[count].source = import_combined;
         imports[count].model = import_model;
         imports[count].program = import_program;
         count++;
-        free(import_path);
     }
     ok = 1;
 
@@ -557,7 +601,14 @@ static int artifact_file_begin(void* user, const cxpr_plugin_artifact_event* art
     (void)err;
     if (!sink || !sink->path) return 0;
     sink->file = fopen(sink->path, "wb");
-    return sink->file != NULL;
+    if (!sink->file) return 0;
+    if (sink->preamble && sink->preamble[0] &&
+        fwrite(sink->preamble, 1u, strlen(sink->preamble), sink->file) != strlen(sink->preamble)) {
+        fclose(sink->file);
+        sink->file = NULL;
+        return 0;
+    }
+    return 1;
 }
 
 static int artifact_file_write(void* user, const void* data, size_t size, cxpr_error* err) {
@@ -576,6 +627,47 @@ static int artifact_file_end(void* user, cxpr_error* err) {
     return ok;
 }
 
+static char* build_c_source_preamble(const char* model_path,
+                                     const compiled_model_import* imports,
+                                     size_t import_count) {
+    char* out = NULL;
+    size_t len = 0u;
+    size_t cap = 0u;
+    if (!append_cstr(&out, &len, &cap,
+                     "/* Generated by cxpr_model_codegen.\n"
+                     " * Source model: ")) {
+        return NULL;
+    }
+    if (!append_cstr(&out, &len, &cap, model_path ? model_path : "(unknown)") ||
+        !append_cstr(&out, &len, &cap, "\n")) {
+        free(out);
+        return NULL;
+    }
+    if (import_count > 0u) {
+        if (!append_cstr(&out, &len, &cap, " * Imported models:\n")) {
+            free(out);
+            return NULL;
+        }
+        for (size_t i = 0u; i < import_count; ++i) {
+            if (!append_cstr(&out, &len, &cap, " *   - ") ||
+                !append_cstr(&out, &len, &cap,
+                             imports[i].api.name ? imports[i].api.name : "(unnamed)") ||
+                !append_cstr(&out, &len, &cap, ": ") ||
+                !append_cstr(&out, &len, &cap,
+                             imports[i].path ? imports[i].path : "(unknown)") ||
+                !append_cstr(&out, &len, &cap, "\n")) {
+                free(out);
+                return NULL;
+            }
+        }
+    }
+    if (!append_cstr(&out, &len, &cap, " */\n\n")) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
 static int emit_model_c(const char* model_path,
                         const char* output_path,
                         const char* meta_output_path,
@@ -592,6 +684,7 @@ static int emit_model_c(const char* model_path,
     compiled_model_import* compiled_imports = NULL;
     cxpr_model_import* import_api = NULL;
     size_t import_count = 0u;
+    char* c_preamble = NULL;
     cxpr_context* ctx = NULL;
     double* param_values = NULL;
     size_t param_count = 0u;
@@ -666,6 +759,12 @@ static int emit_model_c(const char* model_path,
 
         artifact_file_sink c_sink = {0};
         c_sink.path = output_path;
+        c_preamble = build_c_source_preamble(model_path, compiled_imports, import_count);
+        if (!c_preamble) {
+            fprintf(stderr, "cxpr_model_codegen: failed to build C source preamble\n");
+            goto cleanup;
+        }
+        c_sink.preamble = c_preamble;
         host.user = &c_sink;
         host.begin_artifact = artifact_file_begin;
         host.write_artifact = artifact_file_write;
@@ -739,6 +838,7 @@ cleanup:
     free(param_values);
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
+    free(c_preamble);
     free(import_api);
     compiled_imports_free(compiled_imports, import_count);
     cxpr_model_free(model);
