@@ -158,6 +158,8 @@ void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
     entry->typed_func = NULL;
     entry->ast_func = NULL;
     entry->struct_producer = NULL;
+    entry->model_producer = NULL;
+    entry->model_producer_userdata = NULL;
     entry->ast_func_handler = NULL;
     entry->ast_func_handler_userdata = NULL;
     entry->ast_func_handler_userdata_free = NULL;
@@ -201,6 +203,8 @@ void cxpr_registry_clear_owned_entry(cxpr_func_entry* entry) {
     cxpr_registry_free_defined_fn(entry);
     entry->userdata = NULL;
     entry->userdata_free = NULL;
+    entry->model_producer = NULL;
+    entry->model_producer_userdata = NULL;
     entry->ast_func_handler = NULL;
     entry->ast_func_handler_userdata = NULL;
     entry->ast_func_handler_userdata_free = NULL;

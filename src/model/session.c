@@ -1,4 +1,5 @@
 #include "ir/exec/internal.h"
+#include "eval/internal.h"
 #include "lookback.h"
 #include "model/internal.h"
 #include "registry/internal.h"
@@ -9,13 +10,47 @@
 
 static CXPR_THREAD_LOCAL cxpr_model_session* g_model_active_session = NULL;
 
+cxpr_model_session* cxpr_model_active_session(void) {
+    return g_model_active_session;
+}
+
+static char* cxpr_model_child_cache_key(const cxpr_ast* ast) {
+    size_t len;
+    char* out;
+    size_t pos;
+    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
+    len = strlen(cxpr_ast_producer_name(ast)) + 3u;
+    for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+        char* arg = cxpr_ast_to_string(cxpr_ast_producer_arg(ast, i));
+        len += arg ? strlen(arg) : 0u;
+        len += 2u;
+        free(arg);
+    }
+    out = (char*)malloc(len + 1u);
+    if (!out) return NULL;
+    pos = (size_t)snprintf(out, len + 1u, "%s(", cxpr_ast_producer_name(ast));
+    for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+        char* arg = cxpr_ast_to_string(cxpr_ast_producer_arg(ast, i));
+        if (i > 0u && pos < len) out[pos++] = ',';
+        if (arg) {
+            size_t n = strlen(arg);
+            if (pos + n < len + 1u) memcpy(out + pos, arg, n);
+            pos += n;
+            free(arg);
+        }
+    }
+    if (pos < len) out[pos++] = ')';
+    out[pos < len + 1u ? pos : len] = '\0';
+    return out;
+}
+
 static bool cxpr_model_ast_uses_defined_record_producer(const cxpr_ast* ast,
                                                         const cxpr_registry* reg) {
     if (!ast) return false;
     switch (cxpr_ast_type(ast)) {
     case CXPR_NODE_PRODUCER_ACCESS: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, cxpr_ast_producer_name(ast));
-        if (entry && entry->defined_return_field_count > 0u) return true;
+        if (entry && (entry->defined_return_field_count > 0u || entry->model_producer)) return true;
         for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
             if (cxpr_model_ast_uses_defined_record_producer(
                     cxpr_ast_producer_arg(ast, i), reg)) {
@@ -444,6 +479,24 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
             if (found) session->fused_slots[i] = value;
         }
     }
+    if (program->child_count > 0u) {
+        session->child_sessions = (cxpr_model_session**)calloc(
+            program->child_count, sizeof(cxpr_model_session*));
+        if (!session->child_sessions) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        session->child_session_count = program->child_count;
+        for (size_t i = 0u; i < program->child_count; ++i) {
+            session->child_sessions[i] = cxpr_model_session_new(
+                program->children[i].program, reg, err);
+            if (!session->child_sessions[i]) {
+                cxpr_model_session_free(session);
+                return NULL;
+            }
+        }
+    }
 
     if (err) err->code = CXPR_OK;
     return session;
@@ -465,12 +518,113 @@ void cxpr_model_session_free(cxpr_model_session* session) {
     free(session->fused_export_slot_bound);
     free(session->fused_commit_slots);
     free(session->fused_commit_slot_bound);
+    for (size_t i = 0; i < session->child_session_count; ++i) {
+        cxpr_model_session_free(session->child_sessions[i]);
+    }
+    free(session->child_sessions);
     for (size_t i = 0; i < session->pending_capacity; ++i) {
         cxpr_value_free(&session->pending_values[i]);
     }
     free(session->pending_values);
     free(session->pending_binding_indices);
     free(session);
+}
+
+cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          void* userdata,
+                                          cxpr_error* err) {
+    cxpr_model_child_program* child_ref = (cxpr_model_child_program*)userdata;
+    cxpr_model_session* parent = cxpr_model_active_session();
+    cxpr_model_session* child_session;
+    const cxpr_model_program* child;
+    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    cxpr_value* fields = NULL;
+    cxpr_struct_value* record = NULL;
+    cxpr_value result = cxpr_num(NAN);
+    bool found = false;
+
+    if (!ast || !ctx || !child_ref || !child_ref->program || !parent ||
+        child_ref->registry_index >= parent->child_session_count) {
+        return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Invalid model producer call");
+    }
+    child = child_ref->program;
+    child_session = parent->child_sessions[child_ref->registry_index];
+    if (!child_session || !child_session->ctx) {
+        return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Missing child model session");
+    }
+    {
+        char* cache_key = cxpr_model_child_cache_key(ast);
+        const cxpr_struct_value* cached = cache_key
+            ? cxpr_context_get_cached_struct(ctx, cache_key)
+            : NULL;
+        if (cached) {
+            result = cxpr_struct_get_field(cached, ast->data.producer_access.field, &found);
+            free(cache_key);
+            if (found) return result;
+            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown child model field");
+        }
+        free(cache_key);
+    }
+    {
+        cxpr_func_entry* entry = cxpr_registry_find(reg, child_ref->name);
+        if (!entry || !cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
+            return cxpr_num(NAN);
+        }
+    }
+    for (size_t i = 0u; i < child->input_count; ++i) {
+        bool input_found = false;
+        cxpr_value value = cxpr_context_get_typed(ctx, child->inputs[i], &input_found);
+        if (!input_found) {
+            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Missing child model input");
+        }
+        if (value.type == CXPR_VALUE_NUMBER) {
+            cxpr_context_set(child_session->ctx, child->inputs[i], value.d);
+        } else {
+            cxpr_context_set_value(child_session->ctx, child->inputs[i], &value);
+        }
+    }
+    for (size_t i = 0u; i < child->constant_count; ++i) {
+        cxpr_value value = cxpr_eval_node(ordered_args[i], ctx, reg, err);
+        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+        cxpr_context_set_param_value(child_session->ctx, child->constants[i].name, &value);
+        cxpr_value_free(&value);
+    }
+    if (!cxpr_model_session_tick(child, child_session, reg, err)) return cxpr_num(NAN);
+
+    fields = (cxpr_value*)calloc(child->output_count, sizeof(cxpr_value));
+    if (!fields) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+    for (size_t i = 0u; i < child->output_count; ++i) {
+        double number = 0.0;
+        bool boolean = false;
+        if (cxpr_model_session_output_number(child_session, child->outputs[i], &number)) {
+            fields[i] = cxpr_num(number);
+        } else if (cxpr_model_session_output_bool(child_session, child->outputs[i], &boolean)) {
+            fields[i] = cxpr_bool(boolean);
+        } else {
+            fields[i] = cxpr_context_get_typed(child_session->ctx, child->outputs[i], &found);
+            if (!found) fields[i] = cxpr_num(NAN);
+        }
+    }
+    record = cxpr_struct_value_new((const char* const*)child->outputs,
+                                   fields,
+                                   child->output_count);
+    for (size_t i = 0u; i < child->output_count; ++i) cxpr_value_free(&fields[i]);
+    free(fields);
+    if (!record) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+    {
+        char* cache_key = cxpr_model_child_cache_key(ast);
+        if (cache_key) {
+            cxpr_context_set_cached_struct((cxpr_context*)ctx, cache_key, record);
+            free(cache_key);
+        }
+    }
+    result = cxpr_struct_get_field(record, ast->data.producer_access.field, &found);
+    if (found) result = cxpr_value_clone(&result);
+    cxpr_struct_value_free(record);
+    if (!found) return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown child model field");
+    return result;
 }
 
 cxpr_context* cxpr_model_session_context(cxpr_model_session* session) {
@@ -596,6 +750,7 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
     eval_reg = program->registry ? program->registry : reg;
     previous_active_session = g_model_active_session;
     g_model_active_session = session;
+    cxpr_context_clear_cached_structs(session->ctx);
     if (program->has_fused_ir && session->fused_slots) {
         bool ok = cxpr_model_session_tick_fused(program, session, eval_reg, true, err);
         g_model_active_session = previous_active_session;

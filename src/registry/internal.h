@@ -18,6 +18,8 @@ typedef struct cxpr_func_entry {
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
     cxpr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
+    cxpr_ast_func_ptr model_producer; /**< AST-aware stateful model producer */
+    void* model_producer_userdata;
     /* AST handler: coexists with sync_func/struct_producer for TF string dispatch */
     cxpr_ast_func_ptr ast_func_handler; /**< AST handler function; takes priority for FUNCTION_CALL */
     void* ast_func_handler_userdata;

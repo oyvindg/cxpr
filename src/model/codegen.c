@@ -363,6 +363,30 @@ static const cxpr_ast* cxpr_model_producer_arg_for_param(const cxpr_ast* ast,
                : NULL;
 }
 
+static size_t cxpr_model_c_child_base_inline(const cxpr_model_program* program,
+                                             size_t child_index) {
+    size_t base;
+    if (!program || child_index >= program->child_count) return (size_t)-1;
+    base = program->state_default_count;
+    for (size_t i = 0u; i < program->history_spec_count; ++i) {
+        base += 2u + program->history_specs[i].depth;
+    }
+    for (size_t i = 0u; i < child_index; ++i) {
+        const cxpr_model_program* child = program->children[i].program;
+        base += cxpr_model_program_c_slot_count(child) + 1u + child->output_count;
+    }
+    return base;
+}
+
+static size_t cxpr_model_c_child_index_for_entry(const cxpr_model_program* program,
+                                                 const cxpr_func_entry* entry) {
+    if (!program || !entry || !entry->model_producer_userdata) return (size_t)-1;
+    for (size_t i = 0u; i < program->child_count; ++i) {
+        if (&program->children[i] == entry->model_producer_userdata) return i;
+    }
+    return (size_t)-1;
+}
+
 static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* program,
                                                  const cxpr_ast* ast,
                                                  const char* function_prefix,
@@ -385,7 +409,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
     producer = cxpr_ast_producer_name(ast);
     field = cxpr_ast_producer_field(ast);
     entry = cxpr_registry_find(program->registry, producer);
-    if (!entry || entry->defined_return_field_count == 0u ||
+    if (!entry || (!entry->model_producer && entry->defined_return_field_count == 0u) ||
         entry->defined_param_count != cxpr_ast_producer_argc(ast)) {
         if (err) {
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
@@ -407,6 +431,77 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             err->message = "Unknown producer field";
         }
         return NULL;
+    }
+
+    if (entry->model_producer) {
+        size_t child_index = cxpr_model_c_child_index_for_entry(program, entry);
+        size_t child_base = cxpr_model_c_child_base_inline(program, child_index);
+        const cxpr_model_program* child =
+            child_index == (size_t)-1 ? NULL : program->children[child_index].program;
+        char raw_name[768];
+        char* helper_name;
+        cxpr_model_c_buf call = {0};
+        if (!child || child_base == (size_t)-1) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Unknown child model producer", 0, 0);
+            return NULL;
+        }
+        snprintf(raw_name, sizeof(raw_name), "%s_child_%s_%s",
+                 function_prefix ? function_prefix : "cxpr",
+                 producer,
+                 field);
+        helper_name = cxpr_model_c_safe_name(raw_name);
+        if (!helper_name) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        cxpr_model_c_printf(&call, "%s(_cx_slots + %zu", helper_name, child_base);
+        free(helper_name);
+        for (size_t i = 0u; i < child->input_count; ++i) {
+            size_t input_index = 0u;
+            if (!cxpr_model_c_symbol_is_input(program, child->inputs[i], &input_index)) {
+                free(call.data);
+                cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                                     "Child model input is not a parent input", 0, 0);
+                return NULL;
+            }
+            cxpr_model_c_printf(&call, ", _cx_input_%zu", input_index);
+        }
+        target_data = (cxpr_model_ast_c_target){
+            .program = program,
+            .function_prefix = function_prefix,
+            .literal_param_values = literal_param_values,
+            .literal_param_count = literal_param_count,
+        };
+        target = (cxpr_c_target){
+            .api_version = CXPR_C_TARGET_API_VERSION,
+            .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+            .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+            .userdata = &target_data,
+        };
+        for (size_t i = 0u; i < entry->defined_param_count; ++i) {
+            const cxpr_ast* arg = cxpr_model_producer_arg_for_param(
+                ast, entry->defined_param_names ? entry->defined_param_names[i] : NULL, i);
+            char* arg_expr;
+            if (!arg) {
+                free(call.data);
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Missing producer argument", 0, 0);
+                return NULL;
+            }
+            arg_expr = cxpr_ast_to_c_at_offset(arg, 0u, &target, err);
+            if (!arg_expr) {
+                free(call.data);
+                return NULL;
+            }
+            cxpr_model_c_printf(&call, ", %s", arg_expr);
+            free(arg_expr);
+        }
+        cxpr_model_c_puts(&call, ")");
+        if (call.oom) {
+            free(call.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        return call.data;
     }
 
     arg_exprs = (char**)calloc(entry->defined_param_count ? entry->defined_param_count : 1u,
@@ -1033,7 +1128,7 @@ static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program*
             cxpr_func_entry* entry = program && program->registry
                 ? cxpr_registry_find(program->registry, cxpr_ast_producer_name(ast))
                 : NULL;
-            if (entry && entry->defined_return_field_count > 0u) {
+            if (entry && !entry->model_producer && entry->defined_return_field_count > 0u) {
                 const char* field = cxpr_ast_producer_field(ast);
                 for (size_t f = 0u; f < entry->defined_return_field_count; ++f) {
                     if (entry->defined_return_field_names[f] &&
@@ -1199,6 +1294,121 @@ static bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_program* pr
     return true;
 }
 
+static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* program,
+                                                  const char* function_prefix,
+                                                  cxpr_model_c_buf* b,
+                                                  cxpr_error* err) {
+    if (!program || !function_prefix || !b) return true;
+    for (size_t i = 0u; i < program->child_count; ++i) {
+        const cxpr_model_program* child = program->children[i].program;
+        char raw_tick[768];
+        char* tick_name;
+        char* tick_source;
+        if (!child) continue;
+        snprintf(raw_tick, sizeof(raw_tick), "%s_child_%s_tick",
+                 function_prefix, program->children[i].name);
+        tick_name = cxpr_model_c_safe_name(raw_tick);
+        if (!tick_name) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        tick_source = cxpr_model_program_to_c_tick_function_select_outputs(
+            child, "static inline", tick_name, NULL, 0u, err);
+        if (!tick_source) {
+            free(tick_name);
+            return false;
+        }
+        cxpr_model_c_puts(b, tick_source);
+        cxpr_model_c_puts(b, "\n");
+        free(tick_source);
+
+        for (size_t field_i = 0u; field_i < child->output_count; ++field_i) {
+            char raw_helper[768];
+            char* helper_name;
+            snprintf(raw_helper, sizeof(raw_helper), "%s_child_%s_%s",
+                     function_prefix,
+                     program->children[i].name,
+                     child->outputs[field_i]);
+            helper_name = cxpr_model_c_safe_name(raw_helper);
+            if (!helper_name) {
+                free(tick_name);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            cxpr_model_c_printf(b, "static inline double %s(double* restrict _cx_child_slots",
+                                helper_name);
+            for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
+                char* input_name = cxpr_model_c_safe_name(child->inputs[in_i]);
+                if (!input_name) {
+                    free(helper_name);
+                    free(tick_name);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    return false;
+                }
+                cxpr_model_c_printf(b, ", double %s", input_name);
+                free(input_name);
+            }
+            for (size_t p = 0u; p < child->constant_count; ++p) {
+                char* param_name = cxpr_model_c_prefixed_name("param_", child->constants[p].name);
+                if (!param_name) {
+                    free(helper_name);
+                    free(tick_name);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    return false;
+                }
+                cxpr_model_c_printf(b, ", double %s", param_name);
+                free(param_name);
+            }
+            cxpr_model_c_puts(b, ") {\n");
+            cxpr_model_c_printf(b, "    double _cx_child_inputs[%zu] = {",
+                                child->input_count ? child->input_count : 1u);
+            for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
+                char* input_name = cxpr_model_c_safe_name(child->inputs[in_i]);
+                if (in_i > 0u) cxpr_model_c_puts(b, ", ");
+                cxpr_model_c_puts(b, input_name ? input_name : "0.0");
+                free(input_name);
+            }
+            if (child->input_count == 0u) cxpr_model_c_puts(b, "0.0");
+            cxpr_model_c_puts(b, "};\n");
+            cxpr_model_c_printf(b, "    double _cx_child_params[%zu] = {",
+                                child->constant_count ? child->constant_count : 1u);
+            for (size_t p = 0u; p < child->constant_count; ++p) {
+                char* param_name = cxpr_model_c_prefixed_name("param_", child->constants[p].name);
+                if (p > 0u) cxpr_model_c_puts(b, ", ");
+                cxpr_model_c_puts(b, param_name ? param_name : "0.0");
+                free(param_name);
+            }
+            if (child->constant_count == 0u) cxpr_model_c_puts(b, "0.0");
+            cxpr_model_c_puts(b, "};\n");
+            cxpr_model_c_printf(b, "    double _cx_child_outputs[%zu] = {0};\n",
+                                child->output_count ? child->output_count : 1u);
+            cxpr_model_c_printf(b, "    if (_cx_child_slots[%zu] == 0.0) {\n",
+                                cxpr_model_program_c_slot_count(child));
+            cxpr_model_c_printf(b,
+                                "        %s(_cx_child_slots, _cx_child_inputs, _cx_child_params, _cx_child_outputs);\n",
+                                tick_name);
+            for (size_t out_i = 0u; out_i < child->output_count; ++out_i) {
+                cxpr_model_c_printf(b, "        _cx_child_slots[%zu] = _cx_child_outputs[%zu];\n",
+                                    cxpr_model_program_c_slot_count(child) + 1u + out_i,
+                                    out_i);
+            }
+            cxpr_model_c_printf(b, "        _cx_child_slots[%zu] = 1.0;\n",
+                                cxpr_model_program_c_slot_count(child));
+            cxpr_model_c_puts(b, "    }\n");
+            cxpr_model_c_printf(b, "    return _cx_child_slots[%zu];\n",
+                                cxpr_model_program_c_slot_count(child) + 1u + field_i);
+            cxpr_model_c_puts(b, "}\n\n");
+            free(helper_name);
+        }
+        free(tick_name);
+        if (b->oom) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program,
                                                       const char* qualifiers,
                                                       const char* function_name,
@@ -1247,6 +1457,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
                       "#define CXPR_UNLIKELY(x) (x)\n"
                       "#endif\n"
                       "#endif\n\n");
+    if (!cxpr_model_c_emit_child_model_helpers(program, function_name, &b, err)) goto fail;
     if (!cxpr_model_c_emit_defined_functions_ast(program, function_name, &b, err)) goto fail;
 
     safe_name = cxpr_model_c_safe_name(function_name);
@@ -1297,6 +1508,11 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
             cxpr_model_c_printf(&b, "    const size_t _cx_history_next_%zu = (size_t)_cx_slots[%zu];\n",
                                 i, base + 1u);
         }
+    }
+    for (size_t i = 0u; i < program->child_count; ++i) {
+        size_t child_base = cxpr_model_c_child_base_inline(program, i);
+        size_t child_slots = cxpr_model_program_c_slot_count(program->children[i].program);
+        cxpr_model_c_printf(&b, "    _cx_slots[%zu] = 0.0;\n", child_base + child_slots);
     }
     for (size_t i = 0u; i < program->binding_count; ++i) {
         char* expr;

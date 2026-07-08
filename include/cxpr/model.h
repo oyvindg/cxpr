@@ -33,6 +33,11 @@ typedef enum {
     CXPR_MODEL_METADATA_TARGET_OUTPUT = 7,
 } cxpr_model_metadata_target_kind;
 
+typedef struct {
+    const char* name;
+    const cxpr_model_program* program;
+} cxpr_model_import;
+
 /**
  * @brief Parse a complete .cxpr model.
  *
@@ -143,6 +148,12 @@ cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
                                        const cxpr_registry* reg,
                                        cxpr_error* err);
 
+cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_model_import* imports,
+                                                    size_t import_count,
+                                                    cxpr_error* err);
+
 /** @brief Free a compiled .cxpr model program. */
 void cxpr_model_program_free(cxpr_model_program* program);
 
@@ -173,6 +184,8 @@ size_t cxpr_model_program_binding_count(const cxpr_model_program* program);
 const char* cxpr_model_program_binding_name(const cxpr_model_program* program, size_t index);
 size_t cxpr_model_program_output_count(const cxpr_model_program* program);
 const char* cxpr_model_program_output_name(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_program_input_count(const cxpr_model_program* program);
+const char* cxpr_model_program_input_name(const cxpr_model_program* program, size_t index);
 /** @brief Return number of functions in the model-owned registry, for diagnostics/benchmarks. */
 size_t cxpr_model_program_function_count(const cxpr_model_program* program);
 /** @brief Return true when the compiled model uses one fused IR program for ticks. */

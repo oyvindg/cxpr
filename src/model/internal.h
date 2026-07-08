@@ -119,6 +119,12 @@ typedef struct {
     size_t next;
 } cxpr_model_history_entry;
 
+typedef struct {
+    char* name;
+    const cxpr_model_program* program;
+    size_t registry_index;
+} cxpr_model_child_program;
+
 struct cxpr_model_program {
     cxpr_registry* registry;
     cxpr_ir_program fused_ir;
@@ -142,6 +148,10 @@ struct cxpr_model_program {
     size_t state_default_count;
     cxpr_model_compiled_binding* bindings;
     size_t binding_count;
+    char** inputs;
+    size_t input_count;
+    cxpr_model_child_program* children;
+    size_t child_count;
     cxpr_model_history_spec* history_specs;
     size_t history_spec_count;
     char** outputs;
@@ -165,6 +175,8 @@ struct cxpr_model_session {
     cxpr_context_slot* fused_commit_slots;
     bool* fused_commit_slot_bound;
     size_t fused_commit_slot_count;
+    cxpr_model_session** child_sessions;
+    size_t child_session_count;
     cxpr_value* pending_values;
     size_t* pending_binding_indices;
     size_t pending_capacity;
@@ -213,5 +225,15 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
                                      const cxpr_model* model,
                                      const cxpr_registry* reg,
                                      cxpr_error* err);
+bool cxpr_model_program_register_imports(cxpr_model_program* program,
+                                         const cxpr_model_import* imports,
+                                         size_t import_count,
+                                         cxpr_error* err);
+cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          void* userdata,
+                                          cxpr_error* err);
+cxpr_model_session* cxpr_model_active_session(void);
 
 #endif /* CXPR_MODEL_INTERNAL_H */

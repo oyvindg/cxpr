@@ -468,6 +468,96 @@ static cxpr_ir_view_result_kind cxpr_model_state_default_result_kind(
 cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
                                        const cxpr_registry* reg,
                                        cxpr_error* err) {
+    return cxpr_compile_model_with_imports(model, reg, NULL, 0u, err);
+}
+
+bool cxpr_model_program_register_imports(cxpr_model_program* program,
+                                         const cxpr_model_import* imports,
+                                         size_t import_count,
+                                         cxpr_error* err) {
+    if (!program || import_count == 0u) return true;
+    if (!imports) return false;
+    if (!program->registry) {
+        program->registry = cxpr_registry_new();
+        if (!program->registry) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+    }
+    program->children = (cxpr_model_child_program*)calloc(import_count, sizeof(*program->children));
+    if (!program->children) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    program->child_count = import_count;
+    for (size_t i = 0u; i < import_count; ++i) {
+        const cxpr_model_program* child = imports[i].program;
+        cxpr_func_entry* entry;
+        if (!imports[i].name || !child || child->output_count == 0u) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid model import", 0, 0);
+            return false;
+        }
+        program->children[i].name = cxpr_strdup(imports[i].name);
+        program->children[i].program = child;
+        program->children[i].registry_index = i;
+        if (!program->children[i].name) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        entry = cxpr_registry_find(program->registry, imports[i].name);
+        if (entry) {
+            cxpr_registry_clear_owned_entry(entry);
+        } else {
+            if (program->registry->count >= program->registry->capacity &&
+                !cxpr_registry_grow(program->registry)) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            entry = &program->registry->entries[program->registry->count++];
+            cxpr_registry_prepare_entry(entry, imports[i].name);
+            if (!entry->name) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+        }
+        entry->model_producer = cxpr_model_eval_child_producer;
+        entry->model_producer_userdata = &program->children[i];
+        entry->min_args = child->constant_count;
+        entry->max_args = child->constant_count;
+        entry->return_type = CXPR_VALUE_STRUCT;
+        entry->has_return_type = true;
+        entry->defined_return_field_names = cxpr_registry_clone_param_names(
+            (const char* const*)child->outputs, child->output_count);
+        entry->defined_param_count = child->constant_count;
+        if (child->constant_count > 0u) {
+            entry->defined_param_names = (char**)calloc(child->constant_count, sizeof(char*));
+            if (!entry->defined_param_names) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            for (size_t p = 0u; p < child->constant_count; ++p) {
+                entry->defined_param_names[p] = cxpr_strdup(child->constants[p].name);
+                if (!entry->defined_param_names[p]) {
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    return false;
+                }
+            }
+        }
+        entry->defined_return_field_count = child->output_count;
+        if (!entry->defined_return_field_names && child->output_count > 0u) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        program->registry->version++;
+    }
+    return true;
+}
+
+cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
+                                                    const cxpr_registry* reg,
+                                                    const cxpr_model_import* imports,
+                                                    size_t import_count,
+                                                    cxpr_error* err) {
     cxpr_model_program* program;
     const cxpr_registry* compile_reg = reg;
     char** required_defaults = NULL;
@@ -499,6 +589,7 @@ cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
     }
 
     if (model->function_count > 0 || model->record_function_count > 0u ||
+        import_count > 0u ||
         (!reg && required_default_count > 0u) ||
         program->history_spec_count > 0u) {
         if (reg && program->history_spec_count > 0u) {
@@ -521,6 +612,12 @@ cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
         if (program->history_spec_count > 0u) {
             cxpr_registry_set_lookback_resolver(
                 program->registry, cxpr_model_lookback_resolver, NULL, NULL);
+        }
+        if (!cxpr_model_program_register_imports(program, imports, import_count, err)) {
+            for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
+            free(required_defaults);
+            cxpr_model_program_free(program);
+            return NULL;
         }
         for (size_t i = 0; i < required_default_count; ++i) {
             if (!cxpr_register_default_named(program->registry, required_defaults[i])) {
@@ -697,6 +794,23 @@ cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
     }
 
 compile_outputs:
+    if (model->input_count > 0) {
+        program->inputs = (char**)calloc(model->input_count, sizeof(char*));
+        if (!program->inputs) {
+            cxpr_model_program_free(program);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        program->input_count = model->input_count;
+        for (size_t i = 0; i < model->input_count; ++i) {
+            program->inputs[i] = cxpr_strdup(model->inputs[i]);
+            if (!program->inputs[i]) {
+                cxpr_model_program_free(program);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return NULL;
+            }
+        }
+    }
     if (model->output_count > 0) {
         program->outputs = (char**)calloc(model->output_count, sizeof(char*));
         if (!program->outputs) {
@@ -739,6 +853,10 @@ void cxpr_model_program_free(cxpr_model_program* program) {
         cxpr_model_compiled_binding_free(&program->bindings[i]);
     }
     free(program->bindings);
+    for (size_t i = 0; i < program->input_count; ++i) free(program->inputs[i]);
+    free(program->inputs);
+    for (size_t i = 0; i < program->child_count; ++i) free(program->children[i].name);
+    free(program->children);
     for (size_t i = 0; i < program->history_spec_count; ++i) {
         cxpr_model_history_spec_free(&program->history_specs[i]);
     }
@@ -831,6 +949,14 @@ const char* cxpr_model_program_output_name(const cxpr_model_program* program, si
     return program && index < program->output_count ? program->outputs[index] : NULL;
 }
 
+size_t cxpr_model_program_input_count(const cxpr_model_program* program) {
+    return program ? program->input_count : 0u;
+}
+
+const char* cxpr_model_program_input_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->input_count ? program->inputs[index] : NULL;
+}
+
 size_t cxpr_model_program_function_count(const cxpr_model_program* program) {
     return program && program->registry ? program->registry->count : 0u;
 }
@@ -853,6 +979,10 @@ size_t cxpr_model_program_c_slot_count(const cxpr_model_program* program) {
     count = program->state_default_count;
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         count += 2u + program->history_specs[i].depth;
+    }
+    for (size_t i = 0u; i < program->child_count; ++i) {
+        const cxpr_model_program* child = program->children[i].program;
+        count += cxpr_model_program_c_slot_count(child) + 1u + child->output_count;
     }
     return count;
 }

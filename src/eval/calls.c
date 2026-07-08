@@ -460,7 +460,8 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
     const char* const_key;
     bool found = false;
 
-    if (!entry || (!entry->struct_producer && entry->defined_return_field_count == 0u)) {
+    if (!entry || (!entry->struct_producer && !entry->model_producer &&
+                   entry->defined_return_field_count == 0u)) {
         return cxpr_eval_error(
             err,
             CXPR_ERR_UNKNOWN_FUNCTION,
@@ -468,6 +469,10 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
     }
     if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
         return cxpr_num(NAN);
+    }
+
+    if (entry->model_producer) {
+        return entry->model_producer(ast, ctx, reg, entry->model_producer_userdata, err);
     }
 
     if (entry->defined_return_field_count > 0u) {

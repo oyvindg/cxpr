@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static char* resolve_import_path_for_model(const char* dir, const char* use_name);
+
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
     long size;
@@ -266,7 +268,7 @@ static int collect_import_functions(const char* model_path,
         char* import_source;
         char* import_functions;
 
-        import_path = join_import_path(dir, use_name);
+        import_path = resolve_import_path_for_model(dir, use_name);
         if (!import_path) goto cleanup;
         if (string_list_contains(*visited, *visited_count, import_path)) {
             free(import_path);
@@ -417,6 +419,138 @@ typedef struct artifact_file_sink {
     FILE* file;
 } artifact_file_sink;
 
+typedef struct compiled_model_import {
+    cxpr_model_import api;
+    char* source;
+    cxpr_model* model;
+    cxpr_model_program* program;
+} compiled_model_import;
+
+static char* resolve_import_path_for_model(const char* dir, const char* use_name) {
+    char* path = join_import_path(dir, use_name);
+    FILE* f;
+    if (!path) return NULL;
+    f = fopen(path, "rb");
+    if (f) {
+        fclose(f);
+        return path;
+    }
+    free(path);
+    if (strncmp(use_name, "indicators/", strlen("indicators/")) == 0) {
+        size_t len = strlen("libs/dyn/cxpr/") + strlen(use_name) + strlen(".cxpr") + 1u;
+        path = (char*)malloc(len);
+        if (!path) return NULL;
+        snprintf(path, len, "libs/dyn/cxpr/%s.cxpr", use_name);
+        f = fopen(path, "rb");
+        if (f) {
+            fclose(f);
+            return path;
+        }
+        free(path);
+    }
+    return join_import_path(dir, use_name);
+}
+
+static void compiled_imports_free(compiled_model_import* imports, size_t count) {
+    if (!imports) return;
+    for (size_t i = 0u; i < count; ++i) {
+        cxpr_model_program_free(imports[i].program);
+        cxpr_model_free(imports[i].model);
+        free(imports[i].source);
+    }
+    free(imports);
+}
+
+static int build_model_imports(const char* model_path,
+                               const char* source,
+                               compiled_model_import** out_imports,
+                               size_t* out_count) {
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_parse_model(source, &err);
+    char* dir = NULL;
+    compiled_model_import* imports = NULL;
+    size_t count = 0u;
+    int ok = 0;
+
+    if (out_imports) *out_imports = NULL;
+    if (out_count) *out_count = 0u;
+    if (!model) return 0;
+    dir = path_dirname(model_path);
+    if (!dir) goto cleanup;
+
+    for (size_t i = 0u; i < cxpr_model_use_count(model); ++i) {
+        const char* use_name = cxpr_model_use(model, i);
+        char* import_path = resolve_import_path_for_model(dir, use_name);
+        char* import_source;
+        char* import_combined;
+        cxpr_model* import_model;
+        cxpr_model_program* import_program;
+        compiled_model_import* grown;
+        const char* model_name;
+        if (!import_path) goto cleanup;
+        import_source = read_file(import_path);
+        if (!import_source) {
+            free(import_path);
+            goto cleanup;
+        }
+        import_combined = build_source_with_imports(import_path, import_source);
+        free(import_source);
+        if (!import_combined) {
+            free(import_path);
+            goto cleanup;
+        }
+        import_model = cxpr_parse_model(import_combined, &err);
+        if (!import_model) {
+            free(import_combined);
+            free(import_path);
+            goto cleanup;
+        }
+        if (cxpr_model_output_count(import_model) == 0u) {
+            cxpr_model_free(import_model);
+            free(import_combined);
+            free(import_path);
+            continue;
+        }
+        import_program = cxpr_compile_model(import_model, NULL, &err);
+        if (!import_program) {
+            cxpr_model_free(import_model);
+            free(import_combined);
+            free(import_path);
+            goto cleanup;
+        }
+        grown = (compiled_model_import*)realloc(imports, (count + 1u) * sizeof(*imports));
+        if (!grown) {
+            cxpr_model_program_free(import_program);
+            cxpr_model_free(import_model);
+            free(import_combined);
+            free(import_path);
+            goto cleanup;
+        }
+        imports = grown;
+        memset(&imports[count], 0, sizeof(imports[count]));
+        model_name = cxpr_model_name(import_model);
+        imports[count].api.name = model_name ? model_name : use_name;
+        imports[count].api.program = import_program;
+        imports[count].source = import_combined;
+        imports[count].model = import_model;
+        imports[count].program = import_program;
+        count++;
+        free(import_path);
+    }
+    ok = 1;
+
+cleanup:
+    free(dir);
+    cxpr_model_free(model);
+    if (!ok) {
+        compiled_imports_free(imports, count);
+        return 0;
+    }
+    if (out_imports) *out_imports = imports;
+    if (out_count) *out_count = count;
+    return 1;
+}
+
 static int artifact_file_begin(void* user, const cxpr_plugin_artifact_event* artifact, cxpr_error* err) {
     artifact_file_sink* sink = (artifact_file_sink*)user;
     (void)artifact;
@@ -455,6 +589,9 @@ static int emit_model_c(const char* model_path,
     char* combined_source = NULL;
     cxpr_model* model = NULL;
     cxpr_model_program* program = NULL;
+    compiled_model_import* compiled_imports = NULL;
+    cxpr_model_import* import_api = NULL;
+    size_t import_count = 0u;
     cxpr_context* ctx = NULL;
     double* param_values = NULL;
     size_t param_count = 0u;
@@ -479,7 +616,16 @@ static int emit_model_c(const char* model_path,
         fprintf(stderr, "cxpr_model_codegen: parse failed: %s\n", err.message);
         goto cleanup;
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    if (!build_model_imports(model_path, source, &compiled_imports, &import_count)) {
+        fprintf(stderr, "cxpr_model_codegen: failed to compile model imports\n");
+        goto cleanup;
+    }
+    if (import_count > 0u) {
+        import_api = (cxpr_model_import*)calloc(import_count, sizeof(*import_api));
+        if (!import_api) goto cleanup;
+        for (size_t i = 0u; i < import_count; ++i) import_api[i] = compiled_imports[i].api;
+    }
+    program = cxpr_compile_model_with_imports(model, NULL, import_api, import_count, &err);
     if (!program) {
         fprintf(stderr, "cxpr_model_codegen: compile failed: %s\n", err.message);
         goto cleanup;
@@ -593,6 +739,8 @@ cleanup:
     free(param_values);
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
+    free(import_api);
+    compiled_imports_free(compiled_imports, import_count);
     cxpr_model_free(model);
     free(combined_source);
     free(source);
