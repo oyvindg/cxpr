@@ -1042,6 +1042,73 @@ static void test_session_expression_lookback(void) {
     printf("  ✓ test_session_expression_lookback\n");
 }
 
+static void test_session_window_builtin_autoregisters_and_emits_c(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    char* code = NULL;
+    cxpr_model* model = parse_model_ok(
+        "name window_builtin\n"
+        "in { close }\n"
+        "$period = 3\n"
+        "sum = window_sum(close, $period)\n"
+        "mean = window_mean(close, $period)\n"
+        "hi = window_highest(close, $period)\n"
+        "lo = window_lowest(close, $period)\n"
+        "sd = window_stddev(close, $period)\n"
+        "rocv = window_roc(close, $period)\n"
+        "out { sum, mean, hi, lo, sd, rocv }\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    if (!program) fprintf(stderr, "window model compile failed: %s\n", err.message);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    assert(ctx != NULL);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "sum", &value));
+    assert(fabs(value - 10.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "mean", &value));
+    assert(fabs(value - 10.0) < 1e-12);
+
+    cxpr_context_set(ctx, "close", 12.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    cxpr_context_set(ctx, "close", 14.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    cxpr_context_set(ctx, "close", 16.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+
+    assert(cxpr_model_session_output_number(session, "sum", &value));
+    assert(fabs(value - 42.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "mean", &value));
+    assert(fabs(value - 14.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "hi", &value));
+    assert(fabs(value - 16.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "lo", &value));
+    assert(fabs(value - 12.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "sd", &value));
+    assert(fabs(value - sqrt(8.0 / 3.0)) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "rocv", &value));
+    assert(fabs(value - 60.0) < 1e-12);
+
+    code = cxpr_model_program_to_c_tick_function(program, "static inline",
+                                                 "window_builtin_tick", &err);
+    if (!code) fprintf(stderr, "window model C emit failed: %s\n", err.message);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_model_window_eval_c") != NULL);
+    assert(strstr(code, "cxpr_model_window_roc_c") != NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_session_window_builtin_autoregisters_and_emits_c\n");
+}
+
 static void test_session_record_field_lookback(void) {
     cxpr_error err = {0};
     bool value = false;
@@ -1817,6 +1884,7 @@ int main(void) {
     test_state_session_atomic_commit_and_events();
     test_session_input_lookback();
     test_session_expression_lookback();
+    test_session_window_builtin_autoregisters_and_emits_c();
     test_session_record_field_lookback();
     test_session_direct_record_producer_lookback();
     test_compile_imported_producer_infers_missing_child_inputs();

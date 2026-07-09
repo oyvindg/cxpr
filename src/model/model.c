@@ -9,6 +9,7 @@
 #include "ir/exec/internal.h"
 #include "lookback.h"
 #include "model/internal.h"
+#include "model/window/window.h"
 #include "registry/internal.h"
 #include <cxpr/codegen.h>
 #include <cxpr/source_plan.h>
@@ -487,7 +488,8 @@ bool cxpr_model_lookback_target_key(const cxpr_ast* target,
     }
 }
 
-static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_ast* ast,
+static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
+                                                const cxpr_ast* ast,
                                                 cxpr_model_history_spec** specs,
                                                 size_t* count,
                                                 cxpr_error* err) {
@@ -512,17 +514,21 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_ast* ast,
             }
             free(key);
         }
-        return cxpr_model_collect_lookbacks_in_ast(target, specs, count, err);
+        return cxpr_model_collect_lookbacks_in_ast(model, target, specs, count, err);
     }
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_collect_lookbacks_in_ast(cxpr_ast_left(ast), specs, count, err) &&
-               cxpr_model_collect_lookbacks_in_ast(cxpr_ast_right(ast), specs, count, err);
+        return cxpr_model_collect_lookbacks_in_ast(model, cxpr_ast_left(ast), specs, count, err) &&
+               cxpr_model_collect_lookbacks_in_ast(model, cxpr_ast_right(ast), specs, count, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_model_collect_lookbacks_in_ast(cxpr_ast_operand(ast), specs, count, err);
+        return cxpr_model_collect_lookbacks_in_ast(model, cxpr_ast_operand(ast), specs, count, err);
     case CXPR_NODE_FUNCTION_CALL:
+        if (cxpr_model_window_is_function(cxpr_ast_function_name(ast)) &&
+            !cxpr_model_window_collect_call(model, ast, specs, count, err)) {
+            return false;
+        }
         for (size_t i = 0; i < cxpr_ast_function_argc(ast); ++i) {
             if (!cxpr_model_collect_lookbacks_in_ast(
-                    cxpr_ast_function_arg(ast, i), specs, count, err)) {
+                    model, cxpr_ast_function_arg(ast, i), specs, count, err)) {
                 return false;
             }
         }
@@ -530,18 +536,18 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_ast* ast,
     case CXPR_NODE_PRODUCER_ACCESS:
         for (size_t i = 0; i < cxpr_ast_producer_argc(ast); ++i) {
             if (!cxpr_model_collect_lookbacks_in_ast(
-                    cxpr_ast_producer_arg(ast, i), specs, count, err)) {
+                    model, cxpr_ast_producer_arg(ast, i), specs, count, err)) {
                 return false;
             }
         }
         return true;
     case CXPR_NODE_TERNARY:
         return cxpr_model_collect_lookbacks_in_ast(
-                   cxpr_ast_ternary_condition(ast), specs, count, err) &&
+                   model, cxpr_ast_ternary_condition(ast), specs, count, err) &&
                cxpr_model_collect_lookbacks_in_ast(
-                   cxpr_ast_ternary_true_branch(ast), specs, count, err) &&
+                   model, cxpr_ast_ternary_true_branch(ast), specs, count, err) &&
                cxpr_model_collect_lookbacks_in_ast(
-                   cxpr_ast_ternary_false_branch(ast), specs, count, err);
+                   model, cxpr_ast_ternary_false_branch(ast), specs, count, err);
     default:
         return true;
     }
@@ -553,19 +559,19 @@ static bool cxpr_model_collect_lookbacks(const cxpr_model* model,
                                          cxpr_error* err) {
     if (!model || !specs || !count) return true;
     for (size_t i = 0; i < model->constant_count; ++i) {
-        if (!cxpr_model_collect_lookbacks_in_ast(model->constants[i].expr, specs, count, err)) {
+        if (!cxpr_model_collect_lookbacks_in_ast(model, model->constants[i].expr, specs, count, err)) {
             return false;
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
-        if (!cxpr_model_collect_lookbacks_in_ast(model->bindings[i].expr, specs, count, err)) {
+        if (!cxpr_model_collect_lookbacks_in_ast(model, model->bindings[i].expr, specs, count, err)) {
             return false;
         }
     }
     for (size_t i = 0; i < model->record_function_count; ++i) {
         for (size_t f = 0; f < model->record_functions[i].field_count; ++f) {
             if (!cxpr_model_collect_lookbacks_in_ast(
-                    model->record_functions[i].fields[f].expr, specs, count, err)) {
+                    model, model->record_functions[i].fields[f].expr, specs, count, err)) {
                 return false;
             }
         }
@@ -768,7 +774,6 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         free(inferred_inputs);
         return NULL;
     }
-
     program = (cxpr_model_program*)calloc(1, sizeof(cxpr_model_program));
     if (!program) {
         for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
@@ -1193,12 +1198,23 @@ const char* cxpr_model_program_fused_ir_disabled_opcode(const cxpr_model_program
     return program ? program->fused_disabled_opcode : NULL;
 }
 
+static bool cxpr_model_history_use_shift(size_t depth) {
+    return depth <= 4u;
+}
+
+static size_t cxpr_model_history_capacity(size_t depth) {
+    size_t capacity = 1u;
+    if (cxpr_model_history_use_shift(depth)) return depth;
+    while (capacity < depth && capacity <= ((size_t)-1) / 2u) capacity *= 2u;
+    return capacity < depth ? depth : capacity;
+}
+
 size_t cxpr_model_program_c_slot_count(const cxpr_model_program* program) {
     size_t count;
     if (!program || !program->has_fused_layout) return 0u;
     count = program->state_default_count;
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
-        count += 2u + program->history_specs[i].depth;
+        count += 2u + cxpr_model_history_capacity(program->history_specs[i].depth);
     }
     for (size_t i = 0u; i < program->child_count; ++i) {
         const cxpr_model_program* child = program->children[i].program;

@@ -1,6 +1,8 @@
 #include "model/internal.h"
+#include "model/window/window.h"
 #include "registry/internal.h"
 #include <cxpr/codegen.h>
+#include "eval/internal.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -391,13 +393,28 @@ static const cxpr_ast* cxpr_model_producer_arg_for_param(const cxpr_ast* ast,
                : NULL;
 }
 
+static bool cxpr_model_c_is_power_of_two(size_t value) {
+    return value != 0u && (value & (value - 1u)) == 0u;
+}
+
+static bool cxpr_model_c_history_use_shift(size_t depth) {
+    return depth <= 4u;
+}
+
+static size_t cxpr_model_c_history_capacity(size_t depth) {
+    size_t capacity = 1u;
+    if (cxpr_model_c_history_use_shift(depth)) return depth;
+    while (capacity < depth && capacity <= ((size_t)-1) / 2u) capacity *= 2u;
+    return capacity < depth ? depth : capacity;
+}
+
 static size_t cxpr_model_c_child_base_inline(const cxpr_model_program* program,
                                              size_t child_index) {
     size_t base;
     if (!program || child_index >= program->child_count) return (size_t)-1;
     base = program->state_default_count;
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
-        base += 2u + program->history_specs[i].depth;
+        base += 2u + cxpr_model_c_history_capacity(program->history_specs[i].depth);
     }
     for (size_t i = 0u; i < child_index; ++i) {
         const cxpr_model_program* child = program->children[i].program;
@@ -633,17 +650,9 @@ static size_t cxpr_model_c_history_base(const cxpr_model_program* program,
     if (!program) return (size_t)-1;
     base = program->state_default_count;
     for (size_t i = 0u; i < history_index && i < program->history_spec_count; ++i) {
-        base += 2u + program->history_specs[i].depth;
+        base += 2u + cxpr_model_c_history_capacity(program->history_specs[i].depth);
     }
     return base;
-}
-
-static bool cxpr_model_c_is_power_of_two(size_t value) {
-    return value != 0u && (value & (value - 1u)) == 0u;
-}
-
-static bool cxpr_model_c_history_use_shift(size_t depth) {
-    return depth <= 4u;
 }
 
 static size_t cxpr_model_c_history_find(const cxpr_model_program* program,
@@ -710,6 +719,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
         size_t hist_index;
         size_t base;
         size_t depth;
+        size_t capacity;
         char* key = NULL;
         if (!cxpr_model_lookback_target_key(ast, &key, err)) return NULL;
         name = key;
@@ -729,30 +739,31 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             snprintf(raw, sizeof(raw), "NAN");
             return cxpr_strdup(raw);
         }
+        capacity = cxpr_model_c_history_capacity(depth);
         base = cxpr_model_c_history_base(program, hist_index);
         free(key);
         {
             char raw[256];
             char index_expr[128];
-            size_t delta = depth - (size_t)lookback_offset;
+            size_t delta = capacity - (size_t)lookback_offset;
             if (cxpr_model_c_history_use_shift(depth)) {
                 snprintf(raw, sizeof(raw),
                          "_cx_slots[%zu]",
                          base + 1u + (size_t)lookback_offset);
                 return cxpr_strdup(raw);
             }
-            if (depth == 1u) {
+            if (capacity == 1u) {
                 snprintf(index_expr, sizeof(index_expr), "0u");
             } else if (delta == 0u) {
                 snprintf(index_expr, sizeof(index_expr), "_cx_history_next_%zu", hist_index);
-            } else if (cxpr_model_c_is_power_of_two(depth)) {
+            } else if (cxpr_model_c_is_power_of_two(capacity)) {
                 snprintf(index_expr, sizeof(index_expr),
                          "((_cx_history_next_%zu + %zuu) & %zuu)",
-                         hist_index, delta, depth - 1u);
+                         hist_index, delta, capacity - 1u);
             } else {
                 snprintf(index_expr, sizeof(index_expr),
                          "((_cx_history_next_%zu + %zuu) %% %zuu)",
-                         hist_index, delta, depth);
+                         hist_index, delta, capacity);
             }
             snprintf(raw, sizeof(raw),
                      "_cx_slots[%zu + %s]",
@@ -828,6 +839,887 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
     return NULL;
 }
 
+static const char* cxpr_model_c_window_op(const char* name) {
+    if (cxpr_model_names_match(name, "window_sum")) return "0";
+    if (cxpr_model_names_match(name, "window_mean")) return "1";
+    if (cxpr_model_names_match(name, "window_highest")) return "2";
+    if (cxpr_model_names_match(name, "window_lowest")) return "3";
+    if (cxpr_model_names_match(name, "window_stddev")) return "4";
+    return NULL;
+}
+
+static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* program,
+                                                const cxpr_ast* period_ast,
+                                                size_t* out_capacity,
+                                                cxpr_error* err) {
+    double raw = 0.0;
+    long period;
+    if (!period_ast || !out_capacity) return false;
+    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_ast_variable_name(period_ast);
+        size_t index = cxpr_model_program_param_index(program, name);
+        if (index == (size_t)-1 ||
+            !program->constants[index].program ||
+            !cxpr_eval_constant_double(program->constants[index].program->ast, &raw)) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "window period parameter requires a numeric default",
+                                 0, 0);
+            return false;
+        }
+    } else if (!cxpr_eval_constant_double(period_ast, &raw)) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "window period must be a constant or model parameter default",
+                             0, 0);
+        return false;
+    }
+    if (!isfinite(raw) || raw < 1.0) raw = 1.0;
+    period = lround(raw);
+    if (period < 1) period = 1;
+    *out_capacity = (size_t)period;
+    return true;
+}
+
+static bool cxpr_model_c_period_ast_same(const cxpr_ast* left, const cxpr_ast* right) {
+    if (!left || !right || cxpr_ast_type(left) != cxpr_ast_type(right)) return false;
+    if (cxpr_ast_type(left) == CXPR_NODE_VARIABLE) {
+        return cxpr_model_names_match(cxpr_ast_variable_name(left), cxpr_ast_variable_name(right));
+    }
+    if (cxpr_ast_type(left) == CXPR_NODE_NUMBER) {
+        return fabs(cxpr_ast_number_value(left) - cxpr_ast_number_value(right)) < 1e-12;
+    }
+    return false;
+}
+
+static bool cxpr_model_c_ast_same_simple(const cxpr_ast* left, const cxpr_ast* right) {
+    if (!left || !right || cxpr_ast_type(left) != cxpr_ast_type(right)) return false;
+    switch (cxpr_ast_type(left)) {
+    case CXPR_NODE_IDENTIFIER:
+        return cxpr_model_names_match(cxpr_ast_identifier_name(left),
+                                      cxpr_ast_identifier_name(right));
+    case CXPR_NODE_VARIABLE:
+        return cxpr_model_names_match(cxpr_ast_variable_name(left),
+                                      cxpr_ast_variable_name(right));
+    case CXPR_NODE_NUMBER:
+        return fabs(cxpr_ast_number_value(left) - cxpr_ast_number_value(right)) < 1e-12;
+    default:
+        return false;
+    }
+}
+
+static bool cxpr_model_c_ast_is_number(const cxpr_ast* ast, double value) {
+    return ast &&
+           cxpr_ast_type(ast) == CXPR_NODE_NUMBER &&
+           fabs(cxpr_ast_number_value(ast) - value) < 1e-12;
+}
+
+static bool cxpr_model_c_match_high_low_midpoint(const cxpr_ast* ast,
+                                                 const cxpr_ast** out_high_ast,
+                                                 const cxpr_ast** out_low_ast,
+                                                 const cxpr_ast** out_period_ast) {
+    const cxpr_ast* left;
+    const cxpr_ast* right;
+    const cxpr_ast* high_call = NULL;
+    const cxpr_ast* low_call = NULL;
+    const cxpr_ast* high_period;
+    const cxpr_ast* low_period;
+
+    if (out_high_ast) *out_high_ast = NULL;
+    if (out_low_ast) *out_low_ast = NULL;
+    if (out_period_ast) *out_period_ast = NULL;
+    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP ||
+        cxpr_ast_operator(ast) != CXPR_TOK_PLUS) {
+        return false;
+    }
+    left = cxpr_ast_left(ast);
+    right = cxpr_ast_right(ast);
+    if (left && cxpr_ast_type(left) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_names_match(cxpr_ast_function_name(left), "window_highest")) {
+        high_call = left;
+    } else if (left && cxpr_ast_type(left) == CXPR_NODE_FUNCTION_CALL &&
+               cxpr_model_names_match(cxpr_ast_function_name(left), "window_lowest")) {
+        low_call = left;
+    }
+    if (right && cxpr_ast_type(right) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_names_match(cxpr_ast_function_name(right), "window_highest")) {
+        high_call = right;
+    } else if (right && cxpr_ast_type(right) == CXPR_NODE_FUNCTION_CALL &&
+               cxpr_model_names_match(cxpr_ast_function_name(right), "window_lowest")) {
+        low_call = right;
+    }
+    if (!high_call || !low_call ||
+        cxpr_ast_function_argc(high_call) != 2u ||
+        cxpr_ast_function_argc(low_call) != 2u) {
+        return false;
+    }
+    high_period = cxpr_ast_function_arg(high_call, 1u);
+    low_period = cxpr_ast_function_arg(low_call, 1u);
+    if (!cxpr_model_c_period_ast_same(high_period, low_period)) return false;
+    if (out_high_ast) *out_high_ast = cxpr_ast_function_arg(high_call, 0u);
+    if (out_low_ast) *out_low_ast = cxpr_ast_function_arg(low_call, 0u);
+    if (out_period_ast) *out_period_ast = high_period;
+    return true;
+}
+
+static bool cxpr_model_c_match_scaled_high_low_midpoint(const cxpr_ast* ast,
+                                                        const cxpr_ast** out_high_ast,
+                                                        const cxpr_ast** out_low_ast,
+                                                        const cxpr_ast** out_period_ast) {
+    const cxpr_ast* sum = NULL;
+    if (out_high_ast) *out_high_ast = NULL;
+    if (out_low_ast) *out_low_ast = NULL;
+    if (out_period_ast) *out_period_ast = NULL;
+    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP ||
+        cxpr_ast_operator(ast) != CXPR_TOK_STAR) {
+        return false;
+    }
+    if (cxpr_model_c_ast_is_number(cxpr_ast_left(ast), 0.5)) {
+        sum = cxpr_ast_right(ast);
+    } else if (cxpr_model_c_ast_is_number(cxpr_ast_right(ast), 0.5)) {
+        sum = cxpr_ast_left(ast);
+    }
+    return sum && cxpr_model_c_match_high_low_midpoint(
+                      sum, out_high_ast, out_low_ast, out_period_ast);
+}
+
+static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
+                                               const char* name,
+                                               const cxpr_ast* high_ast,
+                                               const cxpr_ast* low_ast,
+                                               const cxpr_ast* period_ast,
+                                               const cxpr_c_target* target,
+                                               const cxpr_model_program* program,
+                                               cxpr_error* err) {
+    size_t capacity = 0u;
+    char* period_expr = NULL;
+    char* period_limit_expr = NULL;
+
+    if (!b || !name || !high_ast || !low_ast || !period_ast || !target || !program) return false;
+    if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return false;
+    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    if (!period_expr) return false;
+    {
+        cxpr_model_c_buf pb = {0};
+        cxpr_model_c_printf(
+            &pb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            capacity,
+            period_expr);
+        if (pb.oom) {
+            free(period_expr);
+            free(pb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        period_limit_expr = pb.data;
+    }
+
+    cxpr_model_c_printf(
+        b,
+        "    double %s; { const size_t _cx_limit = (size_t)(%s); double _cx_highest = 0.0; double _cx_lowest = 0.0; size_t _cx_count = 0u;\n",
+        name,
+        period_limit_expr);
+    for (size_t i = 0u; i < capacity; ++i) {
+        char* high_expr = cxpr_ast_to_c_at_offset(high_ast, (unsigned)i, target, err);
+        char* low_expr = high_expr
+                             ? cxpr_ast_to_c_at_offset(low_ast, (unsigned)i, target, err)
+                             : NULL;
+        if (!high_expr || !low_expr) {
+            free(high_expr);
+            free(low_expr);
+            free(period_expr);
+            free(period_limit_expr);
+            return false;
+        }
+        cxpr_model_c_printf(
+            b,
+            "        if (%zuu < _cx_limit) { double _cx_hi = %s; double _cx_lo = %s; if (!isnan(_cx_hi) && !isnan(_cx_lo)) { if (_cx_count == 0u) { _cx_highest = _cx_hi; _cx_lowest = _cx_lo; } if (_cx_hi > _cx_highest) _cx_highest = _cx_hi; if (_cx_lo < _cx_lowest) _cx_lowest = _cx_lo; _cx_count++; } }\n",
+            i,
+            high_expr,
+            low_expr);
+        free(high_expr);
+        free(low_expr);
+    }
+    cxpr_model_c_printf(
+        b,
+        "        %s = _cx_count == 0u ? 0.0 : (_cx_highest + _cx_lowest) * 0.5; }\n",
+        name);
+    free(period_expr);
+    free(period_limit_expr);
+    if (b->oom) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+static int cxpr_model_c_window_op_code(const char* name) {
+    if (cxpr_model_names_match(name, "window_sum")) return 0;
+    if (cxpr_model_names_match(name, "window_mean")) return 1;
+    if (cxpr_model_names_match(name, "window_highest")) return 2;
+    if (cxpr_model_names_match(name, "window_lowest")) return 3;
+    if (cxpr_model_names_match(name, "window_stddev")) return 4;
+    return -1;
+}
+
+static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
+                                                    const char* name,
+                                                    const cxpr_ast* ast,
+                                                    const cxpr_c_target* target,
+                                                    const cxpr_model_program* program,
+                                                    cxpr_error* err) {
+    const char* fn_name;
+    const cxpr_ast* value_ast;
+    const cxpr_ast* period_ast;
+    int op;
+    size_t capacity = 0u;
+    char* period_expr = NULL;
+    char* period_limit_expr = NULL;
+
+    if (!b || !name || !ast || cxpr_ast_type(ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_ast_function_argc(ast) != 2u || !target || !program) {
+        return false;
+    }
+    fn_name = cxpr_ast_function_name(ast);
+    op = cxpr_model_c_window_op_code(fn_name);
+    if (op < 0) return false;
+    if (op != 1 && op != 4) return false;
+    value_ast = cxpr_ast_function_arg(ast, 0u);
+    if (cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_window_is_function(cxpr_ast_function_name(value_ast))) {
+        return false;
+    }
+    period_ast = cxpr_ast_function_arg(ast, 1u);
+    if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return false;
+    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    if (!period_expr) return false;
+    {
+        cxpr_model_c_buf pb = {0};
+        cxpr_model_c_printf(
+            &pb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            capacity,
+            period_expr);
+        if (pb.oom) {
+            free(period_expr);
+            free(pb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        period_limit_expr = pb.data;
+    }
+
+    cxpr_model_c_printf(
+        b,
+        "    double %s; { const size_t _cx_limit = (size_t)(%s); double _cx_sum = 0.0; double _cx_sumsq = 0.0; double _cx_extreme = 0.0; size_t _cx_count = 0u;\n",
+        name,
+        period_limit_expr);
+    for (size_t i = 0u; i < capacity; ++i) {
+        char* value_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
+        if (!value_expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            return false;
+        }
+        cxpr_model_c_printf(
+            b,
+            "        if (%zuu < _cx_limit) { double _cx_x = %s; if (!isnan(_cx_x)) { if (_cx_count == 0u) _cx_extreme = _cx_x; if (%d == 2 && _cx_x > _cx_extreme) _cx_extreme = _cx_x; if (%d == 3 && _cx_x < _cx_extreme) _cx_extreme = _cx_x; _cx_sum += _cx_x; _cx_sumsq += _cx_x * _cx_x; _cx_count++; } }\n",
+            i,
+            value_expr,
+            op,
+            op);
+        free(value_expr);
+    }
+    if (op == 2 || op == 3) {
+        cxpr_model_c_printf(b, "        %s = _cx_count == 0u ? 0.0 : _cx_extreme; }\n", name);
+    } else if (op == 1) {
+        cxpr_model_c_printf(b, "        %s = _cx_count == 0u ? 0.0 : _cx_sum / (double)_cx_count; }\n", name);
+    } else if (op == 4) {
+        cxpr_model_c_printf(
+            b,
+            "        if (_cx_count == 0u) %s = 0.0; else { double _cx_mean = _cx_sum / (double)_cx_count; double _cx_var = (_cx_sumsq / (double)_cx_count) - _cx_mean * _cx_mean; %s = sqrt(_cx_var > 0.0 ? _cx_var : 0.0); } }\n",
+            name,
+            name);
+    } else {
+        cxpr_model_c_printf(b, "        %s = _cx_count == 0u ? 0.0 : _cx_sum; }\n", name);
+    }
+    free(period_expr);
+    free(period_limit_expr);
+    if (b->oom) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+static bool cxpr_model_c_match_mean_stddev_pair(const cxpr_ast* mean_ast,
+                                                const cxpr_ast* stddev_ast) {
+    if (!mean_ast || !stddev_ast ||
+        cxpr_ast_type(mean_ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_ast_type(stddev_ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_ast_function_argc(mean_ast) != 2u ||
+        cxpr_ast_function_argc(stddev_ast) != 2u ||
+        !cxpr_model_names_match(cxpr_ast_function_name(mean_ast), "window_mean") ||
+        !cxpr_model_names_match(cxpr_ast_function_name(stddev_ast), "window_stddev")) {
+        return false;
+    }
+    return cxpr_model_c_ast_same_simple(cxpr_ast_function_arg(mean_ast, 0u),
+                                        cxpr_ast_function_arg(stddev_ast, 0u)) &&
+           cxpr_model_c_period_ast_same(cxpr_ast_function_arg(mean_ast, 1u),
+                                        cxpr_ast_function_arg(stddev_ast, 1u));
+}
+
+static bool cxpr_model_c_emit_mean_stddev_bindings(cxpr_model_c_buf* b,
+                                                   const char* mean_name,
+                                                   const char* stddev_name,
+                                                   const cxpr_ast* mean_ast,
+                                                   const cxpr_c_target* target,
+                                                   const cxpr_model_program* program,
+                                                   cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    const cxpr_ast* period_ast;
+    size_t capacity = 0u;
+    char* period_expr = NULL;
+    char* period_limit_expr = NULL;
+
+    if (!b || !mean_name || !stddev_name || !mean_ast ||
+        cxpr_ast_type(mean_ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_ast_function_argc(mean_ast) != 2u || !target || !program) {
+        return false;
+    }
+    value_ast = cxpr_ast_function_arg(mean_ast, 0u);
+    period_ast = cxpr_ast_function_arg(mean_ast, 1u);
+    if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return false;
+    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    if (!period_expr) return false;
+    {
+        cxpr_model_c_buf pb = {0};
+        cxpr_model_c_printf(
+            &pb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            capacity,
+            period_expr);
+        if (pb.oom) {
+            free(period_expr);
+            free(pb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        period_limit_expr = pb.data;
+    }
+
+    cxpr_model_c_printf(
+        b,
+        "    double %s; double %s; { const size_t _cx_limit = (size_t)(%s); double _cx_sum = 0.0; double _cx_sumsq = 0.0; size_t _cx_count = 0u;\n",
+        mean_name,
+        stddev_name,
+        period_limit_expr);
+    for (size_t i = 0u; i < capacity; ++i) {
+        char* value_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
+        if (!value_expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            return false;
+        }
+        cxpr_model_c_printf(
+            b,
+            "        if (%zuu < _cx_limit) { double _cx_x = %s; if (!isnan(_cx_x)) { _cx_sum += _cx_x; _cx_sumsq += _cx_x * _cx_x; _cx_count++; } }\n",
+            i,
+            value_expr);
+        free(value_expr);
+    }
+    cxpr_model_c_printf(
+        b,
+        "        if (_cx_count == 0u) { %s = 0.0; %s = 0.0; } else { double _cx_mean = _cx_sum / (double)_cx_count; double _cx_var = (_cx_sumsq / (double)_cx_count) - _cx_mean * _cx_mean; %s = _cx_mean; %s = sqrt(_cx_var > 0.0 ? _cx_var : 0.0); } }\n",
+        mean_name,
+        stddev_name,
+        mean_name,
+        stddev_name);
+    free(period_expr);
+    free(period_limit_expr);
+    if (b->oom) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+static bool cxpr_model_c_match_mean_roc(const cxpr_ast* ast,
+                                        const cxpr_ast** out_value_ast,
+                                        const cxpr_ast** out_roc_period_ast,
+                                        const cxpr_ast** out_mean_period_ast) {
+    const cxpr_ast* roc_ast;
+    if (out_value_ast) *out_value_ast = NULL;
+    if (out_roc_period_ast) *out_roc_period_ast = NULL;
+    if (out_mean_period_ast) *out_mean_period_ast = NULL;
+    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_FUNCTION_CALL ||
+        !cxpr_model_names_match(cxpr_ast_function_name(ast), "window_mean") ||
+        cxpr_ast_function_argc(ast) != 2u) {
+        return false;
+    }
+    roc_ast = cxpr_ast_function_arg(ast, 0u);
+    if (!roc_ast || cxpr_ast_type(roc_ast) != CXPR_NODE_FUNCTION_CALL ||
+        !cxpr_model_names_match(cxpr_ast_function_name(roc_ast), "window_roc") ||
+        cxpr_ast_function_argc(roc_ast) != 2u) {
+        return false;
+    }
+    if (out_value_ast) *out_value_ast = cxpr_ast_function_arg(roc_ast, 0u);
+    if (out_roc_period_ast) *out_roc_period_ast = cxpr_ast_function_arg(roc_ast, 1u);
+    if (out_mean_period_ast) *out_mean_period_ast = cxpr_ast_function_arg(ast, 1u);
+    return true;
+}
+
+static bool cxpr_model_c_emit_mean_roc_binding(cxpr_model_c_buf* b,
+                                               const char* name,
+                                               const cxpr_ast* ast,
+                                               const cxpr_c_target* target,
+                                               const cxpr_model_program* program,
+                                               cxpr_error* err) {
+    const cxpr_ast* value_ast = NULL;
+    const cxpr_ast* roc_period_ast = NULL;
+    const cxpr_ast* mean_period_ast = NULL;
+    size_t roc_capacity = 0u;
+    size_t mean_capacity = 0u;
+    char* roc_period_expr = NULL;
+    char* mean_period_expr = NULL;
+    char* roc_limit_expr = NULL;
+    char* mean_limit_expr = NULL;
+
+    if (!cxpr_model_c_match_mean_roc(ast, &value_ast, &roc_period_ast, &mean_period_ast)) {
+        return false;
+    }
+    if (!cxpr_model_c_window_period_capacity(program, roc_period_ast, &roc_capacity, err) ||
+        !cxpr_model_c_window_period_capacity(program, mean_period_ast, &mean_capacity, err)) {
+        return false;
+    }
+    roc_period_expr = cxpr_ast_to_c_at_offset(roc_period_ast, 0u, target, err);
+    mean_period_expr = roc_period_expr
+                           ? cxpr_ast_to_c_at_offset(mean_period_ast, 0u, target, err)
+                           : NULL;
+    if (!roc_period_expr || !mean_period_expr) {
+        free(roc_period_expr);
+        free(mean_period_expr);
+        return false;
+    }
+    {
+        cxpr_model_c_buf rb = {0};
+        cxpr_model_c_buf mb = {0};
+        cxpr_model_c_printf(
+            &rb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            roc_capacity,
+            roc_period_expr);
+        cxpr_model_c_printf(
+            &mb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            mean_capacity,
+            mean_period_expr);
+        if (rb.oom || mb.oom) {
+            free(roc_period_expr);
+            free(mean_period_expr);
+            free(rb.data);
+            free(mb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        roc_limit_expr = rb.data;
+        mean_limit_expr = mb.data;
+    }
+
+    cxpr_model_c_printf(
+        b,
+        "    double %s; { const size_t _cx_rp = (size_t)(%s); const size_t _cx_mp = (size_t)(%s); double _cx_sum = 0.0; size_t _cx_count = 0u;\n",
+        name,
+        roc_limit_expr,
+        mean_limit_expr);
+    cxpr_model_c_printf(b, "        if (_cx_rp == %zuu) {\n", roc_capacity);
+    for (size_t i = 0u; i < mean_capacity; ++i) {
+        char* now_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
+        char* prev_expr = now_expr
+                              ? cxpr_ast_to_c_at_offset(
+                                    value_ast, (unsigned)(i + roc_capacity), target, err)
+                              : NULL;
+        if (!now_expr || !prev_expr) {
+            free(now_expr);
+            free(prev_expr);
+            free(roc_period_expr);
+            free(mean_period_expr);
+            free(roc_limit_expr);
+            free(mean_limit_expr);
+            return false;
+        }
+        cxpr_model_c_printf(
+            b,
+            "            if (%zuu < _cx_mp) { double _cx_now = %s; if (!isnan(_cx_now)) { double _cx_prev = %s; _cx_sum += (isnan(_cx_prev) || fabs(_cx_prev) <= 1e-12) ? 0.0 : ((_cx_now - _cx_prev) / _cx_prev) * 100.0; _cx_count++; } }\n",
+            i,
+            now_expr,
+            prev_expr);
+        free(now_expr);
+        free(prev_expr);
+    }
+    cxpr_model_c_puts(b, "        } else {\n");
+    for (size_t i = 0u; i < mean_capacity; ++i) {
+        char* now_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
+        if (!now_expr) {
+            free(roc_period_expr);
+            free(mean_period_expr);
+            free(roc_limit_expr);
+            free(mean_limit_expr);
+            return false;
+        }
+        cxpr_model_c_printf(
+            b,
+            "            if (%zuu < _cx_mp) { double _cx_now = %s; double _cx_prev = NAN; if (!isnan(_cx_now)) { switch (_cx_rp) {",
+            i,
+            now_expr);
+        free(now_expr);
+        for (size_t p = 1u; p <= roc_capacity; ++p) {
+            char* prev_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)(i + p), target, err);
+            if (!prev_expr) {
+                free(roc_period_expr);
+                free(mean_period_expr);
+                free(roc_limit_expr);
+                free(mean_limit_expr);
+                return false;
+            }
+            cxpr_model_c_printf(b, " case %zuu: _cx_prev = %s; break;", p, prev_expr);
+            free(prev_expr);
+        }
+        cxpr_model_c_puts(
+            b,
+            " default: break; } _cx_sum += (isnan(_cx_prev) || fabs(_cx_prev) <= 1e-12) ? 0.0 : ((_cx_now - _cx_prev) / _cx_prev) * 100.0; _cx_count++; } }\n");
+    }
+    cxpr_model_c_puts(b, "        }\n");
+    cxpr_model_c_printf(
+        b,
+        "        %s = _cx_count == 0u ? 0.0 : _cx_sum / (double)_cx_count; }\n",
+        name);
+    free(roc_period_expr);
+    free(mean_period_expr);
+    free(roc_limit_expr);
+    free(mean_limit_expr);
+    if (b->oom) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+typedef bool (*cxpr_model_c_single_binding_emitter)(cxpr_model_c_buf* b,
+                                                    const char* name,
+                                                    const cxpr_ast* ast,
+                                                    const cxpr_c_target* target,
+                                                    const cxpr_model_program* program,
+                                                    cxpr_error* err);
+
+static bool cxpr_model_c_emit_midpoint_binding_from_ast(cxpr_model_c_buf* b,
+                                                        const char* name,
+                                                        const cxpr_ast* ast,
+                                                        const cxpr_c_target* target,
+                                                        const cxpr_model_program* program,
+                                                        cxpr_error* err) {
+    const cxpr_ast* high_ast = NULL;
+    const cxpr_ast* low_ast = NULL;
+    const cxpr_ast* period_ast = NULL;
+    if (!cxpr_model_c_match_scaled_high_low_midpoint(ast, &high_ast, &low_ast, &period_ast)) {
+        return false;
+    }
+    return cxpr_model_c_emit_midpoint_binding(
+        b, name, high_ast, low_ast, period_ast, target, program, err);
+}
+
+static bool cxpr_model_c_emit_optimized_single_binding(cxpr_model_c_buf* b,
+                                                       const char* name,
+                                                       const cxpr_ast* ast,
+                                                       const cxpr_c_target* target,
+                                                       const cxpr_model_program* program,
+                                                       cxpr_error* err) {
+    static const cxpr_model_c_single_binding_emitter emitters[] = {
+        cxpr_model_c_emit_midpoint_binding_from_ast,
+        cxpr_model_c_emit_simple_window_binding,
+        cxpr_model_c_emit_mean_roc_binding,
+    };
+    for (size_t i = 0u; i < sizeof(emitters) / sizeof(emitters[0]); ++i) {
+        if (emitters[i](b, name, ast, target, program, err)) return true;
+        if (err && err->code != CXPR_OK) return false;
+    }
+    return false;
+}
+
+static bool cxpr_model_c_emit_optimized_binding_pair(cxpr_model_c_buf* b,
+                                                     const char* first_name,
+                                                     const char* second_name,
+                                                     const cxpr_ast* first_ast,
+                                                     const cxpr_ast* second_ast,
+                                                     const cxpr_c_target* target,
+                                                     const cxpr_model_program* program,
+                                                     cxpr_error* err) {
+    if (!cxpr_model_c_match_mean_stddev_pair(first_ast, second_ast)) return false;
+    return cxpr_model_c_emit_mean_stddev_bindings(
+        b, first_name, second_name, first_ast, target, program, err);
+}
+
+static char* cxpr_model_ast_c_emit_high_low_midpoint(const cxpr_ast* high_ast,
+                                                     const cxpr_ast* low_ast,
+                                                     const cxpr_ast* period_ast,
+                                                     const cxpr_c_target* target,
+                                                     const cxpr_model_program* program,
+                                                     cxpr_error* err) {
+    size_t capacity = 0u;
+    char* period_expr = NULL;
+    char* period_limit_expr = NULL;
+    bool guard_values;
+    cxpr_model_c_buf b = {0};
+
+    if (!high_ast || !low_ast || !period_ast || !target || !program) return NULL;
+    guard_values = cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE;
+    if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return NULL;
+    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    if (!period_expr) return NULL;
+    {
+        cxpr_model_c_buf pb = {0};
+        cxpr_model_c_printf(
+            &pb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            capacity,
+            period_expr);
+        if (pb.oom) {
+            free(period_expr);
+            free(pb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        period_limit_expr = pb.data;
+    }
+
+    cxpr_model_c_puts(&b, "cxpr_model_window_midpoint_c((const double[]){");
+    for (size_t i = 0u; i < capacity; ++i) {
+        char* expr;
+        if (i > 0u) cxpr_model_c_puts(&b, ", ");
+        expr = cxpr_ast_to_c_at_offset(high_ast, (unsigned)i, target, err);
+        if (!expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            free(b.data);
+            return NULL;
+        }
+        if (guard_values) {
+            cxpr_model_c_printf(&b,
+                                "((%zuu < (size_t)(%s)) ? (%s) : NAN)",
+                                i,
+                                period_limit_expr,
+                                expr);
+        } else {
+            cxpr_model_c_printf(&b, "(%s)", expr);
+        }
+        free(expr);
+    }
+    cxpr_model_c_puts(&b, "}, (const double[]){");
+    for (size_t i = 0u; i < capacity; ++i) {
+        char* expr;
+        if (i > 0u) cxpr_model_c_puts(&b, ", ");
+        expr = cxpr_ast_to_c_at_offset(low_ast, (unsigned)i, target, err);
+        if (!expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            free(b.data);
+            return NULL;
+        }
+        if (guard_values) {
+            cxpr_model_c_printf(&b,
+                                "((%zuu < (size_t)(%s)) ? (%s) : NAN)",
+                                i,
+                                period_limit_expr,
+                                expr);
+        } else {
+            cxpr_model_c_printf(&b, "(%s)", expr);
+        }
+        free(expr);
+    }
+    cxpr_model_c_printf(&b, "}, %zuu, %s)", capacity, period_limit_expr);
+    free(period_expr);
+    free(period_limit_expr);
+    if (b.oom) {
+        free(b.data);
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return NULL;
+    }
+    return b.data;
+}
+
+static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
+                                               unsigned lookback_offset,
+                                               const cxpr_c_target* target,
+                                               const cxpr_model_program* program,
+                                               cxpr_error* err) {
+    const char* name = cxpr_ast_function_name(ast);
+    const char* op = cxpr_model_c_window_op(name);
+    bool is_roc = cxpr_model_names_match(name, "window_roc");
+    const cxpr_ast* value_ast;
+    const cxpr_ast* period_ast;
+    size_t capacity = 0u;
+    size_t value_count;
+    char* period_expr = NULL;
+    char* period_limit_expr = NULL;
+    bool guard_values = false;
+    cxpr_model_c_buf b = {0};
+    if (!program || (!op && !is_roc) || cxpr_ast_function_argc(ast) != 2u) {
+        cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
+                             "window function expects two arguments", 0, 0);
+        return NULL;
+    }
+    value_ast = cxpr_ast_function_arg(ast, 0u);
+    period_ast = cxpr_ast_function_arg(ast, 1u);
+    guard_values = cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE;
+    if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return NULL;
+    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    if (!period_expr) return NULL;
+    {
+        cxpr_model_c_buf pb = {0};
+        cxpr_model_c_printf(
+            &pb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            capacity,
+            period_expr);
+        if (pb.oom) {
+            free(period_expr);
+            free(pb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        period_limit_expr = pb.data;
+    }
+    if (cxpr_model_names_match(name, "window_mean") &&
+        cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_names_match(cxpr_ast_function_name(value_ast), "window_roc") &&
+        cxpr_ast_function_argc(value_ast) == 2u) {
+        const cxpr_ast* roc_value_ast = cxpr_ast_function_arg(value_ast, 0u);
+        const cxpr_ast* roc_period_ast = cxpr_ast_function_arg(value_ast, 1u);
+        size_t roc_capacity = 0u;
+        size_t source_count;
+        char* roc_period_expr;
+        char* roc_limit_expr;
+        cxpr_model_c_buf rb = {0};
+        if (!cxpr_model_c_window_period_capacity(program, roc_period_ast, &roc_capacity, err)) {
+            free(period_expr);
+            free(period_limit_expr);
+            return NULL;
+        }
+        roc_period_expr = cxpr_ast_to_c_at_offset(roc_period_ast, 0u, target, err);
+        if (!roc_period_expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            return NULL;
+        }
+        cxpr_model_c_printf(
+            &rb,
+            "(int)fmax(1.0, fmin((double)%zuu, round(%s)))",
+            roc_capacity,
+            roc_period_expr);
+        if (rb.oom) {
+            free(roc_period_expr);
+            free(period_expr);
+            free(period_limit_expr);
+            free(rb.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        roc_limit_expr = rb.data;
+        source_count = capacity + roc_capacity;
+        cxpr_model_c_puts(&b, "cxpr_model_window_mean_roc_c((const double[]){");
+        for (size_t i = 0u; i < source_count; ++i) {
+            char* source_expr;
+            if (i > 0u) cxpr_model_c_puts(&b, ", ");
+            source_expr = cxpr_ast_to_c_at_offset(
+                roc_value_ast, lookback_offset + (unsigned)i, target, err);
+            if (!source_expr) {
+                free(roc_period_expr);
+                free(roc_limit_expr);
+                free(period_expr);
+                free(period_limit_expr);
+                free(b.data);
+                return NULL;
+            }
+            cxpr_model_c_printf(&b, "(%s)", source_expr);
+            free(source_expr);
+        }
+        cxpr_model_c_printf(
+            &b,
+            "}, %zuu, %s, %s)",
+            source_count,
+            roc_limit_expr,
+            period_limit_expr);
+        free(roc_period_expr);
+        free(roc_limit_expr);
+        free(period_expr);
+        free(period_limit_expr);
+        if (b.oom) {
+            free(b.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        return b.data;
+    }
+    value_count = is_roc ? capacity + 1u : capacity;
+    cxpr_model_c_puts(&b, is_roc
+                          ? "cxpr_model_window_roc_c((const double[]){"
+                          : "cxpr_model_window_eval_c((const double[]){");
+    for (size_t i = 0u; i < value_count; ++i) {
+        char* value_expr;
+        if (i > 0u) cxpr_model_c_puts(&b, ", ");
+        value_expr = (cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+                      cxpr_model_window_is_function(cxpr_ast_function_name(value_ast)))
+                         ? cxpr_model_ast_c_emit_window_call(
+                               value_ast, lookback_offset + (unsigned)i, target, program, err)
+                         : cxpr_ast_to_c_at_offset(
+                               value_ast, lookback_offset + (unsigned)i, target, err);
+        if (!value_expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            free(b.data);
+            return NULL;
+        }
+        if (!guard_values) {
+            cxpr_model_c_printf(&b, "(%s)", value_expr);
+        } else if (is_roc) {
+            cxpr_model_c_printf(&b,
+                                "((%zuu == 0u || %zuu <= (size_t)(%s)) ? (%s) : NAN)",
+                                i,
+                                i,
+                                period_limit_expr,
+                                value_expr);
+        } else {
+            cxpr_model_c_printf(&b,
+                                "((%zuu < (size_t)(%s)) ? (%s) : NAN)",
+                                i,
+                                period_limit_expr,
+                                value_expr);
+        }
+        free(value_expr);
+    }
+    if (is_roc) {
+        cxpr_model_c_printf(
+            &b,
+            "}, %zuu, %s)",
+            value_count,
+            period_limit_expr);
+    } else {
+        cxpr_model_c_printf(
+            &b,
+            "}, %zuu, %s, %s)",
+            capacity,
+            period_limit_expr,
+            op);
+    }
+    free(period_expr);
+    free(period_limit_expr);
+    if (b.oom) {
+        free(b.data);
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return NULL;
+    }
+    return b.data;
+}
+
 static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
                                         unsigned lookback_offset,
                                         void* userdata,
@@ -847,6 +1739,14 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
     (void)target_data;
     if (handled) *handled = false;
     if (!name) return NULL;
+
+    if (cxpr_model_window_is_function(name)) {
+        if (handled) *handled = true;
+        return cxpr_model_ast_c_emit_window_call(
+            ast, lookback_offset, &target,
+            target_data ? target_data->program : NULL,
+            err);
+    }
 
     if ((cxpr_model_names_match(name, "min") || cxpr_model_names_match(name, "max")) &&
         argc == 2u) {
@@ -980,6 +1880,23 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
         .emit_call_at_offset = cxpr_model_ast_c_emit_call,
         .userdata = &userdata,
     };
+    if (ast && cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP &&
+        cxpr_ast_operator(ast) == CXPR_TOK_STAR) {
+        const cxpr_ast* sum = NULL;
+        const cxpr_ast* high_ast = NULL;
+        const cxpr_ast* low_ast = NULL;
+        const cxpr_ast* period_ast = NULL;
+        if (cxpr_model_c_ast_is_number(cxpr_ast_left(ast), 0.5)) {
+            sum = cxpr_ast_right(ast);
+        } else if (cxpr_model_c_ast_is_number(cxpr_ast_right(ast), 0.5)) {
+            sum = cxpr_ast_left(ast);
+        }
+        if (sum && cxpr_model_c_match_high_low_midpoint(
+                       sum, &high_ast, &low_ast, &period_ast)) {
+            return cxpr_model_ast_c_emit_high_low_midpoint(
+                high_ast, low_ast, period_ast, &target, program, err);
+        }
+    }
     return cxpr_ast_to_c(ast, &target, err);
 }
 
@@ -1008,6 +1925,31 @@ static char* cxpr_model_ast_binary_to_c_with_temps(cxpr_model_ast_temp_emit* emi
     char* left;
     char* right;
     cxpr_model_c_buf b = {0};
+
+    if (op == CXPR_TOK_STAR) {
+        const cxpr_ast* scale = NULL;
+        const cxpr_ast* sum = NULL;
+        const cxpr_ast* high_ast = NULL;
+        const cxpr_ast* low_ast = NULL;
+        const cxpr_ast* period_ast = NULL;
+        if (cxpr_model_c_ast_is_number(cxpr_ast_left(ast), 0.5)) {
+            scale = cxpr_ast_left(ast);
+            sum = cxpr_ast_right(ast);
+        } else if (cxpr_model_c_ast_is_number(cxpr_ast_right(ast), 0.5)) {
+            scale = cxpr_ast_right(ast);
+            sum = cxpr_ast_left(ast);
+        }
+        (void)scale;
+        if (sum && cxpr_model_c_match_high_low_midpoint(
+                       sum, &high_ast, &low_ast, &period_ast)) {
+            cxpr_model_ast_c_target* target_data =
+                emit && emit->target ? (cxpr_model_ast_c_target*)emit->target->userdata : NULL;
+            if (target_data && target_data->program) {
+                return cxpr_model_ast_c_emit_high_low_midpoint(
+                    high_ast, low_ast, period_ast, emit->target, target_data->program, err);
+            }
+        }
+    }
 
     switch (op) {
     case CXPR_TOK_PLUS: ops = "+"; break;
@@ -1438,6 +2380,18 @@ static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* prog
     return true;
 }
 
+static void cxpr_model_c_emit_common_helpers(cxpr_model_c_buf* b) {
+    cxpr_model_c_puts(b,
+                      "#include <cxpr/model_runtime.h>\n\n"
+                      "#ifndef CXPR_UNLIKELY\n"
+                      "#if defined(__GNUC__) || defined(__clang__)\n"
+                      "#define CXPR_UNLIKELY(x) __builtin_expect(!!(x), 0)\n"
+                      "#else\n"
+                      "#define CXPR_UNLIKELY(x) (x)\n"
+                      "#endif\n"
+                      "#endif\n\n");
+}
+
 static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program,
                                                       const char* qualifiers,
                                                       const char* function_name,
@@ -1451,9 +2405,20 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
     char* safe_name = NULL;
     char** state_next_names = NULL;
     bool* needed_bindings = NULL;
+    bool* skip_bindings = NULL;
+    cxpr_model_ast_c_target ast_target_data = {0};
+    cxpr_c_target ast_target = {0};
 
     if (out_source) *out_source = NULL;
     if (!program || !program->has_fused_layout || !function_name || !out_source) return false;
+    ast_target_data.program = program;
+    ast_target_data.function_prefix = function_name;
+    ast_target_data.literal_param_values = literal_param_values;
+    ast_target_data.literal_param_count = literal_param_count;
+    ast_target.api_version = CXPR_C_TARGET_API_VERSION;
+    ast_target.emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf;
+    ast_target.emit_call_at_offset = cxpr_model_ast_c_emit_call;
+    ast_target.userdata = &ast_target_data;
     state_next_names = (char**)calloc(program->fused_slot_count ? program->fused_slot_count : 1u,
                                       sizeof(char*));
     if (!state_next_names && program->fused_slot_count > 0u) {
@@ -1464,6 +2429,14 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
                                     sizeof(bool));
     if (!needed_bindings && program->binding_count > 0u) {
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        free(state_next_names);
+        return false;
+    }
+    skip_bindings = (bool*)calloc(program->binding_count ? program->binding_count : 1u,
+                                  sizeof(bool));
+    if (!skip_bindings && program->binding_count > 0u) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        free(needed_bindings);
         free(state_next_names);
         return false;
     }
@@ -1478,14 +2451,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
             err)) {
         goto fail;
     }
-    cxpr_model_c_puts(&b,
-                      "#ifndef CXPR_UNLIKELY\n"
-                      "#if defined(__GNUC__) || defined(__clang__)\n"
-                      "#define CXPR_UNLIKELY(x) __builtin_expect(!!(x), 0)\n"
-                      "#else\n"
-                      "#define CXPR_UNLIKELY(x) (x)\n"
-                      "#endif\n"
-                      "#endif\n\n");
+    cxpr_model_c_emit_common_helpers(&b);
     if (!cxpr_model_c_emit_child_model_helpers(program, function_name, &b, err)) goto fail;
     if (!cxpr_model_c_emit_defined_functions_ast(program, function_name, &b, err)) goto fail;
 
@@ -1528,13 +2494,14 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         size_t base = cxpr_model_c_history_base(program, i);
         size_t depth = program->history_specs[i].depth;
+        size_t capacity = cxpr_model_c_history_capacity(depth);
         if (depth == 0u) continue;
         cxpr_model_c_printf(&b, "    if (CXPR_UNLIKELY(_cx_slots[%zu] == 0.0)) {", base);
-        for (size_t j = 0u; j < depth; ++j) {
+        for (size_t j = 0u; j < capacity; ++j) {
             cxpr_model_c_printf(&b, " _cx_slots[%zu] = NAN;", base + 2u + j);
         }
         cxpr_model_c_printf(&b, " _cx_slots[%zu] = 1.0; }\n", base);
-        if (depth > 1u && !cxpr_model_c_history_use_shift(depth)) {
+        if (capacity > 1u && !cxpr_model_c_history_use_shift(depth)) {
             cxpr_model_c_printf(&b, "    const size_t _cx_history_next_%zu = (size_t)_cx_slots[%zu];\n",
                                 i, base + 1u);
         }
@@ -1548,7 +2515,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
         char* expr;
         char* name;
         bool owns_name = false;
-        if (!needed_bindings[i]) continue;
+        if (!needed_bindings[i] || skip_bindings[i]) continue;
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
             size_t slot = cxpr_model_fused_slot_find(program->fused_slot_names,
                                                      program->fused_slot_count,
@@ -1565,6 +2532,44 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
             owns_name = true;
         }
         if (!name) goto oom;
+        if (i + 1u < program->binding_count &&
+            needed_bindings[i + 1u] &&
+            !skip_bindings[i + 1u] &&
+            program->bindings[i].kind != CXPR_MODEL_BINDING_STATE_UPDATE &&
+            program->bindings[i + 1u].kind != CXPR_MODEL_BINDING_STATE_UPDATE) {
+            char* next_name = cxpr_model_c_safe_name(program->bindings[i + 1u].name);
+            if (!next_name) {
+                if (owns_name) free(name);
+                goto oom;
+            }
+            if (cxpr_model_c_emit_optimized_binding_pair(
+                    &b,
+                    name,
+                    next_name,
+                    program->bindings[i].program->ast,
+                    program->bindings[i + 1u].program->ast,
+                    &ast_target,
+                    program,
+                    err)) {
+                skip_bindings[i + 1u] = true;
+                free(next_name);
+                if (owns_name) free(name);
+                continue;
+            } else if (err && err->code != CXPR_OK) {
+                free(next_name);
+                if (owns_name) free(name);
+                goto fail;
+            }
+            free(next_name);
+        }
+        if (cxpr_model_c_emit_optimized_single_binding(
+                &b, name, program->bindings[i].program->ast, &ast_target, program, err)) {
+            if (owns_name) free(name);
+            continue;
+        } else if (err && err->code != CXPR_OK) {
+            if (owns_name) free(name);
+            goto fail;
+        }
         expr = cxpr_model_ast_expr_to_c(program,
                                         program->bindings[i].program->ast,
                                         function_name,
@@ -1614,6 +2619,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         size_t base = cxpr_model_c_history_base(program, i);
         size_t depth = program->history_specs[i].depth;
+        size_t capacity = cxpr_model_c_history_capacity(depth);
         char* current = NULL;
         if (program->history_specs[i].target &&
             cxpr_ast_type(program->history_specs[i].target) == CXPR_NODE_PRODUCER_ACCESS) {
@@ -1640,7 +2646,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
                     "    _cx_slots[%zu] = %s;\n",
                     base + 2u,
                     current);
-            } else if (cxpr_model_c_is_power_of_two(depth)) {
+            } else if (cxpr_model_c_is_power_of_two(capacity)) {
                 cxpr_model_c_printf(
                     &b,
                     "    { const double _cx_history_value_%zu = %s; _cx_slots[%zu + _cx_history_next_%zu] = _cx_history_value_%zu; _cx_slots[%zu] = (double)((_cx_history_next_%zu + 1u) & %zuu); }\n",
@@ -1651,7 +2657,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
                     i,
                     base + 1u,
                     i,
-                    depth - 1u);
+                    capacity - 1u);
             } else {
                 cxpr_model_c_printf(
                     &b,
@@ -1663,7 +2669,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
                     i,
                     base + 1u,
                     i,
-                    depth);
+                    capacity);
             }
         }
         free(current);
@@ -1673,6 +2679,7 @@ static bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* 
     for (size_t i = 0u; i < program->fused_slot_count; ++i) free(state_next_names[i]);
     free(state_next_names);
     free(needed_bindings);
+    free(skip_bindings);
     *out_source = b.data;
     return true;
 
@@ -1685,6 +2692,7 @@ fail:
         free(state_next_names);
     }
     free(needed_bindings);
+    free(skip_bindings);
     free(b.data);
     return false;
 }
@@ -1923,6 +2931,10 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
         return NULL;
     }
     if (!program->has_fused_ir || !program->fused_ir.code) {
+        if (ast_err.code != CXPR_OK) {
+            if (err) *err = ast_err;
+            return NULL;
+        }
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              "Model C backend requires runnable fused scalar IR fallback", 0, 0);
         return NULL;

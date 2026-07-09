@@ -24,6 +24,14 @@ typedef enum {
 } cxpr_timeseries_window_mode;
 
 typedef enum {
+    CXPR_TIMESERIES_AGG_SUM,
+    CXPR_TIMESERIES_AGG_MEAN,
+    CXPR_TIMESERIES_AGG_HIGHEST,
+    CXPR_TIMESERIES_AGG_LOWEST,
+    CXPR_TIMESERIES_AGG_STDDEV
+} cxpr_timeseries_agg_mode;
+
+typedef enum {
     CXPR_TIMESERIES_NET_UP = 1,
     CXPR_TIMESERIES_NET_DOWN = -1
 } cxpr_timeseries_net_mode;
@@ -263,6 +271,133 @@ static cxpr_value cxpr_timeseries_window_eval(const cxpr_ast* call_ast,
         }
     }
     return cxpr_num(out);
+}
+
+static cxpr_value cxpr_timeseries_window_agg_eval(const cxpr_ast* call_ast,
+                                                  const cxpr_context* ctx,
+                                                  const cxpr_registry* reg,
+                                                  cxpr_timeseries_agg_mode mode,
+                                                  cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    long long samples_ll;
+    double sum = 0.0;
+    double sumsq = 0.0;
+    double extreme = 0.0;
+    long long count = 0;
+
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    value_ast = cxpr_ast_function_arg(call_ast, 0);
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
+        return cxpr_num(NAN);
+    }
+    for (long long i = 0; i < samples_ll; ++i) {
+        double value = 0.0;
+        if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
+            return cxpr_num(NAN);
+        }
+        if (isnan(value)) continue;
+        if (count == 0 ||
+            (mode == CXPR_TIMESERIES_AGG_HIGHEST && value > extreme) ||
+            (mode == CXPR_TIMESERIES_AGG_LOWEST && value < extreme)) {
+            extreme = value;
+        }
+        sum += value;
+        sumsq += value * value;
+        count++;
+    }
+    if (count == 0) return cxpr_num(0.0);
+    if (mode == CXPR_TIMESERIES_AGG_HIGHEST ||
+        mode == CXPR_TIMESERIES_AGG_LOWEST) {
+        return cxpr_num(extreme);
+    }
+    if (mode == CXPR_TIMESERIES_AGG_MEAN) {
+        return cxpr_num(sum / (double)count);
+    }
+    if (mode == CXPR_TIMESERIES_AGG_STDDEV) {
+        double mean = sum / (double)count;
+        double variance = (sumsq / (double)count) - mean * mean;
+        return cxpr_num(sqrt(variance > 0.0 ? variance : 0.0));
+    }
+    return cxpr_num(sum);
+}
+
+static cxpr_value cxpr_timeseries_window_sum(const cxpr_ast* call_ast,
+                                             const cxpr_context* ctx,
+                                             const cxpr_registry* reg,
+                                             void* userdata,
+                                             cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_window_agg_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_AGG_SUM, err);
+}
+
+static cxpr_value cxpr_timeseries_window_mean(const cxpr_ast* call_ast,
+                                              const cxpr_context* ctx,
+                                              const cxpr_registry* reg,
+                                              void* userdata,
+                                              cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_window_agg_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_AGG_MEAN, err);
+}
+
+static cxpr_value cxpr_timeseries_window_highest_value(const cxpr_ast* call_ast,
+                                                       const cxpr_context* ctx,
+                                                       const cxpr_registry* reg,
+                                                       void* userdata,
+                                                       cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_window_agg_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_AGG_HIGHEST, err);
+}
+
+static cxpr_value cxpr_timeseries_window_lowest_value(const cxpr_ast* call_ast,
+                                                      const cxpr_context* ctx,
+                                                      const cxpr_registry* reg,
+                                                      void* userdata,
+                                                      cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_window_agg_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_AGG_LOWEST, err);
+}
+
+static cxpr_value cxpr_timeseries_window_stddev(const cxpr_ast* call_ast,
+                                                const cxpr_context* ctx,
+                                                const cxpr_registry* reg,
+                                                void* userdata,
+                                                cxpr_error* err) {
+    (void)userdata;
+    return cxpr_timeseries_window_agg_eval(
+        call_ast, ctx, reg, CXPR_TIMESERIES_AGG_STDDEV, err);
+}
+
+static cxpr_value cxpr_timeseries_window_roc(const cxpr_ast* call_ast,
+                                             const cxpr_context* ctx,
+                                             const cxpr_registry* reg,
+                                             void* userdata,
+                                             cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    long long samples_ll;
+    double value = 0.0;
+    double previous = 0.0;
+
+    (void)userdata;
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    value_ast = cxpr_ast_function_arg(call_ast, 0);
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
+        return cxpr_num(NAN);
+    }
+    if (!cxpr_eval_ast_number_at_offset(value_ast, 0.0, ctx, reg, &value, err) ||
+        !cxpr_eval_ast_number_at_offset(value_ast, (double)samples_ll, ctx, reg, &previous, err)) {
+        return cxpr_num(NAN);
+    }
+    if (isnan(value)) return cxpr_num(NAN);
+    if (isnan(previous) || fabs(previous) <= 1e-12) return cxpr_num(0.0);
+    return cxpr_num(((value - previous) / previous) * 100.0);
 }
 
 static cxpr_value cxpr_timeseries_cross_above(const cxpr_ast* call_ast,
@@ -555,6 +690,24 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_add_timeseries(reg, "lowest", cxpr_timeseries_lowest, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "lowest", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_sum", cxpr_timeseries_window_sum, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_sum", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_mean", cxpr_timeseries_window_mean, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_mean", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_highest", cxpr_timeseries_window_highest_value, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_highest", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_lowest", cxpr_timeseries_window_lowest_value, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_lowest", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_stddev", cxpr_timeseries_window_stddev, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_stddev", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_roc", cxpr_timeseries_window_roc, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_roc", value_samples_params, 2u);
 }
 
 bool cxpr_timeseries_is_builtin(const char* name) {
@@ -571,5 +724,11 @@ bool cxpr_timeseries_is_builtin(const char* name) {
            strcmp(name, "delta") == 0 ||
            strcmp(name, "roc") == 0 ||
            strcmp(name, "highest") == 0 ||
-           strcmp(name, "lowest") == 0;
+           strcmp(name, "lowest") == 0 ||
+           strcmp(name, "window_sum") == 0 ||
+           strcmp(name, "window_mean") == 0 ||
+           strcmp(name, "window_highest") == 0 ||
+           strcmp(name, "window_lowest") == 0 ||
+           strcmp(name, "window_stddev") == 0 ||
+           strcmp(name, "window_roc") == 0;
 }

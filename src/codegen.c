@@ -452,7 +452,7 @@ char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
                               const cxpr_c_target* target, cxpr_error* err) {
     cxpr_cg_buf b = {0};
     if (err) *err = (cxpr_error){0};
-    if (!cxpr_typecheck(ast, NULL, NULL, err)) return NULL;
+    if (!cxpr_cg_target_has_call(target) && !cxpr_typecheck(ast, NULL, NULL, err)) return NULL;
     if (!cxpr_cg_emit_at_offset(ast, lookback_offset, &b, target, err)) { free(b.data); return NULL; }
     if (b.oom) { free(b.data); cxpr_cg_err(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return NULL; }
     return b.data ? b.data : cxpr_strdup("");
