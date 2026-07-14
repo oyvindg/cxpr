@@ -7,9 +7,29 @@
 #include "context/state.h"
 #include "ir/exec/internal.h"
 #include "ir/internal.h"
+#include "lookback.h"
 #include <cxpr/typecheck.h>
 #include <math.h>
 #include <string.h>
+
+static CXPR_THREAD_LOCAL double g_eval_lookback_offset = 0.0;
+
+double cxpr_eval_current_lookback_offset(void) {
+    return g_eval_lookback_offset;
+}
+
+static bool cxpr_eval_simple_lookback_target(const cxpr_ast* ast) {
+    if (!ast) return false;
+    switch (ast->type) {
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+    case CXPR_NODE_PRODUCER_ACCESS:
+        return true;
+    default:
+        return false;
+    }
+}
 
 static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, double* out, cxpr_error* err);
@@ -616,6 +636,10 @@ bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
                                const cxpr_registry* reg,
                                cxpr_value* out_value,
                                cxpr_error* err) {
+    cxpr_ast adjusted_index_ast = {0};
+    const cxpr_ast* resolver_index_ast = index_ast;
+    double base_offset = g_eval_lookback_offset;
+
     if (!out_value) {
         if (err) {
             *err = (cxpr_error){0};
@@ -633,13 +657,55 @@ bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
         return false;
     }
 
+    if (base_offset != 0.0) {
+        unsigned offset = 0u;
+        double index_value = 0.0;
+        if (!cxpr_lookback_literal_offset(index_ast,
+                                          &offset,
+                                          err,
+                                          "lookback requires constant integer index")) {
+            return false;
+        }
+        index_value = (double)offset + base_offset;
+        if (!isfinite(index_value) || index_value < 0.0) {
+            if (err) {
+                *err = (cxpr_error){0};
+                err->code = CXPR_ERR_SYNTAX;
+                err->message = "Lookback offset must be a finite non-negative number";
+            }
+            return false;
+        }
+        adjusted_index_ast.type = CXPR_NODE_NUMBER;
+        adjusted_index_ast.data.number.value = index_value;
+        resolver_index_ast = &adjusted_index_ast;
+    }
+
     if (reg && reg->lookback_resolver) {
         *out_value = cxpr_num(NAN);
-        if (reg->lookback_resolver(ast, index_ast, ctx, reg, reg->lookback_userdata,
+        if (reg->lookback_resolver(ast, resolver_index_ast, ctx, reg, reg->lookback_userdata,
                                    out_value, err)) {
             return !(err && err->code != CXPR_OK);
         }
         if (err && err->code != CXPR_OK) return false;
+    }
+
+    if (!cxpr_eval_simple_lookback_target(ast)) {
+        unsigned offset = 0u;
+        double previous_offset = g_eval_lookback_offset;
+        cxpr_value value;
+
+        if (!cxpr_lookback_literal_offset(index_ast,
+                                          &offset,
+                                          err,
+                                          "lookback requires constant integer index")) {
+            return false;
+        }
+        g_eval_lookback_offset = previous_offset + (double)offset;
+        value = cxpr_eval_ast_value(ast, ctx, reg, err);
+        g_eval_lookback_offset = previous_offset;
+        if (err && err->code != CXPR_OK) return false;
+        *out_value = value;
+        return true;
     }
 
     if (err) {

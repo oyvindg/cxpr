@@ -116,6 +116,8 @@ void cxpr_eval_memo_clear(cxpr_context* ctx);
 void cxpr_eval_memo_enter(cxpr_context* ctx);
 /** @brief End one top-level memoized evaluation scope. */
 void cxpr_eval_memo_leave(cxpr_context* ctx);
+/** @brief Active additive lookback offset used while evaluating nested expressions. */
+double cxpr_eval_current_lookback_offset(void);
 
 /** @brief Evaluate a dotted field-access node against the current context. */
 cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,

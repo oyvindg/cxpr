@@ -687,7 +687,9 @@ cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
 
     if (!ast) return cxpr_eval_node_uncached(ast, ctx, reg, err);
 
-    if (ast->type != CXPR_NODE_FUNCTION_CALL || !cxpr_eval_ast_memoable(ast, reg)) {
+    if (cxpr_eval_current_lookback_offset() != 0.0 ||
+        ast->type != CXPR_NODE_FUNCTION_CALL ||
+        !cxpr_eval_ast_memoable(ast, reg)) {
         return cxpr_eval_node_uncached(ast, ctx, reg, err);
     }
 

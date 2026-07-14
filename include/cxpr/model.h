@@ -38,6 +38,51 @@ typedef struct {
     const cxpr_model_program* program;
 } cxpr_model_import;
 
+/** @brief Opaque parsed host block node. */
+typedef struct cxpr_model_host_block cxpr_model_host_block;
+
+/** @brief Opaque registry for host-defined .cxpr model block kinds. */
+typedef struct cxpr_host_block_registry cxpr_host_block_registry;
+
+/**
+ * @brief Host-owned validation callback for one parsed host block.
+ *
+ * The callback receives borrowed strings owned by @p model. Return non-zero on
+ * success. On failure, set @p err when a host-specific diagnostic is useful.
+ */
+typedef int (*cxpr_host_block_validate_fn)(const char* kind,
+                                           const char* name,
+                                           const char* body,
+                                           void* userdata,
+                                           cxpr_error* err);
+
+/**
+ * @brief Host-owned validation callback for one parsed host block tree.
+ *
+ * This is preferred for nested host block schemas. The callback receives a
+ * borrowed block node owned by @p model. Return non-zero on success.
+ */
+typedef int (*cxpr_host_block_validate_block_fn)(const cxpr_model_host_block* block,
+                                                 void* userdata,
+                                                 cxpr_error* err);
+
+/**
+ * @brief Host declaration for one model-level block kind.
+ *
+ * cxpr owns syntax and lifecycle; the host owns schema and semantics. The core
+ * validator only enforces whether a parsed block kind is known, whether it may
+ * be named, whether it may occur more than once, and then delegates body
+ * semantics to @p validate when supplied.
+ */
+typedef struct cxpr_host_block_spec {
+    const char* kind;
+    int allow_named;
+    int allow_multiple;
+    cxpr_host_block_validate_fn validate;
+    cxpr_host_block_validate_block_fn validate_block;
+    void* userdata;
+} cxpr_host_block_spec;
+
 /**
  * @brief Parse a complete .cxpr model.
  *
@@ -100,6 +145,35 @@ void cxpr_model_free(cxpr_model* model);
  * @return True when the model is semantically valid at the core level.
  */
 bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err);
+
+/**
+ * @brief Create a registry for host-defined model block kinds.
+ *
+ * The registry copies specs by value and borrows spec strings/userdata.
+ */
+cxpr_host_block_registry* cxpr_host_block_registry_new(void);
+
+/** @brief Free a host block registry. */
+void cxpr_host_block_registry_free(cxpr_host_block_registry* registry);
+
+/**
+ * @brief Register one host block kind.
+ *
+ * @return True on success, false when arguments are invalid, the kind is
+ * already registered, or allocation fails.
+ */
+bool cxpr_host_block_registry_register(cxpr_host_block_registry* registry,
+                                       const cxpr_host_block_spec* spec);
+
+/**
+ * @brief Validate all parsed host blocks against a host registry.
+ *
+ * Unknown block kinds are rejected. A NULL registry is accepted only when the
+ * model contains no host blocks.
+ */
+bool cxpr_model_validate_host_blocks(const cxpr_model* model,
+                                     const cxpr_host_block_registry* registry,
+                                     cxpr_error* err);
 
 /**
  * @brief Return binding indices in dependency-safe evaluation order.
@@ -211,11 +285,13 @@ char* cxpr_model_program_function_to_c_function(const cxpr_model_program* progra
  * @brief Emit a fused scalar model as a standalone C tick function.
  *
  * Generated ABI:
- * `void fn(double* slots, const double* inputs, const double* params, double* outputs)`.
+ * `typedef struct fn_state fn_state;`
+ * `void fn(fn_state* state, const double* inputs, const double* params, double* outputs)`.
+ * When model state needs eager setup, the generated source also includes
+ * `void fn_init_state(fn_state* state)`. The tick function keeps a lazy
+ * first-use init guard for zero-initialized state storage.
  * Inputs and outputs use model declaration order. Params use model constant
- * order. `slots` is model-owned scratch/state storage with
- * `cxpr_model_program_c_slot_count(program)` entries and must be initialized by
- * the caller before the first tick.
+ * order. The generated `state` object owns model scratch/state storage.
  */
 char* cxpr_model_program_to_c_tick_function(const cxpr_model_program* program,
                                             const char* qualifiers,
@@ -264,6 +340,7 @@ char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
     const size_t* output_indices,
     size_t output_count,
     cxpr_error* err);
+/** @brief Legacy IR slot count. The generated state ABI does not expose slots. */
 size_t cxpr_model_program_c_slot_count(const cxpr_model_program* program);
 size_t cxpr_model_program_c_param_count(const cxpr_model_program* program);
 const char* cxpr_model_program_c_param_name(const cxpr_model_program* program, size_t index);
@@ -343,6 +420,19 @@ size_t cxpr_model_host_block_count(const cxpr_model* model);
 const char* cxpr_model_host_block_kind(const cxpr_model* model, size_t index);
 const char* cxpr_model_host_block_name(const cxpr_model* model, size_t index);
 const char* cxpr_model_host_block_body(const cxpr_model* model, size_t index);
+const cxpr_model_host_block* cxpr_model_host_block_at(const cxpr_model* model, size_t index);
+
+const char* cxpr_host_block_kind(const cxpr_model_host_block* block);
+const char* cxpr_host_block_name(const cxpr_model_host_block* block);
+const char* cxpr_host_block_body(const cxpr_model_host_block* block);
+size_t cxpr_host_block_field_count(const cxpr_model_host_block* block);
+const char* cxpr_host_block_field_key(const cxpr_model_host_block* block, size_t index);
+const char* cxpr_host_block_field_value(const cxpr_model_host_block* block, size_t index);
+const char* cxpr_host_block_field_value_by_key(const cxpr_model_host_block* block,
+                                               const char* key);
+size_t cxpr_host_block_child_count(const cxpr_model_host_block* block);
+const cxpr_model_host_block* cxpr_host_block_child(const cxpr_model_host_block* block,
+                                                   size_t index);
 
 #ifdef __cplusplus
 }

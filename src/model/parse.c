@@ -102,33 +102,9 @@ static bool cxpr_model_is_use_path(const char* s) {
     }
     return true;
 }
-static bool cxpr_model_reference_matches_symbol(const char* reference, const char* symbol) {
-    size_t len;
-    if (!reference || !symbol) return false;
-    if (strcmp(reference, symbol) == 0) return true;
-    len = strlen(symbol);
-    return strncmp(reference, symbol, len) == 0 && reference[len] == '.';
-}
-
 static bool cxpr_model_string_exists(char* const* values, size_t count, const char* name) {
     for (size_t i = 0; i < count; ++i) {
         if (cxpr_model_names_match(values[i], name)) return true;
-    }
-    return false;
-}
-
-static bool cxpr_model_constant_exists(const cxpr_model* model, const char* name) {
-    if (!model) return false;
-    for (size_t i = 0; i < model->constant_count; ++i) {
-        if (cxpr_model_names_match(model->constants[i].name, name)) return true;
-    }
-    return false;
-}
-
-static bool cxpr_model_binding_exists(const cxpr_model* model, const char* name) {
-    if (!model) return false;
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (cxpr_model_names_match(model->bindings[i].name, name)) return true;
     }
     return false;
 }
@@ -137,29 +113,6 @@ static bool cxpr_model_state_exists(const cxpr_model* model, const char* name) {
     if (!model) return false;
     for (size_t i = 0; i < model->binding_count; ++i) {
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
-            cxpr_model_names_match(model->bindings[i].name, name)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool cxpr_model_reference_exists(const cxpr_model* model, const char* reference) {
-    if (!model || !reference) return false;
-    for (size_t i = 0; i < model->input_count; ++i) {
-        if (cxpr_model_reference_matches_symbol(reference, model->inputs[i])) return true;
-    }
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (cxpr_model_reference_matches_symbol(reference, model->bindings[i].name)) return true;
-    }
-    return false;
-}
-
-static bool cxpr_model_public_symbol_exists(const cxpr_model* model, const char* name) {
-    if (cxpr_model_string_exists(model->inputs, model->input_count, name)) return true;
-    if (!model || !name) return false;
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (model->bindings[i].kind != CXPR_MODEL_BINDING_LOCAL &&
             cxpr_model_names_match(model->bindings[i].name, name)) {
             return true;
         }
@@ -325,24 +278,280 @@ static bool cxpr_model_attach_metadatas(cxpr_model* model,
     return true;
 }
 
-static void cxpr_model_metadatas_free(cxpr_model_metadata* metadatas, size_t count) {
-    if (!metadatas) return;
-    for (size_t i = 0u; i < count; ++i) {
-        free(metadatas[i].name);
-        free(metadatas[i].body);
-        free(metadatas[i].target_name);
+static int cxpr_model_brace_delta(const char* text);
+
+static char* cxpr_model_dup_trimmed(const char* start, size_t len) {
+    const char* end;
+    if (!start) return NULL;
+    while (len > 0u && isspace((unsigned char)*start)) {
+        start++;
+        len--;
     }
-    free(metadatas);
+    end = start + len;
+    while (end > start && isspace((unsigned char)end[-1])) end--;
+    return cxpr_model_substr(start, (size_t)(end - start));
 }
 
-static void cxpr_model_host_blocks_free(cxpr_model_host_block* blocks, size_t count) {
-    if (!blocks) return;
-    for (size_t i = 0u; i < count; ++i) {
-        free(blocks[i].kind);
-        free(blocks[i].name);
-        free(blocks[i].body);
+static bool cxpr_model_host_block_append_field(cxpr_model_host_block* block,
+                                               const char* key_start,
+                                               size_t key_len,
+                                               const char* value_start,
+                                               size_t value_len) {
+    cxpr_model_host_block_field* grown;
+    if (!block || !key_start || !value_start) return false;
+    grown = (cxpr_model_host_block_field*)realloc(
+        block->fields,
+        (block->field_count + 1u) * sizeof(cxpr_model_host_block_field));
+    if (!grown) return false;
+    block->fields = grown;
+    block->fields[block->field_count].key = cxpr_model_dup_trimmed(key_start, key_len);
+    block->fields[block->field_count].value = cxpr_model_dup_trimmed(value_start, value_len);
+    if (!block->fields[block->field_count].key ||
+        !block->fields[block->field_count].value) {
+        return false;
     }
-    free(blocks);
+    block->field_count++;
+    return true;
+}
+
+static bool cxpr_model_host_block_append_child(cxpr_model_host_block* parent,
+                                               const char* kind,
+                                               const char* name,
+                                               cxpr_model_host_block** out_child) {
+    cxpr_model_host_block* grown;
+    if (out_child) *out_child = NULL;
+    if (!parent || !kind) return false;
+    grown = (cxpr_model_host_block*)realloc(
+        parent->children,
+        (parent->child_count + 1u) * sizeof(cxpr_model_host_block));
+    if (!grown) return false;
+    parent->children = grown;
+    memset(&parent->children[parent->child_count], 0, sizeof(cxpr_model_host_block));
+    parent->children[parent->child_count].kind = cxpr_strdup(kind);
+    parent->children[parent->child_count].name = cxpr_strdup(name ? name : "");
+    parent->children[parent->child_count].body = cxpr_strdup("");
+    if (!parent->children[parent->child_count].kind ||
+        !parent->children[parent->child_count].name ||
+        !parent->children[parent->child_count].body) {
+        return false;
+    }
+    if (out_child) *out_child = &parent->children[parent->child_count];
+    parent->child_count++;
+    return true;
+}
+
+static bool cxpr_model_host_ident_start(char ch) {
+    return isalpha((unsigned char)ch) || ch == '_';
+}
+
+static bool cxpr_model_host_ident_char(char ch) {
+    return isalnum((unsigned char)ch) || ch == '_' || ch == '-';
+}
+
+static const char* cxpr_model_host_skip_ws(const char* cursor) {
+    while (cursor && *cursor) {
+        while (isspace((unsigned char)*cursor) || *cursor == ',') cursor++;
+        if (*cursor == '#') {
+            while (*cursor && *cursor != '\n') cursor++;
+            continue;
+        }
+        if (cursor[0] == '/' && cursor[1] == '/') {
+            while (*cursor && *cursor != '\n') cursor++;
+            continue;
+        }
+        break;
+    }
+    return cursor;
+}
+
+static const char* cxpr_model_host_parse_ident(const char* cursor,
+                                               const char** out_start,
+                                               size_t* out_len) {
+    const char* start = cursor;
+    if (out_start) *out_start = NULL;
+    if (out_len) *out_len = 0u;
+    if (!cursor || !cxpr_model_host_ident_start(*cursor)) return NULL;
+    cursor++;
+    while (cxpr_model_host_ident_char(*cursor)) cursor++;
+    if (out_start) *out_start = start;
+    if (out_len) *out_len = (size_t)(cursor - start);
+    return cursor;
+}
+
+static const char* cxpr_model_host_scan_value_end(const char* cursor) {
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    int brace_depth = 0;
+    char quote = '\0';
+
+    while (cursor && *cursor) {
+        if (quote) {
+            if (*cursor == '\\' && cursor[1]) {
+                cursor += 2;
+                continue;
+            }
+            if (*cursor == quote) quote = '\0';
+            cursor++;
+            continue;
+        }
+        if (*cursor == '"' || *cursor == '\'') {
+            quote = *cursor++;
+            continue;
+        }
+        if (*cursor == '(') paren_depth++;
+        else if (*cursor == ')' && paren_depth > 0) paren_depth--;
+        else if (*cursor == '[') bracket_depth++;
+        else if (*cursor == ']' && bracket_depth > 0) bracket_depth--;
+        else if (*cursor == '{') brace_depth++;
+        else if (*cursor == '}' && brace_depth > 0) brace_depth--;
+        else if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
+            if (*cursor == ',' || *cursor == '\n' || *cursor == '}') return cursor;
+        }
+        cursor++;
+    }
+    return cursor;
+}
+
+static bool cxpr_model_host_value_contains_assignment(const char* start, size_t len) {
+    const char* cursor = start;
+    const char* end = start + len;
+    char quote = '\0';
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    int brace_depth = 0;
+
+    while (cursor < end) {
+        if (quote) {
+            if (*cursor == '\\' && cursor + 1 < end) {
+                cursor += 2;
+                continue;
+            }
+            if (*cursor == quote) quote = '\0';
+            cursor++;
+            continue;
+        }
+        if (*cursor == '"' || *cursor == '\'') {
+            quote = *cursor++;
+            continue;
+        }
+        if (*cursor == '(') paren_depth++;
+        else if (*cursor == ')' && paren_depth > 0) paren_depth--;
+        else if (*cursor == '[') bracket_depth++;
+        else if (*cursor == ']' && bracket_depth > 0) bracket_depth--;
+        else if (*cursor == '{') brace_depth++;
+        else if (*cursor == '}' && brace_depth > 0) brace_depth--;
+        else if (*cursor == '=' &&
+                 paren_depth == 0 &&
+                 bracket_depth == 0 &&
+                 brace_depth == 0) {
+            return true;
+        }
+        cursor++;
+    }
+    return false;
+}
+
+static bool cxpr_model_parse_host_block_items(cxpr_model_host_block* parent,
+                                              const char** cursor,
+                                              bool nested,
+                                              size_t line_no,
+                                              cxpr_error* err) {
+    if (!parent || !cursor || !*cursor) return false;
+    while (**cursor) {
+        const char* key_start;
+        const char* first_end;
+        const char* probe;
+        size_t key_len;
+
+        *cursor = cxpr_model_host_skip_ws(*cursor);
+        if (**cursor == '\0') return !nested;
+        if (**cursor == '}') {
+            (*cursor)++;
+            return nested;
+        }
+        first_end = cxpr_model_host_parse_ident(*cursor, &key_start, &key_len);
+        if (!first_end) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Host block body must contain fields or nested blocks",
+                                 line_no, 1);
+            return false;
+        }
+        probe = cxpr_model_host_skip_ws(first_end);
+        if (*probe == '=') {
+            const char* value_start = probe + 1;
+            const char* value_end = cxpr_model_host_scan_value_end(value_start);
+            if (cxpr_model_host_value_contains_assignment(
+                    value_start,
+                    (size_t)(value_end - value_start))) {
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "Host block field value contains another assignment; use comma or newline",
+                                     line_no, 1);
+                return false;
+            }
+            if (!cxpr_model_host_block_append_field(
+                    parent,
+                    key_start,
+                    key_len,
+                    value_start,
+                    (size_t)(value_end - value_start))) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+                return false;
+            }
+            *cursor = value_end;
+            continue;
+        }
+        {
+            const char* name_start = NULL;
+            size_t name_len = 0u;
+            char* kind = NULL;
+            char* name = NULL;
+            cxpr_model_host_block* child = NULL;
+
+            if (*probe != '{') {
+                const char* after_name = cxpr_model_host_parse_ident(probe, &name_start, &name_len);
+                if (!after_name) {
+                    cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                         "Expected nested host block body", line_no, 1);
+                    return false;
+                }
+                probe = cxpr_model_host_skip_ws(after_name);
+            }
+            if (*probe != '{') {
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "Expected nested host block body", line_no, 1);
+                return false;
+            }
+            kind = cxpr_model_substr(key_start, key_len);
+            name = name_start ? cxpr_model_substr(name_start, name_len) : cxpr_strdup("");
+            if (!kind || !name ||
+                !cxpr_model_host_block_append_child(parent, kind, name, &child)) {
+                free(kind);
+                free(name);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+                return false;
+            }
+            free(kind);
+            free(name);
+            *cursor = probe + 1;
+            if (!cxpr_model_parse_host_block_items(child, cursor, true, line_no, err)) {
+                return false;
+            }
+        }
+    }
+    if (nested) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Unterminated nested host block", line_no, 1);
+        return false;
+    }
+    return true;
+}
+
+static bool cxpr_model_parse_host_block_tree(cxpr_model_host_block* root,
+                                             const char* body,
+                                             size_t line_no,
+                                             cxpr_error* err) {
+    const char* cursor = body ? body : "";
+    return cxpr_model_parse_host_block_items(root, &cursor, false, line_no, err);
 }
 
 static bool cxpr_model_append_host_block(cxpr_model* model,
@@ -364,12 +573,17 @@ static bool cxpr_model_append_host_block(cxpr_model* model,
         (model->host_block_count + 1u) * sizeof(cxpr_model_host_block));
     if (!grown) return false;
     model->host_blocks = grown;
+    memset(&model->host_blocks[model->host_block_count], 0, sizeof(cxpr_model_host_block));
     model->host_blocks[model->host_block_count].kind = cxpr_strdup(kind);
     model->host_blocks[model->host_block_count].name = cxpr_strdup(name ? name : "");
     model->host_blocks[model->host_block_count].body = cxpr_strdup(body ? body : "");
     if (!model->host_blocks[model->host_block_count].kind ||
         !model->host_blocks[model->host_block_count].name ||
         !model->host_blocks[model->host_block_count].body) {
+        return false;
+    }
+    if (!cxpr_model_parse_host_block_tree(
+            &model->host_blocks[model->host_block_count], body, line_no, err)) {
         return false;
     }
     model->host_block_count++;
@@ -473,186 +687,6 @@ static void cxpr_model_local_bindings_free(cxpr_model_local_binding* locals, siz
         cxpr_ast_free(locals[i].expr);
     }
     free(locals);
-}
-
-static void cxpr_model_record_fields_free(cxpr_model_record_field* fields, size_t count) {
-    if (!fields) return;
-    for (size_t i = 0; i < count; ++i) {
-        free(fields[i].name);
-        free(fields[i].source);
-        cxpr_ast_free(fields[i].expr);
-    }
-    free(fields);
-}
-
-static void cxpr_model_record_function_clear(cxpr_model_record_function* fn) {
-    if (!fn) return;
-    free(fn->name);
-    for (size_t i = 0; i < fn->param_count; ++i) free(fn->params[i]);
-    free(fn->params);
-    cxpr_model_record_fields_free(fn->fields, fn->field_count);
-    fn->name = NULL;
-    fn->params = NULL;
-    fn->param_count = 0u;
-    fn->fields = NULL;
-    fn->field_count = 0u;
-}
-
-static const cxpr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
-                                               size_t count,
-                                               const char* name) {
-    for (size_t i = count; i > 0; --i) {
-        if (cxpr_model_names_match(locals[i - 1].name, name)) return locals[i - 1].expr;
-    }
-    return NULL;
-}
-
-static char** cxpr_model_clone_arg_names_from_call(const cxpr_ast* ast, size_t argc) {
-    char** names = NULL;
-    if (argc == 0u) return NULL;
-    names = (char**)calloc(argc, sizeof(char*));
-    if (!names) return NULL;
-    for (size_t i = 0; i < argc; ++i) {
-        const char* name = cxpr_ast_function_arg_name(ast, i);
-        if (name) {
-            names[i] = cxpr_strdup(name);
-            if (!names[i]) {
-                for (size_t j = 0; j < i; ++j) free(names[j]);
-                free(names);
-                return NULL;
-            }
-        }
-    }
-    return names;
-}
-
-static char** cxpr_model_clone_arg_names_from_producer(const cxpr_ast* ast, size_t argc) {
-    char** names = NULL;
-    if (argc == 0u) return NULL;
-    names = (char**)calloc(argc, sizeof(char*));
-    if (!names) return NULL;
-    for (size_t i = 0; i < argc; ++i) {
-        const char* name = cxpr_ast_producer_arg_name(ast, i);
-        if (name) {
-            names[i] = cxpr_strdup(name);
-            if (!names[i]) {
-                for (size_t j = 0; j < i; ++j) free(names[j]);
-                free(names);
-                return NULL;
-            }
-        }
-    }
-    return names;
-}
-
-cxpr_ast* cxpr_model_inline_locals(const cxpr_ast* ast,
-                                   const cxpr_model_local_binding* locals,
-                                   size_t local_count);
-
-static cxpr_ast** cxpr_model_inline_args(const cxpr_ast* ast,
-                                         size_t argc,
-                                         const cxpr_model_local_binding* locals,
-                                         size_t local_count,
-                                         bool producer) {
-    cxpr_ast** args = NULL;
-    if (argc == 0u) return NULL;
-    args = (cxpr_ast**)calloc(argc, sizeof(cxpr_ast*));
-    if (!args) return NULL;
-    for (size_t i = 0; i < argc; ++i) {
-        const cxpr_ast* arg = producer ? cxpr_ast_producer_arg(ast, i)
-                                       : cxpr_ast_function_arg(ast, i);
-        args[i] = cxpr_model_inline_locals(arg, locals, local_count);
-        if (!args[i]) {
-            for (size_t j = 0; j < i; ++j) cxpr_ast_free(args[j]);
-            free(args);
-            return NULL;
-        }
-    }
-    return args;
-}
-
-cxpr_ast* cxpr_model_inline_locals(const cxpr_ast* ast,
-                                   const cxpr_model_local_binding* locals,
-                                   size_t local_count) {
-    cxpr_node_type type;
-    if (!ast) return NULL;
-    type = cxpr_ast_type(ast);
-
-    if (type == CXPR_NODE_IDENTIFIER) {
-        const cxpr_ast* replacement =
-            cxpr_model_local_lookup(locals, local_count, cxpr_ast_identifier_name(ast));
-        if (replacement) return cxpr_ast_clone(replacement);
-        return cxpr_ast_clone(ast);
-    }
-
-    switch (type) {
-    case CXPR_NODE_BINARY_OP: {
-        cxpr_ast* left = cxpr_model_inline_locals(cxpr_ast_left(ast), locals, local_count);
-        cxpr_ast* right = cxpr_model_inline_locals(cxpr_ast_right(ast), locals, local_count);
-        if (!left || !right) {
-            cxpr_ast_free(left);
-            cxpr_ast_free(right);
-            return NULL;
-        }
-        return cxpr_ast_new_binary_op(cxpr_ast_operator(ast), left, right);
-    }
-    case CXPR_NODE_UNARY_OP: {
-        cxpr_ast* operand = cxpr_model_inline_locals(cxpr_ast_operand(ast), locals, local_count);
-        if (!operand) return NULL;
-        return cxpr_ast_new_unary_op(cxpr_ast_operator(ast), operand);
-    }
-    case CXPR_NODE_FUNCTION_CALL: {
-        size_t argc = cxpr_ast_function_argc(ast);
-        cxpr_ast** args = cxpr_model_inline_args(ast, argc, locals, local_count, false);
-        char** arg_names = cxpr_model_clone_arg_names_from_call(ast, argc);
-        if (argc > 0u && (!args || (cxpr_ast_function_has_named_args(ast) && !arg_names))) {
-            if (args) {
-                for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
-                free(args);
-            }
-            return NULL;
-        }
-        return cxpr_ast_new_function_call_named(cxpr_ast_function_name(ast), args, arg_names, argc);
-    }
-    case CXPR_NODE_PRODUCER_ACCESS: {
-        size_t argc = cxpr_ast_producer_argc(ast);
-        cxpr_ast** args = cxpr_model_inline_args(ast, argc, locals, local_count, true);
-        char** arg_names = cxpr_model_clone_arg_names_from_producer(ast, argc);
-        if (argc > 0u && (!args || (cxpr_ast_producer_has_named_args(ast) && !arg_names))) {
-            if (args) {
-                for (size_t i = 0; i < argc; ++i) cxpr_ast_free(args[i]);
-                free(args);
-            }
-            return NULL;
-        }
-        return cxpr_ast_new_producer_access_named(cxpr_ast_producer_name(ast), args, arg_names,
-                                                  argc, cxpr_ast_producer_field(ast));
-    }
-    case CXPR_NODE_LOOKBACK: {
-        cxpr_ast* target = cxpr_model_inline_locals(cxpr_ast_lookback_target(ast), locals, local_count);
-        cxpr_ast* index = cxpr_model_inline_locals(cxpr_ast_lookback_index(ast), locals, local_count);
-        if (!target || !index) {
-            cxpr_ast_free(target);
-            cxpr_ast_free(index);
-            return NULL;
-        }
-        return cxpr_ast_new_lookback(target, index);
-    }
-    case CXPR_NODE_TERNARY: {
-        cxpr_ast* condition = cxpr_model_inline_locals(cxpr_ast_ternary_condition(ast), locals, local_count);
-        cxpr_ast* yes = cxpr_model_inline_locals(cxpr_ast_ternary_true_branch(ast), locals, local_count);
-        cxpr_ast* no = cxpr_model_inline_locals(cxpr_ast_ternary_false_branch(ast), locals, local_count);
-        if (!condition || !yes || !no) {
-            cxpr_ast_free(condition);
-            cxpr_ast_free(yes);
-            cxpr_ast_free(no);
-            return NULL;
-        }
-        return cxpr_ast_new_ternary(condition, yes, no);
-    }
-    default:
-        return cxpr_ast_clone(ast);
-    }
 }
 
 static bool cxpr_model_append_constant(cxpr_model* model, const char* name,
@@ -1995,177 +2029,6 @@ static bool cxpr_model_has_top_level_comma(const char* text) {
     return false;
 }
 
-static bool cxpr_model_validate_unique_strings(char* const* values, size_t count,
-                                               const char* message, cxpr_error* err) {
-    for (size_t i = 0; i < count; ++i) {
-        for (size_t j = i + 1; j < count; ++j) {
-            if (cxpr_model_names_match(values[i], values[j])) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, message, 0, 0);
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err) {
-    if (!cxpr_model_validate_unique_strings(model->uses, model->use_count,
-                                            "Duplicate use import", err)) {
-        return false;
-    }
-    if (!cxpr_model_validate_unique_strings(model->inputs, model->input_count,
-                                            "Duplicate input", err)) {
-        return false;
-    }
-    if (!cxpr_model_validate_unique_strings(model->outputs, model->output_count,
-                                            "Duplicate output", err)) {
-        return false;
-    }
-
-    for (size_t i = 0; i < model->function_count; ++i) {
-        const char* open_i = strchr(model->functions[i], '(');
-        size_t len_i = open_i ? (size_t)(open_i - model->functions[i]) : strlen(model->functions[i]);
-        for (size_t j = i + 1; j < model->function_count; ++j) {
-            const char* open_j = strchr(model->functions[j], '(');
-            size_t len_j = open_j ? (size_t)(open_j - model->functions[j]) : strlen(model->functions[j]);
-            if (len_i == len_j && strncmp(model->functions[i], model->functions[j], len_i) == 0) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate function", 0, 0);
-                return false;
-            }
-        }
-        for (size_t j = 0; j < model->record_function_count; ++j) {
-            if (strlen(model->record_functions[j].name) == len_i &&
-                strncmp(model->functions[i], model->record_functions[j].name, len_i) == 0) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate function", 0, 0);
-                return false;
-            }
-        }
-    }
-    for (size_t i = 0; i < model->record_function_count; ++i) {
-        for (size_t j = i + 1; j < model->record_function_count; ++j) {
-            if (cxpr_model_names_match(model->record_functions[i].name,
-                                       model->record_functions[j].name)) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate function", 0, 0);
-                return false;
-            }
-        }
-    }
-
-    for (size_t i = 0; i < model->constant_count; ++i) {
-        for (size_t j = i + 1; j < model->constant_count; ++j) {
-            if (cxpr_model_names_match(model->constants[i].name, model->constants[j].name)) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate constant", 0, 0);
-                return false;
-            }
-        }
-    }
-
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (cxpr_model_string_exists(model->inputs, model->input_count,
-                                     model->bindings[i].name)) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "Binding duplicates input", 0, 0);
-            return false;
-        }
-        if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE &&
-            !cxpr_model_state_exists(model, model->bindings[i].name)) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "state update references unknown state", 0, 0);
-            return false;
-        }
-        for (size_t j = i + 1; j < model->binding_count; ++j) {
-            if (cxpr_model_names_match(model->bindings[i].name, model->bindings[j].name)) {
-                bool state_pair =
-                    (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
-                     model->bindings[j].kind == CXPR_MODEL_BINDING_STATE_UPDATE) ||
-                    (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE &&
-                     model->bindings[j].kind == CXPR_MODEL_BINDING_STATE);
-                if (state_pair) continue;
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate binding", 0, 0);
-                return false;
-            }
-        }
-    }
-
-    for (size_t i = 0; i < model->output_count; ++i) {
-        if (!cxpr_model_public_symbol_exists(model, model->outputs[i])) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "Output references unknown symbol", 0, 0);
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool cxpr_model_validate_expr_refs(const cxpr_model* model, const cxpr_ast* expr,
-                                          bool constant_expr, cxpr_error* err) {
-    const char* refs[256];
-    const char* params[256];
-    size_t nrefs;
-    size_t nparams;
-
-    nparams = cxpr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
-    for (size_t i = 0; i < nparams && i < CXPR_ARRAY_COUNT(params); ++i) {
-        if (!cxpr_model_constant_exists(model, params[i])) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "Expression references unknown constant", 0, 0);
-            return false;
-        }
-    }
-
-    nrefs = cxpr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
-    for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
-        if (constant_expr || !cxpr_model_reference_exists(model, refs[i])) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 constant_expr
-                                     ? "Constant expression references runtime symbol"
-                                     : "Expression references unknown symbol",
-                                 0, 0);
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool cxpr_model_param_exists(char* const* params, size_t count, const char* name) {
-    if (!name) return false;
-    for (size_t i = 0; i < count; ++i) {
-        if (cxpr_model_reference_matches_symbol(name, params[i])) return true;
-    }
-    return false;
-}
-
-static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
-                                                   const cxpr_model_record_function* fn,
-                                                   const cxpr_ast* expr,
-                                                   cxpr_error* err) {
-    const char* refs[256];
-    const char* params[256];
-    size_t nrefs;
-    size_t nparams;
-
-    nparams = cxpr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
-    for (size_t i = 0; i < nparams && i < CXPR_ARRAY_COUNT(params); ++i) {
-        if (!cxpr_model_constant_exists(model, params[i])) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "Expression references unknown constant", 0, 0);
-            return false;
-        }
-    }
-
-    nrefs = cxpr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
-    for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
-        if (cxpr_model_param_exists(fn->params, fn->param_count, refs[i])) continue;
-        cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                             "Function expression references unknown symbol", 0, 0);
-        return false;
-    }
-
-    return true;
-}
-
 cxpr_model* cxpr_parse_model(const char* source, cxpr_error* err) {
     cxpr_model* model;
     char* copy;
@@ -2255,7 +2118,9 @@ cxpr_model* cxpr_parse_model(const char* source, cxpr_error* err) {
                     free(host_body);
                     free(copy);
                     cxpr_model_free(model);
-                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+                    if (!err || err->code == CXPR_OK) {
+                        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+                    }
                     return NULL;
                 }
                 free(host_kind);
@@ -2435,293 +2300,4 @@ cxpr_model* cxpr_parse_model(const char* source, cxpr_error* err) {
     free(copy);
     if (err) err->code = CXPR_OK;
     return model;
-}
-
-bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err) {
-    if (err) *err = (cxpr_error){0};
-    if (!model) {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "NULL model", 0, 0);
-        return false;
-    }
-    if (!model->name || model->name[0] == '\0') {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Model name is required", 0, 0);
-        return false;
-    }
-    if (!cxpr_model_validate_symbols(model, err)) return false;
-
-    for (size_t i = 0; i < model->constant_count; ++i) {
-        if (!cxpr_model_validate_expr_refs(model, model->constants[i].expr, true, err)) {
-            return false;
-        }
-    }
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (!cxpr_model_validate_expr_refs(model, model->bindings[i].expr, false, err)) {
-            return false;
-        }
-    }
-    for (size_t i = 0; i < model->record_function_count; ++i) {
-        for (size_t f = 0; f < model->record_functions[i].field_count; ++f) {
-            if (!cxpr_model_validate_function_expr_refs(
-                    model,
-                    &model->record_functions[i],
-                    model->record_functions[i].fields[f].expr,
-                    err)) {
-                return false;
-            }
-        }
-    }
-
-    if (err) err->code = CXPR_OK;
-    return true;
-}
-
-bool cxpr_model_eval_order(const cxpr_model* model, size_t* out_order,
-                           size_t max_order, cxpr_error* err) {
-    cxpr_expression_def* defs;
-    cxpr_analysis* analyses;
-    bool ok;
-
-    if (err) *err = (cxpr_error){0};
-    if (!model || (model->binding_count > 0 && !out_order) ||
-        max_order < (model ? model->binding_count : 0)) {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid eval order arguments", 0, 0);
-        return false;
-    }
-    if (model->binding_count == 0) return true;
-
-    defs = (cxpr_expression_def*)calloc(model->binding_count, sizeof(cxpr_expression_def));
-    analyses = (cxpr_analysis*)calloc(model->binding_count, sizeof(cxpr_analysis));
-    if (!defs || !analyses) {
-        free(defs);
-        free(analyses);
-        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-        return false;
-    }
-
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        defs[i].name = model->bindings[i].name;
-        defs[i].expression = model->bindings[i].source;
-    }
-
-    ok = cxpr_analyze_expressions(defs, model->binding_count, NULL,
-                                  analyses, out_order, err);
-    free(defs);
-    free(analyses);
-    return ok;
-}
-
-static bool cxpr_model_source_bindings_append(cxpr_source_plan_bindings* out,
-                                              const cxpr_source_plan_bindings* part,
-                                              cxpr_error* err) {
-    uint64_t* grown;
-    if (!out || !part || part->count == 0u) return true;
-    grown = (uint64_t*)realloc(out->handles,
-                               (out->count + part->count) * sizeof(uint64_t));
-    if (!grown) {
-        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-        return false;
-    }
-    out->handles = grown;
-    memcpy(out->handles + out->count, part->handles, part->count * sizeof(uint64_t));
-    out->count += part->count;
-    return true;
-}
-
-static bool cxpr_model_plan_bind_ast_sources(const cxpr_provider* provider,
-                                             const cxpr_ast* expr,
-                                             const cxpr_context* ctx,
-                                             cxpr_registry* reg,
-                                             const cxpr_plan_config* config,
-                                             cxpr_source_plan_bindings* out,
-                                             cxpr_error* err) {
-    cxpr_source_plan_bindings part = {0};
-    bool ok;
-    if (!expr) return true;
-    if (!cxpr_plan_bind_sources(provider, expr, ctx, reg, config, &part, err)) {
-        return false;
-    }
-    ok = cxpr_model_source_bindings_append(out, &part, err);
-    cxpr_free_source_plan_bindings(&part);
-    return ok;
-}
-
-bool cxpr_model_plan_bind_sources(const cxpr_model* model,
-                                  const cxpr_provider* provider,
-                                  const cxpr_context* ctx,
-                                  cxpr_registry* reg,
-                                  const cxpr_plan_config* config,
-                                  cxpr_source_plan_bindings* out,
-                                  cxpr_error* err) {
-    cxpr_source_plan_bindings tmp = {0};
-
-    if (err) *err = (cxpr_error){0};
-    if (out) memset(out, 0, sizeof(*out));
-    if (!model || !provider || !ctx || !config || !config->bind || !out) {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid model source plan arguments", 0, 0);
-        return false;
-    }
-
-    for (size_t i = 0; i < model->constant_count; ++i) {
-        if (!cxpr_model_plan_bind_ast_sources(provider, model->constants[i].expr,
-                                              ctx, reg, config, &tmp, err)) {
-            cxpr_free_source_plan_bindings(&tmp);
-            return false;
-        }
-    }
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (!cxpr_model_plan_bind_ast_sources(provider, model->bindings[i].expr,
-                                              ctx, reg, config, &tmp, err)) {
-            cxpr_free_source_plan_bindings(&tmp);
-            return false;
-        }
-    }
-    for (size_t i = 0; i < model->record_function_count; ++i) {
-        for (size_t f = 0; f < model->record_functions[i].field_count; ++f) {
-            if (!cxpr_model_plan_bind_ast_sources(
-                    provider,
-                    model->record_functions[i].fields[f].expr,
-                    ctx,
-                    reg,
-                    config,
-                    &tmp,
-                    err)) {
-                cxpr_free_source_plan_bindings(&tmp);
-                return false;
-            }
-        }
-    }
-
-    *out = tmp;
-    if (err) err->code = CXPR_OK;
-    return true;
-}
-
-void cxpr_model_free(cxpr_model* model) {
-    if (!model) return;
-    free(model->name);
-    for (size_t i = 0; i < model->use_count; ++i) free(model->uses[i]);
-    free(model->uses);
-    for (size_t i = 0; i < model->function_count; ++i) free(model->functions[i]);
-    free(model->functions);
-    for (size_t i = 0; i < model->record_function_count; ++i) {
-        cxpr_model_record_function_clear(&model->record_functions[i]);
-    }
-    free(model->record_functions);
-    for (size_t i = 0; i < model->input_count; ++i) free(model->inputs[i]);
-    free(model->inputs);
-    for (size_t i = 0; i < model->constant_count; ++i) {
-        free(model->constants[i].name);
-        free(model->constants[i].source);
-        cxpr_ast_free(model->constants[i].expr);
-    }
-    free(model->constants);
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        free(model->bindings[i].name);
-        free(model->bindings[i].source);
-        cxpr_ast_free(model->bindings[i].expr);
-    }
-    free(model->bindings);
-    for (size_t i = 0; i < model->output_count; ++i) free(model->outputs[i]);
-    free(model->outputs);
-    cxpr_model_metadatas_free(model->metadatas, model->metadata_count);
-    cxpr_model_host_blocks_free(model->host_blocks, model->host_block_count);
-    free(model);
-}
-
-const char* cxpr_model_name(const cxpr_model* model) {
-    return model ? model->name : NULL;
-}
-
-size_t cxpr_model_use_count(const cxpr_model* model) {
-    return model ? model->use_count : 0;
-}
-
-const char* cxpr_model_use(const cxpr_model* model, size_t index) {
-    return model && index < model->use_count ? model->uses[index] : NULL;
-}
-
-size_t cxpr_model_input_count(const cxpr_model* model) {
-    return model ? model->input_count : 0;
-}
-
-const char* cxpr_model_input(const cxpr_model* model, size_t index) {
-    return model && index < model->input_count ? model->inputs[index] : NULL;
-}
-
-size_t cxpr_model_constant_count(const cxpr_model* model) {
-    return model ? model->constant_count : 0;
-}
-
-const char* cxpr_model_constant_name(const cxpr_model* model, size_t index) {
-    return model && index < model->constant_count ? model->constants[index].name : NULL;
-}
-
-const cxpr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index) {
-    return model && index < model->constant_count ? model->constants[index].expr : NULL;
-}
-
-size_t cxpr_model_binding_count(const cxpr_model* model) {
-    return model ? model->binding_count : 0;
-}
-
-cxpr_model_binding_kind cxpr_model_binding_kind_at(const cxpr_model* model, size_t index) {
-    if (!model || index >= model->binding_count) return CXPR_MODEL_BINDING_EXPR;
-    return model->bindings[index].kind;
-}
-
-const char* cxpr_model_binding_name(const cxpr_model* model, size_t index) {
-    return model && index < model->binding_count ? model->bindings[index].name : NULL;
-}
-
-const cxpr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index) {
-    return model && index < model->binding_count ? model->bindings[index].expr : NULL;
-}
-
-size_t cxpr_model_output_count(const cxpr_model* model) {
-    return model ? model->output_count : 0;
-}
-
-const char* cxpr_model_output(const cxpr_model* model, size_t index) {
-    return model && index < model->output_count ? model->outputs[index] : NULL;
-}
-
-size_t cxpr_model_metadata_count(const cxpr_model* model) {
-    return model ? model->metadata_count : 0u;
-}
-
-const char* cxpr_model_metadata_name(const cxpr_model* model, size_t index) {
-    return model && index < model->metadata_count ? model->metadatas[index].name : NULL;
-}
-
-const char* cxpr_model_metadata_body(const cxpr_model* model, size_t index) {
-    return model && index < model->metadata_count ? model->metadatas[index].body : NULL;
-}
-
-cxpr_model_metadata_target_kind cxpr_model_metadata_target_kind_at(
-    const cxpr_model* model,
-    size_t index) {
-    if (!model || index >= model->metadata_count) {
-        return CXPR_MODEL_METADATA_TARGET_BINDING;
-    }
-    return model->metadatas[index].target_kind;
-}
-
-const char* cxpr_model_metadata_target_name(const cxpr_model* model, size_t index) {
-    return model && index < model->metadata_count ? model->metadatas[index].target_name : NULL;
-}
-
-size_t cxpr_model_host_block_count(const cxpr_model* model) {
-    return model ? model->host_block_count : 0u;
-}
-
-const char* cxpr_model_host_block_kind(const cxpr_model* model, size_t index) {
-    return model && index < model->host_block_count ? model->host_blocks[index].kind : NULL;
-}
-
-const char* cxpr_model_host_block_name(const cxpr_model* model, size_t index) {
-    return model && index < model->host_block_count ? model->host_blocks[index].name : NULL;
-}
-
-const char* cxpr_model_host_block_body(const cxpr_model* model, size_t index) {
-    return model && index < model->host_block_count ? model->host_blocks[index].body : NULL;
 }

@@ -341,6 +341,295 @@ static void test_parse_model_host_blocks_preserve_body(void) {
     printf("  ✓ test_parse_model_host_blocks_preserve_body\n");
 }
 
+typedef struct {
+    int calls;
+    const char* required_text;
+} host_block_validate_capture;
+
+static int host_block_require_text(const char* kind,
+                                   const char* name,
+                                   const char* body,
+                                   void* userdata,
+                                   cxpr_error* err) {
+    host_block_validate_capture* capture = (host_block_validate_capture*)userdata;
+    assert(kind != NULL);
+    assert(name != NULL);
+    assert(body != NULL);
+    assert(capture != NULL);
+    capture->calls++;
+    if (!strstr(body, capture->required_text)) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "missing required host block text";
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static int host_block_require_child(const cxpr_model_host_block* block,
+                                    void* userdata,
+                                    cxpr_error* err) {
+    const char* required = (const char*)userdata;
+    assert(block != NULL);
+    for (size_t i = 0u; i < cxpr_host_block_child_count(block); ++i) {
+        const cxpr_model_host_block* child = cxpr_host_block_child(block, i);
+        if (strcmp(cxpr_host_block_kind(child), required) == 0) return 1;
+    }
+    if (err) {
+        err->code = CXPR_ERR_SYNTAX;
+        err->message = "missing required host block child";
+    }
+    return 0;
+}
+
+static void test_parse_model_host_blocks_expose_nested_tree(void) {
+    const char* source =
+        "name nested_host_config\n"
+        "session {\n"
+        "  mode = \"backtest\"\n"
+        "  execution {\n"
+        "    initial_cash = 100000\n"
+        "  }\n"
+        "  allow {\n"
+        "    shorting = true\n"
+        "  }\n"
+        "}\n";
+    cxpr_model* model = parse_model_ok(source);
+    const cxpr_model_host_block* session = cxpr_model_host_block_at(model, 0u);
+    const cxpr_model_host_block* execution;
+    const cxpr_model_host_block* allow;
+
+    assert(cxpr_model_host_block_count(model) == 1u);
+    assert(session != NULL);
+    assert(strcmp(cxpr_host_block_kind(session), "session") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(session, "mode"), "\"backtest\"") == 0);
+    assert(cxpr_host_block_child_count(session) == 2u);
+
+    execution = cxpr_host_block_child(session, 0u);
+    allow = cxpr_host_block_child(session, 1u);
+    assert(execution != NULL);
+    assert(allow != NULL);
+    assert(strcmp(cxpr_host_block_kind(execution), "execution") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(execution, "initial_cash"), "100000") == 0);
+    assert(strcmp(cxpr_host_block_kind(allow), "allow") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(allow, "shorting"), "true") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_host_blocks_expose_nested_tree\n");
+}
+
+static void test_parse_model_host_blocks_expose_inline_nested_tree(void) {
+    const char* source =
+        "name inline_nested_host_config\n"
+        "book market_neutral {\n"
+        "  symbols { primary { symbol = \"TSLA\", strategy = \"market_neutral\" } }\n"
+        "  hedging = [\"beta_hedge\"]\n"
+        "}\n";
+    cxpr_model* model = parse_model_ok(source);
+    const cxpr_model_host_block* book = cxpr_model_host_block_at(model, 0u);
+    const cxpr_model_host_block* symbols;
+    const cxpr_model_host_block* primary;
+
+    assert(book != NULL);
+    assert(strcmp(cxpr_host_block_kind(book), "book") == 0);
+    assert(strcmp(cxpr_host_block_name(book), "market_neutral") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(book, "hedging"), "[\"beta_hedge\"]") == 0);
+    assert(cxpr_host_block_child_count(book) == 1u);
+
+    symbols = cxpr_host_block_child(book, 0u);
+    assert(symbols != NULL);
+    assert(strcmp(cxpr_host_block_kind(symbols), "symbols") == 0);
+    assert(cxpr_host_block_child_count(symbols) == 1u);
+
+    primary = cxpr_host_block_child(symbols, 0u);
+    assert(primary != NULL);
+    assert(strcmp(cxpr_host_block_kind(primary), "primary") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(primary, "symbol"), "\"TSLA\"") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(primary, "strategy"), "\"market_neutral\"") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_host_blocks_expose_inline_nested_tree\n");
+}
+
+static void test_parse_model_host_blocks_reject_inline_fields_without_comma(void) {
+    const char* source =
+        "name inline_nested_host_config\n"
+        "book market_neutral {\n"
+        "  symbols { primary { symbol = \"TSLA\" strategy = \"market_neutral\" } }\n"
+        "}\n";
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_parse_model(source, &err);
+    assert(model == NULL);
+    assert(err.code != CXPR_OK);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Host block field value contains another assignment") != NULL);
+    printf("  ✓ test_parse_model_host_blocks_reject_inline_fields_without_comma\n");
+}
+
+static void test_model_validate_host_blocks_accepts_registered_specs(void) {
+    const char* source =
+        "book market_neutral {\n"
+        "    symbols {\n"
+        "        primary = \"TSLA\"\n"
+        "    }\n"
+        "}\n"
+        "session backtest {\n"
+        "    mode = backtest\n"
+        "}\n"
+        "name host_config_bundle\n";
+    cxpr_error err = {0};
+    host_block_validate_capture capture = {0, "symbols"};
+    cxpr_model* model = parse_model_ok(source);
+    cxpr_host_block_registry* registry = cxpr_host_block_registry_new();
+    cxpr_host_block_spec book_spec = {
+        .kind = "book",
+        .allow_named = 1,
+        .allow_multiple = 1,
+        .validate = host_block_require_text,
+        .userdata = &capture,
+    };
+    cxpr_host_block_spec session_spec = {
+        .kind = "session",
+        .allow_named = 1,
+        .allow_multiple = 0,
+    };
+
+    assert(registry != NULL);
+    assert(cxpr_host_block_registry_register(registry, &book_spec));
+    assert(cxpr_host_block_registry_register(registry, &session_spec));
+    assert(cxpr_model_validate_host_blocks(model, registry, &err));
+    assert(err.code == CXPR_OK);
+    assert(capture.calls == 1);
+
+    cxpr_host_block_registry_free(registry);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_validate_host_blocks_accepts_registered_specs\n");
+}
+
+static void test_model_validate_host_blocks_rejects_unknown_kind(void) {
+    const char* source =
+        "broker sim {\n"
+        "    kind = \"paper\"\n"
+        "}\n"
+        "name host_config_bundle\n";
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(source);
+    cxpr_host_block_registry* registry = cxpr_host_block_registry_new();
+
+    assert(registry != NULL);
+    assert(!cxpr_model_validate_host_blocks(model, registry, &err));
+    assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
+    assert(strstr(err.message, "Unknown host block kind") != NULL);
+
+    cxpr_host_block_registry_free(registry);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_validate_host_blocks_rejects_unknown_kind\n");
+}
+
+static void test_model_validate_host_blocks_enforces_named_and_multiple_policy(void) {
+    const char* named_source =
+        "profile default {\n"
+        "    risk = 1\n"
+        "}\n"
+        "name host_config_bundle\n";
+    const char* duplicate_source =
+        "session first { mode = backtest }\n"
+        "session second { mode = paper }\n"
+        "name host_config_bundle\n";
+    cxpr_error err = {0};
+    cxpr_model* named_model = parse_model_ok(named_source);
+    cxpr_model* duplicate_model = parse_model_ok(duplicate_source);
+    cxpr_host_block_registry* registry = cxpr_host_block_registry_new();
+    cxpr_host_block_spec profile_spec = {
+        .kind = "profile",
+        .allow_named = 0,
+        .allow_multiple = 0,
+    };
+    cxpr_host_block_spec session_spec = {
+        .kind = "session",
+        .allow_named = 1,
+        .allow_multiple = 0,
+    };
+
+    assert(registry != NULL);
+    assert(cxpr_host_block_registry_register(registry, &profile_spec));
+    assert(cxpr_host_block_registry_register(registry, &session_spec));
+
+    assert(!cxpr_model_validate_host_blocks(named_model, registry, &err));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strstr(err.message, "does not allow names") != NULL);
+
+    assert(!cxpr_model_validate_host_blocks(duplicate_model, registry, &err));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strstr(err.message, "Duplicate host block kind") != NULL);
+
+    cxpr_host_block_registry_free(registry);
+    cxpr_model_free(named_model);
+    cxpr_model_free(duplicate_model);
+    printf("  ✓ test_model_validate_host_blocks_enforces_named_and_multiple_policy\n");
+}
+
+static void test_model_validate_host_blocks_uses_host_callback_errors(void) {
+    const char* source =
+        "book market_neutral {\n"
+        "    hedging = [\"beta_hedge\"]\n"
+        "}\n"
+        "name host_config_bundle\n";
+    cxpr_error err = {0};
+    host_block_validate_capture capture = {0, "symbols"};
+    cxpr_model* model = parse_model_ok(source);
+    cxpr_host_block_registry* registry = cxpr_host_block_registry_new();
+    cxpr_host_block_spec book_spec = {
+        .kind = "book",
+        .allow_named = 1,
+        .allow_multiple = 1,
+        .validate = host_block_require_text,
+        .userdata = &capture,
+    };
+
+    assert(registry != NULL);
+    assert(cxpr_host_block_registry_register(registry, &book_spec));
+    assert(!cxpr_model_validate_host_blocks(model, registry, &err));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strcmp(err.message, "missing required host block text") == 0);
+    assert(capture.calls == 1);
+
+    cxpr_host_block_registry_free(registry);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_validate_host_blocks_uses_host_callback_errors\n");
+}
+
+static void test_model_validate_host_blocks_uses_block_callback(void) {
+    const char* source =
+        "session {\n"
+        "    mode = backtest\n"
+        "    execution {\n"
+        "        initial_cash = 100000\n"
+        "    }\n"
+        "}\n"
+        "name host_config_bundle\n";
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(source);
+    cxpr_host_block_registry* registry = cxpr_host_block_registry_new();
+    cxpr_host_block_spec session_spec = {
+        .kind = "session",
+        .allow_named = 1,
+        .allow_multiple = 0,
+        .validate_block = host_block_require_child,
+        .userdata = "execution",
+    };
+
+    assert(registry != NULL);
+    assert(cxpr_host_block_registry_register(registry, &session_spec));
+    assert(cxpr_model_validate_host_blocks(model, registry, &err));
+    assert(err.code == CXPR_OK);
+
+    cxpr_host_block_registry_free(registry);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_validate_host_blocks_uses_block_callback\n");
+}
+
 static void test_parse_model_rejects_yaml_mapping_in_host_block(void) {
     const char* source =
         "book market_neutral {\n"
@@ -1191,7 +1480,8 @@ static void test_session_direct_record_producer_lookback(void) {
     }
     assert(code != NULL);
     assert(strstr(code, "const double entry ="));
-    assert(strstr(code, "_cx_slots["));
+    assert(strstr(code, "history_"));
+    assert(!strstr(code, "_cx_slots["));
     free(code);
 
     session = cxpr_model_session_new(program, NULL, &err);
@@ -1213,6 +1503,38 @@ static void test_session_direct_record_producer_lookback(void) {
     cxpr_model_program_free(program);
     cxpr_model_free(model);
     printf("  ✓ test_session_direct_record_producer_lookback\n");
+}
+
+static void test_model_c_common_subexpression_eliminates_duplicate_bindings(void) {
+    cxpr_error err = {0};
+    char* code = NULL;
+    cxpr_model* model = parse_model_ok(
+        "name cse_duplicate_bindings\n"
+        "in { close }\n"
+        "$period = 3\n"
+        "a = close + 1\n"
+        "b = close + 1\n"
+        "ma1 = window_mean(close, $period)\n"
+        "ma2 = window_mean(close, $period)\n"
+        "out { a, b, ma1, ma2 }\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+
+    if (!program) fprintf(stderr, "CSE duplicate model compile failed: %s\n", err.message);
+    assert(program != NULL);
+
+    code = cxpr_model_program_to_c_tick_function(program, "static inline",
+                                                 "cse_duplicate_bindings_tick", &err);
+    if (!code) fprintf(stderr, "CSE duplicate C emit failed: %s\n", err.message);
+    assert(code != NULL);
+    assert(strstr(code, "const double b = a;"));
+    assert(strstr(code, "const double ma2 = ma1;"));
+    assert(strstr(code, "cxpr_window3"));
+    assert(!strstr(code, "window_1_state"));
+
+    free(code);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_c_common_subexpression_eliminates_duplicate_bindings\n");
 }
 
 static void test_compile_imported_producer_infers_missing_child_inputs(void) {
@@ -1764,7 +2086,7 @@ static void test_rsi_state_strategy_fixture_emits_c_tick(void) {
     program = cxpr_compile_model(model, NULL, &err);
     assert(program != NULL);
     assert(cxpr_model_program_uses_fused_ir(program));
-    assert(cxpr_model_program_c_slot_count(program) > 0u);
+    assert(cxpr_model_program_c_slot_count(program) == 0u);
     assert(cxpr_model_program_c_param_count(program) == 3u);
     assert(strcmp(cxpr_model_program_c_param_name(program, 0u), "rsi_period") == 0);
 
@@ -1772,14 +2094,15 @@ static void test_rsi_state_strategy_fixture_emits_c_tick(void) {
                                                  "cxpr_rsi_state_tick", &err);
     if (!code) fprintf(stderr, "model C tick emit failed: %s\n", err.message);
     assert(code != NULL);
-    assert(strstr(code, "static inline void cxpr_rsi_state_tick(double* restrict _cx_slots, const double* restrict _cx_inputs, const double* restrict _cx_params, double* restrict _cx_outputs)"));
+    assert(strstr(code, "typedef struct cxpr_rsi_state_tick_state"));
+    assert(strstr(code, "static inline void cxpr_rsi_state_tick(cxpr_rsi_state_tick_state* restrict _cx_state, const double* restrict _cx_inputs, const double* restrict _cx_params, double* restrict _cx_outputs)"));
     assert(strstr(code, "static inline double cxpr_fn_cxpr_rsi_state_tick_rsi"));
     assert(strstr(code, "const double change ="));
     assert(strstr(code, "cxpr_fn_cxpr_rsi_state_tick_rsi(next_avg_gain, next_avg_loss)"));
     assert(!strstr(code, "fmax("));
     assert(!strstr(code, "_cx_v0"));
     assert(!strstr(code, "L0:"));
-    assert(strstr(code, "_cx_slots["));
+    assert(!strstr(code, "_cx_slots["));
     assert(strstr(code, "_cx_params["));
     assert(strstr(code, "_cx_outputs["));
     assert(!strstr(code, "cxpr_registry"));
@@ -1857,6 +2180,14 @@ int main(void) {
     test_parse_model_rejects_legacy_meta_block();
     test_parse_model_rejects_decorator_metadata();
     test_parse_model_host_blocks_preserve_body();
+    test_parse_model_host_blocks_expose_nested_tree();
+    test_parse_model_host_blocks_expose_inline_nested_tree();
+    test_parse_model_host_blocks_reject_inline_fields_without_comma();
+    test_model_validate_host_blocks_accepts_registered_specs();
+    test_model_validate_host_blocks_rejects_unknown_kind();
+    test_model_validate_host_blocks_enforces_named_and_multiple_policy();
+    test_model_validate_host_blocks_uses_host_callback_errors();
+    test_model_validate_host_blocks_uses_block_callback();
     test_parse_model_rejects_yaml_mapping_in_host_block();
     test_parse_model_rejects_meta_as_host_block();
     test_model_plan_bind_sources_exports_scoped_timeframes();
@@ -1887,6 +2218,7 @@ int main(void) {
     test_session_window_builtin_autoregisters_and_emits_c();
     test_session_record_field_lookback();
     test_session_direct_record_producer_lookback();
+    test_model_c_common_subexpression_eliminates_duplicate_bindings();
     test_compile_imported_producer_infers_missing_child_inputs();
     test_macd_record_cross_strategy_fixture();
     test_robot_hexapod_fixture_simulates_vec3_io();

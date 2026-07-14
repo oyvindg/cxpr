@@ -41,10 +41,19 @@ typedef struct {
 } cxpr_model_metadata;
 
 typedef struct {
+    char* key;
+    char* value;
+} cxpr_model_host_block_field;
+
+struct cxpr_model_host_block {
     char* kind;
     char* name;
     char* body;
-} cxpr_model_host_block;
+    cxpr_model_host_block_field* fields;
+    size_t field_count;
+    cxpr_model_host_block* children;
+    size_t child_count;
+};
 
 struct cxpr_model {
     char* name;
@@ -185,6 +194,7 @@ struct cxpr_model_session {
 void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
                           const char* message, size_t line, size_t column);
 bool cxpr_model_names_match(const char* a, const char* b);
+bool cxpr_model_ast_equal(const cxpr_ast* left, const cxpr_ast* right);
 void cxpr_model_context_set_compiled_number(cxpr_context* ctx,
                                             const cxpr_model_compiled_binding* binding,
                                             double value);
@@ -211,6 +221,11 @@ bool cxpr_model_collect_required_defaults(const cxpr_model* model,
                                           char*** names,
                                           size_t* count,
                                           cxpr_error* err);
+void cxpr_model_record_fields_free(cxpr_model_record_field* fields, size_t count);
+void cxpr_model_record_function_clear(cxpr_model_record_function* fn);
+const cxpr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
+                                        size_t count,
+                                        const char* name);
 bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program,
                                                const size_t* output_indices,
                                                size_t output_count,
