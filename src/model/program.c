@@ -8,11 +8,31 @@
 static void cxpr_model_compiled_binding_free(cxpr_model_compiled_binding* binding) {
     if (!binding) return;
     free(binding->name);
-    cxpr_program_free(binding->program);
+    cxpr_ast_free(binding->ast);
     binding->name = NULL;
     binding->name_hash = 0u;
     binding->result_kind = CXPR_IR_VIEW_RESULT_UNKNOWN;
-    binding->program = NULL;
+    binding->ast = NULL;
+}
+
+static bool cxpr_model_eval_ast_bool_result(const cxpr_ast* ast,
+                                            const cxpr_context* ctx,
+                                            const cxpr_registry* reg,
+                                            bool* out_value,
+                                            cxpr_error* err) {
+    cxpr_value value = {0};
+    if (!cxpr_eval_ast(ast, ctx, reg, &value, err)) return false;
+    if (value.type != CXPR_VALUE_BOOL) {
+        cxpr_value_free(&value);
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to bool";
+        }
+        return false;
+    }
+    if (out_value) *out_value = value.b;
+    cxpr_value_free(&value);
+    return true;
 }
 
 void cxpr_model_context_set_compiled_number(cxpr_context* ctx,
@@ -88,7 +108,7 @@ bool cxpr_model_program_seed_defaults(const cxpr_model_program* program,
 
     for (size_t i = 0; i < program->constant_count; ++i) {
         cxpr_value value = {0};
-        if (!cxpr_eval_program(program->constants[i].program, ctx, eval_reg, &value, err)) {
+        if (!cxpr_eval_ast(program->constants[i].ast, ctx, eval_reg, &value, err)) {
             return false;
         }
         cxpr_context_set_param_value(ctx, program->constants[i].name, &value);
@@ -114,21 +134,21 @@ bool cxpr_eval_model_program(const cxpr_model_program* program,
     for (size_t i = 0; i < program->binding_count; ++i) {
         if (program->bindings[i].result_kind == CXPR_IR_VIEW_RESULT_NUMBER) {
             double value = 0.0;
-            if (!cxpr_eval_program_number(
-                    program->bindings[i].program, ctx, eval_reg, &value, err)) {
+            if (!cxpr_eval_ast_number(
+                    program->bindings[i].ast, ctx, eval_reg, &value, err)) {
                 return false;
             }
             cxpr_model_context_set_compiled_number(ctx, &program->bindings[i], value);
         } else if (program->bindings[i].result_kind == CXPR_IR_VIEW_RESULT_BOOL) {
             bool value = false;
-            if (!cxpr_eval_program_bool(
-                    program->bindings[i].program, ctx, eval_reg, &value, err)) {
+            if (!cxpr_model_eval_ast_bool_result(
+                    program->bindings[i].ast, ctx, eval_reg, &value, err)) {
                 return false;
             }
             cxpr_model_context_set_compiled_bool(ctx, &program->bindings[i], value);
         } else {
             cxpr_value value = {0};
-            if (!cxpr_eval_program(program->bindings[i].program, ctx, eval_reg, &value, err)) {
+            if (!cxpr_eval_ast(program->bindings[i].ast, ctx, eval_reg, &value, err)) {
                 return false;
             }
             cxpr_model_context_set_compiled_typed(ctx, &program->bindings[i], &value);

@@ -44,57 +44,24 @@ static char* cxpr_model_child_cache_key(const cxpr_ast* ast) {
     return out;
 }
 
-static bool cxpr_model_ast_uses_defined_record_producer(const cxpr_ast* ast,
-                                                        const cxpr_registry* reg) {
-    if (!ast) return false;
-    switch (cxpr_ast_type(ast)) {
-    case CXPR_NODE_PRODUCER_ACCESS: {
-        cxpr_func_entry* entry = cxpr_registry_find(reg, cxpr_ast_producer_name(ast));
-        if (entry && (entry->defined_return_field_count > 0u || entry->model_producer)) return true;
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
-            if (cxpr_model_ast_uses_defined_record_producer(
-                    cxpr_ast_producer_arg(ast, i), reg)) {
-                return true;
-            }
+static bool cxpr_model_eval_ast_bool_result(const cxpr_ast* ast,
+                                            const cxpr_context* ctx,
+                                            const cxpr_registry* reg,
+                                            bool* out_value,
+                                            cxpr_error* err) {
+    cxpr_value value = {0};
+    if (!cxpr_eval_ast(ast, ctx, reg, &value, err)) return false;
+    if (value.type != CXPR_VALUE_BOOL) {
+        cxpr_value_free(&value);
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to bool";
         }
         return false;
     }
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_model_ast_uses_defined_record_producer(
-                   cxpr_ast_lookback_target(ast), reg) ||
-               cxpr_model_ast_uses_defined_record_producer(
-                   cxpr_ast_lookback_index(ast), reg);
-    case CXPR_NODE_BINARY_OP:
-        return cxpr_model_ast_uses_defined_record_producer(cxpr_ast_left(ast), reg) ||
-               cxpr_model_ast_uses_defined_record_producer(cxpr_ast_right(ast), reg);
-    case CXPR_NODE_UNARY_OP:
-        return cxpr_model_ast_uses_defined_record_producer(cxpr_ast_operand(ast), reg);
-    case CXPR_NODE_TERNARY:
-        return cxpr_model_ast_uses_defined_record_producer(
-                   cxpr_ast_ternary_condition(ast), reg) ||
-               cxpr_model_ast_uses_defined_record_producer(
-                   cxpr_ast_ternary_true_branch(ast), reg) ||
-               cxpr_model_ast_uses_defined_record_producer(
-                   cxpr_ast_ternary_false_branch(ast), reg);
-    case CXPR_NODE_FUNCTION_CALL:
-        for (size_t i = 0u; i < cxpr_ast_function_argc(ast); ++i) {
-            if (cxpr_model_ast_uses_defined_record_producer(
-                    cxpr_ast_function_arg(ast, i), reg)) {
-                return true;
-            }
-        }
-        return false;
-    default:
-        return false;
-    }
-}
-
-static bool cxpr_model_binding_prefers_ast_eval(const cxpr_model_compiled_binding* binding,
-                                                const cxpr_registry* reg) {
-    return binding &&
-           binding->program &&
-           binding->program->ast &&
-           cxpr_model_ast_uses_defined_record_producer(binding->program->ast, reg);
+    if (out_value) *out_value = value.b;
+    cxpr_value_free(&value);
+    return true;
 }
 
 static void cxpr_model_history_entry_free(cxpr_model_history_entry* entry) {
@@ -191,6 +158,11 @@ static bool cxpr_model_session_capture_history(const cxpr_model_program* program
     return true;
 }
 
+static void cxpr_model_output_state_set_number(cxpr_model_output_state* state,
+                                               double value);
+static void cxpr_model_output_state_set_bool(cxpr_model_output_state* state,
+                                             bool value);
+
 bool cxpr_model_lookback_resolver(const cxpr_ast* target,
                                   const cxpr_ast* index,
                                   const cxpr_context* ctx,
@@ -237,6 +209,25 @@ static void cxpr_model_session_refresh_outputs(const cxpr_model_program* program
         bool numeric_found = false;
         double numeric = 0.0;
         bool value = cxpr_context_get_bool(session->ctx, program->outputs[i], &found);
+        for (size_t j = 0u; j < session->pending_count; ++j) {
+            size_t binding_index = session->pending_binding_indices[j];
+            if (binding_index >= program->binding_count ||
+                program->bindings[binding_index].kind != CXPR_MODEL_BINDING_STATE_UPDATE ||
+                !cxpr_model_names_match(program->bindings[binding_index].name,
+                                        program->outputs[i])) {
+                continue;
+            }
+            if (session->pending_values[j].type == CXPR_VALUE_NUMBER) {
+                cxpr_model_output_state_set_number(
+                    &session->outputs[i], session->pending_values[j].d);
+                goto next_output;
+            }
+            if (session->pending_values[j].type == CXPR_VALUE_BOOL) {
+                cxpr_model_output_state_set_bool(
+                    &session->outputs[i], session->pending_values[j].b);
+                goto next_output;
+            }
+        }
         if (!found) {
             numeric = cxpr_context_get(session->ctx, program->outputs[i], &numeric_found);
             if (numeric_found) value = numeric != 0.0;
@@ -253,6 +244,8 @@ static void cxpr_model_session_refresh_outputs(const cxpr_model_program* program
         session->outputs[i].has_previous = session->outputs[i].has_current;
         session->outputs[i].current = value;
         session->outputs[i].has_current = found;
+next_output:
+        ;
     }
 }
 
@@ -292,6 +285,14 @@ static bool cxpr_model_session_refresh_outputs_fused(
     for (size_t i = 0; i < session->output_count; ++i) {
         const cxpr_model_slot_ref* output = &program->fused_outputs[i];
         double value = session->fused_slots[output->slot];
+        for (size_t j = 0u; j < program->fused_commit_count; ++j) {
+            if (program->fused_commits[j].state_slot == output->slot &&
+                j < session->fused_pending_count &&
+                session->fused_pending_bound[j]) {
+                value = session->fused_pending_values[j];
+                break;
+            }
+        }
         if (output->result_kind == CXPR_IR_VIEW_RESULT_BOOL) {
             cxpr_model_output_state_set_bool(&session->outputs[i], value != 0.0);
         } else {
@@ -418,12 +419,18 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
                                            sizeof(cxpr_context_slot));
             session->fused_commit_slot_bound =
                 (bool*)calloc(program->fused_commit_count, sizeof(bool));
-            if (!session->fused_commit_slots || !session->fused_commit_slot_bound) {
+            session->fused_pending_values =
+                (double*)calloc(program->fused_commit_count, sizeof(double));
+            session->fused_pending_bound =
+                (bool*)calloc(program->fused_commit_count, sizeof(bool));
+            if (!session->fused_commit_slots || !session->fused_commit_slot_bound ||
+                !session->fused_pending_values || !session->fused_pending_bound) {
                 cxpr_model_session_free(session);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
             session->fused_commit_slot_count = program->fused_commit_count;
+            session->fused_pending_count = program->fused_commit_count;
         }
     }
 
@@ -435,11 +442,8 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
     for (size_t i = 0; i < program->state_default_count; ++i) {
         if (program->state_defaults[i].result_kind == CXPR_IR_VIEW_RESULT_NUMBER) {
             double value = 0.0;
-            if (cxpr_model_binding_prefers_ast_eval(&program->state_defaults[i], eval_reg)
-                    ? !cxpr_eval_ast_number(program->state_defaults[i].program->ast,
-                                            session->ctx, eval_reg, &value, err)
-                    : !cxpr_eval_program_number(program->state_defaults[i].program,
-                                                session->ctx, eval_reg, &value, err)) {
+            if (!cxpr_eval_ast_number(program->state_defaults[i].ast,
+                                      session->ctx, eval_reg, &value, err)) {
                 cxpr_model_session_free(session);
                 return NULL;
             }
@@ -447,11 +451,8 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
                 session->ctx, &program->state_defaults[i], value);
         } else if (program->state_defaults[i].result_kind == CXPR_IR_VIEW_RESULT_BOOL) {
             bool value = false;
-            if (cxpr_model_binding_prefers_ast_eval(&program->state_defaults[i], eval_reg)
-                    ? !cxpr_eval_ast_bool(program->state_defaults[i].program->ast,
-                                          session->ctx, eval_reg, &value, err)
-                    : !cxpr_eval_program_bool(program->state_defaults[i].program,
-                                              session->ctx, eval_reg, &value, err)) {
+            if (!cxpr_model_eval_ast_bool_result(program->state_defaults[i].ast,
+                                                 session->ctx, eval_reg, &value, err)) {
                 cxpr_model_session_free(session);
                 return NULL;
             }
@@ -459,11 +460,8 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
                 session->ctx, &program->state_defaults[i], value);
         } else {
             cxpr_value value = {0};
-            if (cxpr_model_binding_prefers_ast_eval(&program->state_defaults[i], eval_reg)
-                    ? !cxpr_eval_ast(program->state_defaults[i].program->ast,
-                                     session->ctx, eval_reg, &value, err)
-                    : !cxpr_eval_program(program->state_defaults[i].program,
-                                         session->ctx, eval_reg, &value, err)) {
+            if (!cxpr_eval_ast(program->state_defaults[i].ast,
+                               session->ctx, eval_reg, &value, err)) {
                 cxpr_model_session_free(session);
                 return NULL;
             }
@@ -518,6 +516,8 @@ void cxpr_model_session_free(cxpr_model_session* session) {
     free(session->fused_export_slot_bound);
     free(session->fused_commit_slots);
     free(session->fused_commit_slot_bound);
+    free(session->fused_pending_values);
+    free(session->fused_pending_bound);
     for (size_t i = 0; i < session->child_session_count; ++i) {
         cxpr_model_session_free(session->child_sessions[i]);
     }
@@ -528,6 +528,41 @@ void cxpr_model_session_free(cxpr_model_session* session) {
     free(session->pending_values);
     free(session->pending_binding_indices);
     free(session);
+}
+
+static void cxpr_model_session_clear_pending(cxpr_model_session* session) {
+    if (!session) return;
+    for (size_t i = 0u; i < session->pending_count; ++i) {
+        cxpr_value_free(&session->pending_values[i]);
+        session->pending_values[i] = (cxpr_value){0};
+    }
+    session->pending_count = 0u;
+}
+
+static void cxpr_model_session_commit_pending(const cxpr_model_program* program,
+                                              cxpr_model_session* session) {
+    if (!program || !session) return;
+    for (size_t i = 0u; i < session->pending_count; ++i) {
+        size_t binding_index = session->pending_binding_indices[i];
+        if (binding_index >= program->binding_count) continue;
+        if (session->pending_values[i].type == CXPR_VALUE_NUMBER) {
+            cxpr_model_context_set_compiled_number(
+                session->ctx,
+                &program->bindings[binding_index],
+                session->pending_values[i].d);
+        } else if (session->pending_values[i].type == CXPR_VALUE_BOOL) {
+            cxpr_model_context_set_compiled_bool(
+                session->ctx,
+                &program->bindings[binding_index],
+                session->pending_values[i].b);
+        } else {
+            cxpr_model_context_set_compiled_typed(
+                session->ctx,
+                &program->bindings[binding_index],
+                &session->pending_values[i]);
+        }
+    }
+    cxpr_model_session_clear_pending(session);
 }
 
 cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
@@ -639,6 +674,32 @@ static bool cxpr_model_session_tick_fused(const cxpr_model_program* program,
     double ignored;
 
     if (!program->has_fused_ir || !session->fused_slots) return false;
+    for (size_t i = 0; i < program->fused_commit_count; ++i) {
+        if (i >= session->fused_pending_count || !session->fused_pending_bound[i]) continue;
+        session->fused_slots[program->fused_commits[i].state_slot] =
+            session->fused_pending_values[i];
+        session->fused_pending_bound[i] = false;
+        if (materialize_context) {
+            size_t slot = program->fused_commits[i].state_slot;
+            double value = session->fused_slots[slot];
+            if (i < session->fused_commit_slot_count &&
+                session->fused_commit_slot_bound[i] &&
+                cxpr_context_slot_valid(session->ctx, &session->fused_commit_slots[i])) {
+                cxpr_context_slot_set(&session->fused_commit_slots[i], value);
+            } else {
+                cxpr_context_set_prehashed(session->ctx,
+                                           program->fused_slot_names[slot],
+                                           program->fused_slot_hashes[slot],
+                                           value);
+                if (i < session->fused_commit_slot_count &&
+                    cxpr_context_slot_bind(session->ctx,
+                                           program->fused_slot_names[slot],
+                                           &session->fused_commit_slots[i])) {
+                    session->fused_commit_slot_bound[i] = true;
+                }
+            }
+        }
+    }
     for (size_t i = 0; i < program->fused_input_count; ++i) {
         bool found = false;
         double value;
@@ -675,8 +736,10 @@ static bool cxpr_model_session_tick_fused(const cxpr_model_program* program,
     if (err && err->code != CXPR_OK) return false;
 
     for (size_t i = 0; i < program->fused_commit_count; ++i) {
-        session->fused_slots[program->fused_commits[i].state_slot] =
+        if (i >= session->fused_pending_count) continue;
+        session->fused_pending_values[i] =
             session->fused_slots[program->fused_commits[i].update_slot];
+        session->fused_pending_bound[i] = true;
     }
 
     if (materialize_context) {
@@ -701,26 +764,6 @@ static bool cxpr_model_session_tick_fused(const cxpr_model_program* program,
                 }
             }
         }
-        for (size_t i = 0; i < program->fused_commit_count; ++i) {
-            size_t slot = program->fused_commits[i].state_slot;
-            double value = session->fused_slots[slot];
-            if (i < session->fused_commit_slot_count &&
-                session->fused_commit_slot_bound[i] &&
-                cxpr_context_slot_valid(session->ctx, &session->fused_commit_slots[i])) {
-                cxpr_context_slot_set(&session->fused_commit_slots[i], value);
-            } else {
-                cxpr_context_set_prehashed(session->ctx,
-                                           program->fused_slot_names[slot],
-                                           program->fused_slot_hashes[slot],
-                                           value);
-                if (i < session->fused_commit_slot_count &&
-                    cxpr_context_slot_bind(session->ctx,
-                                           program->fused_slot_names[slot],
-                                           &session->fused_commit_slots[i])) {
-                    session->fused_commit_slot_bound[i] = true;
-                }
-            }
-        }
     }
     if (!cxpr_model_session_refresh_outputs_fused(program, session)) {
         cxpr_model_session_refresh_outputs(program, session);
@@ -739,7 +782,6 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
                              const cxpr_registry* reg,
                              cxpr_error* err) {
     const cxpr_registry* eval_reg;
-    size_t pending_count = 0u;
     cxpr_model_session* previous_active_session;
 
     if (err) *err = (cxpr_error){0};
@@ -756,61 +798,45 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
         g_model_active_session = previous_active_session;
         return ok;
     }
+    cxpr_model_session_commit_pending(program, session);
 
     for (size_t i = 0; i < program->binding_count; ++i) {
         cxpr_value value = {0};
         if (program->bindings[i].result_kind == CXPR_IR_VIEW_RESULT_NUMBER) {
             double number = 0.0;
-            if (cxpr_model_binding_prefers_ast_eval(&program->bindings[i], eval_reg)
-                    ? !cxpr_eval_ast_number(program->bindings[i].program->ast,
-                                            session->ctx, eval_reg, &number, err)
-                    : !cxpr_eval_program_number(program->bindings[i].program, session->ctx,
-                                                eval_reg, &number, err)) {
-                for (size_t j = 0; j < pending_count; ++j) {
-                    cxpr_value_free(&session->pending_values[j]);
-                }
+            if (!cxpr_eval_ast_number(program->bindings[i].ast,
+                                      session->ctx, eval_reg, &number, err)) {
+                cxpr_model_session_clear_pending(session);
                 g_model_active_session = previous_active_session;
                 return false;
             }
             value = cxpr_num(number);
         } else if (program->bindings[i].result_kind == CXPR_IR_VIEW_RESULT_BOOL) {
             bool boolean = false;
-            if (cxpr_model_binding_prefers_ast_eval(&program->bindings[i], eval_reg)
-                    ? !cxpr_eval_ast_bool(program->bindings[i].program->ast,
-                                          session->ctx, eval_reg, &boolean, err)
-                    : !cxpr_eval_program_bool(program->bindings[i].program, session->ctx,
-                                              eval_reg, &boolean, err)) {
-                for (size_t j = 0; j < pending_count; ++j) {
-                    cxpr_value_free(&session->pending_values[j]);
-                }
+            if (!cxpr_model_eval_ast_bool_result(program->bindings[i].ast,
+                                                 session->ctx, eval_reg, &boolean, err)) {
+                cxpr_model_session_clear_pending(session);
                 g_model_active_session = previous_active_session;
                 return false;
             }
             value = cxpr_bool(boolean);
-        } else if (cxpr_model_binding_prefers_ast_eval(&program->bindings[i], eval_reg)
-                       ? !cxpr_eval_ast(program->bindings[i].program->ast,
-                                        session->ctx, eval_reg, &value, err)
-                       : !cxpr_eval_program(program->bindings[i].program, session->ctx,
-                                            eval_reg, &value, err)) {
-            for (size_t j = 0; j < pending_count; ++j) {
-                cxpr_value_free(&session->pending_values[j]);
-            }
+        } else if (!cxpr_eval_ast(program->bindings[i].ast,
+                                  session->ctx, eval_reg, &value, err)) {
+            cxpr_model_session_clear_pending(session);
             g_model_active_session = previous_active_session;
             return false;
         }
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
-            if (pending_count >= session->pending_capacity) {
+            if (session->pending_count >= session->pending_capacity) {
                 cxpr_value_free(&value);
-                for (size_t j = 0; j < pending_count; ++j) {
-                    cxpr_value_free(&session->pending_values[j]);
-                }
+                cxpr_model_session_clear_pending(session);
                 g_model_active_session = previous_active_session;
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
-            session->pending_binding_indices[pending_count] = i;
-            session->pending_values[pending_count] = value;
-            pending_count++;
+            session->pending_binding_indices[session->pending_count] = i;
+            session->pending_values[session->pending_count] = value;
+            session->pending_count++;
         } else {
             if (value.type == CXPR_VALUE_NUMBER) {
                 cxpr_model_context_set_compiled_number(
@@ -824,27 +850,6 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
             }
             cxpr_value_free(&value);
         }
-    }
-
-    for (size_t i = 0; i < pending_count; ++i) {
-        size_t binding_index = session->pending_binding_indices[i];
-        if (session->pending_values[i].type == CXPR_VALUE_NUMBER) {
-            cxpr_model_context_set_compiled_number(
-                session->ctx,
-                &program->bindings[binding_index],
-                session->pending_values[i].d);
-        } else if (session->pending_values[i].type == CXPR_VALUE_BOOL) {
-            cxpr_model_context_set_compiled_bool(
-                session->ctx,
-                &program->bindings[binding_index],
-                session->pending_values[i].b);
-        } else {
-            cxpr_model_context_set_compiled_typed(
-                session->ctx,
-                &program->bindings[binding_index],
-                &session->pending_values[i]);
-        }
-        cxpr_value_free(&session->pending_values[i]);
     }
 
     cxpr_model_session_refresh_outputs(program, session);

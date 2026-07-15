@@ -458,9 +458,7 @@ static char* cxpr_model_c_current_symbol_expr(const cxpr_model_program* program,
     if (cxpr_model_c_symbol_is_state(program, name, &slot)) {
         size_t c_slot = cxpr_model_c_state_slot_for_fused_slot(program, slot);
         if (c_slot == (size_t)-1) return NULL;
-        if (state_next_names && state_next_names[slot]) {
-            return cxpr_strdup(state_next_names[slot]);
-        }
+        (void)state_next_names;
         (void)c_slot;
         return cxpr_model_c_prefixed_name("_cx_state_", name);
     }
@@ -696,8 +694,8 @@ static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* progra
         const char* name = cxpr_ast_variable_name(period_ast);
         size_t index = cxpr_model_program_param_index(program, name);
         if (index == (size_t)-1 ||
-            !program->constants[index].program ||
-            !cxpr_eval_constant_double(program->constants[index].program->ast, &raw)) {
+            !program->constants[index].ast ||
+            !cxpr_eval_constant_double(program->constants[index].ast, &raw)) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                                  "window period parameter requires a numeric default",
                                  0, 0);
@@ -751,16 +749,14 @@ static const char* cxpr_model_c_find_common_binding_expr(const cxpr_model_progra
     const cxpr_ast* ast;
     if (!program || binding_index >= program->binding_count || !emitted_names) return NULL;
     if (program->bindings[binding_index].kind == CXPR_MODEL_BINDING_STATE_UPDATE) return NULL;
-    ast = program->bindings[binding_index].program
-              ? program->bindings[binding_index].program->ast
-              : NULL;
+    ast = program->bindings[binding_index].ast;
     if (!ast) return NULL;
     (void)skip_bindings;
     for (size_t i = 0u; i < binding_index; ++i) {
         if (!needed_bindings[i] || !emitted_names[i]) continue;
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) continue;
-        if (program->bindings[i].program &&
-            cxpr_model_ast_equal(program->bindings[i].program->ast, ast)) {
+        if (program->bindings[i].ast &&
+            cxpr_model_ast_equal(program->bindings[i].ast, ast)) {
             return emitted_names[i];
         }
     }
@@ -1266,12 +1262,22 @@ static bool cxpr_model_c_emit_runtime_state_typedef(
     cxpr_model_c_puts(b, "    uint8_t init;\n");
     for (size_t i = 0u; i < program->state_default_count; ++i) {
         char* field_name = cxpr_model_c_prefixed_name("state_", program->state_defaults[i].name);
-        if (!field_name) {
+        char* pending_name = cxpr_model_c_prefixed_name("pending_", program->state_defaults[i].name);
+        char* has_pending_name = cxpr_model_c_prefixed_name(
+            "has_pending_", program->state_defaults[i].name);
+        if (!field_name || !pending_name || !has_pending_name) {
+            free(field_name);
+            free(pending_name);
+            free(has_pending_name);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
         cxpr_model_c_printf(b, "    double %s;\n", field_name);
+        cxpr_model_c_printf(b, "    double %s;\n", pending_name);
+        cxpr_model_c_printf(b, "    uint8_t %s;\n", has_pending_name);
         free(field_name);
+        free(pending_name);
+        free(has_pending_name);
     }
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         size_t capacity;
@@ -1386,6 +1392,7 @@ static bool cxpr_model_c_init_sentinel_slot(const cxpr_model_program* program,
                                             size_t* out_slot) {
     (void)out_slot;
     if (!program) return false;
+    if (program->state_default_count > 0u) return true;
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         if (program->history_specs[i].depth > 0u) return true;
     }
@@ -1442,6 +1449,16 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
                 i);
         }
     }
+    for (size_t i = 0u; i < program->state_default_count; ++i) {
+        char* has_pending_name = cxpr_model_c_prefixed_name(
+            "has_pending_", program->state_defaults[i].name);
+        if (!has_pending_name) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        cxpr_model_c_printf(b, "    _cx_state->%s = 0u;\n", has_pending_name);
+        free(has_pending_name);
+    }
     cxpr_model_c_puts(b, "    _cx_state->init = 1u;\n");
     cxpr_model_c_puts(b, "}\n\n");
     if (b->oom) {
@@ -1459,8 +1476,8 @@ static bool cxpr_model_c_period_default_value(const cxpr_model_program* program,
         const char* name = cxpr_ast_variable_name(period_ast);
         size_t index = cxpr_model_program_param_index(program, name);
         if (index == (size_t)-1 ||
-            !program->constants[index].program ||
-            !cxpr_eval_constant_double(program->constants[index].program->ast, out_value)) {
+            !program->constants[index].ast ||
+            !cxpr_eval_constant_double(program->constants[index].ast, out_value)) {
             return false;
         }
         return true;
@@ -2427,7 +2444,7 @@ static bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_program* pr
     }
     for (size_t i = 0u; i < program->binding_count; ++i) {
         if (!cxpr_model_c_collect_defined_function_refs(
-                program, program->bindings[i].program->ast, used, err)) {
+                program, program->bindings[i].ast, used, err)) {
             free(used);
             return false;
         }
@@ -2682,6 +2699,28 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                 safe_name);
         }
     }
+    for (size_t i = 0u; i < program->state_default_count; ++i) {
+        char* field_name = cxpr_model_c_prefixed_name("state_", program->state_defaults[i].name);
+        char* pending_name = cxpr_model_c_prefixed_name("pending_", program->state_defaults[i].name);
+        char* has_pending_name = cxpr_model_c_prefixed_name(
+            "has_pending_", program->state_defaults[i].name);
+        if (!field_name || !pending_name || !has_pending_name) {
+            free(field_name);
+            free(pending_name);
+            free(has_pending_name);
+            goto oom;
+        }
+        cxpr_model_c_printf(
+            &b,
+            "    if (_cx_state->%s) { _cx_state->%s = _cx_state->%s; _cx_state->%s = 0u; }\n",
+            has_pending_name,
+            field_name,
+            pending_name,
+            has_pending_name);
+        free(field_name);
+        free(pending_name);
+        free(has_pending_name);
+    }
     for (size_t i = 0u; i < program->fused_input_count; ++i) {
         char* name = cxpr_model_c_prefixed_name("_cx_input_", program->fused_inputs[i].name);
         if (!name) goto oom;
@@ -2766,8 +2805,8 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                     &b,
                     name,
                     next_name,
-                    program->bindings[i].program->ast,
-                    program->bindings[i + 1u].program->ast,
+                    program->bindings[i].ast,
+                    program->bindings[i + 1u].ast,
                     &ast_target,
                     program,
                     err)) {
@@ -2791,7 +2830,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         }
         {
             const cxpr_model_window_plan_node* window_node =
-                cxpr_model_window_plan_find_ast(&window_plan, program->bindings[i].program->ast);
+                cxpr_model_window_plan_find_ast(&window_plan, program->bindings[i].ast);
             if (window_node &&
                 cxpr_model_c_emit_planned_roc_aggregate_binding(
                     &b, name, &window_plan, window_node, &ast_target, program, err)) {
@@ -2818,7 +2857,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             }
         }
         if (cxpr_model_c_emit_optimized_single_binding(
-                &b, name, program->bindings[i].program->ast, &ast_target, program, err)) {
+                &b, name, program->bindings[i].ast, &ast_target, program, err)) {
             cse_names[i] = cxpr_strdup(name);
             if (!cse_names[i]) {
                 if (owns_name) free(name);
@@ -2830,7 +2869,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             if (owns_name) free(name);
             goto fail;
         }
-        expr = cxpr_ast_to_c(program->bindings[i].program->ast, &ast_target, err);
+        expr = cxpr_ast_to_c(program->bindings[i].ast, &ast_target, err);
         if (!expr) {
             if (owns_name) free(name);
             goto fail;
@@ -2846,12 +2885,23 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     }
     for (size_t i = 0u; i < program->fused_commit_count; ++i) {
         char* next_name = state_next_names[program->fused_commits[i].state_slot];
+        char* pending_name = cxpr_model_c_prefixed_name(
+            "pending_", program->fused_slot_names[program->fused_commits[i].state_slot]);
+        char* has_pending_name = cxpr_model_c_prefixed_name(
+            "has_pending_", program->fused_slot_names[program->fused_commits[i].state_slot]);
         char* field_name = cxpr_model_c_prefixed_name(
             "state_", program->fused_slot_names[program->fused_commits[i].state_slot]);
         if (!next_name) goto oom;
-        if (!field_name) goto oom;
-        cxpr_model_c_printf(&b, "    _cx_state->%s = %s;\n",
-                            field_name, next_name);
+        if (!pending_name || !has_pending_name || !field_name) {
+            free(pending_name);
+            free(has_pending_name);
+            free(field_name);
+            goto oom;
+        }
+        cxpr_model_c_printf(&b, "    _cx_state->%s = %s; _cx_state->%s = 1u;\n",
+                            pending_name, next_name, has_pending_name);
+        free(pending_name);
+        free(has_pending_name);
         free(field_name);
     }
     for (size_t out_i = 0u; out_i < (output_indices ? selected_output_count : program->fused_output_count); ++out_i) {
@@ -2861,16 +2911,26 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         if (i >= program->fused_output_count) goto fail;
         name = program->fused_outputs[i].name;
         if (cxpr_model_c_symbol_is_state(program, name, &state_slot)) {
-            char* next_name = state_next_names[state_slot];
-            if (next_name) {
-                cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s;\n", out_i, next_name);
-            } else {
-                char* field_name = cxpr_model_c_prefixed_name("state_", name);
-                if (!field_name) goto oom;
-                cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = _cx_state->%s;\n",
-                                    out_i, field_name);
+            char* field_name = cxpr_model_c_prefixed_name("state_", name);
+            char* pending_name = cxpr_model_c_prefixed_name("pending_", name);
+            char* has_pending_name = cxpr_model_c_prefixed_name("has_pending_", name);
+            (void)state_slot;
+            if (!field_name || !pending_name || !has_pending_name) {
                 free(field_name);
+                free(pending_name);
+                free(has_pending_name);
+                goto oom;
             }
+            cxpr_model_c_printf(
+                &b,
+                "    _cx_outputs[%zu] = _cx_state->%s ? _cx_state->%s : _cx_state->%s;\n",
+                out_i,
+                has_pending_name,
+                pending_name,
+                field_name);
+            free(field_name);
+            free(pending_name);
+            free(has_pending_name);
         } else {
             char* local_name = cxpr_model_c_safe_name(name);
             if (!local_name) goto oom;

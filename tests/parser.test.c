@@ -320,6 +320,24 @@ static void test_function_field_access(void) {
     printf("  ✓ test_function_field_access\n");
 }
 
+static void test_dotted_function_call(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast = parse_ok(p, "ema.ema_step(signal, source, $period)");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_ast_function_name(ast), "ema.ema_step") == 0);
+    assert(cxpr_ast_function_argc(ast) == 3);
+    cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "r.legcommand(close).x");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(strcmp(cxpr_ast_producer_name(ast), "r.legcommand") == 0);
+    assert(strcmp(cxpr_ast_producer_field(ast), "x") == 0);
+    assert(cxpr_ast_producer_argc(ast) == 1);
+    cxpr_ast_free(ast);
+    cxpr_parser_free(p);
+    printf("  ✓ test_dotted_function_call\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: grouped function field access — (func(...)).field
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -816,6 +834,7 @@ int main(void) {
     test_function_two_args();
     test_function_nested();
     test_function_field_access();
+    test_dotted_function_call();
     test_grouped_function_field_access();
     test_grouped_function_field_access_in_expr();
     test_grouped_field_access_error();

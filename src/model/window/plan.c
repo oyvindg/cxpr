@@ -27,8 +27,8 @@ static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* pro
         const char* name = cxpr_ast_variable_name(period_ast);
         size_t index = cxpr_model_window_plan_param_index(program, name);
         if (index == (size_t)-1 ||
-            !program->constants[index].program ||
-            !cxpr_eval_constant_double(program->constants[index].program->ast, &raw)) {
+            !program->constants[index].ast ||
+            !cxpr_eval_constant_double(program->constants[index].ast, &raw)) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                                  "window period parameter requires a numeric default",
                                  0, 0);
@@ -253,7 +253,7 @@ bool cxpr_model_window_plan_build(const cxpr_model_program* program,
     if (!program || !program->has_fused_layout) return true;
     for (size_t i = 0u; i < program->binding_count; ++i) {
         const cxpr_ast* ast =
-            program->bindings[i].program ? program->bindings[i].program->ast : NULL;
+            program->bindings[i].ast;
         if (!cxpr_model_window_plan_visit(program, out, ast, err)) {
             cxpr_model_window_plan_free(out);
             return false;

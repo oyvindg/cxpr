@@ -77,6 +77,21 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
                                             "Duplicate use import", err)) {
         return false;
     }
+    for (size_t i = 0; i < model->use_count; ++i) {
+        const char* ns_i = model->use_aliases && model->use_aliases[i]
+                               ? model->use_aliases[i]
+                               : model->uses[i];
+        for (size_t j = i + 1u; j < model->use_count; ++j) {
+            const char* ns_j = model->use_aliases && model->use_aliases[j]
+                                   ? model->use_aliases[j]
+                                   : model->uses[j];
+            if (cxpr_model_names_match(ns_i, ns_j)) {
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "Duplicate use namespace", 0, 0);
+                return false;
+            }
+        }
+    }
     if (!cxpr_model_validate_unique_strings(model->inputs, model->input_count,
                                             "Duplicate input", err)) {
         return false;
@@ -145,6 +160,12 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
                     (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE &&
                      model->bindings[j].kind == CXPR_MODEL_BINDING_STATE);
                 if (state_pair) continue;
+                if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE &&
+                    model->bindings[j].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
+                    cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                         "Duplicate state update", 0, 0);
+                    return false;
+                }
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate binding", 0, 0);
                 return false;
             }

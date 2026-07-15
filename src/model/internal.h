@@ -58,6 +58,7 @@ struct cxpr_model_host_block {
 struct cxpr_model {
     char* name;
     char** uses;
+    char** use_aliases;
     size_t use_count;
     char** functions;
     size_t function_count;
@@ -82,7 +83,7 @@ typedef struct {
     char* name;
     unsigned long name_hash;
     cxpr_ir_view_result_kind result_kind;
-    cxpr_program* program;
+    cxpr_ast* ast;
 } cxpr_model_compiled_binding;
 
 typedef struct {
@@ -184,11 +185,15 @@ struct cxpr_model_session {
     cxpr_context_slot* fused_commit_slots;
     bool* fused_commit_slot_bound;
     size_t fused_commit_slot_count;
+    double* fused_pending_values;
+    bool* fused_pending_bound;
+    size_t fused_pending_count;
     cxpr_model_session** child_sessions;
     size_t child_session_count;
     cxpr_value* pending_values;
     size_t* pending_binding_indices;
     size_t pending_capacity;
+    size_t pending_count;
 };
 
 void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
@@ -241,6 +246,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
                                      const cxpr_registry* reg,
                                      cxpr_error* err);
 bool cxpr_model_program_register_imports(cxpr_model_program* program,
+                                         const cxpr_model* model,
                                          const cxpr_model_import* imports,
                                          size_t import_count,
                                          cxpr_error* err);

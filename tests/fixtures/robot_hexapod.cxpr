@@ -32,9 +32,7 @@ $max_roll = 0.45
 $max_pitch = 0.45
 $max_gyro = 8.0
 
-state {
-    orientation = quat(1, 0, 0, 0)
-}
+state orientation = quat(1, 0, 0, 0)
 
 gyro_step = gyrodeltaquat(gyro, $dt)
 predicted_raw = quatmul(orientation, gyro_step)
@@ -62,9 +60,7 @@ front_right = legcommand(front_right_mount, 0.50, gait_phase, stride, turn, heig
 middle_left = legcommand(middle_left_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
 rear_right = legcommand(rear_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
 
-update state {
-    orientation = orientation_q
-}
+orientation := orientation_q
 
 roll = attitude.roll
 pitch = attitude.pitch

@@ -254,6 +254,55 @@ static bool cxpr_model_append_string(char*** values, size_t* count, const char* 
     return true;
 }
 
+static bool cxpr_model_append_use(cxpr_model* model, const char* path, const char* alias) {
+    char** next_uses;
+    char** next_aliases;
+    size_t next_count;
+    if (!model || !path) return false;
+    next_count = model->use_count + 1u;
+    next_uses = (char**)realloc(model->uses, next_count * sizeof(char*));
+    if (!next_uses) return false;
+    model->uses = next_uses;
+    next_aliases = (char**)realloc(model->use_aliases, next_count * sizeof(char*));
+    if (!next_aliases) return false;
+    model->use_aliases = next_aliases;
+    model->uses[model->use_count] = cxpr_strdup(path);
+    model->use_aliases[model->use_count] = alias ? cxpr_strdup(alias) : NULL;
+    if (!model->uses[model->use_count] ||
+        (alias && !model->use_aliases[model->use_count])) {
+        free(model->uses[model->use_count]);
+        free(model->use_aliases[model->use_count]);
+        model->uses[model->use_count] = NULL;
+        model->use_aliases[model->use_count] = NULL;
+        return false;
+    }
+    model->use_count = next_count;
+    return true;
+}
+
+static bool cxpr_model_parse_use_clause(char* text,
+                                        const char** out_path,
+                                        const char** out_alias) {
+    char* cursor;
+    char* as_kw;
+    if (!text || !out_path || !out_alias) return false;
+    *out_path = NULL;
+    *out_alias = NULL;
+    cursor = cxpr_model_trim_in_place(text);
+    as_kw = strstr(cursor, " as ");
+    if (as_kw) {
+        char* alias;
+        *as_kw = '\0';
+        alias = cxpr_model_trim_in_place(as_kw + 4);
+        cursor = cxpr_model_trim_in_place(cursor);
+        if (!cxpr_model_is_ident(alias)) return false;
+        *out_alias = alias;
+    }
+    if (!cxpr_model_is_use_path(cursor)) return false;
+    *out_path = cursor;
+    return true;
+}
+
 static bool cxpr_model_attach_metadatas(cxpr_model* model,
                                          const cxpr_model_pending_metadata* pending,
                                          size_t pending_count,
@@ -942,6 +991,157 @@ static bool cxpr_model_parse_assignment(cxpr_model* model, char* line,
     return true;
 }
 
+static bool cxpr_model_parse_param_block_entry(cxpr_model* model,
+                                               const char* start,
+                                               size_t len,
+                                               size_t line_no,
+                                               cxpr_error* err) {
+    char* entry;
+    char* trimmed;
+    bool ok;
+
+    while (len > 0u && isspace((unsigned char)*start)) {
+        start++;
+        len--;
+    }
+    while (len > 0u && isspace((unsigned char)start[len - 1u])) len--;
+    if (len == 0u) return true;
+
+    entry = cxpr_model_substr(start, len);
+    if (!entry) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+        return false;
+    }
+    trimmed = cxpr_model_trim_in_place(entry);
+    ok = cxpr_model_parse_assignment(model, trimmed, CXPR_MODEL_BINDING_EXPR,
+                                     line_no, true, err);
+    free(entry);
+    return ok;
+}
+
+static bool cxpr_model_parse_param_block(cxpr_model* model,
+                                         char* statement,
+                                         size_t line_no,
+                                         cxpr_error* err) {
+    char* after_dollar;
+    char* open;
+    char* close;
+    char* body_start;
+    const char* entry_start;
+    const char* cursor;
+    int paren_depth = 0;
+    int brace_depth = 0;
+    int bracket_depth = 0;
+
+    if (!model || !statement || statement[0] != '$') {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Expected param block: ${ ... }", line_no, 1);
+        return false;
+    }
+    after_dollar = statement + 1;
+    while (*after_dollar && isspace((unsigned char)*after_dollar)) after_dollar++;
+    if (*after_dollar != '{') {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Expected param block: ${ ... }", line_no, 1);
+        return false;
+    }
+    open = after_dollar;
+    close = strrchr(statement, '}');
+    if (!open || !close || close < open) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Expected param block: ${ ... }", line_no, 1);
+        return false;
+    }
+    if (*cxpr_model_trim_in_place(close + 1) != '\0') {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Unexpected text after param block", line_no, 1);
+        return false;
+    }
+
+    *close = '\0';
+    body_start = open + 1;
+    entry_start = body_start;
+    for (cursor = body_start; ; ++cursor) {
+        char ch = *cursor;
+        bool at_end = ch == '\0';
+        bool separator = false;
+
+        if (!at_end) {
+            switch (ch) {
+            case '(':
+                paren_depth++;
+                break;
+            case ')':
+                if (paren_depth > 0) paren_depth--;
+                break;
+            case '{':
+                brace_depth++;
+                break;
+            case '}':
+                if (brace_depth > 0) brace_depth--;
+                break;
+            case '[':
+                bracket_depth++;
+                break;
+            case ']':
+                if (bracket_depth > 0) bracket_depth--;
+                break;
+            case ',':
+            case '\n':
+                separator = paren_depth == 0 && brace_depth == 0 && bracket_depth == 0;
+                break;
+            default:
+                break;
+            }
+        }
+
+        if (at_end || separator) {
+            if (!cxpr_model_parse_param_block_entry(
+                    model, entry_start, (size_t)(cursor - entry_start), line_no, err)) {
+                return false;
+            }
+            if (at_end) break;
+            entry_start = cursor + 1;
+        }
+    }
+    return true;
+}
+
+static bool cxpr_model_parse_state_update_assignment(cxpr_model* model, char* line,
+                                                     size_t line_no, cxpr_error* err) {
+    char* op = strstr(line, ":=");
+    char* name;
+    char* expr_text;
+    cxpr_ast* expr;
+    if (!op) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Expected ':=' in state update",
+                             line_no, 1);
+        return false;
+    }
+    *op = '\0';
+    name = cxpr_model_trim_in_place(line);
+    if (!cxpr_model_is_ident(name)) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid state update name",
+                             line_no, 1);
+        return false;
+    }
+    if (!cxpr_model_state_exists(model, name)) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "State update references unknown state", line_no, 1);
+        return false;
+    }
+    expr_text = cxpr_model_trim_in_place(op + 2);
+    expr = cxpr_model_parse_expr(expr_text, line_no, (size_t)(expr_text - line) + 1u, err);
+    if (!expr) return false;
+    if (!cxpr_model_append_binding(model, CXPR_MODEL_BINDING_STATE_UPDATE,
+                                   name, expr_text, expr)) {
+        cxpr_ast_free(expr);
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+        return false;
+    }
+    return true;
+}
+
 static bool cxpr_model_parse_state_assignment(cxpr_model* model, char* line,
                                               size_t line_no, cxpr_error* err) {
     char* eq = strchr(line, '=');
@@ -1131,7 +1331,7 @@ static bool cxpr_model_parse_assignment_block(cxpr_model* model,
     if (!open || !close || close < open) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              state_update
-                                 ? "Expected state update block: update state { ... }"
+                                 ? "State updates must use ':=' assignments"
                                  : "Expected state block: state { ... }",
                              line_no, 1);
         return false;
@@ -1140,7 +1340,7 @@ static bool cxpr_model_parse_assignment_block(cxpr_model* model,
     if (*cxpr_model_trim_in_place(rest) != '\0') {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              state_update
-                                 ? "Expected state update block: update state { ... }"
+                                 ? "State updates must use ':=' assignments"
                                  : "Expected state block: state { ... }",
                              line_no, 1);
         return false;
@@ -1170,9 +1370,9 @@ static bool cxpr_model_parse_assignment_block(cxpr_model* model,
 static bool cxpr_model_parse_out_assignment(cxpr_model* model, char* line,
                                             size_t line_no, cxpr_error* err) {
     char* name_copy = cxpr_strdup(line);
+    char* staged_op = name_copy ? strstr(name_copy, ":=") : NULL;
     char* eq = name_copy ? strchr(name_copy, '=') : NULL;
     char* name;
-    cxpr_model_binding_kind kind;
     bool is_state;
     bool ok;
 
@@ -1180,14 +1380,18 @@ static bool cxpr_model_parse_out_assignment(cxpr_model* model, char* line,
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
         return false;
     }
-    if (!eq) {
+    if (!staged_op && !eq) {
         free(name_copy);
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Expected '=' in out assignment",
                              line_no, 1);
         return false;
     }
 
-    *eq = '\0';
+    if (staged_op) {
+        *staged_op = '\0';
+    } else {
+        *eq = '\0';
+    }
     name = cxpr_model_trim_in_place(name_copy);
     if (!cxpr_model_is_ident(name)) {
         free(name_copy);
@@ -1196,20 +1400,29 @@ static bool cxpr_model_parse_out_assignment(cxpr_model* model, char* line,
     }
 
     is_state = cxpr_model_state_exists(model, name);
+    if (staged_op) {
+        ok = cxpr_model_parse_state_update_assignment(model, line, line_no, err);
+        if (ok && !cxpr_model_string_set_add(&model->outputs, &model->output_count, name)) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+            ok = false;
+        }
+        free(name_copy);
+        return ok;
+    }
+
     if (is_state) {
         free(name_copy);
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "State updates must use update state block", line_no, 1);
-        return false;
-    }
-    kind = is_state ? CXPR_MODEL_BINDING_STATE_UPDATE : CXPR_MODEL_BINDING_EXPR;
-    if (!is_state && !cxpr_model_string_set_add(&model->outputs, &model->output_count, name)) {
-        free(name_copy);
-        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+                             "State updates must use ':=' assignments", line_no, 1);
         return false;
     }
 
-    ok = cxpr_model_parse_assignment(model, line, kind, line_no, false, err);
+    ok = cxpr_model_parse_assignment(model, line, CXPR_MODEL_BINDING_EXPR,
+                                     line_no, false, err);
+    if (ok && !cxpr_model_string_set_add(&model->outputs, &model->output_count, name)) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+        ok = false;
+    }
     if (!ok && err && err->code == CXPR_OK) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid out assignment",
                              line_no, 1);
@@ -1837,14 +2050,24 @@ static bool cxpr_model_parse_statement(cxpr_model* model, char* statement,
     }
 
     if (cxpr_model_keyword_line(statement, "use", &rest)) {
-        if (!cxpr_model_is_use_path(rest)) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid use name", line_no, 1);
-            goto done;
-        }
-        if (!cxpr_model_append_string(&model->uses, &model->use_count, rest)) {
+        char* use_owned = cxpr_strdup(rest);
+        const char* use_path = NULL;
+        const char* use_alias = NULL;
+        if (!use_owned) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
             goto done;
         }
+        if (!cxpr_model_parse_use_clause(use_owned, &use_path, &use_alias)) {
+            free(use_owned);
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid use name", line_no, 1);
+            goto done;
+        }
+        if (!cxpr_model_append_use(model, use_path, use_alias)) {
+            free(use_owned);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+            goto done;
+        }
+        free(use_owned);
         ok = true;
         goto done;
     }
@@ -1867,19 +2090,8 @@ static bool cxpr_model_parse_statement(cxpr_model* model, char* statement,
     }
 
     if (cxpr_model_keyword_line(statement, "update", &rest)) {
-        const char* state_rest = NULL;
-        if (cxpr_model_keyword_line(rest, "state", &state_rest)) {
-            char* owned = cxpr_strdup(state_rest);
-            if (!owned) {
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
-                goto done;
-            }
-            ok = cxpr_model_parse_assignment_block(model, owned, true, line_no, err);
-            free(owned);
-            goto done;
-        }
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "Expected state update block: update state { ... }",
+                             "State updates must use ':=' assignments",
                              line_no, 1);
         goto done;
     }
@@ -1938,10 +2150,7 @@ static bool cxpr_model_parse_statement(cxpr_model* model, char* statement,
         if (strchr(rest, '{')) {
             ok = cxpr_model_parse_assignment_block(model, owned, false, line_no, err);
         } else {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "State declarations must use state block",
-                                 line_no, 1);
-            ok = false;
+            ok = cxpr_model_parse_state_assignment(model, owned, line_no, err);
         }
         if (!ok && err && err->code == CXPR_OK) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid state assignment",
@@ -1952,8 +2161,22 @@ static bool cxpr_model_parse_statement(cxpr_model* model, char* statement,
     }
 
     if (statement[0] == '$') {
+        char* after_dollar = statement + 1;
+        while (*after_dollar && isspace((unsigned char)*after_dollar)) after_dollar++;
+        if (*after_dollar == '{') {
+        ok = cxpr_model_parse_param_block(model, statement, line_no, err);
+        goto done;
+        }
+    }
+
+    if (statement[0] == '$') {
         ok = cxpr_model_parse_assignment(model, statement, CXPR_MODEL_BINDING_EXPR,
                                          line_no, true, err);
+        goto done;
+    }
+
+    if (strstr(statement, ":=")) {
+        ok = cxpr_model_parse_state_update_assignment(model, statement, line_no, err);
         goto done;
     }
 

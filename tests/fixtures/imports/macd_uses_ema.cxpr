@@ -11,11 +11,7 @@ state {
     signal = 0
 }
 
-next_signal = if(initialized > 0, ema_step(signal, source, $period), source)
+next_signal = if(initialized > 0, ema.ema_step(signal, source, $period), source)
 
-update state {
-    initialized = 1
-    signal = next_signal
-}
-
-out signal
+initialized := 1
+out signal := next_signal

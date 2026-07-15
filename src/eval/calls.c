@@ -6,6 +6,7 @@
 #include "internal.h"
 #include "core.h"
 #include "call/args.h"
+#include "ir/exec/internal.h"
 #include "ir/internal.h"
 #include <math.h>
 #include <stdio.h>
@@ -269,6 +270,16 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
 
     if (scalar_only) {
         if (cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
+            if (entry->defined_program->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+                bool bool_value = false;
+                if (!cxpr_ir_exec_bool_fast(&entry->defined_program->ir, ctx, reg,
+                                            scalar_locals,
+                                            entry->defined_param_count,
+                                            &bool_value, err)) {
+                    return cxpr_num(NAN);
+                }
+                return cxpr_bool(bool_value);
+            }
             return cxpr_num(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
                                                            scalar_locals,
                                                            entry->defined_param_count, err));

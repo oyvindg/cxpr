@@ -47,6 +47,15 @@ static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, cons
     return false;
 }
 
+static cxpr_ir_view_result_kind cxpr_model_infer_result_kind(const cxpr_ast* ast,
+                                                             const cxpr_registry* reg) {
+    switch (cxpr_ir_infer_fast_result_kind(ast, reg, 0u)) {
+    case CXPR_IR_RESULT_DOUBLE: return CXPR_IR_VIEW_RESULT_NUMBER;
+    case CXPR_IR_RESULT_BOOL: return CXPR_IR_VIEW_RESULT_BOOL;
+    default: return CXPR_IR_VIEW_RESULT_UNKNOWN;
+    }
+}
+
 static bool cxpr_model_append_inferred_input(char*** inputs,
                                              size_t* input_count,
                                              const char* name,
@@ -69,18 +78,48 @@ static bool cxpr_model_append_inferred_input(char*** inputs,
     return true;
 }
 
+static const char* cxpr_model_import_leaf_name(const char* import_name);
+static const char* cxpr_model_import_namespace_name(const cxpr_model* model,
+                                                    const char* import_name);
+
 static const cxpr_model_program* cxpr_model_import_program_for_name(
+    const cxpr_model* model,
     const cxpr_model_import* imports,
     size_t import_count,
     const char* name) {
     if (!name) return NULL;
     for (size_t i = 0u; i < import_count; ++i) {
-        if (cxpr_model_names_match(imports[i].name, name)) return imports[i].program;
+        const char* ns = cxpr_model_import_namespace_name(model, imports[i].name);
+        if (cxpr_model_names_match(imports[i].name, name) ||
+            cxpr_model_names_match(ns, name)) {
+            return imports[i].program;
+        }
     }
     return NULL;
 }
 
+static const char* cxpr_model_import_leaf_name(const char* import_name) {
+    const char* slash;
+    if (!import_name) return NULL;
+    slash = strrchr(import_name, '/');
+    return slash && slash[1] != '\0' ? slash + 1 : import_name;
+}
+
+static const char* cxpr_model_import_namespace_name(const cxpr_model* model,
+                                                    const char* import_name) {
+    if (!model || !import_name) return import_name;
+    for (size_t i = 0u; i < model->use_count; ++i) {
+        if (cxpr_model_names_match(model->uses[i], import_name)) {
+            return model->use_aliases && model->use_aliases[i]
+                       ? model->use_aliases[i]
+                       : cxpr_model_import_leaf_name(import_name);
+        }
+    }
+    return import_name;
+}
+
 static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
+                                                   const cxpr_model* model,
                                                    const cxpr_model_import* imports,
                                                    size_t import_count,
                                                    char*** inputs,
@@ -91,30 +130,31 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
         case CXPR_NODE_ARRAY:
             for (size_t i = 0u; i < ast->data.array.count; ++i) {
                 if (!cxpr_model_infer_child_inputs_from_ast(
-                        ast->data.array.elements[i], imports, import_count, inputs, input_count, err)) {
+                        ast->data.array.elements[i], model, imports, import_count, inputs, input_count, err)) {
                     return false;
                 }
             }
             return true;
         case CXPR_NODE_BINARY_OP:
             return cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.binary_op.left, imports, import_count, inputs, input_count, err) &&
+                       ast->data.binary_op.left, model, imports, import_count, inputs, input_count, err) &&
                    cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.binary_op.right, imports, import_count, inputs, input_count, err);
+                       ast->data.binary_op.right, model, imports, import_count, inputs, input_count, err);
         case CXPR_NODE_UNARY_OP:
             return cxpr_model_infer_child_inputs_from_ast(
-                ast->data.unary_op.operand, imports, import_count, inputs, input_count, err);
+                ast->data.unary_op.operand, model, imports, import_count, inputs, input_count, err);
         case CXPR_NODE_FUNCTION_CALL:
             for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
                 if (!cxpr_model_infer_child_inputs_from_ast(
-                        ast->data.function_call.args[i], imports, import_count, inputs, input_count, err)) {
+                        ast->data.function_call.args[i], model, imports, import_count, inputs, input_count, err)) {
                     return false;
                 }
             }
             return true;
         case CXPR_NODE_PRODUCER_ACCESS: {
             const cxpr_model_program* child =
-                cxpr_model_import_program_for_name(imports, import_count, ast->data.producer_access.name);
+                cxpr_model_import_program_for_name(model, imports, import_count,
+                                                   ast->data.producer_access.name);
             if (child) {
                 for (size_t i = 0u; i < child->input_count; ++i) {
                     if (!cxpr_model_append_inferred_input(
@@ -125,7 +165,7 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
             }
             for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) {
                 if (!cxpr_model_infer_child_inputs_from_ast(
-                        ast->data.producer_access.args[i], imports, import_count, inputs, input_count, err)) {
+                        ast->data.producer_access.args[i], model, imports, import_count, inputs, input_count, err)) {
                     return false;
                 }
             }
@@ -133,16 +173,16 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
         }
         case CXPR_NODE_LOOKBACK:
             return cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.lookback.target, imports, import_count, inputs, input_count, err) &&
+                       ast->data.lookback.target, model, imports, import_count, inputs, input_count, err) &&
                    cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.lookback.index, imports, import_count, inputs, input_count, err);
+                       ast->data.lookback.index, model, imports, import_count, inputs, input_count, err);
         case CXPR_NODE_TERNARY:
             return cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.ternary.condition, imports, import_count, inputs, input_count, err) &&
+                       ast->data.ternary.condition, model, imports, import_count, inputs, input_count, err) &&
                    cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.ternary.true_branch, imports, import_count, inputs, input_count, err) &&
+                       ast->data.ternary.true_branch, model, imports, import_count, inputs, input_count, err) &&
                    cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.ternary.false_branch, imports, import_count, inputs, input_count, err);
+                       ast->data.ternary.false_branch, model, imports, import_count, inputs, input_count, err);
         default:
             return true;
     }
@@ -188,7 +228,7 @@ static bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
     for (size_t i = 0u; i < model->binding_count; ++i) {
         size_t nrefs;
         if (!cxpr_model_infer_child_inputs_from_ast(
-                model->bindings[i].expr, imports, import_count, &inputs, &input_count, err)) {
+                model->bindings[i].expr, model, imports, import_count, &inputs, &input_count, err)) {
             goto fail;
         }
         if (!infer_direct_refs) continue;
@@ -283,9 +323,9 @@ static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* pr
     if (index == (size_t)-1) return true;
     if (out_required[index]) return true;
     out_required[index] = true;
-    if (!program->bindings[index].program) return true;
+    if (!program->bindings[index].ast) return true;
     return cxpr_model_program_mark_required_ast(
-        program, program->bindings[index].program->ast, out_required, err);
+        program, program->bindings[index].ast, out_required, err);
 }
 
 bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program,
@@ -613,7 +653,255 @@ cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
     return cxpr_compile_model_with_imports(model, reg, NULL, 0u, err);
 }
 
+static const char* cxpr_model_import_namespace_for(const cxpr_model* model,
+                                                   const char* import_name) {
+    return cxpr_model_import_namespace_name(model, import_name);
+}
+
+static char* cxpr_model_join_namespace(const char* ns, const char* name) {
+    size_t ns_len;
+    size_t name_len;
+    char* out;
+    if (!ns || !name) return NULL;
+    ns_len = strlen(ns);
+    name_len = strlen(name);
+    out = (char*)malloc(ns_len + 1u + name_len + 1u);
+    if (!out) return NULL;
+    memcpy(out, ns, ns_len);
+    out[ns_len] = '.';
+    memcpy(out + ns_len + 1u, name, name_len);
+    out[ns_len + 1u + name_len] = '\0';
+    return out;
+}
+
+static bool cxpr_model_import_entry_is_namespaced(const cxpr_func_entry* entry) {
+    return entry && !entry->model_producer &&
+           (entry->defined_body || entry->defined_return_field_count > 0u);
+}
+
+static bool cxpr_model_import_name_should_namespace(const cxpr_registry* source_registry,
+                                                    const char* name) {
+    cxpr_func_entry* entry;
+    if (!source_registry || !name || strchr(name, '.')) return false;
+    entry = cxpr_registry_find(source_registry, name);
+    return cxpr_model_import_entry_is_namespaced(entry);
+}
+
+static bool cxpr_model_namespace_function_name(char** name,
+                                               const char* namespace_name,
+                                               const cxpr_registry* source_registry,
+                                               cxpr_error* err) {
+    char* qualified;
+    if (!name || !*name ||
+        !cxpr_model_import_name_should_namespace(source_registry, *name)) {
+        return true;
+    }
+    qualified = cxpr_model_join_namespace(namespace_name, *name);
+    if (!qualified) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    free(*name);
+    *name = qualified;
+    return true;
+}
+
+static bool cxpr_model_namespace_imported_ast(cxpr_ast* ast,
+                                              const char* namespace_name,
+                                              const cxpr_registry* source_registry,
+                                              cxpr_error* err) {
+    if (!ast) return true;
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            if (!cxpr_model_namespace_imported_ast(
+                    ast->data.array.elements[i], namespace_name, source_registry, err)) {
+                return false;
+            }
+        }
+        return true;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_namespace_imported_ast(
+                   ast->data.binary_op.left, namespace_name, source_registry, err) &&
+               cxpr_model_namespace_imported_ast(
+                   ast->data.binary_op.right, namespace_name, source_registry, err);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_namespace_imported_ast(
+            ast->data.unary_op.operand, namespace_name, source_registry, err);
+    case CXPR_NODE_FUNCTION_CALL:
+        if (!cxpr_model_namespace_function_name(&ast->data.function_call.name,
+                                                namespace_name, source_registry, err)) {
+            return false;
+        }
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+            if (!cxpr_model_namespace_imported_ast(
+                    ast->data.function_call.args[i], namespace_name, source_registry, err)) {
+                return false;
+            }
+        }
+        return true;
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        bool rename = cxpr_model_import_name_should_namespace(
+            source_registry, ast->data.producer_access.name);
+        if (rename) {
+            char* qualified = cxpr_model_join_namespace(namespace_name,
+                                                        ast->data.producer_access.name);
+            char* full_key = cxpr_model_join_namespace(qualified,
+                                                       ast->data.producer_access.field);
+            if (!qualified || !full_key) {
+                free(qualified);
+                free(full_key);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            free(ast->data.producer_access.name);
+            free(ast->data.producer_access.full_key);
+            ast->data.producer_access.name = qualified;
+            ast->data.producer_access.full_key = full_key;
+        }
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) {
+            if (!cxpr_model_namespace_imported_ast(
+                    ast->data.producer_access.args[i], namespace_name, source_registry, err)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_model_namespace_imported_ast(
+                   ast->data.lookback.target, namespace_name, source_registry, err) &&
+               cxpr_model_namespace_imported_ast(
+                   ast->data.lookback.index, namespace_name, source_registry, err);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_namespace_imported_ast(
+                   ast->data.ternary.condition, namespace_name, source_registry, err) &&
+               cxpr_model_namespace_imported_ast(
+                   ast->data.ternary.true_branch, namespace_name, source_registry, err) &&
+               cxpr_model_namespace_imported_ast(
+                   ast->data.ternary.false_branch, namespace_name, source_registry, err);
+    default:
+        return true;
+    }
+}
+
+static bool cxpr_model_clone_defined_param_fields(cxpr_func_entry* dst,
+                                                  const cxpr_func_entry* src,
+                                                  cxpr_error* err) {
+    if (!src->defined_param_fields && !src->defined_param_field_counts) return true;
+    dst->defined_param_fields =
+        (char***)calloc(src->defined_param_count ? src->defined_param_count : 1u,
+                        sizeof(char**));
+    dst->defined_param_field_counts =
+        (size_t*)calloc(src->defined_param_count ? src->defined_param_count : 1u,
+                        sizeof(size_t));
+    if (!dst->defined_param_fields || !dst->defined_param_field_counts) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < src->defined_param_count; ++i) {
+        size_t count = src->defined_param_field_counts ? src->defined_param_field_counts[i] : 0u;
+        dst->defined_param_field_counts[i] = count;
+        if (count == 0u) continue;
+        dst->defined_param_fields[i] = cxpr_registry_clone_param_names(
+            (const char* const*)src->defined_param_fields[i], count);
+        if (!dst->defined_param_fields[i]) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool cxpr_model_register_imported_defined_function(cxpr_model_program* program,
+                                                          const char* namespace_name,
+                                                          const cxpr_registry* source_registry,
+                                                          const cxpr_func_entry* src,
+                                                          cxpr_error* err) {
+    char* qualified = NULL;
+    cxpr_func_entry* entry;
+    if (!program || !program->registry || !namespace_name || !src || !src->name) return true;
+    if (!cxpr_model_import_entry_is_namespaced(src)) return true;
+    qualified = strchr(src->name, '.') ? cxpr_strdup(src->name)
+                                       : cxpr_model_join_namespace(namespace_name, src->name);
+    if (!qualified) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    entry = cxpr_registry_find(program->registry, qualified);
+    if (entry) {
+        cxpr_registry_clear_owned_entry(entry);
+    } else {
+        if (program->registry->count >= program->registry->capacity &&
+            !cxpr_registry_grow(program->registry)) {
+            free(qualified);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        entry = &program->registry->entries[program->registry->count++];
+        cxpr_registry_prepare_entry(entry, qualified);
+        if (!entry->name) {
+            free(qualified);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+    }
+    free(qualified);
+    entry->min_args = src->min_args;
+    entry->max_args = src->max_args;
+    entry->return_type = src->return_type;
+    entry->has_return_type = src->has_return_type;
+    entry->defined_body = cxpr_ast_clone(src->defined_body);
+    if (src->defined_body && !entry->defined_body) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    if (!cxpr_model_namespace_imported_ast(
+            entry->defined_body, namespace_name, source_registry, err)) {
+        return false;
+    }
+    entry->defined_param_count = src->defined_param_count;
+    entry->defined_param_names = cxpr_registry_clone_param_names(
+        (const char* const*)src->defined_param_names, src->defined_param_count);
+    if (src->defined_param_count > 0u && !entry->defined_param_names) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    if (!cxpr_model_clone_defined_param_fields(entry, src, err)) return false;
+    entry->defined_return_field_count = src->defined_return_field_count;
+    entry->defined_return_field_names = cxpr_registry_clone_param_names(
+        (const char* const*)src->defined_return_field_names,
+        src->defined_return_field_count);
+    if (src->defined_return_field_count > 0u && !entry->defined_return_field_names) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    if (src->defined_return_field_count > 0u) {
+        entry->defined_return_field_bodies =
+            (cxpr_ast**)calloc(src->defined_return_field_count, sizeof(cxpr_ast*));
+        if (!entry->defined_return_field_bodies) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        for (size_t i = 0u; i < src->defined_return_field_count; ++i) {
+            entry->defined_return_field_bodies[i] =
+                cxpr_ast_clone(src->defined_return_field_bodies[i]);
+            if (!entry->defined_return_field_bodies[i]) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            if (!cxpr_model_namespace_imported_ast(
+                    entry->defined_return_field_bodies[i], namespace_name,
+                    source_registry, err)) {
+                return false;
+            }
+        }
+    }
+    program->registry->version++;
+    return true;
+}
+
 bool cxpr_model_program_register_imports(cxpr_model_program* program,
+                                         const cxpr_model* model,
                                          const cxpr_model_import* imports,
                                          size_t import_count,
                                          cxpr_error* err) {
@@ -634,19 +922,27 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
     program->child_count = import_count;
     for (size_t i = 0u; i < import_count; ++i) {
         const cxpr_model_program* child = imports[i].program;
+        const char* namespace_name = cxpr_model_import_namespace_for(model, imports[i].name);
         cxpr_func_entry* entry;
         if (!imports[i].name || !child || child->output_count == 0u) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid model import", 0, 0);
             return false;
         }
-        program->children[i].name = cxpr_strdup(imports[i].name);
+        for (size_t prev = 0u; prev < i; ++prev) {
+            if (program->children[prev].name &&
+                cxpr_model_names_match(program->children[prev].name, namespace_name)) {
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate import namespace", 0, 0);
+                return false;
+            }
+        }
+        program->children[i].name = cxpr_strdup(namespace_name);
         program->children[i].program = child;
         program->children[i].registry_index = i;
         if (!program->children[i].name) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
-        entry = cxpr_registry_find(program->registry, imports[i].name);
+        entry = cxpr_registry_find(program->registry, namespace_name);
         if (entry) {
             cxpr_registry_clear_owned_entry(entry);
         } else {
@@ -656,7 +952,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
                 return false;
             }
             entry = &program->registry->entries[program->registry->count++];
-            cxpr_registry_prepare_entry(entry, imports[i].name);
+            cxpr_registry_prepare_entry(entry, namespace_name);
             if (!entry->name) {
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
@@ -691,6 +987,15 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
             return false;
         }
         program->registry->version++;
+        if (child->registry) {
+            for (size_t f = 0u; f < child->registry->count; ++f) {
+                if (!cxpr_model_register_imported_defined_function(
+                        program, namespace_name, child->registry,
+                        &child->registry->entries[f], err)) {
+                    return false;
+                }
+            }
+        }
     }
     return true;
 }
@@ -781,7 +1086,7 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
             cxpr_registry_set_lookback_resolver(
                 program->registry, cxpr_model_lookback_resolver, NULL, NULL);
         }
-        if (!cxpr_model_program_register_imports(program, imports, import_count, err)) {
+        if (!cxpr_model_program_register_imports(program, model, imports, import_count, err)) {
             for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
             free(required_defaults);
             for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
@@ -877,10 +1182,11 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         for (size_t i = 0; i < model->constant_count; ++i) {
             program->constants[i].name = cxpr_strdup(model->constants[i].name);
             program->constants[i].name_hash = cxpr_hash_string(model->constants[i].name);
-            program->constants[i].program = cxpr_compile(model->constants[i].expr, compile_reg, err);
+            program->constants[i].ast = cxpr_ast_clone(model->constants[i].expr);
             program->constants[i].result_kind =
-                cxpr_ir_view_program_result_kind(program->constants[i].program);
-            if (!program->constants[i].name || !program->constants[i].program) {
+                cxpr_model_infer_result_kind(program->constants[i].ast, compile_reg);
+            if (!program->constants[i].name ||
+                !program->constants[i].ast) {
                 cxpr_model_program_free(program);
                 if (err && err->code == CXPR_OK) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -913,12 +1219,11 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                 program->state_defaults[out_i].kind = model->bindings[i].kind;
                 program->state_defaults[out_i].name = cxpr_strdup(model->bindings[i].name);
                 program->state_defaults[out_i].name_hash = cxpr_hash_string(model->bindings[i].name);
-                program->state_defaults[out_i].program =
-                    cxpr_compile(model->bindings[i].expr, compile_reg, err);
+                program->state_defaults[out_i].ast = cxpr_ast_clone(model->bindings[i].expr);
                 program->state_defaults[out_i].result_kind =
-                    cxpr_ir_view_program_result_kind(program->state_defaults[out_i].program);
+                    cxpr_model_infer_result_kind(program->state_defaults[out_i].ast, compile_reg);
                 if (!program->state_defaults[out_i].name ||
-                    !program->state_defaults[out_i].program) {
+                    !program->state_defaults[out_i].ast) {
                     cxpr_model_program_free(program);
                     if (err && err->code == CXPR_OK) {
                         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -952,14 +1257,15 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
             program->bindings[out_i].kind = model->bindings[src_i].kind;
             program->bindings[out_i].name = cxpr_strdup(model->bindings[src_i].name);
             program->bindings[out_i].name_hash = cxpr_hash_string(model->bindings[src_i].name);
-            program->bindings[out_i].program = cxpr_compile(model->bindings[src_i].expr, compile_reg, err);
+            program->bindings[out_i].ast = cxpr_ast_clone(model->bindings[src_i].expr);
             program->bindings[out_i].result_kind =
-                cxpr_ir_view_program_result_kind(program->bindings[out_i].program);
+                cxpr_model_infer_result_kind(program->bindings[out_i].ast, compile_reg);
             if (program->bindings[out_i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
                 program->bindings[out_i].result_kind = cxpr_model_state_default_result_kind(
                     program, program->bindings[out_i].name);
             }
-            if (!program->bindings[out_i].name || !program->bindings[out_i].program) {
+            if (!program->bindings[out_i].name ||
+                !program->bindings[out_i].ast) {
                 free(order);
                 cxpr_model_program_free(program);
                 if (err && err->code == CXPR_OK) {

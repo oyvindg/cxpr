@@ -234,7 +234,7 @@ static void test_parse_model_with_declaration_metadata_blocks(void) {
         "}\n"
         "use ema\n"
         "in close\n"
-        "$period = 20 { default = 20 }\n"
+        "$period = 20 { default = 20, optimize = [8, 13, 21] }\n"
         "out close {\n"
         "        label = \"Value\"\n"
         "        plot { color = \"#22c55e\" }\n"
@@ -260,6 +260,17 @@ static void test_parse_model_with_declaration_metadata_blocks(void) {
     assert(cxpr_model_metadata_target_kind_at(model, 1) ==
            CXPR_MODEL_METADATA_TARGET_PARAM);
     assert(strcmp(cxpr_model_metadata_target_name(model, 1), "period") == 0);
+    assert(cxpr_model_metadata_field_value(model, 1, "default") != NULL);
+    assert(cxpr_model_metadata_field_value(model, 1, "optimize") != NULL);
+    {
+        double* values = NULL;
+        size_t value_count = 0u;
+        assert(cxpr_model_metadata_field_number_list(model, 1, "optimize", &values, &value_count));
+        assert(value_count == 3u);
+        assert(values[0] == 8.0);
+        assert(values[2] == 21.0);
+        free(values);
+    }
     assert(strcmp(cxpr_model_metadata_name(model, 2), "output") == 0);
     assert(cxpr_model_metadata_target_kind_at(model, 2) ==
            CXPR_MODEL_METADATA_TARGET_OUTPUT);
@@ -267,6 +278,70 @@ static void test_parse_model_with_declaration_metadata_blocks(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_parse_model_with_declaration_metadata_blocks\n");
+}
+
+static void test_parse_model_use_alias(void) {
+    cxpr_model* model = parse_model_ok(
+        "name alias_model\n"
+        "use robotics as r\n"
+        "in close\n"
+        "out close\n");
+
+    assert(cxpr_model_use_count(model) == 1);
+    assert(strcmp(cxpr_model_use(model, 0), "robotics") == 0);
+    assert(strcmp(cxpr_model_use_alias(model, 0), "r") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_use_alias\n");
+}
+
+static void test_parse_model_param_block(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "name param_block_model\n"
+        "${ fast = 12, slow = 26 }\n"
+        "$ { spaced = 2 }\n"
+        "${\n"
+        "    signal = 9 { min = 3, max = 30 }\n"
+        "    threshold = max(1, $fast - 2)\n"
+        "}\n"
+        "value = $fast + $slow + $signal + $threshold + $spaced\n"
+        "out value\n");
+    cxpr_model_program* program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    double value = 0.0;
+    bool found = false;
+
+    assert(cxpr_model_constant_count(model) == 5u);
+    assert(strcmp(cxpr_model_constant_name(model, 0), "fast") == 0);
+    assert(strcmp(cxpr_model_constant_name(model, 1), "slow") == 0);
+    assert(strcmp(cxpr_model_constant_name(model, 2), "spaced") == 0);
+    assert(strcmp(cxpr_model_constant_name(model, 3), "signal") == 0);
+    assert(strcmp(cxpr_model_constant_name(model, 4), "threshold") == 0);
+    assert(cxpr_model_metadata_count(model) == 1u);
+    assert(cxpr_model_metadata_target_kind_at(model, 0) ==
+           CXPR_MODEL_METADATA_TARGET_PARAM);
+    assert(strcmp(cxpr_model_metadata_target_name(model, 0), "signal") == 0);
+
+    program = cxpr_compile_model(model, NULL, &err);
+    if (!program) {
+        fprintf(stderr, "param block compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_context_get_param(ctx, "fast", &found) == 12.0 && found);
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 59.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_param_block\n");
 }
 
 static void test_parse_model_rejects_legacy_meta_block(void) {
@@ -714,9 +789,7 @@ static void test_parse_state_init_and_update_state(void) {
         "state {\n"
         "    r = 100\n"
         "}\n"
-        "update state {\n"
-        "    r = r + dr * dt\n"
-        "}\n"
+        "r := r + dr * dt\n"
         "out r\n";
 
     cxpr_model* model = parse_model_ok(source);
@@ -732,19 +805,35 @@ static void test_parse_state_init_and_update_state(void) {
     printf("  ✓ test_parse_state_init_and_update_state\n");
 }
 
-static void test_reject_legacy_state_assignment_syntax(void) {
+static void test_parse_inline_state_assignment_and_output(void) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model(
-        "name invalid_legacy_state\n"
-        "state r = 100\n",
-        &err);
+    double value = 0.0;
+    cxpr_model* model = parse_model_ok(
+        "name inline_state_output\n"
+        "state score = 0\n"
+        "out { score }\n");
+    cxpr_model_program* program;
+    cxpr_model_session* session;
 
-    assert(model == NULL);
-    assert(err.code == CXPR_ERR_SYNTAX);
-    assert(strcmp(err.message, "State declarations must use state block") == 0);
+    assert(cxpr_model_validate(model, &err));
+    assert(cxpr_model_binding_count(model) == 1);
+    assert(strcmp(cxpr_model_binding_name(model, 0), "score") == 0);
+    assert(cxpr_model_binding_kind_at(model, 0) == CXPR_MODEL_BINDING_STATE);
+    assert(cxpr_model_output_count(model) == 1);
+    assert(strcmp(cxpr_model_output(model, 0), "score") == 0);
 
+    program = cxpr_compile_model(model, NULL, &err);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "score", &value));
+    assert(value == 0.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
     cxpr_model_free(model);
-    printf("  ✓ test_reject_legacy_state_assignment_syntax\n");
+    printf("  ✓ test_parse_inline_state_assignment_and_output\n");
 }
 
 static void test_parse_out_expr_assignment_adds_output(void) {
@@ -765,6 +854,25 @@ static void test_parse_out_expr_assignment_adds_output(void) {
     printf("  ✓ test_parse_out_expr_assignment_adds_output\n");
 }
 
+static void test_parse_out_state_update_assignment_adds_output(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "name out_state_update_assignment\n"
+        "in { close }\n"
+        "state signal = 0\n"
+        "out signal := close\n");
+
+    assert(cxpr_model_validate(model, &err));
+    assert(cxpr_model_binding_count(model) == 2);
+    assert(strcmp(cxpr_model_binding_name(model, 1), "signal") == 0);
+    assert(cxpr_model_binding_kind_at(model, 1) == CXPR_MODEL_BINDING_STATE_UPDATE);
+    assert(cxpr_model_output_count(model) == 1);
+    assert(strcmp(cxpr_model_output(model, 0), "signal") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_out_state_update_assignment_adds_output\n");
+}
+
 static void test_parse_update_state_does_not_add_output(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -772,9 +880,7 @@ static void test_parse_update_state_does_not_add_output(void) {
         "state {\n"
         "    r = 0\n"
         "}\n"
-        "update state {\n"
-        "    r = r + 1\n"
-        "}\n");
+        "r := r + 1\n");
 
     assert(cxpr_model_validate(model, &err));
     assert(cxpr_model_binding_count(model) == 2);
@@ -793,9 +899,7 @@ static void test_parse_update_state_with_explicit_output(void) {
         "state {\n"
         "    r = 0\n"
         "}\n"
-        "update state {\n"
-        "    r = r + 1\n"
-        "}\n"
+        "r := r + 1\n"
         "out r\n");
 
     assert(cxpr_model_validate(model, &err));
@@ -817,12 +921,10 @@ static void test_update_state_supports_block_local_temporaries(void) {
         "state {\n"
         "    r = 0\n"
         "}\n"
-        "update state {\n"
-        "    next =\n"
-        "        close + 1\n"
-        "    doubled = next * 2\n"
-        "    r = doubled\n"
-        "}\n"
+        "next =\n"
+        "    close + 1\n"
+        "doubled = next * 2\n"
+        "r := doubled\n"
         "out r\n");
 
     assert(cxpr_model_validate(model, &err));
@@ -830,9 +932,9 @@ static void test_update_state_supports_block_local_temporaries(void) {
     assert(strcmp(cxpr_model_binding_name(model, 0), "r") == 0);
     assert(cxpr_model_binding_kind_at(model, 0) == CXPR_MODEL_BINDING_STATE);
     assert(strcmp(cxpr_model_binding_name(model, 1), "next") == 0);
-    assert(cxpr_model_binding_kind_at(model, 1) == CXPR_MODEL_BINDING_LOCAL);
+    assert(cxpr_model_binding_kind_at(model, 1) == CXPR_MODEL_BINDING_EXPR);
     assert(strcmp(cxpr_model_binding_name(model, 2), "doubled") == 0);
-    assert(cxpr_model_binding_kind_at(model, 2) == CXPR_MODEL_BINDING_LOCAL);
+    assert(cxpr_model_binding_kind_at(model, 2) == CXPR_MODEL_BINDING_EXPR);
     assert(strcmp(cxpr_model_binding_name(model, 3), "r") == 0);
     assert(cxpr_model_binding_kind_at(model, 3) == CXPR_MODEL_BINDING_STATE_UPDATE);
     {
@@ -865,10 +967,30 @@ static void test_reject_legacy_out_state_update_syntax(void) {
 
     assert(model == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
-    assert(strcmp(err.message, "State updates must use update state block") == 0);
+    assert(strcmp(err.message, "State updates must use ':=' assignments") == 0);
 
     cxpr_model_free(model);
     printf("  ✓ test_reject_legacy_out_state_update_syntax\n");
+}
+
+static void test_reject_update_state_block_syntax(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_parse_model(
+        "name invalid_update_block\n"
+        "state {\n"
+        "    r = 0\n"
+        "}\n"
+        "update state {\n"
+        "    r = r + 1\n"
+        "}\n",
+        &err);
+
+    assert(model == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strcmp(err.message, "State updates must use ':=' assignments") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_reject_update_state_block_syntax\n");
 }
 
 static void test_validate_rejects_duplicate_state_declaration(void) {
@@ -887,6 +1009,39 @@ static void test_validate_rejects_duplicate_state_declaration(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_validate_rejects_duplicate_state_declaration\n");
+}
+
+static void test_validate_rejects_duplicate_state_update(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "name duplicate_state_update\n"
+        "in { a, b }\n"
+        "state score = 0\n"
+        "score := a\n"
+        "score := b\n"
+        "out { score }\n");
+
+    assert(!cxpr_model_validate(model, &err));
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strcmp(err.message, "Duplicate state update") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_validate_rejects_duplicate_state_update\n");
+}
+
+static void test_validate_accepts_conditional_state_update(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "name conditional_state_update\n"
+        "in { should_update, next_score }\n"
+        "state score = 0\n"
+        "score := should_update ? next_score : score\n"
+        "out { score }\n");
+
+    assert(cxpr_model_validate(model, &err));
+
+    cxpr_model_free(model);
+    printf("  ✓ test_validate_accepts_conditional_state_update\n");
 }
 
 static void test_reject_invalid_out_assignment_name(void) {
@@ -1185,6 +1340,7 @@ static void test_state_session_atomic_commit_and_events(void) {
     cxpr_error err = {0};
     bool found = false;
     bool value = false;
+    double number = 0.0;
     cxpr_model* model = parse_model_ok(
         "name accumulator\n"
         "in { delta }\n"
@@ -1193,9 +1349,7 @@ static void test_state_session_atomic_commit_and_events(void) {
         "    total = 0\n"
         "}\n"
         "next = total + delta\n"
-        "update state {\n"
-        "    total = next\n"
-        "}\n"
+        "total := next\n"
         "hot = total >= $limit\n"
         "out { hot, total }\n");
     cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
@@ -1210,7 +1364,9 @@ static void test_state_session_atomic_commit_and_events(void) {
 
     cxpr_context_set(ctx, "delta", 1.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
-    assert(cxpr_context_get(ctx, "total", &found) == 1.0 && found);
+    assert(cxpr_context_get(ctx, "total", &found) == 0.0 && found);
+    assert(cxpr_model_session_output_number(session, "total", &number));
+    assert(number == 1.0);
     assert(cxpr_model_session_output_bool(session, "hot", &value));
     assert(!value);
     assert(!cxpr_model_session_output_rising(session, "hot"));
@@ -1218,7 +1374,9 @@ static void test_state_session_atomic_commit_and_events(void) {
 
     cxpr_context_set(ctx, "delta", 1.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
-    assert(cxpr_context_get(ctx, "total", &found) == 2.0 && found);
+    assert(cxpr_context_get(ctx, "total", &found) == 1.0 && found);
+    assert(cxpr_model_session_output_number(session, "total", &number));
+    assert(number == 2.0);
     assert(cxpr_model_session_output_bool(session, "hot", &value));
     assert(!value);
     assert(!cxpr_model_session_output_rising(session, "hot"));
@@ -1227,6 +1385,8 @@ static void test_state_session_atomic_commit_and_events(void) {
     cxpr_context_set(ctx, "delta", 0.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
     assert(cxpr_context_get(ctx, "total", &found) == 2.0 && found);
+    assert(cxpr_model_session_output_number(session, "total", &number));
+    assert(number == 2.0);
     assert(cxpr_model_session_output_bool(session, "hot", &value));
     assert(value);
     assert(cxpr_model_session_output_rising(session, "hot"));
@@ -1234,13 +1394,18 @@ static void test_state_session_atomic_commit_and_events(void) {
 
     cxpr_context_set(ctx, "delta", -3.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
-    assert(cxpr_context_get(ctx, "total", &found) == -1.0 && found);
+    assert(cxpr_context_get(ctx, "total", &found) == 2.0 && found);
+    assert(cxpr_model_session_output_number(session, "total", &number));
+    assert(number == -1.0);
     assert(cxpr_model_session_output_bool(session, "hot", &value));
     assert(value);
     assert(!cxpr_model_session_output_falling(session, "hot"));
 
     cxpr_context_set(ctx, "delta", 0.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_context_get(ctx, "total", &found) == -1.0 && found);
+    assert(cxpr_model_session_output_number(session, "total", &number));
+    assert(number == -1.0);
     assert(cxpr_model_session_output_bool(session, "hot", &value));
     assert(!value);
     assert(cxpr_model_session_output_falling(session, "hot"));
@@ -1579,6 +1744,233 @@ static void test_compile_imported_producer_infers_missing_child_inputs(void) {
     printf("  ✓ test_compile_imported_producer_infers_missing_child_inputs\n");
 }
 
+static void test_compile_imported_functions_are_namespaced(void) {
+    cxpr_error err = {0};
+    cxpr_model* ema = parse_model_ok(
+        "name ema\n"
+        "fn alpha(period) = 2 / (max(1, period) + 1)\n"
+        "fn ema_step(prev, x, period) =\n"
+        "    alpha(period) * x + (1 - alpha(period)) * prev\n"
+        "zero = 0\n"
+        "out zero\n");
+    cxpr_model_program* ema_program = cxpr_compile_model(ema, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+
+    assert(ema_program != NULL);
+    imports[0].name = "ema";
+    imports[0].program = ema_program;
+
+    parent = parse_model_ok(
+        "name macd_uses_ema\n"
+        "use ema\n"
+        "in source\n"
+        "$period = 9\n"
+        "state { signal = 0 }\n"
+        "next_signal = ema.ema_step(signal, source, $period)\n"
+        "signal := next_signal\n"
+        "out signal\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "namespaced import compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+
+    err = (cxpr_error){0};
+    parent = parse_model_ok(
+        "name macd_uses_ema\n"
+        "use ema\n"
+        "in source\n"
+        "$period = 9\n"
+        "state { signal = 0 }\n"
+        "next_signal = ema_step(signal, source, $period)\n"
+        "signal := next_signal\n"
+        "out signal\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program == NULL);
+    assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION || err.code == CXPR_ERR_SYNTAX);
+    cxpr_model_free(parent);
+
+    cxpr_model_program_free(ema_program);
+    cxpr_model_free(ema);
+    printf("  ✓ test_compile_imported_functions_are_namespaced\n");
+}
+
+static void test_compile_import_alias_namespaces_child_producer(void) {
+    cxpr_error err = {0};
+    cxpr_model* child = parse_model_ok(
+        "name robotics\n"
+        "in close\n"
+        "value = close + 1\n"
+        "out value\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+
+    assert(child_program != NULL);
+    imports[0].name = "robotics";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "name parent\n"
+        "use robotics as r\n"
+        "value = r().value\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "alias import compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    assert(cxpr_model_program_input_count(parent_program) == 1u);
+    assert(strcmp(cxpr_model_program_input_name(parent_program, 0u), "close") == 0);
+
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_compile_import_alias_namespaces_child_producer\n");
+}
+
+static void test_compile_import_path_uses_leaf_namespace(void) {
+    cxpr_error err = {0};
+    bool found = false;
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "name macd\n"
+        "in source\n"
+        "$fast = 2\n"
+        "line = source + $fast\n"
+        "out line\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    assert(child_program != NULL);
+    imports[0].name = "indicators/macd";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "name parent\n"
+        "use indicators/macd\n"
+        "in source\n"
+        "value = macd(3).line\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "path import leaf namespace compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "source", 7.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 10.0);
+    assert(cxpr_context_get(ctx, "indicators/macd", &found) == 0.0 && !found);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_compile_import_path_uses_leaf_namespace\n");
+}
+
+static void test_compile_nested_imports_keep_leaf_namespace(void) {
+    cxpr_error err = {0};
+    bool found = false;
+    double value = 0.0;
+    cxpr_model* leaf = parse_model_ok(
+        "name c\n"
+        "fn step(x) = x + 1\n"
+        "zero = 0\n"
+        "out zero\n");
+    cxpr_model_program* leaf_program = cxpr_compile_model(leaf, NULL, &err);
+    cxpr_model_import leaf_imports[1];
+    cxpr_model* middle;
+    cxpr_model_program* middle_program;
+    cxpr_model_import middle_imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    assert(leaf_program != NULL);
+    leaf_imports[0].name = "c";
+    leaf_imports[0].program = leaf_program;
+
+    middle = parse_model_ok(
+        "name b\n"
+        "use c\n"
+        "fn wrap(x) = c.step(x) * 2\n"
+        "zero = 0\n"
+        "out zero\n");
+    middle_program = cxpr_compile_model_with_imports(middle, NULL, leaf_imports, 1u, &err);
+    if (!middle_program) {
+        fprintf(stderr, "middle nested import compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(middle_program != NULL);
+    middle_imports[0].name = "b";
+    middle_imports[0].program = middle_program;
+
+    parent = parse_model_ok(
+        "name parent\n"
+        "use b as a\n"
+        "in source\n"
+        "value = a.wrap(source)\n"
+        "leaf_value = c.step(source)\n"
+        "out { value, leaf_value }\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, middle_imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "parent nested import compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "source", 3.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 8.0);
+    assert(cxpr_model_session_output_number(session, "leaf_value", &value));
+    assert(value == 4.0);
+    assert(cxpr_context_get(ctx, "a.b.c.step", &found) == 0.0 && !found);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+
+    err = (cxpr_error){0};
+    parent = parse_model_ok(
+        "name parent_bad\n"
+        "use b as a\n"
+        "in source\n"
+        "value = a.b.c.step(source)\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, middle_imports, 1u, &err);
+    assert(parent_program == NULL);
+    assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION || err.code == CXPR_ERR_SYNTAX);
+    cxpr_model_free(parent);
+
+    cxpr_model_program_free(middle_program);
+    cxpr_model_free(middle);
+    cxpr_model_program_free(leaf_program);
+    cxpr_model_free(leaf);
+    printf("  ✓ test_compile_nested_imports_keep_leaf_namespace\n");
+}
+
 static void test_macd_record_cross_strategy_fixture(void) {
     cxpr_error err = {0};
     bool value = false;
@@ -1749,6 +2141,7 @@ static void test_advanced_strategy_syntax_compiles_and_ticks(void) {
     cxpr_error err = {0};
     bool found = false;
     bool value = false;
+    double number = 0.0;
     cxpr_model* model = parse_model_ok(
         "name advanced_strategy\n"
         "use math\n"
@@ -1772,9 +2165,7 @@ static void test_advanced_strategy_syntax_compiles_and_ticks(void) {
         "}\n"
         "raw =\n"
         "    impulse(close, avg, $threshold)\n"
-        "update state {\n"
-        "    score = score * $decay + close - avg\n"
-        "}\n"
+        "score := score * $decay + close - avg\n"
         "buy =\n"
         "    raw and not position\n"
         "out {\n"
@@ -1805,7 +2196,9 @@ static void test_advanced_strategy_syntax_compiles_and_ticks(void) {
     cxpr_context_set(ctx, "avg", 8.0);
     cxpr_context_set_bool(ctx, "position", false);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
-    assert(cxpr_context_get(ctx, "score", &found) == 2.0 && found);
+    assert(cxpr_context_get(ctx, "score", &found) == 0.0 && found);
+    assert(cxpr_model_session_output_number(session, "score", &number));
+    assert(number == 2.0);
     assert(cxpr_model_session_output_bool(session, "buy", &value));
     assert(value);
     assert(cxpr_model_session_output_rising(session, "buy"));
@@ -1814,7 +2207,9 @@ static void test_advanced_strategy_syntax_compiles_and_ticks(void) {
     cxpr_context_set(ctx, "avg", 8.0);
     cxpr_context_set_bool(ctx, "position", false);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
-    assert(cxpr_context_get(ctx, "score", &found) == 1.0 && found);
+    assert(cxpr_context_get(ctx, "score", &found) == 2.0 && found);
+    assert(cxpr_model_session_output_number(session, "score", &number));
+    assert(number == 1.0);
     assert(cxpr_model_session_output_bool(session, "buy", &value));
     assert(!value);
     assert(cxpr_model_session_output_falling(session, "buy"));
@@ -2018,6 +2413,7 @@ static void test_rsi_state_strategy_fixture(void) {
     cxpr_error err = {0};
     bool found = false;
     bool value = false;
+    double number = 0.0;
     char* source = read_fixture("fixtures/strategies/rsi_state_model.cxpr");
     cxpr_model* model;
     cxpr_model_program* program;
@@ -2059,8 +2455,12 @@ static void test_rsi_state_strategy_fixture(void) {
     cxpr_context_set(ctx, "close", 106.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
     assert(fabs(cxpr_context_get(ctx, "r", &found) - 100.0) < 1e-12 && found);
-    assert(fabs(cxpr_context_get(ctx, "avg_gain", &found) - 2.0) < 1e-12 && found);
+    assert(fabs(cxpr_context_get(ctx, "avg_gain", &found) - 0.0) < 1e-12 && found);
+    assert(cxpr_model_session_output_number(session, "avg_gain", &number));
+    assert(fabs(number - 2.0) < 1e-12);
     assert(fabs(cxpr_context_get(ctx, "avg_loss", &found) - 0.0) < 1e-12 && found);
+    assert(cxpr_model_session_output_number(session, "avg_loss", &number));
+    assert(fabs(number - 0.0) < 1e-12);
     assert(cxpr_model_session_output_bool(session, "entry", &value));
     assert(value);
     assert(cxpr_model_session_output_rising(session, "entry"));
@@ -2177,6 +2577,8 @@ int main(void) {
     printf("Running cxpr model parser tests...\n");
     test_parse_minimal_strategy_model();
     test_parse_model_with_declaration_metadata_blocks();
+    test_parse_model_use_alias();
+    test_parse_model_param_block();
     test_parse_model_rejects_legacy_meta_block();
     test_parse_model_rejects_decorator_metadata();
     test_parse_model_host_blocks_preserve_body();
@@ -2192,13 +2594,17 @@ int main(void) {
     test_parse_model_rejects_meta_as_host_block();
     test_model_plan_bind_sources_exports_scoped_timeframes();
     test_parse_state_init_and_update_state();
-    test_reject_legacy_state_assignment_syntax();
+    test_parse_inline_state_assignment_and_output();
     test_parse_out_expr_assignment_adds_output();
+    test_parse_out_state_update_assignment_adds_output();
     test_parse_update_state_does_not_add_output();
     test_parse_update_state_with_explicit_output();
     test_update_state_supports_block_local_temporaries();
     test_reject_legacy_out_state_update_syntax();
+    test_reject_update_state_block_syntax();
     test_validate_rejects_duplicate_state_declaration();
+    test_validate_rejects_duplicate_state_update();
+    test_validate_accepts_conditional_state_update();
     test_reject_invalid_out_assignment_name();
     test_reject_invalid_output_name();
     test_validate_accepts_known_symbols();
@@ -2220,6 +2626,10 @@ int main(void) {
     test_session_direct_record_producer_lookback();
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
     test_compile_imported_producer_infers_missing_child_inputs();
+    test_compile_imported_functions_are_namespaced();
+    test_compile_import_alias_namespaces_child_producer();
+    test_compile_import_path_uses_leaf_namespace();
+    test_compile_nested_imports_keep_leaf_namespace();
     test_macd_record_cross_strategy_fixture();
     test_robot_hexapod_fixture_simulates_vec3_io();
     test_advanced_strategy_syntax_compiles_and_ticks();

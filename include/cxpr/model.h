@@ -357,9 +357,9 @@ cxpr_context* cxpr_model_session_context(cxpr_model_session* session);
  * @brief Evaluate one deterministic model tick and atomically commit state updates.
  *
  * Expressions in tick N read state from the start of that tick. State update
- * values are staged during evaluation and committed atomically after all
- * bindings are evaluated. Session outputs are refreshed from the post-commit
- * context.
+ * values are staged during evaluation and committed at the start of the next
+ * tick. Direct state outputs may expose the staged next value for the current
+ * tick; other expressions still observe the current state.
  */
 bool cxpr_model_session_tick(const cxpr_model_program* program,
                              cxpr_model_session* session,
@@ -392,6 +392,7 @@ const char* cxpr_model_name(const cxpr_model* model);
 
 size_t cxpr_model_use_count(const cxpr_model* model);
 const char* cxpr_model_use(const cxpr_model* model, size_t index);
+const char* cxpr_model_use_alias(const cxpr_model* model, size_t index);
 
 size_t cxpr_model_input_count(const cxpr_model* model);
 const char* cxpr_model_input(const cxpr_model* model, size_t index);
@@ -415,6 +416,14 @@ cxpr_model_metadata_target_kind cxpr_model_metadata_target_kind_at(
     const cxpr_model* model,
     size_t index);
 const char* cxpr_model_metadata_target_name(const cxpr_model* model, size_t index);
+const char* cxpr_model_metadata_field_value(const cxpr_model* model,
+                                            size_t index,
+                                            const char* key);
+bool cxpr_model_metadata_field_number_list(const cxpr_model* model,
+                                           size_t index,
+                                           const char* key,
+                                           double** out_values,
+                                           size_t* out_count);
 
 size_t cxpr_model_host_block_count(const cxpr_model* model);
 const char* cxpr_model_host_block_kind(const cxpr_model* model, size_t index);
