@@ -193,6 +193,47 @@ static bool cxpr_model_fused_ir_scalar_supported(const cxpr_ir_program* ir,
     return true;
 }
 
+static bool cxpr_model_fused_ast_supported(const cxpr_ast* ast,
+                                           const cxpr_registry* reg) {
+    if (!ast) return true;
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            if (!cxpr_model_fused_ast_supported(ast->data.array.elements[i], reg)) return false;
+        }
+        return true;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_fused_ast_supported(ast->data.binary_op.left, reg) &&
+               cxpr_model_fused_ast_supported(ast->data.binary_op.right, reg);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_fused_ast_supported(ast->data.unary_op.operand, reg);
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_func_entry* entry = reg ? cxpr_registry_find(reg, ast->data.function_call.name) : NULL;
+        if (entry && entry->model_producer && entry->return_type == CXPR_VALUE_STRUCT) {
+            return false;
+        }
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+            if (!cxpr_model_fused_ast_supported(ast->data.function_call.args[i], reg)) return false;
+        }
+        return true;
+    }
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) {
+            if (!cxpr_model_fused_ast_supported(ast->data.producer_access.args[i], reg)) return false;
+        }
+        return true;
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_model_fused_ast_supported(ast->data.lookback.target, reg) &&
+               cxpr_model_fused_ast_supported(ast->data.lookback.index, reg);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_fused_ast_supported(ast->data.ternary.condition, reg) &&
+               cxpr_model_fused_ast_supported(ast->data.ternary.true_branch, reg) &&
+               cxpr_model_fused_ast_supported(ast->data.ternary.false_branch, reg);
+    default:
+        return true;
+    }
+}
+
 bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
                                      const cxpr_model* model,
                                      const cxpr_registry* reg,
@@ -216,6 +257,10 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) continue;
+        if (!cxpr_model_fused_ast_supported(model->bindings[i].expr, compile_reg)) {
+            cxpr_model_fused_program_clear(program);
+            return true;
+        }
         if (!cxpr_model_fused_slot_add(program, model->bindings[i].name, NULL, err)) {
             cxpr_model_fused_program_clear(program);
             return false;

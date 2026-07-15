@@ -99,6 +99,205 @@ static const cxpr_model_program* cxpr_model_import_program_for_name(
     return NULL;
 }
 
+static bool cxpr_model_append_synthetic_binding(cxpr_model* model,
+                                                const char* name,
+                                                const char* source,
+                                                cxpr_ast* expr,
+                                                cxpr_error* err) {
+    cxpr_model_binding* grown;
+    if (!model || !name || !source || !expr) return false;
+    grown = (cxpr_model_binding*)realloc(
+        model->bindings, (model->binding_count + 1u) * sizeof(*model->bindings));
+    if (!grown) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    model->bindings = grown;
+    model->bindings[model->binding_count].kind = CXPR_MODEL_BINDING_EXPR;
+    model->bindings[model->binding_count].name = cxpr_strdup(name);
+    model->bindings[model->binding_count].source = cxpr_strdup(source);
+    model->bindings[model->binding_count].expr = expr;
+    if (!model->bindings[model->binding_count].name ||
+        !model->bindings[model->binding_count].source) {
+        free(model->bindings[model->binding_count].name);
+        free(model->bindings[model->binding_count].source);
+        model->bindings[model->binding_count].expr = NULL;
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    model->binding_count++;
+    return true;
+}
+
+static bool cxpr_model_append_output_name(cxpr_model* model,
+                                          const char* name,
+                                          cxpr_error* err) {
+    char** grown;
+    if (!model || !name) return false;
+    for (size_t i = 0u; i < model->output_count; ++i) {
+        if (cxpr_model_names_match(model->outputs[i], name)) return true;
+    }
+    grown = (char**)realloc(model->outputs,
+                            (model->output_count + 1u) * sizeof(*model->outputs));
+    if (!grown) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    model->outputs = grown;
+    model->outputs[model->output_count] = cxpr_strdup(name);
+    if (!model->outputs[model->output_count]) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    model->output_count++;
+    return true;
+}
+
+static bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
+                                                 const cxpr_model* src,
+                                                 cxpr_error* err) {
+    if (!dst || !src) return false;
+    *dst = *src;
+    dst->bindings = NULL;
+    dst->binding_count = 0u;
+    dst->outputs = NULL;
+    dst->output_count = 0u;
+    if (src->binding_count > 0u) {
+        dst->bindings = (cxpr_model_binding*)calloc(src->binding_count,
+                                                    sizeof(*dst->bindings));
+        if (!dst->bindings) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        for (size_t i = 0u; i < src->binding_count; ++i) {
+            dst->bindings[i].kind = src->bindings[i].kind;
+            dst->bindings[i].name = cxpr_strdup(src->bindings[i].name);
+            dst->bindings[i].source = cxpr_strdup(src->bindings[i].source);
+            dst->bindings[i].expr = cxpr_ast_clone(src->bindings[i].expr);
+            if (!dst->bindings[i].name || !dst->bindings[i].source ||
+                !dst->bindings[i].expr) {
+                dst->binding_count = i + 1u;
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+        }
+        dst->binding_count = src->binding_count;
+    }
+    if (src->output_count > 0u) {
+        dst->outputs = (char**)calloc(src->output_count, sizeof(*dst->outputs));
+        if (!dst->outputs) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        for (size_t i = 0u; i < src->output_count; ++i) {
+            dst->outputs[i] = cxpr_strdup(src->outputs[i]);
+            if (!dst->outputs[i]) {
+                dst->output_count = i + 1u;
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+        }
+        dst->output_count = src->output_count;
+    }
+    return true;
+}
+
+static void cxpr_model_expanded_copy_free(cxpr_model* model) {
+    if (!model) return;
+    for (size_t i = 0u; i < model->binding_count; ++i) {
+        free(model->bindings[i].name);
+        free(model->bindings[i].source);
+        cxpr_ast_free(model->bindings[i].expr);
+    }
+    free(model->bindings);
+    for (size_t i = 0u; i < model->output_count; ++i) {
+        free(model->outputs[i]);
+    }
+    free(model->outputs);
+    model->bindings = NULL;
+    model->binding_count = 0u;
+    model->outputs = NULL;
+    model->output_count = 0u;
+}
+
+static char** cxpr_model_clone_arg_names_for_producer(char* const* names,
+                                                      size_t argc,
+                                                      cxpr_error* err) {
+    char** out;
+    bool any = false;
+    if (!names || argc == 0u) return NULL;
+    out = (char**)calloc(argc, sizeof(char*));
+    if (!out) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return NULL;
+    }
+    for (size_t i = 0u; i < argc; ++i) {
+        if (!names[i]) continue;
+        any = true;
+        out[i] = cxpr_strdup(names[i]);
+        if (!out[i]) {
+            for (size_t j = 0u; j < i; ++j) free(out[j]);
+            free(out);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+    }
+    if (!any) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
+static cxpr_ast* cxpr_model_clone_call_as_field_access(const cxpr_ast* call,
+                                                       const char* field,
+                                                       cxpr_error* err) {
+    cxpr_ast** args = NULL;
+    char** arg_names = NULL;
+    size_t argc;
+    cxpr_ast* out;
+    if (!call || call->type != CXPR_NODE_FUNCTION_CALL || !field) return NULL;
+    argc = call->data.function_call.argc;
+    if (argc > 0u) {
+        args = (cxpr_ast**)calloc(argc, sizeof(*args));
+        if (!args) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        for (size_t i = 0u; i < argc; ++i) {
+            args[i] = cxpr_ast_clone(call->data.function_call.args[i]);
+            if (!args[i]) {
+                for (size_t j = 0u; j < i; ++j) cxpr_ast_free(args[j]);
+                free(args);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return NULL;
+            }
+        }
+        arg_names = cxpr_model_clone_arg_names_for_producer(
+            call->data.function_call.arg_names, argc, err);
+        if (call->data.function_call.arg_names && !arg_names && err && err->code != CXPR_OK) {
+            for (size_t i = 0u; i < argc; ++i) cxpr_ast_free(args[i]);
+            free(args);
+            return NULL;
+        }
+    }
+    out = cxpr_ast_new_producer_access_named(call->data.function_call.name,
+                                             args,
+                                             arg_names,
+                                             argc,
+                                             field);
+    if (!out) {
+        for (size_t i = 0u; i < argc; ++i) cxpr_ast_free(args ? args[i] : NULL);
+        free(args);
+        if (arg_names) {
+            for (size_t i = 0u; i < argc; ++i) free(arg_names[i]);
+            free(arg_names);
+        }
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+    }
+    return out;
+}
+
 static const char* cxpr_model_import_leaf_name(const char* import_name) {
     const char* slash;
     if (!import_name) return NULL;
@@ -310,6 +509,43 @@ fail:
     for (size_t i = 0u; i < input_count; ++i) free(inputs[i]);
     free(inputs);
     return false;
+}
+
+static bool cxpr_model_expand_anonymous_outputs(cxpr_model* model,
+                                                const cxpr_model_import* imports,
+                                                size_t import_count,
+                                                cxpr_error* err) {
+    if (!model || model->anonymous_output_count == 0u) return true;
+    for (size_t i = 0u; i < model->anonymous_output_count; ++i) {
+        const cxpr_ast* expr = model->anonymous_outputs[i].expr;
+        const cxpr_model_program* child;
+        if (!expr || expr->type != CXPR_NODE_FUNCTION_CALL) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Anonymous out must be a record function call", 0, 0);
+            return false;
+        }
+        child = cxpr_model_import_program_for_name(
+            model, imports, import_count, expr->data.function_call.name);
+        if (!child || child->output_count == 0u) {
+            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_FUNCTION,
+                                 "Anonymous out references unknown record function", 0, 0);
+            return false;
+        }
+        for (size_t field_i = 0u; field_i < child->output_count; ++field_i) {
+            const char* field = child->outputs[field_i];
+            cxpr_ast* field_ast = cxpr_model_clone_call_as_field_access(expr, field, err);
+            if (!field_ast) return false;
+            if (!cxpr_model_append_synthetic_binding(
+                    model, field, model->anonymous_outputs[i].source, field_ast, err)) {
+                cxpr_ast_free(field_ast);
+                return false;
+            }
+            if (!cxpr_model_append_output_name(model, field, err)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* program,
@@ -1092,10 +1328,26 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
     char** required_defaults = NULL;
     size_t required_default_count = 0u;
     size_t* order = NULL;
+    bool expanded_anonymous_outputs = false;
 
     if (err) *err = (cxpr_error){0};
+    if (model && model->anonymous_output_count > 0u) {
+        if (!cxpr_model_copy_bindings_and_outputs(&inferred_model, model, err)) {
+            cxpr_model_expanded_copy_free(&inferred_model);
+            return NULL;
+        }
+        model = &inferred_model;
+        if (!cxpr_model_expand_anonymous_outputs(&inferred_model, imports, import_count, err)) {
+            cxpr_model_expanded_copy_free(&inferred_model);
+            return NULL;
+        }
+        expanded_anonymous_outputs = true;
+    }
     if (!cxpr_model_infer_inputs_for_compile(
             model, imports, import_count, &inferred_inputs, &inferred_input_count, err)) {
+        if (expanded_anonymous_outputs) {
+            cxpr_model_expanded_copy_free(&inferred_model);
+        }
         return NULL;
     }
     if (inferred_input_count > 0u) {
@@ -1107,12 +1359,14 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
     if (!cxpr_model_validate(model, err)) {
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
         free(inferred_inputs);
+        if (expanded_anonymous_outputs) cxpr_model_expanded_copy_free(&inferred_model);
         return NULL;
     }
     if (!cxpr_model_collect_required_defaults(model, &required_defaults,
                                               &required_default_count, err)) {
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
         free(inferred_inputs);
+        if (expanded_anonymous_outputs) cxpr_model_expanded_copy_free(&inferred_model);
         return NULL;
     }
     program = (cxpr_model_program*)calloc(1, sizeof(cxpr_model_program));
@@ -1416,6 +1670,9 @@ compile_outputs:
 
     for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
     free(inferred_inputs);
+    if (expanded_anonymous_outputs) {
+        cxpr_model_expanded_copy_free(&inferred_model);
+    }
     if (err) err->code = CXPR_OK;
     return program;
 }

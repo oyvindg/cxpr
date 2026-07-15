@@ -83,6 +83,11 @@ void cxpr_model_free(cxpr_model* model) {
     free(model->bindings);
     for (size_t i = 0; i < model->output_count; ++i) free(model->outputs[i]);
     free(model->outputs);
+    for (size_t i = 0; i < model->anonymous_output_count; ++i) {
+        free(model->anonymous_outputs[i].source);
+        cxpr_ast_free(model->anonymous_outputs[i].expr);
+    }
+    free(model->anonymous_outputs);
     cxpr_model_metadatas_free(model->metadatas, model->metadata_count);
     cxpr_model_host_blocks_free(model->host_blocks, model->host_block_count);
     free(model);

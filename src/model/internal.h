@@ -20,6 +20,11 @@ typedef struct {
 } cxpr_model_binding;
 
 typedef struct {
+    char* source;
+    cxpr_ast* expr;
+} cxpr_model_anonymous_output;
+
+typedef struct {
     char* name;
     char* source;
     cxpr_ast* expr;
@@ -72,6 +77,8 @@ struct cxpr_model {
     size_t binding_count;
     char** outputs;
     size_t output_count;
+    cxpr_model_anonymous_output* anonymous_outputs;
+    size_t anonymous_output_count;
     cxpr_model_metadata* metadatas;
     size_t metadata_count;
     cxpr_model_host_block* host_blocks;

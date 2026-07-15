@@ -1431,6 +1431,47 @@ static bool cxpr_model_parse_out_assignment(cxpr_model* model, char* line,
     return ok;
 }
 
+static bool cxpr_model_append_anonymous_output(cxpr_model* model,
+                                               const char* source,
+                                               cxpr_ast* expr) {
+    cxpr_model_anonymous_output* grown;
+    if (!model || !source || !expr) return false;
+    grown = (cxpr_model_anonymous_output*)realloc(
+        model->anonymous_outputs,
+        (model->anonymous_output_count + 1u) * sizeof(*model->anonymous_outputs));
+    if (!grown) return false;
+    model->anonymous_outputs = grown;
+    model->anonymous_outputs[model->anonymous_output_count].source = cxpr_strdup(source);
+    model->anonymous_outputs[model->anonymous_output_count].expr = expr;
+    if (!model->anonymous_outputs[model->anonymous_output_count].source) {
+        model->anonymous_outputs[model->anonymous_output_count].expr = NULL;
+        return false;
+    }
+    model->anonymous_output_count++;
+    return true;
+}
+
+static bool cxpr_model_parse_anonymous_out(cxpr_model* model,
+                                           const char* rest,
+                                           size_t line_no,
+                                           cxpr_error* err) {
+    cxpr_ast* expr = cxpr_model_parse_expr(rest, line_no, 1, err);
+    if (!expr) return false;
+    if (expr->type != CXPR_NODE_FUNCTION_CALL) {
+        cxpr_ast_free(expr);
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Anonymous out must be a record function call",
+                             line_no, 1);
+        return false;
+    }
+    if (!cxpr_model_append_anonymous_output(model, rest, expr)) {
+        cxpr_ast_free(expr);
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line_no, 1);
+        return false;
+    }
+    return true;
+}
+
 static bool cxpr_model_parse_out_metadata_block(cxpr_model* model,
                                                 char* rest,
                                                 size_t line_no,
@@ -2122,6 +2163,10 @@ static bool cxpr_model_parse_statement(cxpr_model* model, char* statement,
             free(owned);
             goto done;
             }
+        }
+        if (strchr(rest, '(')) {
+            ok = cxpr_model_parse_anonymous_out(model, rest, line_no, err);
+            goto done;
         }
         if (strchr(rest, '{') || strchr(rest, ',')) {
             ok = cxpr_model_parse_name_list(&model->outputs, &model->output_count,

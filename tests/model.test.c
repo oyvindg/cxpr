@@ -1744,6 +1744,65 @@ static void test_compile_imported_producer_infers_missing_child_inputs(void) {
     printf("  ✓ test_compile_imported_producer_infers_missing_child_inputs\n");
 }
 
+static void test_imported_producer_anonymous_out_expands_child_outputs(void) {
+    cxpr_error err = {0};
+    cxpr_model* child = parse_model_ok(
+        "name bb {\n"
+        "    source_arg = source\n"
+        "}\n"
+        "in source\n"
+        "$period = 1\n"
+        "upper = source + $period\n"
+        "lower = source - $period\n"
+        "out { upper, lower }\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    double upper = 0.0;
+    double lower = 0.0;
+
+    if (!child_program) {
+        fprintf(stderr, "child compile failed: %s\n", err.message ? err.message : "(null)");
+    }
+    assert(child_program != NULL);
+
+    imports[0].name = "bb";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "name parent\n"
+        "use bb\n"
+        "in close\n"
+        "out bb(close, 1)\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "parent compile failed: %s\n", err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    assert(cxpr_model_program_output_count(parent_program) == 2u);
+    assert(strcmp(cxpr_model_program_output_name(parent_program, 0u), "upper") == 0);
+    assert(strcmp(cxpr_model_program_output_name(parent_program, 1u), "lower") == 0);
+
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "upper", &upper));
+    assert(cxpr_model_session_output_number(session, "lower", &lower));
+    assert(fabs(upper - 11.0) < 1e-12);
+    assert(fabs(lower - 9.0) < 1e-12);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_anonymous_out_expands_child_outputs\n");
+}
+
 static void test_compile_imported_functions_are_namespaced(void) {
     cxpr_error err = {0};
     cxpr_model* ema = parse_model_ok(
@@ -1955,6 +2014,69 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
     cxpr_model_program_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_source_arg_maps_call_source\n");
+}
+
+static void test_imported_producer_repeated_calls_cache_same_args(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "name bb {\n"
+        "    source_arg = \"source\"\n"
+        "}\n"
+        "in source\n"
+        "$period = 1\n"
+        "state { count = 0 }\n"
+        "upper = source + count\n"
+        "lower = source - count\n"
+        "count := count + 1\n"
+        "out { upper, lower }\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    if (!child_program) {
+        fprintf(stderr, "repeated child cache compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(child_program != NULL);
+    imports[0].name = "indicators/bb";
+    imports[0].program = child_program;
+
+    parent = parse_model_ok(
+        "name repeated_child_cache\n"
+        "use indicators/bb\n"
+        "in close\n"
+        "value = bb(close, 1).upper + bb(close, 1).lower\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "repeated child cache parent compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 20.0);
+
+    cxpr_context_set(ctx, "close", 11.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 22.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_repeated_calls_cache_same_args\n");
 }
 
 static void test_compile_nested_imports_keep_leaf_namespace(void) {
@@ -2698,10 +2820,12 @@ int main(void) {
     test_session_direct_record_producer_lookback();
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
     test_compile_imported_producer_infers_missing_child_inputs();
+    test_imported_producer_anonymous_out_expands_child_outputs();
     test_compile_imported_functions_are_namespaced();
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();
     test_imported_producer_source_arg_maps_call_source();
+    test_imported_producer_repeated_calls_cache_same_args();
     test_compile_nested_imports_keep_leaf_namespace();
     test_macd_record_cross_strategy_fixture();
     test_robot_hexapod_fixture_simulates_vec3_io();
