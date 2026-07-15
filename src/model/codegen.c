@@ -190,6 +190,55 @@ static const cxpr_ast* cxpr_model_producer_arg_for_param(const cxpr_ast* ast,
                : NULL;
 }
 
+static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
+                                                        const cxpr_model_program* child,
+                                                        const cxpr_ast* ast) {
+    if (!child_ref || !child || !ast ||
+        child_ref->source_input_index == (size_t)-1 ||
+        !child_ref->source_arg) {
+        return NULL;
+    }
+    if (cxpr_ast_producer_has_named_args(ast)) {
+        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+            const char* name = cxpr_ast_producer_arg_name(ast, i);
+            if (name && cxpr_model_names_match(name, child_ref->source_arg)) {
+                return cxpr_ast_producer_arg(ast, i);
+            }
+        }
+        return NULL;
+    }
+    return cxpr_ast_producer_argc(ast) == child->constant_count + 1u
+               ? cxpr_ast_producer_arg(ast, 0u)
+               : NULL;
+}
+
+static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
+                                                       const cxpr_model_program* child,
+                                                       const cxpr_ast* ast,
+                                                       size_t param_index) {
+    if (!child || !ast || param_index >= child->constant_count) return NULL;
+    if (cxpr_ast_producer_has_named_args(ast)) {
+        const char* param_name = child->constants[param_index].name;
+        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+            const char* name = cxpr_ast_producer_arg_name(ast, i);
+            if (name && param_name && cxpr_model_names_match(name, param_name)) {
+                return cxpr_ast_producer_arg(ast, i);
+            }
+        }
+        return NULL;
+    }
+    {
+        size_t offset =
+            (child_ref && child_ref->source_input_index != (size_t)-1 &&
+             cxpr_ast_producer_argc(ast) == child->constant_count + 1u)
+                ? 1u
+                : 0u;
+        return param_index + offset < cxpr_ast_producer_argc(ast)
+                   ? cxpr_ast_producer_arg(ast, param_index + offset)
+                   : NULL;
+    }
+}
+
 static size_t cxpr_model_c_child_base_inline(const cxpr_model_program* program,
                                              size_t child_index) {
     size_t base;
@@ -234,7 +283,10 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
     field = cxpr_ast_producer_field(ast);
     entry = cxpr_registry_find(program->registry, producer);
     if (!entry || (!entry->model_producer && entry->defined_return_field_count == 0u) ||
-        entry->defined_param_count != cxpr_ast_producer_argc(ast)) {
+        (!entry->model_producer && entry->defined_param_count != cxpr_ast_producer_argc(ast)) ||
+        (entry->model_producer &&
+         (cxpr_ast_producer_argc(ast) < entry->min_args ||
+          cxpr_ast_producer_argc(ast) > entry->max_args))) {
         if (err) {
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
             err->message = "Unsupported model C producer access";
@@ -282,6 +334,33 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         free(helper_name);
         for (size_t i = 0u; i < child->input_count; ++i) {
             size_t input_index = 0u;
+            const cxpr_ast* source_arg =
+                (i == program->children[child_index].source_input_index)
+                    ? cxpr_model_child_call_source_arg(&program->children[child_index], child, ast)
+                    : NULL;
+            char* source_expr = NULL;
+            target_data = (cxpr_model_ast_c_target){
+                .program = program,
+                .function_prefix = function_prefix,
+                .literal_param_values = literal_param_values,
+                .literal_param_count = literal_param_count,
+            };
+            target = (cxpr_c_target){
+                .api_version = CXPR_C_TARGET_API_VERSION,
+                .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+                .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                .userdata = &target_data,
+            };
+            if (source_arg) {
+                source_expr = cxpr_ast_to_c_at_offset(source_arg, 0u, &target, err);
+                if (!source_expr) {
+                    free(call.data);
+                    return NULL;
+                }
+                cxpr_model_c_printf(&call, ", %s", source_expr);
+                free(source_expr);
+                continue;
+            }
             if (!cxpr_model_c_symbol_is_input(program, child->inputs[i], &input_index)) {
                 free(call.data);
                 cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -302,9 +381,9 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             .emit_call_at_offset = cxpr_model_ast_c_emit_call,
             .userdata = &target_data,
         };
-        for (size_t i = 0u; i < entry->defined_param_count; ++i) {
-            const cxpr_ast* arg = cxpr_model_producer_arg_for_param(
-                ast, entry->defined_param_names ? entry->defined_param_names[i] : NULL, i);
+        for (size_t i = 0u; i < child->constant_count; ++i) {
+            const cxpr_ast* arg = cxpr_model_child_call_param_arg(
+                &program->children[child_index], child, ast, i);
             char* arg_expr;
             if (!arg) {
                 free(call.data);

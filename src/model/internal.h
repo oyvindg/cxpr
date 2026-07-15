@@ -133,6 +133,8 @@ typedef struct {
     char* name;
     const cxpr_model_program* program;
     size_t registry_index;
+    char* source_arg;
+    size_t source_input_index;
 } cxpr_model_child_program;
 
 struct cxpr_model_program {
@@ -160,6 +162,7 @@ struct cxpr_model_program {
     size_t binding_count;
     char** inputs;
     size_t input_count;
+    char* source_arg;
     cxpr_model_child_program* children;
     size_t child_count;
     cxpr_model_history_spec* history_specs;

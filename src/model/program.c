@@ -82,7 +82,11 @@ void cxpr_model_program_free(cxpr_model_program* program) {
     free(program->bindings);
     for (size_t i = 0; i < program->input_count; ++i) free(program->inputs[i]);
     free(program->inputs);
-    for (size_t i = 0; i < program->child_count; ++i) free(program->children[i].name);
+    free(program->source_arg);
+    for (size_t i = 0; i < program->child_count; ++i) {
+        free(program->children[i].name);
+        free(program->children[i].source_arg);
+    }
     free(program->children);
     for (size_t i = 0; i < program->history_spec_count; ++i) {
         cxpr_model_history_spec_free(&program->history_specs[i]);

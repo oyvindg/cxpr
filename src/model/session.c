@@ -565,6 +565,55 @@ static void cxpr_model_session_commit_pending(const cxpr_model_program* program,
     cxpr_model_session_clear_pending(session);
 }
 
+static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
+                                                        const cxpr_model_program* child,
+                                                        const cxpr_ast* ast) {
+    if (!child_ref || !child || !ast ||
+        child_ref->source_input_index == (size_t)-1 ||
+        !child_ref->source_arg) {
+        return NULL;
+    }
+    if (cxpr_ast_producer_has_named_args(ast)) {
+        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+            const char* name = cxpr_ast_producer_arg_name(ast, i);
+            if (name && cxpr_model_names_match(name, child_ref->source_arg)) {
+                return cxpr_ast_producer_arg(ast, i);
+            }
+        }
+        return NULL;
+    }
+    return cxpr_ast_producer_argc(ast) == child->constant_count + 1u
+               ? cxpr_ast_producer_arg(ast, 0u)
+               : NULL;
+}
+
+static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
+                                                       const cxpr_model_program* child,
+                                                       const cxpr_ast* ast,
+                                                       size_t param_index) {
+    if (!child || !ast || param_index >= child->constant_count) return NULL;
+    if (cxpr_ast_producer_has_named_args(ast)) {
+        const char* param_name = child->constants[param_index].name;
+        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+            const char* name = cxpr_ast_producer_arg_name(ast, i);
+            if (name && param_name && cxpr_model_names_match(name, param_name)) {
+                return cxpr_ast_producer_arg(ast, i);
+            }
+        }
+        return NULL;
+    }
+    {
+        size_t offset =
+            (child_ref && child_ref->source_input_index != (size_t)-1 &&
+             cxpr_ast_producer_argc(ast) == child->constant_count + 1u)
+                ? 1u
+                : 0u;
+        return param_index + offset < cxpr_ast_producer_argc(ast)
+                   ? cxpr_ast_producer_arg(ast, param_index + offset)
+                   : NULL;
+    }
+}
+
 cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
@@ -574,7 +623,6 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
     cxpr_model_session* parent = cxpr_model_active_session();
     cxpr_model_session* child_session;
     const cxpr_model_program* child;
-    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
     cxpr_value* fields = NULL;
     cxpr_struct_value* record = NULL;
     cxpr_value result = cxpr_num(NAN);
@@ -602,15 +650,20 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
         }
         free(cache_key);
     }
-    {
-        cxpr_func_entry* entry = cxpr_registry_find(reg, child_ref->name);
-        if (!entry || !cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
-            return cxpr_num(NAN);
-        }
+    if (!cxpr_registry_find(reg, child_ref->name)) {
+        return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown child model producer");
     }
     for (size_t i = 0u; i < child->input_count; ++i) {
         bool input_found = false;
-        cxpr_value value = cxpr_context_get_typed(ctx, child->inputs[i], &input_found);
+        const cxpr_ast* source_arg =
+            (i == child_ref->source_input_index)
+                ? cxpr_model_child_call_source_arg(child_ref, child, ast)
+                : NULL;
+        cxpr_value value = source_arg
+                               ? cxpr_eval_node(source_arg, ctx, reg, err)
+                               : cxpr_context_get_typed(ctx, child->inputs[i], &input_found);
+        if (source_arg && err && err->code != CXPR_OK) return cxpr_num(NAN);
+        if (source_arg) input_found = true;
         if (!input_found) {
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Missing child model input");
         }
@@ -621,7 +674,12 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
         }
     }
     for (size_t i = 0u; i < child->constant_count; ++i) {
-        cxpr_value value = cxpr_eval_node(ordered_args[i], ctx, reg, err);
+        const cxpr_ast* arg = cxpr_model_child_call_param_arg(child_ref, child, ast, i);
+        cxpr_value value;
+        if (!arg) {
+            return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Missing child model parameter");
+        }
+        value = cxpr_eval_node(arg, ctx, reg, err);
         if (err && err->code != CXPR_OK) return cxpr_num(NAN);
         cxpr_context_set_param_value(child_session->ctx, child->constants[i].name, &value);
         cxpr_value_free(&value);

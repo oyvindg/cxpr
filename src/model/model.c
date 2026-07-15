@@ -81,6 +81,7 @@ static bool cxpr_model_append_inferred_input(char*** inputs,
 static const char* cxpr_model_import_leaf_name(const char* import_name);
 static const char* cxpr_model_import_namespace_name(const cxpr_model* model,
                                                     const char* import_name);
+static char* cxpr_model_parse_source_arg_metadata(const cxpr_model* model);
 
 static const cxpr_model_program* cxpr_model_import_program_for_name(
     const cxpr_model* model,
@@ -116,6 +117,41 @@ static const char* cxpr_model_import_namespace_name(const cxpr_model* model,
         }
     }
     return import_name;
+}
+
+static char* cxpr_model_dup_trimmed_metadata_value(const char* value) {
+    const char* end;
+    size_t len;
+    char* out;
+    if (!value) return NULL;
+    end = value;
+    while (*end && *end != '\n' && *end != ',' && *end != '}') end++;
+    while (value < end && (*value == ' ' || *value == '\t' || *value == '\r')) value++;
+    while (end > value && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r')) end--;
+    if (end > value + 1u &&
+        ((*value == '"' && end[-1] == '"') || (*value == '\'' && end[-1] == '\''))) {
+        value++;
+        end--;
+    }
+    len = (size_t)(end - value);
+    if (len == 0u) return NULL;
+    out = (char*)malloc(len + 1u);
+    if (!out) return NULL;
+    memcpy(out, value, len);
+    out[len] = '\0';
+    return out;
+}
+
+static char* cxpr_model_parse_source_arg_metadata(const cxpr_model* model) {
+    if (!model) return NULL;
+    for (size_t i = 0u; i < model->metadata_count; ++i) {
+        const char* value;
+        if (model->metadatas[i].target_kind != CXPR_MODEL_METADATA_TARGET_MODEL) continue;
+        if (!cxpr_model_names_match(model->metadatas[i].name, "model")) continue;
+        value = cxpr_model_metadata_field_value(model, i, "source_arg");
+        if (value) return cxpr_model_dup_trimmed_metadata_value(value);
+    }
+    return NULL;
 }
 
 static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
@@ -156,7 +192,26 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
                 cxpr_model_import_program_for_name(model, imports, import_count,
                                                    ast->data.producer_access.name);
             if (child) {
+                bool call_supplies_source = false;
+                if (child->source_arg) {
+                    if (ast->data.producer_access.argc == child->constant_count + 1u &&
+                        !cxpr_ast_producer_has_named_args(ast)) {
+                        call_supplies_source = true;
+                    }
+                    for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
+                        const char* arg_name = cxpr_ast_producer_arg_name(ast, arg_i);
+                        if (arg_name && cxpr_model_names_match(arg_name, child->source_arg)) {
+                            call_supplies_source = true;
+                            break;
+                        }
+                    }
+                }
                 for (size_t i = 0u; i < child->input_count; ++i) {
+                    if (call_supplies_source &&
+                        child->source_arg &&
+                        cxpr_model_names_match(child->inputs[i], child->source_arg)) {
+                        continue;
+                    }
                     if (!cxpr_model_append_inferred_input(
                             inputs, input_count, child->inputs[i], err)) {
                         return false;
@@ -938,9 +993,23 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
         program->children[i].name = cxpr_strdup(namespace_name);
         program->children[i].program = child;
         program->children[i].registry_index = i;
+        program->children[i].source_input_index = (size_t)-1;
         if (!program->children[i].name) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
+        }
+        if (child->source_arg) {
+            program->children[i].source_arg = cxpr_strdup(child->source_arg);
+            if (!program->children[i].source_arg) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
+                if (cxpr_model_names_match(child->inputs[in_i], child->source_arg)) {
+                    program->children[i].source_input_index = in_i;
+                    break;
+                }
+            }
         }
         entry = cxpr_registry_find(program->registry, namespace_name);
         if (entry) {
@@ -961,21 +1030,31 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
         entry->model_producer = cxpr_model_eval_child_producer;
         entry->model_producer_userdata = &program->children[i];
         entry->min_args = child->constant_count;
-        entry->max_args = child->constant_count;
+        entry->max_args = child->constant_count +
+                          (program->children[i].source_input_index != (size_t)-1 ? 1u : 0u);
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
         entry->defined_return_field_names = cxpr_registry_clone_param_names(
             (const char* const*)child->outputs, child->output_count);
-        entry->defined_param_count = child->constant_count;
-        if (child->constant_count > 0u) {
-            entry->defined_param_names = (char**)calloc(child->constant_count, sizeof(char*));
+        entry->defined_param_count = entry->max_args;
+        if (entry->defined_param_count > 0u) {
+            size_t name_index = 0u;
+            entry->defined_param_names = (char**)calloc(entry->defined_param_count, sizeof(char*));
             if (!entry->defined_param_names) {
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
+            if (program->children[i].source_input_index != (size_t)-1) {
+                entry->defined_param_names[name_index++] =
+                    cxpr_strdup(program->children[i].source_arg);
+                if (!entry->defined_param_names[name_index - 1u]) {
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    return false;
+                }
+            }
             for (size_t p = 0u; p < child->constant_count; ++p) {
-                entry->defined_param_names[p] = cxpr_strdup(child->constants[p].name);
-                if (!entry->defined_param_names[p]) {
+                entry->defined_param_names[name_index++] = cxpr_strdup(child->constants[p].name);
+                if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                     return false;
                 }
@@ -1044,6 +1123,21 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         free(inferred_inputs);
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         return NULL;
+    }
+    program->source_arg = cxpr_model_parse_source_arg_metadata(model);
+    if (model && cxpr_model_metadata_count(model) > 0u && !program->source_arg) {
+        for (size_t i = 0u; i < model->metadata_count; ++i) {
+            if (model->metadatas[i].target_kind == CXPR_MODEL_METADATA_TARGET_MODEL &&
+                cxpr_model_metadata_field_value(model, i, "source_arg")) {
+                for (size_t d = 0; d < required_default_count; ++d) free(required_defaults[d]);
+                free(required_defaults);
+                for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);
+                free(inferred_inputs);
+                cxpr_model_program_free(program);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return NULL;
+            }
+        }
     }
     if (!cxpr_model_collect_lookbacks(model,
                                       &program->history_specs,
