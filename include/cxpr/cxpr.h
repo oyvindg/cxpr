@@ -18,6 +18,7 @@
 #include <cxpr/eval_snapshot.h>
 #include <cxpr/program.h>
 #include <cxpr/codegen.h>
+#include <cxpr/document.h>
 #include <cxpr/model.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
