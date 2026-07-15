@@ -552,6 +552,9 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
             return cxpr_num(NAN);
         }
+        if (entry->model_producer) {
+            return entry->model_producer(ast, ctx, reg, entry->model_producer_userdata, err);
+        }
         if (entry->defined_body || entry->defined_return_field_count > 0u) {
             return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         }
