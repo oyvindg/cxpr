@@ -20,6 +20,8 @@ static bool cxpr_call_param_name_matches(const char* param_name, const char* arg
     if (!param_name || !arg_name) return false;
     if (strcmp(param_name, arg_name) == 0) return true;
     if (strcmp(param_name, "value") == 0 && strcmp(arg_name, "condition") == 0) return true;
+    if (strcmp(param_name, "mult") == 0 && strcmp(arg_name, "multiplier") == 0) return true;
+    if (strcmp(param_name, "multiplier") == 0 && strcmp(arg_name, "mult") == 0) return true;
     return strcmp(param_name, "samples") == 0 && strcmp(arg_name, "bars") == 0;
 }
 

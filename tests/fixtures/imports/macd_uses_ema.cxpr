@@ -1,4 +1,4 @@
-name macd_uses_ema
+model macd_uses_ema
 
 use ema
 

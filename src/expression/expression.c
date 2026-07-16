@@ -4,7 +4,7 @@
  */
 
 #include "internal.h"
-#include <cxpr/ir_view.h>
+#include <cxpr/ir.h>
 #include <stdio.h>
 
 static size_t cxpr_expression_find(const cxpr_evaluator* evaluator, const char* name) {

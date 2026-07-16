@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-/* cxpr_token_type is publicly defined in cxpr/ast.h (included via cxpr/cxpr.h) */
+/* cxpr_token_type is publicly defined in cxpr/ast/expression.h (included via cxpr/cxpr.h) */
 
 typedef struct {
     cxpr_token_type type;

@@ -1,5 +1,5 @@
 /**
- * @file document.h
+ * @file document/document.h
  * @brief Public API for loading and parsing .cxpr documents.
  *
  * A cxpr document is the top-level representation of a `.cxpr` file. It is the
@@ -16,10 +16,10 @@
  * of passing extension flags directly.
  */
 
-#ifndef CXPR_DOCUMENT_H
-#define CXPR_DOCUMENT_H
+#ifndef CXPR_DOCUMENT_DOCUMENT_H
+#define CXPR_DOCUMENT_DOCUMENT_H
 
-#include <cxpr/model.h>
+#include <cxpr/model/model.h>
 #include <cxpr/types.h>
 
 #ifdef __cplusplus
@@ -122,8 +122,24 @@ cxpr_document* cxpr_parse_manifest(const char* source, cxpr_error* err);
  */
 cxpr_document* cxpr_parse_model_document(const char* source, cxpr_error* err);
 
+/**
+ * @brief Parse a model document and transfer ownership of its semantic model.
+ *
+ * This is the owning model entrypoint for callers that do not need to keep the
+ * document syntax tree or host block document wrapper alive.
+ */
+cxpr_model* cxpr_parse_model_source(const char* source, cxpr_error* err);
+
 /** @brief Free a document returned by any cxpr document parse/load API. */
 void cxpr_document_free(cxpr_document* document);
+
+/**
+ * @brief Transfer the semantic model out of a parsed model document.
+ *
+ * Returns NULL for NULL, manifest-only, or already-drained documents. The
+ * caller owns the returned model and must free it with @ref cxpr_model_free.
+ */
+cxpr_model* cxpr_document_take_model(cxpr_document* document);
 
 /** @brief Return the number of top-level host blocks in @p document. */
 size_t cxpr_document_host_block_count(const cxpr_document* document);
@@ -170,4 +186,4 @@ const cxpr_model* cxpr_document_model(const cxpr_document* document);
 }
 #endif
 
-#endif /* CXPR_DOCUMENT_H */
+#endif /* CXPR_DOCUMENT_DOCUMENT_H */

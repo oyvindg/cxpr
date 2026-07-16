@@ -1,6 +1,6 @@
 # RSI example strategy for .cxpr model syntax and benchmark coverage.
 
-name rsi_state_model
+model rsi_state_model
 
 in { close, trend }
 

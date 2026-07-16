@@ -104,7 +104,7 @@ static void register_host_cxta_signals(cxpr_registry* reg) {
 
 static const char* cxta_signal_model_source(void) {
     return
-        "name cxta_signal_bench\n"
+        "model cxta_signal_bench\n"
         "in { value, from, to, cur_left, cur_right, prev_left, prev_right }\n"
         "fn above(left, right) = left > right\n"
         "fn score(value, from, to) =\n"
@@ -152,7 +152,7 @@ static double time_host_registered_setup(size_t iterations) {
 
 static double time_model_setup(size_t iterations) {
     static const char* source =
-        "name bench\n"
+        "model bench\n"
         "in { close }\n"
         "fn above(src, threshold) = src > threshold\n"
         "signal = above(close, 10)\n"
@@ -160,7 +160,7 @@ static double time_model_setup(size_t iterations) {
     long long start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         cxpr_error err = {0};
-        cxpr_model* model = cxpr_parse_model(source, &err);
+        cxpr_model* model = cxpr_parse_model_source(source, &err);
         cxpr_model_program* program = NULL;
         if (!model) {
             fprintf(stderr, "model parse failed: %s\n", err.message);
@@ -219,13 +219,13 @@ static double time_host_registered_eval(size_t iterations) {
 
 static double time_model_eval(size_t iterations) {
     static const char* source =
-        "name bench\n"
+        "model bench\n"
         "in { close }\n"
         "fn above(src, threshold) = src > threshold\n"
         "signal = above(close, 10)\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model(source, &err);
+    cxpr_model* model = cxpr_parse_model_source(source, &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     long long start;
@@ -312,7 +312,7 @@ static double time_host_registered_cxta_signal_eval(size_t iterations) {
 
 static double time_model_cxta_signal_eval(size_t iterations) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model(cxta_signal_model_source(), &err);
+    cxpr_model* model = cxpr_parse_model_source(cxta_signal_model_source(), &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     long long start;
@@ -364,7 +364,7 @@ static double time_strategy_fixture_eval(size_t iterations) {
     double total = 0.0;
 
     if (!source) abort();
-    model = cxpr_parse_model(source, &err);
+    model = cxpr_parse_model_source(source, &err);
     if (!model) {
         fprintf(stderr, "strategy fixture parse failed: %s\n", err.message);
         abort();
@@ -422,7 +422,7 @@ static double time_rsi_state_strategy_fixture_tick(size_t iterations) {
     double total = 0.0;
 
     if (!source) abort();
-    model = cxpr_parse_model(source, &err);
+    model = cxpr_parse_model_source(source, &err);
     if (!model) {
         fprintf(stderr, "rsi strategy fixture parse failed: %s\n", err.message);
         abort();
@@ -488,7 +488,7 @@ static double time_rsi_state_strategy_fixture_c_tick(size_t iterations) {
 }
 
 static double time_rsi_state_strategy_fixture_c_inline_tick(size_t iterations) {
-    double slots[128] = {0};
+    cxpr_bench_rsi_state_tick_inline_c_state state = {0};
     const double params[] = {3.0, 60.0, 45.0};
     double inputs[2] = {0};
     double outputs[5] = {0};
@@ -500,7 +500,7 @@ static double time_rsi_state_strategy_fixture_c_inline_tick(size_t iterations) {
         const double wave = (double)(i % 17u);
         inputs[0] = 100.0 + wave;
         inputs[1] = 99.0 + wave * 0.2;
-        cxpr_bench_rsi_state_tick_inline_c(slots, inputs, params, outputs);
+        cxpr_bench_rsi_state_tick_inline_c(&state, inputs, params, outputs);
         total += outputs[0] != 0.0 ? 1.0 : 0.0;
         total += outputs[2];
     }
@@ -748,7 +748,7 @@ static double time_macd_record_strategy_fixture_tick(size_t iterations) {
     double total = 0.0;
 
     if (!source) abort();
-    model = cxpr_parse_model(source, &err);
+    model = cxpr_parse_model_source(source, &err);
     if (!model) {
         fprintf(stderr, "macd record fixture parse failed: %s\n", err.message);
         abort();
@@ -789,13 +789,13 @@ static double time_macd_record_strategy_fixture_tick(size_t iterations) {
 
 static size_t model_registry_function_count(void) {
     static const char* source =
-        "name bench\n"
+        "model bench\n"
         "in { close }\n"
         "fn above(src, threshold) = src > threshold\n"
         "signal = above(close, 10)\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model(source, &err);
+    cxpr_model* model = cxpr_parse_model_source(source, &err);
     cxpr_model_program* program;
     size_t count;
     if (!model) abort();
@@ -814,7 +814,7 @@ static size_t rsi_fused_ir_instruction_count(void) {
     cxpr_model_program* program;
     size_t count;
     if (!source) abort();
-    model = cxpr_parse_model(source, &err);
+    model = cxpr_parse_model_source(source, &err);
     if (!model) abort();
     program = cxpr_compile_model(model, NULL, &err);
     if (!program) abort();
@@ -832,7 +832,7 @@ static const char* rsi_fused_ir_disabled_opcode(void) {
     cxpr_model_program* program;
     const char* opcode;
     if (!source) abort();
-    model = cxpr_parse_model(source, &err);
+    model = cxpr_parse_model_source(source, &err);
     if (!model) abort();
     program = cxpr_compile_model(model, NULL, &err);
     if (!program) abort();

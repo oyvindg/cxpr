@@ -50,6 +50,30 @@ cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count) {
     return node;
 }
 
+cxpr_ast* cxpr_ast_new_record(const char* const* field_names,
+                              cxpr_ast** field_values,
+                              size_t field_count) {
+    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_RECORD;
+    node->data.record.field_values = field_values;
+    node->data.record.field_count = field_count;
+    if (field_count == 0u) return node;
+    node->data.record.field_names = (char**)calloc(field_count, sizeof(char*));
+    if (!node->data.record.field_names) {
+        cxpr_ast_free(node);
+        return NULL;
+    }
+    for (size_t i = 0u; i < field_count; ++i) {
+        node->data.record.field_names[i] = cxpr_strdup(field_names[i]);
+        if (!node->data.record.field_names[i]) {
+            cxpr_ast_free(node);
+            return NULL;
+        }
+    }
+    return node;
+}
+
 cxpr_ast* cxpr_ast_new_string(const char* value) {
     cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
     if (!node) return NULL;

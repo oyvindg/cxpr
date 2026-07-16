@@ -1,5 +1,5 @@
 /**
- * @file source_plan.h
+ * @file source.h
  * @brief Provider source planning and binding API.
  *
  * Source plans describe how a provider source expression should be materialized
@@ -21,6 +21,28 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Source position in a parsed cxpr document.
+ *
+ * Offsets and columns are zero-based. Lines are one-based so they match
+ * existing cxpr diagnostics.
+ */
+typedef struct {
+    size_t offset;
+    size_t line;
+    size_t column;
+} cxpr_source_pos;
+
+/**
+ * @brief Half-open source span.
+ *
+ * `end` points one byte past the represented source range.
+ */
+typedef struct {
+    cxpr_source_pos start;
+    cxpr_source_pos end;
+} cxpr_source_span;
 
 /**
  * @brief Kind of source-plan node parsed from an expression AST.

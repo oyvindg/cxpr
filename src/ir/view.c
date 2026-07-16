@@ -3,7 +3,7 @@
  * @brief Public read-only view helpers for compiled cxpr IR programs.
  */
 
-#include <cxpr/ir_view.h>
+#include <cxpr/ir.h>
 
 #include "internal.h"
 

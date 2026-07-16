@@ -18,6 +18,7 @@ typedef struct {
     cxpr_program* program;    /**< Compiled program cache (NULL until compiled) */
     cxpr_value result;        /**< Evaluation result */
     bool evaluated;
+    bool used_as_struct_prefix; /**< Cached compile-time struct alias dependency flag */
 } cxpr_expression_entry;
 
 /** @brief Initial expression storage capacity for new evaluators. */

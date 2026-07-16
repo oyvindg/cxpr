@@ -3,13 +3,15 @@
 
 #include "core.h"
 #include "ir/compile/internal.h"
-#include <cxpr/model.h>
-#include <cxpr/source_plan.h>
+#include <cxpr/model/model.h>
+#include <cxpr/source.h>
 
 typedef struct {
     char* name;
     char* source;
     cxpr_ast* expr;
+    cxpr_source_span span;
+    bool has_span;
 } cxpr_model_constant;
 
 typedef struct {
@@ -17,6 +19,8 @@ typedef struct {
     char* name;
     char* source;
     cxpr_ast* expr;
+    cxpr_source_span span;
+    bool has_span;
 } cxpr_model_binding;
 
 typedef struct {
@@ -43,6 +47,8 @@ typedef struct {
     char* body;
     cxpr_model_metadata_target_kind target_kind;
     char* target_name;
+    cxpr_source_span span;
+    bool has_span;
 } cxpr_model_metadata;
 
 typedef struct {
@@ -54,6 +60,8 @@ struct cxpr_model_host_block {
     char* kind;
     char* name;
     char* body;
+    cxpr_source_span span;
+    bool has_span;
     cxpr_model_host_block_field* fields;
     size_t field_count;
     cxpr_model_host_block* children;
@@ -62,20 +70,28 @@ struct cxpr_model_host_block {
 
 struct cxpr_model {
     char* name;
+    cxpr_source_span name_span;
+    bool has_name_span;
     char** uses;
     char** use_aliases;
+    cxpr_source_span* use_spans;
+    bool* use_has_spans;
     size_t use_count;
     char** functions;
     size_t function_count;
     cxpr_model_record_function* record_functions;
     size_t record_function_count;
     char** inputs;
+    cxpr_source_span* input_spans;
+    bool* input_has_spans;
     size_t input_count;
     cxpr_model_constant* constants;
     size_t constant_count;
     cxpr_model_binding* bindings;
     size_t binding_count;
     char** outputs;
+    cxpr_source_span* output_spans;
+    bool* output_has_spans;
     size_t output_count;
     cxpr_model_anonymous_output* anonymous_outputs;
     size_t anonymous_output_count;

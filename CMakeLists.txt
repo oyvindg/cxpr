@@ -127,6 +127,10 @@ if(CXPR_BUILD_TOOLS)
     add_executable(cxpr_model_codegen
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_model_codegen.c")
     target_link_libraries(cxpr_model_codegen PRIVATE cxpr)
+
+    add_executable(cxpr_document_tooling
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c")
+    target_link_libraries(cxpr_document_tooling PRIVATE cxpr)
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

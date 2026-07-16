@@ -7,6 +7,18 @@
 #include "context/internal.h"
 #include "expression/internal.h"
 #include <math.h>
+#include <stdio.h>
+
+static const char* cxpr_ir_unknown_lookup_message(const char* kind, const char* name) {
+    static CXPR_THREAD_LOCAL char message[512];
+    if (!kind || kind[0] == '\0') kind = "identifier";
+    if (!name || name[0] == '\0') {
+        snprintf(message, sizeof(message), "Unknown %s", kind);
+    } else {
+        snprintf(message, sizeof(message), "Unknown %s '%s'", kind, name);
+    }
+    return message;
+}
 
 double cxpr_ir_context_get_prehashed(const cxpr_context* ctx, const char* name,
                                      unsigned long hash, bool* found) {
@@ -110,7 +122,7 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
 
     value = cxpr_num(cxpr_ir_context_get_prehashed(ctx, instr->name, instr->hash, &found));
     if (!found) {
-        return cxpr_ir_make_not_found(err, "Unknown field access");
+        return cxpr_ir_make_not_found(err, cxpr_ir_unknown_lookup_message("field access", instr->name));
     }
     return value;
 }
@@ -137,7 +149,7 @@ cxpr_value cxpr_ir_load_named_field_value(const cxpr_context* ctx,
 
     value = cxpr_num(cxpr_ir_context_get_prehashed(ctx, flat_key, instr->hash, &found));
     if (!found) {
-        return cxpr_ir_make_not_found(err, "Unknown field access");
+        return cxpr_ir_make_not_found(err, cxpr_ir_unknown_lookup_message("field access", instr->name));
     }
     return value;
 }
@@ -196,7 +208,7 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
                 }
                 if (!found) {
                     free(path);
-                    return cxpr_ir_make_not_found(err, "Unknown identifier");
+                    return cxpr_ir_make_not_found(err, cxpr_ir_unknown_lookup_message("identifier", segment));
                 }
                 if (!next) {
                     free(path);
@@ -234,7 +246,7 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
             current = root.s;
         } else {
             free(path);
-            return cxpr_ir_make_not_found(err, "Unknown identifier");
+            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_lookup_message("identifier", segment));
         }
     }
 
@@ -251,7 +263,7 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
         }
         if (!found) {
             free(path);
-            return cxpr_ir_make_not_found(err, "Unknown identifier");
+            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_lookup_message("identifier", segment));
         }
         if (!next) {
             free(path);

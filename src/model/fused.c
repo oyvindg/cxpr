@@ -197,6 +197,8 @@ static bool cxpr_model_fused_ast_supported(const cxpr_ast* ast,
                                            const cxpr_registry* reg) {
     if (!ast) return true;
     switch (ast->type) {
+    case CXPR_NODE_RECORD:
+        return false;
     case CXPR_NODE_ARRAY:
         for (size_t i = 0u; i < ast->data.array.count; ++i) {
             if (!cxpr_model_fused_ast_supported(ast->data.array.elements[i], reg)) return false;

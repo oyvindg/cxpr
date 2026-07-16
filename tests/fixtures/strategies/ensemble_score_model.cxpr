@@ -1,7 +1,7 @@
 # Converted from tests/configs/strategies/feature-lab/ensemble_score_model.yaml.
 # Indicator outputs are explicit inputs so this fixture stays host agnostic.
 
-name ensemble_score_model
+model ensemble_score_model
 
 in {
     close,

@@ -172,6 +172,56 @@ const char* cxpr_model_program_binding_name(const cxpr_model_program* program, s
     return program && index < program->binding_count ? program->bindings[index].name : NULL;
 }
 
+cxpr_model_binding_kind cxpr_model_program_binding_kind(const cxpr_model_program* program,
+                                                        size_t index) {
+    return program && index < program->binding_count
+               ? program->bindings[index].kind
+               : CXPR_MODEL_BINDING_EXPR;
+}
+
+cxpr_ir_view_result_kind cxpr_model_program_binding_result_kind(
+    const cxpr_model_program* program,
+    size_t index) {
+    return program && index < program->binding_count
+               ? program->bindings[index].result_kind
+               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+}
+
+size_t cxpr_model_program_constant_count(const cxpr_model_program* program) {
+    return program ? program->constant_count : 0u;
+}
+
+const char* cxpr_model_program_constant_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->constant_count ? program->constants[index].name : NULL;
+}
+
+cxpr_ir_view_result_kind cxpr_model_program_constant_result_kind(
+    const cxpr_model_program* program,
+    size_t index) {
+    return program && index < program->constant_count
+               ? program->constants[index].result_kind
+               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+}
+
+size_t cxpr_model_program_state_default_count(const cxpr_model_program* program) {
+    return program ? program->state_default_count : 0u;
+}
+
+const char* cxpr_model_program_state_default_name(const cxpr_model_program* program,
+                                                  size_t index) {
+    return program && index < program->state_default_count
+               ? program->state_defaults[index].name
+               : NULL;
+}
+
+cxpr_ir_view_result_kind cxpr_model_program_state_default_result_kind(
+    const cxpr_model_program* program,
+    size_t index) {
+    return program && index < program->state_default_count
+               ? program->state_defaults[index].result_kind
+               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+}
+
 size_t cxpr_model_program_output_count(const cxpr_model_program* program) {
     return program ? program->output_count : 0;
 }
@@ -188,6 +238,34 @@ const char* cxpr_model_program_input_name(const cxpr_model_program* program, siz
     return program && index < program->input_count ? program->inputs[index] : NULL;
 }
 
+size_t cxpr_model_program_child_count(const cxpr_model_program* program) {
+    return program ? program->child_count : 0u;
+}
+
+const char* cxpr_model_program_child_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->child_count ? program->children[index].name : NULL;
+}
+
+const char* cxpr_model_program_child_source_arg(const cxpr_model_program* program, size_t index) {
+    return program && index < program->child_count ? program->children[index].source_arg : NULL;
+}
+
+size_t cxpr_model_program_history_spec_count(const cxpr_model_program* program) {
+    return program ? program->history_spec_count : 0u;
+}
+
+const char* cxpr_model_program_history_spec_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->history_spec_count
+               ? program->history_specs[index].name
+               : NULL;
+}
+
+size_t cxpr_model_program_history_spec_depth(const cxpr_model_program* program, size_t index) {
+    return program && index < program->history_spec_count
+               ? program->history_specs[index].depth
+               : 0u;
+}
+
 size_t cxpr_model_program_function_count(const cxpr_model_program* program) {
     return program && program->registry ? program->registry->count : 0u;
 }
@@ -202,6 +280,86 @@ size_t cxpr_model_program_fused_ir_instruction_count(const cxpr_model_program* p
 
 const char* cxpr_model_program_fused_ir_disabled_opcode(const cxpr_model_program* program) {
     return program ? program->fused_disabled_opcode : NULL;
+}
+
+size_t cxpr_model_program_fused_slot_count(const cxpr_model_program* program) {
+    return program ? program->fused_slot_count : 0u;
+}
+
+const char* cxpr_model_program_fused_slot_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_slot_count ? program->fused_slot_names[index] : NULL;
+}
+
+size_t cxpr_model_program_fused_input_count(const cxpr_model_program* program) {
+    return program ? program->fused_input_count : 0u;
+}
+
+const char* cxpr_model_program_fused_input_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_input_count ? program->fused_inputs[index].name : NULL;
+}
+
+size_t cxpr_model_program_fused_input_slot(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_input_count ? program->fused_inputs[index].slot : (size_t)-1;
+}
+
+cxpr_ir_view_result_kind cxpr_model_program_fused_input_result_kind(
+    const cxpr_model_program* program,
+    size_t index) {
+    return program && index < program->fused_input_count
+               ? program->fused_inputs[index].result_kind
+               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+}
+
+size_t cxpr_model_program_fused_export_count(const cxpr_model_program* program) {
+    return program ? program->fused_export_count : 0u;
+}
+
+const char* cxpr_model_program_fused_export_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_export_count ? program->fused_exports[index].name : NULL;
+}
+
+size_t cxpr_model_program_fused_export_slot(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_export_count ? program->fused_exports[index].slot : (size_t)-1;
+}
+
+cxpr_ir_view_result_kind cxpr_model_program_fused_export_result_kind(
+    const cxpr_model_program* program,
+    size_t index) {
+    return program && index < program->fused_export_count
+               ? program->fused_exports[index].result_kind
+               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+}
+
+size_t cxpr_model_program_fused_output_count(const cxpr_model_program* program) {
+    return program ? program->fused_output_count : 0u;
+}
+
+const char* cxpr_model_program_fused_output_name(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_output_count ? program->fused_outputs[index].name : NULL;
+}
+
+size_t cxpr_model_program_fused_output_slot(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_output_count ? program->fused_outputs[index].slot : (size_t)-1;
+}
+
+cxpr_ir_view_result_kind cxpr_model_program_fused_output_result_kind(
+    const cxpr_model_program* program,
+    size_t index) {
+    return program && index < program->fused_output_count
+               ? program->fused_outputs[index].result_kind
+               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+}
+
+size_t cxpr_model_program_fused_commit_count(const cxpr_model_program* program) {
+    return program ? program->fused_commit_count : 0u;
+}
+
+size_t cxpr_model_program_fused_commit_state_slot(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_commit_count ? program->fused_commits[index].state_slot : (size_t)-1;
+}
+
+size_t cxpr_model_program_fused_commit_update_slot(const cxpr_model_program* program, size_t index) {
+    return program && index < program->fused_commit_count ? program->fused_commits[index].update_slot : (size_t)-1;
 }
 
 static bool cxpr_model_history_use_shift(size_t depth) {

@@ -28,6 +28,20 @@ void cxpr_ast_free(cxpr_ast* ast) {
                 free(ast->data.array.elements);
             }
             break;
+        case CXPR_NODE_RECORD:
+            if (ast->data.record.field_names) {
+                for (size_t i = 0; i < ast->data.record.field_count; ++i) {
+                    free(ast->data.record.field_names[i]);
+                }
+                free(ast->data.record.field_names);
+            }
+            if (ast->data.record.field_values) {
+                for (size_t i = 0; i < ast->data.record.field_count; ++i) {
+                    cxpr_ast_free(ast->data.record.field_values[i]);
+                }
+                free(ast->data.record.field_values);
+            }
+            break;
         case CXPR_NODE_STRING:
             free(ast->data.string.value);
             break;

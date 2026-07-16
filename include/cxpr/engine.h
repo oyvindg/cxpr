@@ -55,7 +55,7 @@
 #ifndef CXPR_ENGINE_H
 #define CXPR_ENGINE_H
 
-#include <cxpr/eval_snapshot.h>
+#include <cxpr/snapshot.h>
 #include <cxpr/types.h>
 #include <cxpr/registry.h>
 #include <cxpr/expression.h>

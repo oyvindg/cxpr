@@ -6,7 +6,7 @@
 #ifndef CXPR_BASKET_H
 #define CXPR_BASKET_H
 
-#include <cxpr/ast.h>
+#include <cxpr/ast/expression.h>
 #include <cxpr/context.h>
 #include <cxpr/registry.h>
 

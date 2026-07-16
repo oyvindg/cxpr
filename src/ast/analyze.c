@@ -73,6 +73,14 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                 if (!*ok) return CXPR_EXPR_UNKNOWN;
             }
             return CXPR_EXPR_UNKNOWN;
+        case CXPR_NODE_RECORD:
+            cxpr_ast_note_unsupported_codegen(out, "record");
+            for (size_t i = 0; i < ast->data.record.field_count; ++i) {
+                (void)cxpr_ast_analyze_node(
+                    ast->data.record.field_values[i], state, depth + 1, lookback_depth, ok);
+                if (!*ok) return CXPR_EXPR_UNKNOWN;
+            }
+            return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_STRING:
             return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_IDENTIFIER:

@@ -3,10 +3,10 @@
  * @brief Single-evaluation AST diagnostics.
  */
 
-#include <cxpr/ast.h>
+#include <cxpr/ast/expression.h>
 #include <cxpr/context.h>
 #include <cxpr/eval.h>
-#include <cxpr/eval_snapshot.h>
+#include <cxpr/snapshot.h>
 #include <cxpr/registry.h>
 #include <cxpr/token.h>
 

@@ -2,7 +2,7 @@
 # Inputs model a 6-axis IMU: 3-axis gyro plus 3-axis accelerometer.
 # Top-level bindings intentionally delegate calculations to fn definitions.
 
-name robot_hexapod
+model robot_hexapod
 
 use robotics
 
@@ -53,12 +53,22 @@ front_right_mount = vec3(1, 0 - 1, 0)
 middle_left_mount = vec3(0, 1, 0)
 rear_right_mount = vec3(0 - 1, 0 - 1, 0)
 
-front_left = legcommand(front_left_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro)
-middle_right = legcommand(middle_right_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro)
-rear_left = legcommand(rear_left_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro)
-front_right = legcommand(front_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
-middle_left = legcommand(middle_left_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
-rear_right = legcommand(rear_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro)
+leg_gains = {
+    lift_height = $lift_height,
+    hip = $hip_gain,
+    knee = $knee_gain,
+    ankle = $ankle_gain,
+    roll_balance = $roll_balance_gain,
+    pitch_balance = $pitch_balance_gain,
+    yaw_balance = $yaw_balance_gain
+}
+
+front_left = legcommand(front_left_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro, leg_gains)
+middle_right = legcommand(middle_right_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro, leg_gains)
+rear_left = legcommand(rear_left_mount, 0.00, gait_phase, stride, turn, height, attitude, gyro, leg_gains)
+front_right = legcommand(front_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro, leg_gains)
+middle_left = legcommand(middle_left_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro, leg_gains)
+rear_right = legcommand(rear_right_mount, 0.50, gait_phase, stride, turn, height, attitude, gyro, leg_gains)
 
 orientation := orientation_q
 

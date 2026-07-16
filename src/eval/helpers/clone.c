@@ -29,6 +29,24 @@ cxpr_ast* cxpr_eval_clone_ast(const cxpr_ast* ast) {
         }
         return cxpr_ast_new_array(elements, ast->data.array.count);
     }
+    case CXPR_NODE_RECORD: {
+        cxpr_ast** values = NULL;
+        if (ast->data.record.field_count > 0) {
+            values = (cxpr_ast**)calloc(ast->data.record.field_count, sizeof(cxpr_ast*));
+            if (!values) return NULL;
+            for (size_t i = 0; i < ast->data.record.field_count; ++i) {
+                values[i] = cxpr_eval_clone_ast(ast->data.record.field_values[i]);
+                if (!values[i]) {
+                    for (size_t j = 0; j < i; ++j) cxpr_ast_free(values[j]);
+                    free(values);
+                    return NULL;
+                }
+            }
+        }
+        return cxpr_ast_new_record((const char* const*)ast->data.record.field_names,
+                                   values,
+                                   ast->data.record.field_count);
+    }
     case CXPR_NODE_STRING:
         return cxpr_ast_new_string(ast->data.string.value);
     case CXPR_NODE_IDENTIFIER:

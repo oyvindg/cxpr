@@ -1,5 +1,5 @@
 #include <cxpr/plugins/c.h>
-#include <cxpr/model.h>
+#include <cxpr/model/model.h>
 
 #include <stdlib.h>
 #include <string.h>

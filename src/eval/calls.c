@@ -19,6 +19,21 @@ static const char* cxpr_eval_calls_unknown_function_message(const char* name) {
     return message;
 }
 
+static void cxpr_eval_wrap_defined_function_error(cxpr_func_entry* entry, cxpr_error* err) {
+    static CXPR_THREAD_LOCAL char message[1024];
+    char detail[512];
+
+    if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
+    snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
+    snprintf(
+        message,
+        sizeof(message),
+        "Function '%s' eval failed: %s",
+        entry->name,
+        detail);
+    err->message = message;
+}
+
 cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
                                      const char* field,
                                      const cxpr_ast* const* arg_nodes,
@@ -197,8 +212,13 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
             cxpr_value_free(&v);
         }
         if (all_numbers) {
-            cxpr_context_free(tmp);
-            tmp = NULL;
+            /*
+             * Keep the parameter overlay for defined functions. The IR fast
+             * path is being phased out and can lose local parameter bindings
+             * for boolean functions; AST evaluation preserves the source
+             * semantics here.
+             */
+            scalar_only = false;
         } else {
             scalar_only = false;
         }
@@ -276,13 +296,18 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
                                             scalar_locals,
                                             entry->defined_param_count,
                                             &bool_value, err)) {
+                    cxpr_eval_wrap_defined_function_error(entry, err);
                     return cxpr_num(NAN);
                 }
                 return cxpr_bool(bool_value);
             }
-            return cxpr_num(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
-                                                           scalar_locals,
-                                                           entry->defined_param_count, err));
+            {
+                double result = cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
+                                                         scalar_locals,
+                                                         entry->defined_param_count, err);
+                if (err && err->code != CXPR_OK) cxpr_eval_wrap_defined_function_error(entry, err);
+                return cxpr_num(result);
+            }
         }
 
         tmp = cxpr_context_overlay_new(ctx);
@@ -295,6 +320,7 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
     {
         cxpr_value result = cxpr_eval_node(entry->defined_body, tmp ? tmp : ctx, reg, err);
         if (tmp) cxpr_context_free(tmp);
+        if (err && err->code != CXPR_OK) cxpr_eval_wrap_defined_function_error(entry, err);
         return result;
     }
 }
@@ -454,6 +480,7 @@ cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
     {
         cxpr_value result = cxpr_eval_node(entry->defined_body, tmp, reg, err);
         cxpr_context_free(tmp);
+        if (err && err->code != CXPR_OK) cxpr_eval_wrap_defined_function_error(entry, err);
         return result;
     }
 }

@@ -1,5 +1,5 @@
 /**
- * @file ir_view.h
+ * @file ir.h
  * @brief Read-only public view of compiled cxpr IR programs.
  */
 

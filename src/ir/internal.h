@@ -305,6 +305,13 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
 double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err);
+/** @brief Execute internal IR with locals and preserve the typed result. */
+cxpr_value cxpr_ir_exec_value_with_locals(const cxpr_ir_program* program,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          const double* locals,
+                                          size_t local_count,
+                                          cxpr_error* err);
 /** @brief Return a stable printable opcode name. */
 const char* cxpr_ir_opcode_name(cxpr_opcode op);
 /** @brief Release one public compiled-program wrapper and all owned internal IR state.

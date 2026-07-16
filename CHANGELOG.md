@@ -231,15 +231,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Provider metadata for host-backed inventories (`cxpr/provider.h`,
-  `cxpr/runtime_call.h`, `cxpr/scope.h`): describe host functions and direct
+  `cxpr/runtime.h`, `cxpr/scope.h`): describe host functions and direct
   sources, preserve named arguments, declare record fields, and decode
   scoped/partitioned series; register provider signatures at parse time and turn
   call ASTs into host-neutral runtime-call views.
-- Source planning for host-owned data (`cxpr/source_plan.h`):
+- Source planning for host-owned data (`cxpr/source.h`):
   `cxpr_plan_bind_sources` and `cxpr_plan_bind_sources_from_table` own the AST
   walk, numeric-argument evaluation, per-leaf host binding, and scoped-source
   registration so hosts materialize series bar-by-bar.
-- IR views (`cxpr/ir_view.h`): inspect a compiled program's opcodes, result
+- IR views (`cxpr/ir.h`): inspect a compiled program's opcodes, result
   kind, and instruction count without executing it.
 - Compiled-program introspection on the expression evaluator:
   `cxpr_expression_program`, `cxpr_expression_instruction_count`,
@@ -253,7 +253,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `_param_` variants), plus per-evaluation cached structs
   (`cxpr_context_set_cached_struct`, `cxpr_context_get_cached_struct`,
   `cxpr_context_clear_cached_structs`).
-- AST inspection and analysis (`cxpr/ast.h`): `cxpr_ast_clone`,
+- AST inspection and analysis (`cxpr/ast/expression.h`): `cxpr_ast_clone`,
   `cxpr_ast_to_string`/`cxpr_ast_dump`, producer-field and reference/variable
   collection, call-argument context tracing
   (`cxpr_ast_call_arg_contexts_for_reference`/`_for_variable`),

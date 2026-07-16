@@ -3,7 +3,7 @@
  * @brief Bridge runtime-call helpers.
  */
 
-#include <cxpr/runtime_call.h>
+#include <cxpr/runtime.h>
 
 #include <string.h>
 

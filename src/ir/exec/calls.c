@@ -6,6 +6,22 @@
 #include "internal.h"
 #include "../../eval/internal.h"
 #include <math.h>
+#include <stdio.h>
+
+static void cxpr_ir_wrap_defined_function_error(cxpr_func_entry* entry, cxpr_error* err) {
+    static CXPR_THREAD_LOCAL char message[1024];
+    char detail[512];
+
+    if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
+    snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
+    snprintf(
+        message,
+        sizeof(message),
+        "Function '%s' eval failed: %s",
+        entry->name,
+        detail);
+    err->message = message;
+}
 
 static bool cxpr_ir_call_instr_memoable(const cxpr_ir_instr* instr) {
     const cxpr_ast* ast = instr ? (const cxpr_ast*)instr->payload : NULL;
@@ -293,8 +309,10 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
 
     if (scalar_only &&
         cxpr_ir_prepare_defined_program(entry, reg, err) && entry->defined_program) {
-        return cxpr_num(cxpr_ir_exec_with_locals(&entry->defined_program->ir, ctx, reg,
-                                                       locals, argc, err));
+        cxpr_value result = cxpr_ir_exec_value_with_locals(
+            &entry->defined_program->ir, ctx, reg, locals, argc, err);
+        if (err && err->code != CXPR_OK) cxpr_ir_wrap_defined_function_error(entry, err);
+        return result;
     }
 
     {
@@ -316,6 +334,7 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
         {
             cxpr_value result = {0};
             (void)cxpr_eval_ast(entry->defined_body, tmp, reg, &result, err);
+            if (err && err->code != CXPR_OK) cxpr_ir_wrap_defined_function_error(entry, err);
             cxpr_context_free(tmp);
             return result;
         }

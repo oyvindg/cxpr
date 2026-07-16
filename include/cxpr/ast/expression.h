@@ -1,10 +1,10 @@
 /**
- * @file ast.h
+ * @file ast/expression.h
  * @brief Public AST API for cxpr.
  */
 
-#ifndef CXPR_AST_H
-#define CXPR_AST_H
+#ifndef CXPR_AST_EXPRESSION_H
+#define CXPR_AST_EXPRESSION_H
 
 #include <cxpr/token.h>
 #include <cxpr/types.h>
@@ -44,6 +44,16 @@ cxpr_ast* cxpr_ast_new_bool(bool value);
  * @return Newly allocated AST node taking ownership of `elements`, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count);
+/**
+ * @brief Construct a record literal node.
+ * @param field_names Owned or borrowed field-name array copied by the node.
+ * @param field_values Field expression array owned by the node on success.
+ * @param field_count Number of fields.
+ * @return Newly allocated node taking ownership of `field_values`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_record(const char* const* field_names,
+                              cxpr_ast** field_values,
+                              size_t field_count);
 /**
  * @brief Construct a plain identifier node.
  * @param name Identifier name.
@@ -139,6 +149,7 @@ typedef enum {
     CXPR_NODE_NUMBER,
     CXPR_NODE_BOOL,
     CXPR_NODE_ARRAY,
+    CXPR_NODE_RECORD,
     CXPR_NODE_STRING,
     CXPR_NODE_IDENTIFIER,
     CXPR_NODE_VARIABLE,
@@ -181,6 +192,26 @@ bool cxpr_ast_bool_value(const cxpr_ast* ast);
  * @return Borrowed NUL-terminated string value, or NULL if `ast` is not a string node.
  */
 const char* cxpr_ast_string_value(const cxpr_ast* ast);
+/**
+ * @brief Return the number of fields in a record literal node.
+ * @param ast Record node to inspect.
+ * @return Field count, or 0 when not a record.
+ */
+size_t cxpr_ast_record_field_count(const cxpr_ast* ast);
+/**
+ * @brief Return a record literal field name.
+ * @param ast Record node to inspect.
+ * @param index Zero-based field index.
+ * @return Borrowed field name, or NULL when out of range.
+ */
+const char* cxpr_ast_record_field_name(const cxpr_ast* ast, size_t index);
+/**
+ * @brief Return a record literal field expression.
+ * @param ast Record node to inspect.
+ * @param index Zero-based field index.
+ * @return Borrowed field expression, or NULL when out of range.
+ */
+const cxpr_ast* cxpr_ast_record_field_value(const cxpr_ast* ast, size_t index);
 /**
  * @brief Return the identifier name for an identifier node.
  * @param ast Identifier node to inspect.
@@ -451,4 +482,4 @@ size_t cxpr_ast_call_arg_contexts_for_variable(const cxpr_ast* ast,
 #include <cxpr/parser.h>
 #include <cxpr/program.h>
 
-#endif /* CXPR_AST_H */
+#endif /* CXPR_AST_EXPRESSION_H */

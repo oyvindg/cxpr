@@ -5,7 +5,7 @@
 
 #include "internal.h"
 
-#include <cxpr/runtime_call.h>
+#include <cxpr/runtime.h>
 #include <cxpr/scope.h>
 
 #include <stdlib.h>

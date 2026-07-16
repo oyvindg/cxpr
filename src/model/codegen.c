@@ -2656,7 +2656,7 @@ static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* prog
 
 static void cxpr_model_c_emit_common_helpers(cxpr_model_c_buf* b) {
     cxpr_model_c_puts(b,
-                      "#include <cxpr/model_runtime.h>\n\n"
+                      "#include <cxpr/model/runtime.h>\n\n"
                       "#include <stdint.h>\n\n"
                       "#ifndef CXPR_UNLIKELY\n"
                       "#if defined(__GNUC__) || defined(__clang__)\n"

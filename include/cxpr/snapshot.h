@@ -1,5 +1,5 @@
 /**
- * @file eval_snapshot.h
+ * @file snapshot.h
  * @brief Single-evaluation AST diagnostics for cxpr.
  */
 

@@ -85,6 +85,40 @@ cxpr_ast* cxpr_model_inline_locals(const cxpr_ast* ast,
     }
 
     switch (type) {
+    case CXPR_NODE_RECORD: {
+        const size_t field_count = cxpr_ast_record_field_count(ast);
+        cxpr_ast** values = NULL;
+        const char** names = NULL;
+        if (field_count > 0u) {
+            values = (cxpr_ast**)calloc(field_count, sizeof(cxpr_ast*));
+            names = (const char**)calloc(field_count, sizeof(char*));
+            if (!values || !names) {
+                free(values);
+                free(names);
+                return NULL;
+            }
+            for (size_t i = 0u; i < field_count; ++i) {
+                names[i] = cxpr_ast_record_field_name(ast, i);
+                values[i] = cxpr_model_inline_locals(
+                    cxpr_ast_record_field_value(ast, i), locals, local_count);
+                if (!values[i]) {
+                    for (size_t j = 0u; j < i; ++j) cxpr_ast_free(values[j]);
+                    free(values);
+                    free(names);
+                    return NULL;
+                }
+            }
+        }
+        {
+            cxpr_ast* record = cxpr_ast_new_record(names, values, field_count);
+            free(names);
+            if (!record) {
+                for (size_t i = 0u; i < field_count; ++i) cxpr_ast_free(values[i]);
+                free(values);
+            }
+            return record;
+        }
+    }
     case CXPR_NODE_BINARY_OP: {
         cxpr_ast* left = cxpr_model_inline_locals(cxpr_ast_left(ast), locals, local_count);
         cxpr_ast* right = cxpr_model_inline_locals(cxpr_ast_right(ast), locals, local_count);

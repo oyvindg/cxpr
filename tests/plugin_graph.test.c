@@ -45,7 +45,7 @@ static int test_end_artifact(void* user, cxpr_error* err) {
 
 int main(void) {
     const char* source =
-        "name graph_demo\n"
+        "model graph_demo\n"
         "in source\n"
         "$period = 9 { description = \"Period\" }\n"
         "state {\n"
@@ -60,7 +60,7 @@ int main(void) {
         "    plot { key = \"value\" }\n"
         "}\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model(source, &err);
+    cxpr_model* model = cxpr_parse_model_source(source, &err);
     cxpr_plugin_model_event event;
     test_artifact_sink sink = {0};
     cxpr_plugin_host host = {

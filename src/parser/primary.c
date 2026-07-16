@@ -72,6 +72,84 @@ fail:
     return NULL;
 }
 
+static cxpr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
+    size_t count = 0;
+    size_t capacity = 4;
+    char** names;
+    cxpr_ast** values;
+
+    if (!cxpr_parser_expect(p, CXPR_TOK_LBRACE, "Expected '{'")) return NULL;
+
+    names = (char**)calloc(capacity, sizeof(char*));
+    values = (cxpr_ast**)calloc(capacity, sizeof(cxpr_ast*));
+    if (!names || !values) {
+        free(names);
+        free(values);
+        return NULL;
+    }
+
+    if (!cxpr_parser_check(p, CXPR_TOK_RBRACE)) {
+        do {
+            if (count >= capacity) {
+                size_t old_capacity = capacity;
+                char** grown_names;
+                cxpr_ast** grown_values;
+                size_t new_capacity = capacity * 2;
+                grown_names = (char**)realloc(names, new_capacity * sizeof(char*));
+                if (!grown_names) goto fail;
+                names = grown_names;
+                grown_values = (cxpr_ast**)realloc(values, new_capacity * sizeof(cxpr_ast*));
+                if (!grown_values) {
+                    goto fail;
+                }
+                values = grown_values;
+                capacity = new_capacity;
+                memset(names + old_capacity, 0, (capacity - old_capacity) * sizeof(char*));
+                memset(values + old_capacity, 0, (capacity - old_capacity) * sizeof(cxpr_ast*));
+            }
+            if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+                p->had_error = true;
+                p->last_error.code = CXPR_ERR_SYNTAX;
+                p->last_error.message = "Expected record field name";
+                p->last_error.position = p->current.position;
+                p->last_error.line = p->current.line;
+                p->last_error.column = p->current.column;
+                goto fail;
+            }
+            names[count] = cxpr_parser_token_to_string(&p->current);
+            if (!names[count]) goto fail;
+            cxpr_parser_advance(p);
+            if (!cxpr_parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' after record field name")) {
+                goto fail;
+            }
+            values[count] = cxpr_parse_expression(p);
+            if (!values[count] || p->had_error) goto fail;
+            count++;
+        } while (cxpr_parser_match(p, CXPR_TOK_COMMA));
+    }
+
+    if (!cxpr_parser_expect(p, CXPR_TOK_RBRACE, "Expected '}' to close record")) goto fail;
+    {
+        cxpr_ast* record = cxpr_ast_new_record((const char* const*)names, values, count);
+        for (size_t i = 0u; i < count; ++i) free(names[i]);
+        free(names);
+        if (!record) {
+            for (size_t i = 0u; i < count; ++i) cxpr_ast_free(values[i]);
+            free(values);
+        }
+        return record;
+    }
+
+fail:
+    for (size_t i = 0; i < capacity; ++i) {
+        free(names[i]);
+        cxpr_ast_free(values[i]);
+    }
+    free(names);
+    free(values);
+    return NULL;
+}
+
 static char* cxpr_parser_join_segments(char** segments, size_t depth) {
     size_t len = 1u;
     char* out;
@@ -174,6 +252,52 @@ cxpr_ast* cxpr_parse_primary(cxpr_parser* p) {
         char* name = cxpr_parser_token_to_string(&p->current);
         cxpr_parser_advance(p);
         if (!name) return NULL;
+        if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+            char** segments = NULL;
+            size_t depth = 0u;
+            size_t capacity = 4u;
+
+            segments = (char**)calloc(capacity, sizeof(char*));
+            if (!segments) {
+                free(name);
+                return NULL;
+            }
+            segments[depth++] = name;
+            name = NULL;
+            while (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+                cxpr_parser_advance(p);
+                if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+                    cxpr_parser_free_segments(segments, depth);
+                    p->had_error = true;
+                    p->last_error.code = CXPR_ERR_SYNTAX;
+                    p->last_error.message = "Expected parameter segment after '.'";
+                    p->last_error.position = p->current.position;
+                    p->last_error.line = p->current.line;
+                    p->last_error.column = p->current.column;
+                    return NULL;
+                }
+                if (depth == capacity) {
+                    char** grown;
+                    capacity *= 2u;
+                    grown = (char**)realloc(segments, capacity * sizeof(char*));
+                    if (!grown) {
+                        cxpr_parser_free_segments(segments, depth);
+                        return NULL;
+                    }
+                    segments = grown;
+                }
+                segments[depth] = cxpr_parser_token_to_string(&p->current);
+                if (!segments[depth]) {
+                    cxpr_parser_free_segments(segments, depth);
+                    return NULL;
+                }
+                depth++;
+                cxpr_parser_advance(p);
+            }
+            name = cxpr_parser_join_segments(segments, depth);
+            cxpr_parser_free_segments(segments, depth);
+            if (!name) return NULL;
+        }
         node = cxpr_ast_new_variable(name);
         free(name);
     } else if (cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
@@ -377,6 +501,8 @@ cxpr_ast* cxpr_parse_primary(cxpr_parser* p) {
         }
     } else if (cxpr_parser_check(p, CXPR_TOK_LBRACKET)) {
         node = cxpr_parse_array_literal(p);
+    } else if (cxpr_parser_check(p, CXPR_TOK_LBRACE)) {
+        node = cxpr_parse_record_literal(p);
     } else {
         p->had_error = true;
         p->last_error.code = CXPR_ERR_SYNTAX;

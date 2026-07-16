@@ -8,7 +8,11 @@
 #include "../eval/internal.h"
 #include "../limits.h"
 
+#include <cxpr/analysis.h>
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static void cxpr_expression_wrap_compile_error(const cxpr_expression_entry* entry,
                                                cxpr_error* err) {
@@ -18,6 +22,23 @@ static void cxpr_expression_wrap_compile_error(const cxpr_expression_entry* entr
     if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
     snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
     snprintf(message, sizeof(message), "Expression '%s': %s", entry->name, detail);
+    err->message = message;
+}
+
+static void cxpr_expression_wrap_eval_error(const cxpr_expression_entry* entry,
+                                            cxpr_error* err) {
+    static CXPR_THREAD_LOCAL char message[1024];
+    char detail[384];
+
+    if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
+    snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
+    snprintf(
+        message,
+        sizeof(message),
+        "Expression '%s' eval failed: %s; expr: %s",
+        entry->name,
+        detail,
+        entry->expression ? entry->expression : "");
     err->message = message;
 }
 
@@ -153,13 +174,25 @@ bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {
 
     for (size_t i = 0; i < evaluator->count; i++) {
         cxpr_expression_entry* entry = &evaluator->expressions[i];
+        cxpr_analysis analysis = {0};
         cxpr_program_free(entry->program);
+        entry->program = NULL;
+        if (!cxpr_analyze(entry->ast, evaluator->registry, &analysis, err)) {
+            cxpr_expression_wrap_compile_error(entry, err);
+            evaluator->compiled = false;
+            return false;
+        }
+        if (analysis.uses_expressions) continue;
         entry->program = cxpr_compile(entry->ast, evaluator->registry, err);
         if (!entry->program) {
             cxpr_expression_wrap_compile_error(entry, err);
             evaluator->compiled = false;
             return false;
         }
+    }
+    for (size_t i = 0; i < evaluator->count; i++) {
+        evaluator->expressions[i].used_as_struct_prefix =
+            cxpr_expression_entry_used_as_struct_prefix(evaluator, i);
     }
 
     evaluator->compiled = true;
@@ -202,7 +235,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         cxpr_error eval_err = {0};
         cxpr_value value = {0};
 
-        if (cxpr_expression_entry_used_as_struct_prefix(evaluator, idx)) {
+        if (entry->used_as_struct_prefix) {
             int struct_alias = cxpr_expression_eval_struct_alias(
                 entry,
                 ctx,
@@ -228,7 +261,10 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         if (eval_err.code != CXPR_OK) {
             cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
-            if (err) *err = eval_err;
+            if (err) {
+                *err = eval_err;
+                cxpr_expression_wrap_eval_error(entry, err);
+            }
             return;
         }
 
@@ -245,6 +281,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
                 err->message = "Expression result has unsupported value type";
+                cxpr_expression_wrap_eval_error(entry, err);
             }
             return;
         }
@@ -253,7 +290,10 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         if (eval_err.code != CXPR_OK) {
             cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
-            if (err) *err = eval_err;
+            if (err) {
+                *err = eval_err;
+                cxpr_expression_wrap_eval_error(entry, err);
+            }
             return;
         }
         entry->evaluated = true;

@@ -10,7 +10,7 @@
 #ifndef CXPR_SOURCE_INTERNAL_H
 #define CXPR_SOURCE_INTERNAL_H
 
-#include <cxpr/source_plan.h>
+#include <cxpr/source.h>
 
 /**
  * @brief Duplicate a NUL-terminated string.

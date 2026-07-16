@@ -7,7 +7,7 @@
 #define CXPR_EXPRESSION_H
 
 #include <cxpr/types.h>
-#include <cxpr/ast.h>
+#include <cxpr/ast/expression.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <cxpr/ast.h>
+#include <cxpr/ast/expression.h>
 #include <cxpr/context.h>
 #include <cxpr/registry.h>
 

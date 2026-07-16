@@ -6,7 +6,7 @@
 #ifndef CXPR_AST_INTERNAL_H
 #define CXPR_AST_INTERNAL_H
 
-#include <cxpr/ast.h>
+#include <cxpr/ast/expression.h>
 
 /** @brief Internal owned AST node representation. */
 struct cxpr_ast {
@@ -31,6 +31,11 @@ struct cxpr_ast {
             struct cxpr_ast** elements;
             size_t count;
         } array;
+        struct {
+            char** field_names;
+            struct cxpr_ast** field_values;
+            size_t field_count;
+        } record;
         struct {
             char* value;
         } string;
@@ -136,6 +141,16 @@ cxpr_ast* cxpr_ast_new_bool(bool value);
  * @return Newly allocated AST node taking ownership of `elements`, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count);
+/**
+ * @brief Internal constructor for a record literal node.
+ * @param field_names Borrowed field names copied by the node.
+ * @param field_values Owned field expression array.
+ * @param field_count Number of fields.
+ * @return Newly allocated AST node taking ownership of `field_values`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_record(const char* const* field_names,
+                              cxpr_ast** field_values,
+                              size_t field_count);
 /**
  * @brief Internal constructor for a string literal node.
  * @param value Borrowed string payload to copy.

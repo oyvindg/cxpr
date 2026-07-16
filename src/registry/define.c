@@ -180,6 +180,10 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
 
     const char* p = def;
     while (*p == ' ' || *p == '\t') p++;
+    if (p[0] == 'f' && p[1] == 'n' && (p[2] == ' ' || p[2] == '\t')) {
+        p += 2;
+        while (*p == ' ' || *p == '\t') p++;
+    }
 
     const char* name_start = p;
     while (is_ident_char(*p)) p++;
@@ -248,12 +252,15 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
     }
 
     while (*p == ' ' || *p == '\t') p++;
-    if (p[0] != '=' || p[1] != '>') {
+    if (p[0] == '=' && p[1] == '>') {
+        p += 2;
+    } else if (p[0] == '=') {
+        p += 1;
+    } else {
         err.code = CXPR_ERR_SYNTAX;
-        err.message = "Expected '=>'";
+        err.message = "Expected '=>' or '='";
         return err;
     }
-    p += 2;
     while (*p == ' ' || *p == '\t') p++;
 
     if (!*p) {

@@ -18,6 +18,13 @@ double cxpr_eval_current_lookback_offset(void) {
     return g_eval_lookback_offset;
 }
 
+static const char* cxpr_eval_unknown_identifier_message(const char* name) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!name || name[0] == '\0') return "Unknown identifier";
+    snprintf(message, sizeof(message), "Unknown identifier '%s'", name);
+    return message;
+}
+
 static bool cxpr_eval_simple_lookback_target(const cxpr_ast* ast) {
     if (!ast) return false;
     switch (ast->type) {
@@ -311,7 +318,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
         if (!found) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                err->message = "Unknown identifier";
+                err->message = cxpr_eval_unknown_identifier_message(ast->data.identifier.name);
             }
             *out = NAN;
         }

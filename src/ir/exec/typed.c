@@ -7,7 +7,26 @@
 #include "core.h"
 #include "ast/internal.h"
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
+
+static const char* cxpr_ir_unknown_param_message(const cxpr_ir_instr* instr) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!instr || !instr->name || instr->name[0] == '\0') {
+        return "Unknown parameter variable";
+    }
+    snprintf(message, sizeof(message), "Unknown parameter variable '%s'", instr->name);
+    return message;
+}
+
+static const char* cxpr_ir_unknown_identifier_message(const cxpr_ir_instr* instr) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!instr || !instr->name || instr->name[0] == '\0') {
+        return "Unknown identifier";
+    }
+    snprintf(message, sizeof(message), "Unknown identifier '%s'", instr->name);
+    return message;
+}
 
 static bool cxpr_ir_resolve_lookback_target(const cxpr_ast* target,
                                             size_t offset,
@@ -209,7 +228,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     }
                 } else {
                     result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
-                    if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+                    if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
                 }
             }
             CXPR_TYPED_PUSH(result);
@@ -225,7 +244,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     }
                 } else {
                     result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
-                    if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier");
+                    if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
                 }
             }
             CXPR_TYPED_PUSH_SQUARED(result);
@@ -246,7 +265,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                             &found));
                     }
                 }
-                if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
+                if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             }
             CXPR_TYPED_PUSH(result);
             break;
@@ -256,7 +275,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 result = cxpr_num(cxpr_ir_lookup_cached_scalar(
                     ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
                     &found));
-                if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable");
+                if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             }
             CXPR_TYPED_PUSH_SQUARED(result);
             break;

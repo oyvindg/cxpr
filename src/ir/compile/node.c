@@ -219,6 +219,14 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_error_code bind_code = CXPR_OK;
         const char* bind_message = NULL;
+        if (entry && entry->ast_func_handler) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
+        }
         if (!entry || (!entry->struct_producer && !entry->model_producer &&
                        entry->defined_return_field_count == 0u)) {
             if (err) {
@@ -226,16 +234,6 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 err->message = cxpr_ir_unknown_function_message(ast->data.producer_access.name);
             }
             return false;
-        }
-        if (entry->ast_func_handler &&
-            (cxpr_ir_ast_contains_string_literal(ast) ||
-             cxpr_ir_runtime_call_needs_catchor_passthrough(ast))) {
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){
-                                    .op = CXPR_OP_CALL_AST,
-                                    .ast = ast,
-                                },
-                                err);
         }
         if (!cxpr_call_bind_args(ast, entry, ordered_args, &bind_code, &bind_message)) {
             if (err) {

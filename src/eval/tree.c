@@ -22,6 +22,27 @@ static const char* cxpr_eval_unknown_function_message(const char* name) {
     return message;
 }
 
+static const char* cxpr_eval_unknown_identifier_message(const char* name) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!name || name[0] == '\0') return "Unknown identifier";
+    snprintf(message, sizeof(message), "Unknown identifier '%s'", name);
+    return message;
+}
+
+static const char* cxpr_eval_unknown_parameter_message(const char* name) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!name || name[0] == '\0') return "Unknown parameter variable";
+    snprintf(message, sizeof(message), "Unknown parameter variable '$%s'", name);
+    return message;
+}
+
+static const char* cxpr_eval_unknown_field_message(const char* name) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!name || name[0] == '\0') return "Unknown field access";
+    snprintf(message, sizeof(message), "Unknown field access '%s'", name);
+    return message;
+}
+
 cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, cxpr_error* err) {
     bool found = false;
@@ -63,7 +84,10 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
                 if (err && err->code != CXPR_OK) return cxpr_num(NAN);
                 found = true;
             } else {
-                return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
+                return cxpr_eval_error(
+                    err,
+                    CXPR_ERR_UNKNOWN_IDENTIFIER,
+                    cxpr_eval_unknown_field_message(ast->data.field_access.full_key));
             }
         }
     }
@@ -124,7 +148,10 @@ cxpr_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_context* ctx,
         }
     }
     if (!current) {
-        return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown identifier");
+        return cxpr_eval_error(
+            err,
+            CXPR_ERR_UNKNOWN_IDENTIFIER,
+            cxpr_eval_unknown_identifier_message(ast->data.chain_access.path[0]));
     }
 
 walk_fields:
@@ -141,7 +168,10 @@ walk_fields:
         }
 
         if (!found) {
-            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_IDENTIFIER,
+                cxpr_eval_unknown_field_message(ast->data.chain_access.full_key));
         }
 
         if (i + 1 == ast->data.chain_access.depth) return cxpr_value_clone(&value);
@@ -422,6 +452,38 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         return cxpr_array(array);
     }
 
+    case CXPR_NODE_RECORD: {
+        cxpr_value* values = NULL;
+        cxpr_struct_value* record;
+        if (ast->data.record.field_count > 0u) {
+            values = (cxpr_value*)calloc(ast->data.record.field_count, sizeof(cxpr_value));
+            if (!values) {
+                return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            }
+            for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+                values[i] = cxpr_eval_node(ast->data.record.field_values[i], ctx, reg, err);
+                if (err && err->code != CXPR_OK) {
+                    for (size_t j = 0u; j <= i; ++j) cxpr_value_free(&values[j]);
+                    free(values);
+                    return cxpr_num(NAN);
+                }
+            }
+        }
+        record = cxpr_struct_value_new((const char* const*)ast->data.record.field_names,
+                                       values,
+                                       ast->data.record.field_count);
+        if (values) {
+            for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+                cxpr_value_free(&values[i]);
+            }
+            free(values);
+        }
+        if (!record) {
+            return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        }
+        return cxpr_struct(record);
+    }
+
     case CXPR_NODE_STRING:
         return cxpr_string(ast->data.string.value);
 
@@ -429,7 +491,10 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         bool found = false;
         cxpr_value value = cxpr_context_get_typed(ctx, ast->data.identifier.name, &found);
         if (!found) {
-            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown identifier");
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_IDENTIFIER,
+                cxpr_eval_unknown_identifier_message(ast->data.identifier.name));
         }
         return value;
     }
@@ -438,8 +503,10 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
         bool found = false;
         cxpr_value value = cxpr_context_get_param_typed(ctx, ast->data.variable.name, &found);
         if (!found) {
-            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                   "Unknown parameter variable");
+            return cxpr_eval_error(
+                err,
+                CXPR_ERR_UNKNOWN_IDENTIFIER,
+                cxpr_eval_unknown_parameter_message(ast->data.variable.name));
         }
         return value;
     }

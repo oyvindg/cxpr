@@ -289,6 +289,17 @@ static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_
                 if (!cxpr_print_node(p, ast->data.array.elements[i], 0)) return 0;
             }
             return cxpr_printer_append_char(p, ']');
+        case CXPR_NODE_RECORD:
+            if (!cxpr_printer_append_char(p, '{')) return 0;
+            for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+                if (i > 0u && !cxpr_printer_append(p, ", ")) return 0;
+                if (!cxpr_printer_append(p, ast->data.record.field_names[i]) ||
+                    !cxpr_printer_append(p, " = ") ||
+                    !cxpr_print_node(p, ast->data.record.field_values[i], 0)) {
+                    return 0;
+                }
+            }
+            return cxpr_printer_append_char(p, '}');
         case CXPR_NODE_STRING:
             return cxpr_print_string(p, ast->data.string.value);
         case CXPR_NODE_IDENTIFIER:

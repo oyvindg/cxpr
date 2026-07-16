@@ -66,6 +66,28 @@ double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_conte
     return value.d;
 }
 
+cxpr_value cxpr_ir_exec_value_with_locals(const cxpr_ir_program* program,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          const double* locals,
+                                          size_t local_count,
+                                          cxpr_error* err) {
+    bool bool_value = false;
+
+    if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+        return cxpr_num(cxpr_ir_exec_scalar_fast(
+            program, ctx, reg, (double*)locals, local_count, err));
+    }
+    if (program && program->fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        if (!cxpr_ir_exec_bool_fast(
+                program, ctx, reg, locals, local_count, &bool_value, err)) {
+            return cxpr_num(NAN);
+        }
+        return cxpr_bool(bool_value);
+    }
+    return cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
+}
+
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err) {
     if (program && program->fast_result_kind == CXPR_IR_RESULT_DOUBLE) {

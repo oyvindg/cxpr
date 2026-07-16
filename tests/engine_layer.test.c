@@ -777,6 +777,34 @@ static void test_engine_inline_lookback_policy_preempts_prior_resolver(void) {
     cxpr_registry_free(registry);
 }
 
+static void test_engine_qualified_param_names(void) {
+    const cxpr_expression_def exprs[] = {
+        {"sum", "$base.period + $period"},
+    };
+    const cxpr_context_entry params[] = {
+        {"base.period", 8.0},
+        {"period", 5.0},
+    };
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    bool found = false;
+    double value;
+
+    cfg.expressions = exprs;
+    cfg.expression_count = 1u;
+    cfg.params = params;
+    cfg.param_count = 2u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    value = cxpr_engine_get_double(session, "sum", &found);
+    assert(found);
+    assert(value == 13.0);
+    cxpr_engine_session_free(session);
+}
+
 int main(void) {
     test_engine_view_source_lookback();
     test_engine_view_source_map_index_before_read();
@@ -791,6 +819,7 @@ int main(void) {
     test_engine_basket_roles_source_args_and_member_lookback();
     test_engine_source_call_memo_reuses_bound_args();
     test_engine_pull_arg_lookback_uses_per_argument_ring();
+    test_engine_qualified_param_names();
     printf("  \xE2\x9C\x93 engine_layer\n");
     return 0;
 }

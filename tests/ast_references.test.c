@@ -166,7 +166,7 @@ static void test_reference_extractors_cover_split_reference_logic(void) {
     size_t var_count;
 
     assert(parser);
-    ast = cxpr_parse(parser, "quote.mid + pose.velocity.x + clamp(close, $lo, $hi)", &err);
+    ast = cxpr_parse(parser, "quote.mid + pose.velocity.x + clamp(close, $lo, $hi) + $base.period", &err);
     assert(ast);
     assert(err.code == CXPR_OK);
 
@@ -176,13 +176,14 @@ static void test_reference_extractors_cover_split_reference_logic(void) {
 
     assert(ref_count >= 3);
     assert(fn_count == 1);
-    assert(var_count == 2);
+    assert(var_count == 3);
     assert(contains_name(refs, ref_count, "quote.mid"));
     assert(contains_name(refs, ref_count, "pose.velocity.x"));
     assert(contains_name(refs, ref_count, "close"));
     assert(contains_name(fns, fn_count, "clamp"));
     assert(contains_name(vars, var_count, "lo"));
     assert(contains_name(vars, var_count, "hi"));
+    assert(contains_name(vars, var_count, "base.period"));
 
     cxpr_ast_free(ast);
     cxpr_parser_free(parser);

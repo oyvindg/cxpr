@@ -299,7 +299,7 @@ static void test_ir_eval_unknown_parameter(void) {
     double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Unknown parameter variable") == 0);
+    assert(strcmp(err.message, "Unknown parameter variable 'missing_threshold'") == 0);
 
     cxpr_ir_program_reset(&program);
     cxpr_ast_free(ast);
@@ -882,6 +882,40 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
     printf("  ✓ test_ir_eval_defined_function_matches_ast\n");
+}
+
+static void test_ir_eval_defined_bool_function_matches_ast(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_register_defaults(reg);
+    err = cxpr_registry_define_fn(reg, "above(a, b) => a > b");
+    assert(err.code == CXPR_OK);
+    cxpr_ast* ast = cxpr_parse(p, "above(x, y)", &err);
+    assert(ast);
+    cxpr_context_set(ctx, "x", 6.0);
+    cxpr_context_set(ctx, "y", 4.0);
+
+    cxpr_program* program = cxpr_compile(ast, reg, &err);
+    assert(program != NULL);
+    assert(err.code == CXPR_OK);
+
+    bool ast_result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    bool ir_result = false;
+    assert(cxpr_eval_program_bool(program, ctx, reg, &ir_result, &err));
+    assert(err.code == CXPR_OK);
+
+    assert(ast_result == true);
+    assert(ir_result == ast_result);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_defined_bool_function_matches_ast\n");
 }
 
 static void test_ir_compile_unknown_function_fails(void) {
@@ -1763,6 +1797,7 @@ int main(void) {
     test_ir_eval_intrinsics_match_ast();
     test_ir_eval_struct_function_matches_ast();
     test_ir_eval_defined_function_matches_ast();
+    test_ir_eval_defined_bool_function_matches_ast();
     test_ir_compile_unknown_function_fails();
     test_ir_compile_unknown_producer_fails();
     test_ir_eval_nested_defined_function_matches_ast();

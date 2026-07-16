@@ -82,6 +82,22 @@ static void test_scalar_params(void) {
     cxpr_context_free(ctx);
 }
 
+static void test_optional_document_fn_prefix(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_context* ctx = cxpr_context_new();
+
+    cxpr_error err = cxpr_registry_define_fn(reg, "fn sum(a, b) = a + b");
+    assert(err.code == CXPR_OK);
+
+    double r = eval_expr("sum(4, 6)", ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_APPROX(r, 10.0);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+}
+
 static void test_struct_params_distance3(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -303,6 +319,7 @@ static void test_registry_lookup_arity(void) {
 
 int main(void) {
     test_scalar_params();
+    test_optional_document_fn_prefix();
     test_struct_params_distance3();
     test_struct_params_dot2();
     test_struct_with_dollar_params();

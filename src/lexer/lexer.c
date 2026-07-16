@@ -358,6 +358,8 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
         case ')': return cxpr_make_token(CXPR_TOK_RPAREN, start, 1, start_pos, start_line, start_col);
         case '[': return cxpr_make_token(CXPR_TOK_LBRACKET, start, 1, start_pos, start_line, start_col);
         case ']': return cxpr_make_token(CXPR_TOK_RBRACKET, start, 1, start_pos, start_line, start_col);
+        case '{': return cxpr_make_token(CXPR_TOK_LBRACE, start, 1, start_pos, start_line, start_col);
+        case '}': return cxpr_make_token(CXPR_TOK_RBRACE, start, 1, start_pos, start_line, start_col);
         case ',': return cxpr_make_token(CXPR_TOK_COMMA, start, 1, start_pos, start_line, start_col);
         case '.': return cxpr_make_token(CXPR_TOK_DOT, start, 1, start_pos, start_line, start_col);
         case ':': return cxpr_make_token(CXPR_TOK_COLON, start, 1, start_pos, start_line, start_col);

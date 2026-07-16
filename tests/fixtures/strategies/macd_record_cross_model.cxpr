@@ -2,7 +2,7 @@
 # This is intentionally small: it validates record fields and field lookback,
 # not full indicator parity.
 
-name macd_record_cross_model
+model macd_record_cross_model
 
 in {
     close

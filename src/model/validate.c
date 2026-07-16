@@ -47,6 +47,16 @@ static bool cxpr_model_reference_exists(const cxpr_model* model, const char* ref
     return false;
 }
 
+static bool cxpr_model_external_reference_exists(char* const* external_refs,
+                                                 size_t external_ref_count,
+                                                 const char* reference) {
+    if (!reference) return false;
+    for (size_t i = 0; i < external_ref_count; ++i) {
+        if (cxpr_model_reference_matches_symbol(reference, external_refs[i])) return true;
+    }
+    return false;
+}
+
 static bool cxpr_model_public_symbol_exists(const cxpr_model* model, const char* name) {
     if (cxpr_model_string_exists(model->inputs, model->input_count, name)) return true;
     if (!model || !name) return false;
@@ -183,8 +193,12 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
     return true;
 }
 
-static bool cxpr_model_validate_expr_refs(const cxpr_model* model, const cxpr_ast* expr,
-                                          bool constant_expr, cxpr_error* err) {
+static bool cxpr_model_validate_expr_refs(const cxpr_model* model,
+                                          const cxpr_ast* expr,
+                                          bool constant_expr,
+                                          char* const* external_refs,
+                                          size_t external_ref_count,
+                                          cxpr_error* err) {
     const char* refs[256];
     const char* params[256];
     size_t nrefs;
@@ -192,7 +206,10 @@ static bool cxpr_model_validate_expr_refs(const cxpr_model* model, const cxpr_as
 
     nparams = cxpr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
     for (size_t i = 0; i < nparams && i < CXPR_ARRAY_COUNT(params); ++i) {
-        if (!cxpr_model_constant_exists(model, params[i])) {
+        if (!cxpr_model_constant_exists(model, params[i]) &&
+            (constant_expr ||
+             !cxpr_model_external_reference_exists(
+                 external_refs, external_ref_count, params[i]))) {
             cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                  "Expression references unknown constant", 0, 0);
             return false;
@@ -201,7 +218,10 @@ static bool cxpr_model_validate_expr_refs(const cxpr_model* model, const cxpr_as
 
     nrefs = cxpr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
     for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
-        if (constant_expr || !cxpr_model_reference_exists(model, refs[i])) {
+        if (constant_expr ||
+            (!cxpr_model_reference_exists(model, refs[i]) &&
+             !cxpr_model_external_reference_exists(
+                 external_refs, external_ref_count, refs[i]))) {
             cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                  constant_expr
                                      ? "Constant expression references runtime symbol"
@@ -251,7 +271,10 @@ static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
     return true;
 }
 
-bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err) {
+bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
+                                            char* const* external_refs,
+                                            size_t external_ref_count,
+                                            cxpr_error* err) {
     if (err) *err = (cxpr_error){0};
     if (!model) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "NULL model", 0, 0);
@@ -264,12 +287,24 @@ bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err) {
     if (!cxpr_model_validate_symbols(model, err)) return false;
 
     for (size_t i = 0; i < model->constant_count; ++i) {
-        if (!cxpr_model_validate_expr_refs(model, model->constants[i].expr, true, err)) {
+        if (!cxpr_model_validate_expr_refs(
+                model,
+                model->constants[i].expr,
+                true,
+                external_refs,
+                external_ref_count,
+                err)) {
             return false;
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
-        if (!cxpr_model_validate_expr_refs(model, model->bindings[i].expr, false, err)) {
+        if (!cxpr_model_validate_expr_refs(
+                model,
+                model->bindings[i].expr,
+                false,
+                external_refs,
+                external_ref_count,
+                err)) {
             return false;
         }
     }
@@ -287,6 +322,10 @@ bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err) {
 
     if (err) err->code = CXPR_OK;
     return true;
+}
+
+bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err) {
+    return cxpr_model_validate_with_external_refs(model, NULL, 0u, err);
 }
 
 bool cxpr_model_eval_order(const cxpr_model* model, size_t* out_order,

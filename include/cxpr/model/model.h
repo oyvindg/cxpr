@@ -1,13 +1,14 @@
 /**
- * @file model.h
+ * @file model/model.h
  * @brief Public API for parsed .cxpr model files.
  */
 
 #ifndef CXPR_MODEL_H
 #define CXPR_MODEL_H
 
-#include <cxpr/ast.h>
-#include <cxpr/source_plan.h>
+#include <cxpr/ast/expression.h>
+#include <cxpr/ir.h>
+#include <cxpr/source.h>
 #include <cxpr/types.h>
 
 #ifdef __cplusplus
@@ -84,47 +85,12 @@ typedef struct cxpr_host_block_spec {
 } cxpr_host_block_spec;
 
 /**
- * @brief Parse a complete .cxpr model.
+ * @brief Parse a .cxpr model document and return an owned semantic model.
  *
- * This API is additive to the existing expression parser. Expression right-hand
- * sides are parsed with `cxpr_parse()` and stored as AST nodes; model-level
- * syntax stays host agnostic and contains no trading/runtime concepts.
- *
- * Supported MVP statements:
- * - `name <identifier>`
- * - `name <identifier> { ...metadata... }`
- * - `use <identifier>`
- * - `in { a, b, c }`
- * - `in a, b, c`
- * - `$param = <expression>`
- * - `$param = <expression> { ...metadata... }`
- * - `<symbol> = <expression>`
- * - `<symbol> = <expression> { ...metadata... }`
- * - `state <symbol> = <initial-expression>`
- * - `out <symbol> = <expression-or-state-update>`
- * - `out <symbol>`
- * - `out <symbol> { ...metadata... }`
- * - `out a, b, c`
- * - `<host-block-kind> [name] { ...cxpr-style host-defined body... }`
- *
- * Metadata semantics are host/plugin-defined. The core parser stores the
- * metadata kind, target, and raw body, preserving newlines. Legacy
- * `meta { ... }` blocks and `@...` decorators are intentionally not supported.
- * Host blocks are stored as raw text after cxpr-level syntax screening; their
- * domain semantics are validated by the host.
- *
- * `state <symbol> = ...` declares the initial state value. `out <symbol> = ...`
- * updates an existing state symbol when `<symbol>` was declared with `state`;
- * otherwise it defines and publishes a model output expression. Use
- * `out <symbol>` or `out { ... }` to publish an existing symbol.
- *
- * Indented continuation lines are appended to the previous statement.
- *
- * @param source NUL-terminated .cxpr source text.
- * @param err Optional error output.
- * @return Parsed model on success, or NULL on parse/allocation failure.
+ * This is the model-owning entrypoint backed by the document AST parser and
+ * lowerer. Free the returned model with @ref cxpr_model_free.
  */
-cxpr_model* cxpr_parse_model(const char* source, cxpr_error* err);
+cxpr_model* cxpr_parse_model_source(const char* source, cxpr_error* err);
 
 /** @brief Free a parsed .cxpr model. */
 void cxpr_model_free(cxpr_model* model);
@@ -145,6 +111,18 @@ void cxpr_model_free(cxpr_model* model);
  * @return True when the model is semantically valid at the core level.
  */
 bool cxpr_model_validate(const cxpr_model* model, cxpr_error* err);
+
+/**
+ * @brief Validate model symbols while allowing host-provided external roots.
+ *
+ * External refs are root names such as preset or imported record names. Runtime
+ * references matching `root` or `root.field` are accepted as host-resolved
+ * values, while constants remain local-only.
+ */
+bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
+                                            char* const* external_refs,
+                                            size_t external_ref_count,
+                                            cxpr_error* err);
 
 /**
  * @brief Create a registry for host-defined model block kinds.
@@ -254,20 +232,143 @@ bool cxpr_eval_model_program(const cxpr_model_program* program,
                              const cxpr_registry* reg,
                              cxpr_error* err);
 
+/** @brief Return the number of dependency-ordered executable bindings. */
 size_t cxpr_model_program_binding_count(const cxpr_model_program* program);
+
+/** @brief Return the name of executable binding @p index, or NULL when out of range. */
 const char* cxpr_model_program_binding_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the semantic binding kind for executable binding @p index. */
+cxpr_model_binding_kind cxpr_model_program_binding_kind(const cxpr_model_program* program,
+                                                        size_t index);
+
+/** @brief Return the inferred scalar result kind for executable binding @p index. */
+cxpr_ir_view_result_kind cxpr_model_program_binding_result_kind(
+    const cxpr_model_program* program,
+    size_t index);
+
+/** @brief Return the number of compiled parameter/default expressions. */
+size_t cxpr_model_program_constant_count(const cxpr_model_program* program);
+
+/** @brief Return the parameter/default name at @p index, or NULL when out of range. */
+const char* cxpr_model_program_constant_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the inferred scalar result kind for parameter/default @p index. */
+cxpr_ir_view_result_kind cxpr_model_program_constant_result_kind(
+    const cxpr_model_program* program,
+    size_t index);
+
+/** @brief Return the number of compiled state initializer expressions. */
+size_t cxpr_model_program_state_default_count(const cxpr_model_program* program);
+
+/** @brief Return the state initializer name at @p index, or NULL when out of range. */
+const char* cxpr_model_program_state_default_name(const cxpr_model_program* program,
+                                                  size_t index);
+
+/** @brief Return the inferred scalar result kind for state initializer @p index. */
+cxpr_ir_view_result_kind cxpr_model_program_state_default_result_kind(
+    const cxpr_model_program* program,
+    size_t index);
+
+/** @brief Return the number of exported model outputs. */
 size_t cxpr_model_program_output_count(const cxpr_model_program* program);
+
+/** @brief Return output name @p index, or NULL when out of range. */
 const char* cxpr_model_program_output_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the number of declared model inputs. */
 size_t cxpr_model_program_input_count(const cxpr_model_program* program);
+
+/** @brief Return input name @p index, or NULL when out of range. */
 const char* cxpr_model_program_input_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the number of resolved imported child model programs. */
+size_t cxpr_model_program_child_count(const cxpr_model_program* program);
+
+/** @brief Return resolved child model alias/name @p index, or NULL when out of range. */
+const char* cxpr_model_program_child_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the input name used as the child model source argument, if any. */
+const char* cxpr_model_program_child_source_arg(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the number of planned history/lookback buffers. */
+size_t cxpr_model_program_history_spec_count(const cxpr_model_program* program);
+
+/** @brief Return planned history buffer name @p index, or NULL when out of range. */
+const char* cxpr_model_program_history_spec_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return planned history depth for history buffer @p index. */
+size_t cxpr_model_program_history_spec_depth(const cxpr_model_program* program, size_t index);
+
 /** @brief Return number of functions in the model-owned registry, for diagnostics/benchmarks. */
 size_t cxpr_model_program_function_count(const cxpr_model_program* program);
+
 /** @brief Return true when the compiled model uses one fused IR program for ticks. */
 bool cxpr_model_program_uses_fused_ir(const cxpr_model_program* program);
+
 /** @brief Return fused IR instruction count, or 0 when fused IR is not active. */
 size_t cxpr_model_program_fused_ir_instruction_count(const cxpr_model_program* program);
+
 /** @brief Return first opcode that disabled fused IR, or NULL when fused is active/not attempted. */
 const char* cxpr_model_program_fused_ir_disabled_opcode(const cxpr_model_program* program);
+
+/** @brief Return the number of resolved fused runtime slots. */
+size_t cxpr_model_program_fused_slot_count(const cxpr_model_program* program);
+
+/** @brief Return fused slot name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fused_slot_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the number of fused input slot references. */
+size_t cxpr_model_program_fused_input_count(const cxpr_model_program* program);
+
+/** @brief Return fused input reference name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fused_input_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return fused slot index read by input reference @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fused_input_slot(const cxpr_model_program* program, size_t index);
+
+/** @brief Return inferred scalar result kind for fused input reference @p index. */
+cxpr_ir_view_result_kind cxpr_model_program_fused_input_result_kind(
+    const cxpr_model_program* program,
+    size_t index);
+
+/** @brief Return the number of fused context export references. */
+size_t cxpr_model_program_fused_export_count(const cxpr_model_program* program);
+
+/** @brief Return fused export reference name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fused_export_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return fused slot index written by export reference @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fused_export_slot(const cxpr_model_program* program, size_t index);
+
+/** @brief Return inferred scalar result kind for fused export reference @p index. */
+cxpr_ir_view_result_kind cxpr_model_program_fused_export_result_kind(
+    const cxpr_model_program* program,
+    size_t index);
+
+/** @brief Return the number of fused output references. */
+size_t cxpr_model_program_fused_output_count(const cxpr_model_program* program);
+
+/** @brief Return fused output reference name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fused_output_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return fused slot index read by output reference @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fused_output_slot(const cxpr_model_program* program, size_t index);
+
+/** @brief Return inferred scalar result kind for fused output reference @p index. */
+cxpr_ir_view_result_kind cxpr_model_program_fused_output_result_kind(
+    const cxpr_model_program* program,
+    size_t index);
+
+/** @brief Return the number of fused atomic state commit mappings. */
+size_t cxpr_model_program_fused_commit_count(const cxpr_model_program* program);
+
+/** @brief Return destination state slot for fused commit @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fused_commit_state_slot(const cxpr_model_program* program, size_t index);
+
+/** @brief Return pending update slot for fused commit @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fused_commit_update_slot(const cxpr_model_program* program, size_t index);
+
 /**
  * @brief Emit a `.cxpr` model-defined scalar `fn` as a standalone C function.
  *
@@ -389,25 +490,47 @@ bool cxpr_model_session_output_falling(const cxpr_model_session* session, const 
 bool cxpr_model_session_output_changed(const cxpr_model_session* session, const char* name);
 
 const char* cxpr_model_name(const cxpr_model* model);
+bool cxpr_model_name_source_span(const cxpr_model* model, cxpr_source_span* out_span);
 
 size_t cxpr_model_use_count(const cxpr_model* model);
 const char* cxpr_model_use(const cxpr_model* model, size_t index);
 const char* cxpr_model_use_alias(const cxpr_model* model, size_t index);
+bool cxpr_model_use_source_span(const cxpr_model* model,
+                                size_t index,
+                                cxpr_source_span* out_span);
+
+size_t cxpr_model_function_count(const cxpr_model* model);
+const char* cxpr_model_function_source(const cxpr_model* model, size_t index);
+bool cxpr_model_function_declaration_source(const cxpr_model* model,
+                                            size_t index,
+                                            char** out_source);
 
 size_t cxpr_model_input_count(const cxpr_model* model);
 const char* cxpr_model_input(const cxpr_model* model, size_t index);
+bool cxpr_model_input_source_span(const cxpr_model* model,
+                                  size_t index,
+                                  cxpr_source_span* out_span);
 
 size_t cxpr_model_constant_count(const cxpr_model* model);
 const char* cxpr_model_constant_name(const cxpr_model* model, size_t index);
 const cxpr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index);
+bool cxpr_model_constant_source_span(const cxpr_model* model,
+                                     size_t index,
+                                     cxpr_source_span* out_span);
 
 size_t cxpr_model_binding_count(const cxpr_model* model);
 cxpr_model_binding_kind cxpr_model_binding_kind_at(const cxpr_model* model, size_t index);
 const char* cxpr_model_binding_name(const cxpr_model* model, size_t index);
 const cxpr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index);
+bool cxpr_model_binding_source_span(const cxpr_model* model,
+                                    size_t index,
+                                    cxpr_source_span* out_span);
 
 size_t cxpr_model_output_count(const cxpr_model* model);
 const char* cxpr_model_output(const cxpr_model* model, size_t index);
+bool cxpr_model_output_source_span(const cxpr_model* model,
+                                   size_t index,
+                                   cxpr_source_span* out_span);
 
 size_t cxpr_model_metadata_count(const cxpr_model* model);
 const char* cxpr_model_metadata_name(const cxpr_model* model, size_t index);
@@ -416,9 +539,16 @@ cxpr_model_metadata_target_kind cxpr_model_metadata_target_kind_at(
     const cxpr_model* model,
     size_t index);
 const char* cxpr_model_metadata_target_name(const cxpr_model* model, size_t index);
+bool cxpr_model_metadata_source_span(const cxpr_model* model,
+                                     size_t index,
+                                     cxpr_source_span* out_span);
 const char* cxpr_model_metadata_field_value(const cxpr_model* model,
                                             size_t index,
                                             const char* key);
+bool cxpr_model_metadata_field_number(const cxpr_model* model,
+                                      size_t index,
+                                      const char* key,
+                                      double* out_value);
 bool cxpr_model_metadata_field_number_list(const cxpr_model* model,
                                            size_t index,
                                            const char* key,
@@ -430,18 +560,37 @@ const char* cxpr_model_host_block_kind(const cxpr_model* model, size_t index);
 const char* cxpr_model_host_block_name(const cxpr_model* model, size_t index);
 const char* cxpr_model_host_block_body(const cxpr_model* model, size_t index);
 const cxpr_model_host_block* cxpr_model_host_block_at(const cxpr_model* model, size_t index);
+const cxpr_model_host_block* cxpr_model_host_block_by_kind(const cxpr_model* model,
+                                                           const char* kind);
+bool cxpr_model_host_block_source_span(const cxpr_model* model,
+                                       size_t index,
+                                       cxpr_source_span* out_span);
 
 const char* cxpr_host_block_kind(const cxpr_model_host_block* block);
 const char* cxpr_host_block_name(const cxpr_model_host_block* block);
 const char* cxpr_host_block_body(const cxpr_model_host_block* block);
+bool cxpr_host_block_source_span(const cxpr_model_host_block* block,
+                                 cxpr_source_span* out_span);
 size_t cxpr_host_block_field_count(const cxpr_model_host_block* block);
 const char* cxpr_host_block_field_key(const cxpr_model_host_block* block, size_t index);
 const char* cxpr_host_block_field_value(const cxpr_model_host_block* block, size_t index);
 const char* cxpr_host_block_field_value_by_key(const cxpr_model_host_block* block,
                                                const char* key);
+bool cxpr_host_block_field_is_bare_flag(const cxpr_model_host_block* block,
+                                        size_t index);
+bool cxpr_host_block_field_string_by_key(const cxpr_model_host_block* block,
+                                         const char* key,
+                                         char** out_value);
+bool cxpr_host_block_field_string_list_by_key(const cxpr_model_host_block* block,
+                                              const char* key,
+                                              char*** out_values,
+                                              size_t* out_count);
 size_t cxpr_host_block_child_count(const cxpr_model_host_block* block);
 const cxpr_model_host_block* cxpr_host_block_child(const cxpr_model_host_block* block,
                                                    size_t index);
+const cxpr_model_host_block* cxpr_host_block_child_by_kind(
+    const cxpr_model_host_block* block,
+    const char* kind);
 
 #ifdef __cplusplus
 }

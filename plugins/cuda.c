@@ -1,5 +1,5 @@
 #include <cxpr/plugins/cuda.h>
-#include <cxpr/model.h>
+#include <cxpr/model/model.h>
 
 #include <ctype.h>
 #include <stdlib.h>

@@ -1,4 +1,4 @@
-name ema
+model ema
 
 fn ema_step(prev, x, period) =
     (2 / (max(1, period) + 1)) * x + (1 - (2 / (max(1, period) + 1))) * prev

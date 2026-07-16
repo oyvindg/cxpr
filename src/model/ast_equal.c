@@ -40,6 +40,19 @@ bool cxpr_model_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
         }
         return true;
     }
+    case CXPR_NODE_RECORD: {
+        size_t count = cxpr_ast_record_field_count(left);
+        if (count != cxpr_ast_record_field_count(right)) return false;
+        for (size_t i = 0u; i < count; ++i) {
+            if (!cxpr_model_names_match(cxpr_ast_record_field_name(left, i),
+                                        cxpr_ast_record_field_name(right, i)) ||
+                !cxpr_model_ast_equal(cxpr_ast_record_field_value(left, i),
+                                      cxpr_ast_record_field_value(right, i))) {
+                return false;
+            }
+        }
+        return true;
+    }
     case CXPR_NODE_BINARY_OP:
         return cxpr_ast_operator(left) == cxpr_ast_operator(right) &&
                cxpr_model_ast_equal(cxpr_ast_left(left), cxpr_ast_left(right)) &&
@@ -97,7 +110,6 @@ bool cxpr_model_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
                                     cxpr_ast_ternary_true_branch(right)) &&
                cxpr_model_ast_equal(cxpr_ast_ternary_false_branch(left),
                                     cxpr_ast_ternary_false_branch(right));
-    case CXPR_NODE_ARRAY:
     default:
         return false;
     }

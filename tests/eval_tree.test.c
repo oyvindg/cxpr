@@ -16,6 +16,8 @@ static void test_eval_tree_access_paths(void) {
     assert(p && ctx && reg);
     cxpr_context_set_fields(ctx, "pose", fields, values, 2);
     cxpr_context_set(ctx, "legacy.value", 7.0);
+    cxpr_context_set_param(ctx, "base.period", 8.0);
+    cxpr_context_set_param(ctx, "period", 5.0);
 
     ast = cxpr_parse(p, "pose.x + pose.y", &err);
     assert(ast);
@@ -27,6 +29,12 @@ static void test_eval_tree_access_paths(void) {
     assert(ast);
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &bout, &err));
     assert(bout);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "$base.period + $period", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(out == 13.0);
     cxpr_ast_free(ast);
 
     cxpr_registry_free(reg);

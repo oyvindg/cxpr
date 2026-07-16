@@ -99,6 +99,7 @@ fn stancewave(phase, offset) = cos((wrap01(phase + offset)) * 6.283185307179586)
 # stride/turn: normalized motion commands.
 # height: commanded body height.
 # attitude/gyro: balance feedback records.
+# Control gains and lift height are supplied explicitly by the caller model.
 fn legcommand(mount,
                phase_offset,
                phase,
@@ -106,14 +107,15 @@ fn legcommand(mount,
                turn,
                height,
                attitude,
-               gyro) {
-    lift = tripodwave(phase, phase_offset) * $lift_height
+               gyro,
+               gains) {
+    lift = tripodwave(phase, phase_offset) * gains.lift_height
     stance = stancewave(phase, phase_offset)
-    balance = attitude.roll * mount.y * $roll_balance_gain + attitude.pitch * mount.x * $pitch_balance_gain
-    yaw_trim = gyro.z * mount.y * $yaw_balance_gain
+    balance = attitude.roll * mount.y * gains.roll_balance + attitude.pitch * mount.x * gains.pitch_balance
+    yaw_trim = gyro.z * mount.y * gains.yaw_balance
     reach = stride * stance + turn * mount.y
-    coxa = $hip_gain * reach + yaw_trim
-    knee = $knee_gain * (height + lift + balance)
-    ankle = $ankle_gain * (height - lift - balance)
+    coxa = gains.hip * reach + yaw_trim
+    knee = gains.knee * (height + lift + balance)
+    ankle = gains.ankle * (height - lift - balance)
     return { coxa, knee, ankle, lift, stance }
 }

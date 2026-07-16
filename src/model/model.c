@@ -10,7 +10,7 @@
 #include "model/internal.h"
 #include "model/window/window.h"
 #include "registry/internal.h"
-#include <cxpr/source_plan.h>
+#include <cxpr/source.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -117,6 +117,8 @@ static bool cxpr_model_append_synthetic_binding(cxpr_model* model,
     model->bindings[model->binding_count].name = cxpr_strdup(name);
     model->bindings[model->binding_count].source = cxpr_strdup(source);
     model->bindings[model->binding_count].expr = expr;
+    model->bindings[model->binding_count].span = (cxpr_source_span){0};
+    model->bindings[model->binding_count].has_span = false;
     if (!model->bindings[model->binding_count].name ||
         !model->bindings[model->binding_count].source) {
         free(model->bindings[model->binding_count].name);
@@ -161,6 +163,8 @@ static bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
     dst->bindings = NULL;
     dst->binding_count = 0u;
     dst->outputs = NULL;
+    dst->output_spans = NULL;
+    dst->output_has_spans = NULL;
     dst->output_count = 0u;
     if (src->binding_count > 0u) {
         dst->bindings = (cxpr_model_binding*)calloc(src->binding_count,
@@ -174,6 +178,8 @@ static bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
             dst->bindings[i].name = cxpr_strdup(src->bindings[i].name);
             dst->bindings[i].source = cxpr_strdup(src->bindings[i].source);
             dst->bindings[i].expr = cxpr_ast_clone(src->bindings[i].expr);
+            dst->bindings[i].span = src->bindings[i].span;
+            dst->bindings[i].has_span = src->bindings[i].has_span;
             if (!dst->bindings[i].name || !dst->bindings[i].source ||
                 !dst->bindings[i].expr) {
                 dst->binding_count = i + 1u;
@@ -189,12 +195,25 @@ static bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
+        if (src->output_spans && src->output_has_spans) {
+            dst->output_spans =
+                (cxpr_source_span*)calloc(src->output_count, sizeof(*dst->output_spans));
+            dst->output_has_spans = (bool*)calloc(src->output_count, sizeof(*dst->output_has_spans));
+            if (!dst->output_spans || !dst->output_has_spans) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+        }
         for (size_t i = 0u; i < src->output_count; ++i) {
             dst->outputs[i] = cxpr_strdup(src->outputs[i]);
             if (!dst->outputs[i]) {
                 dst->output_count = i + 1u;
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
+            }
+            if (dst->output_spans && dst->output_has_spans) {
+                dst->output_spans[i] = src->output_spans[i];
+                dst->output_has_spans[i] = src->output_has_spans[i];
             }
         }
         dst->output_count = src->output_count;
@@ -214,9 +233,13 @@ static void cxpr_model_expanded_copy_free(cxpr_model* model) {
         free(model->outputs[i]);
     }
     free(model->outputs);
+    free(model->output_spans);
+    free(model->output_has_spans);
     model->bindings = NULL;
     model->binding_count = 0u;
     model->outputs = NULL;
+    model->output_spans = NULL;
+    model->output_has_spans = NULL;
     model->output_count = 0u;
 }
 
@@ -366,6 +389,14 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
             for (size_t i = 0u; i < ast->data.array.count; ++i) {
                 if (!cxpr_model_infer_child_inputs_from_ast(
                         ast->data.array.elements[i], model, imports, import_count, inputs, input_count, err)) {
+                    return false;
+                }
+            }
+            return true;
+        case CXPR_NODE_RECORD:
+            for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+                if (!cxpr_model_infer_child_inputs_from_ast(
+                        ast->data.record.field_values[i], model, imports, import_count, inputs, input_count, err)) {
                     return false;
                 }
             }
@@ -783,6 +814,14 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
                                                 cxpr_error* err) {
     if (!ast) return true;
     switch (cxpr_ast_type(ast)) {
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < cxpr_ast_record_field_count(ast); ++i) {
+            if (!cxpr_model_collect_lookbacks_in_ast(
+                    model, cxpr_ast_record_field_value(ast, i), specs, count, err)) {
+                return false;
+            }
+        }
+        return true;
     case CXPR_NODE_LOOKBACK: {
         const cxpr_ast* target = cxpr_ast_lookback_target(ast);
         const cxpr_ast* index = cxpr_ast_lookback_index(ast);
@@ -813,6 +852,22 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
         if (cxpr_model_window_is_function(cxpr_ast_function_name(ast)) &&
             !cxpr_model_window_collect_call(model, ast, specs, count, err)) {
             return false;
+        }
+        if ((cxpr_model_names_match(cxpr_ast_function_name(ast), "cross_above") ||
+             cxpr_model_names_match(cxpr_ast_function_name(ast), "cross_below")) &&
+            cxpr_ast_function_argc(ast) == 2u) {
+            for (size_t i = 0u; i < 2u; ++i) {
+                const cxpr_ast* arg = cxpr_ast_function_arg(ast, i);
+                char* key = NULL;
+                bool supported = cxpr_model_lookback_target_key(arg, &key, err);
+                if (supported &&
+                    !cxpr_model_history_spec_add(specs, count, key, arg, 1u)) {
+                    free(key);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    return false;
+                }
+                free(key);
+            }
         }
         for (size_t i = 0; i < cxpr_ast_function_argc(ast); ++i) {
             if (!cxpr_model_collect_lookbacks_in_ast(
@@ -1007,6 +1062,14 @@ static bool cxpr_model_namespace_imported_ast(cxpr_ast* ast,
         for (size_t i = 0u; i < ast->data.array.count; ++i) {
             if (!cxpr_model_namespace_imported_ast(
                     ast->data.array.elements[i], namespace_name, source_registry, err)) {
+                return false;
+            }
+        }
+        return true;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            if (!cxpr_model_namespace_imported_ast(
+                    ast->data.record.field_values[i], namespace_name, source_registry, err)) {
                 return false;
             }
         }
