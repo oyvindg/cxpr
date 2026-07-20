@@ -1400,6 +1400,12 @@ parent project's build tree layout.
 
 Use `-DCMAKE_BUILD_TYPE=Release` when benchmarking for meaningful timings.
 
+The `.cxpr C` column reports the compiled scalar result for a `.cxpr` model.
+For struct expressions this means generated C may scalarize a final field
+projection such as `(vector * weights).z` instead of materializing a runtime
+struct. The comparison is therefore result-oriented: AST/IR measure the typed
+runtime path, while `.cxpr C` measures the compiled path to the requested output.
+
 Example output from `./build/benchmarks/cxpr_bench_ir`:
 
 ```text
@@ -1426,12 +1432,16 @@ ast_handler_string      200000        280.38        509.28               -      
 
 Typed Struct
 case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
-producer_field          150000        173.41        108.88               -      1.59x         -
-producer_struct         150000        565.17         74.61               -      7.57x         -
-struct_scalar_mul       120000        376.24        423.79            3.15      0.89x    134.67x
-scalar_struct_mul       120000        382.94        439.16            3.16      0.87x    138.96x
-struct_struct_mul       100000        556.14        613.99            3.06      0.91x    200.62x
-struct_struct_add       100000        546.65        629.59            3.16      0.87x    199.31x
+producer_field          150000        180.36        103.52               -      1.74x         -
+producer_struct         150000        523.83         66.37               -      7.89x         -
+struct_scalar_mul       120000        405.14        417.69            3.00      0.97x    139.27x
+scalar_struct_mul       120000        407.13        415.49            3.00      0.98x    138.54x
+struct_struct_mul       100000        566.66        608.50            3.01      0.93x    202.29x
+struct_struct_add       100000        581.40        598.67            3.08      0.97x    194.11x
+struct_scalar_mul_all      100000       1187.80       1187.72            2.99      1.00x    397.80x
+scalar_struct_mul_all      100000       1293.41       1316.97            3.01      0.98x    437.51x
+struct_struct_mul_all       80000       1966.50       1938.81            3.06      1.01x    634.52x
+struct_struct_add_all       80000       1939.62       2124.92            3.05      0.91x    697.62x
 
 Lookback
 case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C

@@ -47,6 +47,18 @@
 #ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
 #include CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
 #endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE
+#endif
 #ifdef CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
 #include CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
 #endif
@@ -70,6 +82,10 @@ typedef enum {
     BENCH_C_SCALAR_STRUCT_MUL,
     BENCH_C_STRUCT_STRUCT_MUL,
     BENCH_C_STRUCT_STRUCT_ADD,
+    BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS,
+    BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS,
+    BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS,
+    BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS,
     BENCH_C_LOOKBACK_LEAF,
     BENCH_C_LOOKBACK_MIXED,
 } bench_c_model;
@@ -951,6 +967,86 @@ static double time_c_struct_struct_add(size_t iterations, double* out_total) {
     return (double)(end - start) / (double)iterations;
 }
 
+static double time_c_struct_scalar_mul_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_scalar_mul_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_scalar_mul_all_fields;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_scalar_struct_mul_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_scalar_struct_mul_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_scalar_struct_mul_all_fields;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_mul_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_mul_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_mul_all_fields;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_add_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_add_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_add_all_fields;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
 static double time_c_context_churn(size_t iterations, double* out_total) {
     cxpr_bench_ir_context_churn_state state = {0};
     void (*volatile tick)(cxpr_bench_ir_context_churn_state*, const double*, const double*, double*) =
@@ -1031,6 +1127,10 @@ static double time_c_model(bench_c_model model, size_t iterations, double* out_t
     case BENCH_C_SCALAR_STRUCT_MUL: return time_c_scalar_struct_mul(iterations, out_total);
     case BENCH_C_STRUCT_STRUCT_MUL: return time_c_struct_struct_mul(iterations, out_total);
     case BENCH_C_STRUCT_STRUCT_ADD: return time_c_struct_struct_add(iterations, out_total);
+    case BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS: return time_c_struct_scalar_mul_all_fields(iterations, out_total);
+    case BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS: return time_c_scalar_struct_mul_all_fields(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS: return time_c_struct_struct_mul_all_fields(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS: return time_c_struct_struct_add_all_fields(iterations, out_total);
     case BENCH_C_LOOKBACK_LEAF: return time_c_lookback_leaf(iterations, out_total);
     case BENCH_C_LOOKBACK_MIXED: return time_c_lookback_mixed(iterations, out_total);
     default: return NAN;
@@ -1714,10 +1814,14 @@ int main(void) {
     const typed_bench_case typed_cases[] = {
         { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL, 0, BENCH_C_NONE },
         { "producer_struct", "macd(12, 26, 9)", 150000, "histogram", 0, BENCH_C_NONE },
-        { "struct_scalar_mul", "vector * 2", 120000, "z", 1, BENCH_C_STRUCT_SCALAR_MUL },
-        { "scalar_struct_mul", "2 * vector", 120000, "z", 1, BENCH_C_SCALAR_STRUCT_MUL },
-        { "struct_struct_mul", "vector * weights", 100000, "z", 1, BENCH_C_STRUCT_STRUCT_MUL },
-        { "struct_struct_add", "vector + weights", 100000, "z", 1, BENCH_C_STRUCT_STRUCT_ADD },
+        { "struct_scalar_mul", "(vector * 2).z", 120000, NULL, 0, BENCH_C_STRUCT_SCALAR_MUL },
+        { "scalar_struct_mul", "(2 * vector).z", 120000, NULL, 0, BENCH_C_SCALAR_STRUCT_MUL },
+        { "struct_struct_mul", "(vector * weights).z", 100000, NULL, 0, BENCH_C_STRUCT_STRUCT_MUL },
+        { "struct_struct_add", "(vector + weights).z", 100000, NULL, 0, BENCH_C_STRUCT_STRUCT_ADD },
+        { "struct_scalar_mul_all", "(vector * 2).x + (vector * 2).y + (vector * 2).z", 100000, NULL, 0, BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS },
+        { "scalar_struct_mul_all", "(2 * vector).x + (2 * vector).y + (2 * vector).z", 100000, NULL, 0, BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS },
+        { "struct_struct_mul_all", "(vector * weights).x + (vector * weights).y + (vector * weights).z", 80000, NULL, 0, BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS },
+        { "struct_struct_add_all", "(vector + weights).x + (vector + weights).y + (vector + weights).z", 80000, NULL, 0, BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS },
     };
     const lookback_bench_case lookback_cases[] = {
         { "lookback_leaf", "close - close[3]", 250000, BENCH_C_LOOKBACK_LEAF },

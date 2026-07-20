@@ -966,15 +966,20 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             err);
     }
     if (cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS) {
+        cxpr_c_target field_target = {
+            .api_version = CXPR_C_TARGET_API_VERSION,
+            .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+            .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+            .userdata = target,
+        };
+        if (ast->data.field_access.base) {
+            char* expr = cxpr_model_ast_field_expr_to_c(
+                program, ast->data.field_access.base, ast->data.field_access.field, &field_target, err, 0u);
+            if (expr) return expr;
+        }
         const cxpr_model_compiled_binding* binding =
             cxpr_model_c_binding_for_name(program, ast->data.field_access.object);
         if (binding) {
-            cxpr_c_target field_target = {
-                .api_version = CXPR_C_TARGET_API_VERSION,
-                .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
-                .emit_call_at_offset = cxpr_model_ast_c_emit_call,
-                .userdata = target,
-            };
             char* expr = cxpr_model_ast_field_expr_to_c(
                 program, binding->ast, ast->data.field_access.field, &field_target, err, 0u);
             if (expr) return expr;

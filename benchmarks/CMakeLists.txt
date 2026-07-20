@@ -15,6 +15,10 @@ set(CXPR_BENCH_IR_MODELS
     scalar_struct_mul
     struct_struct_mul
     struct_struct_add
+    struct_scalar_mul_all_fields
+    scalar_struct_mul_all_fields
+    struct_struct_mul_all_fields
+    struct_struct_add_all_fields
     lookback_leaf
     lookback_mixed)
 set(CXPR_BENCH_IR_MODEL_INCLUDES)
