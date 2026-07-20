@@ -613,21 +613,21 @@ static double time_model_typed(const cxpr_model_program* program, cxpr_context* 
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
+    (void)field;
 
     for (i = 0; i < iterations; ++i) {
         bool found = false;
-        cxpr_value value;
+        double value;
         if (!cxpr_eval_model_program(program, ctx, reg, &err)) {
             fprintf(stderr, ".cxpr benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
-        value = cxpr_context_get_typed(ctx, output, &found);
+        value = cxpr_context_get(ctx, output, &found);
         if (!found) {
             fprintf(stderr, ".cxpr benchmark output '%s' missing at iter %zu\n", output, i);
             exit(1);
         }
-        total += typed_value_to_double(&value, field);
-        cxpr_value_free(&value);
+        total += value;
     }
 
     return total;
