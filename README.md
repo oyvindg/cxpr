@@ -1406,6 +1406,18 @@ projection such as `(vector * weights).z` instead of materializing a runtime
 struct. The comparison is therefore result-oriented: AST/IR measure the typed
 runtime path, while `.cxpr C` measures the compiled path to the requested output.
 
+To inspect the generated benchmark C, run:
+
+```bash
+./build/benchmarks/cxpr_bench_ir --print-c
+./build/benchmarks/cxpr_bench_ir --print-c struct_struct_mul
+```
+
+For subdirectory builds the generated inline files are written under the parent
+build tree, for example `build/libs/cxpr/benchmarks/ir_struct_struct_mul.inline.inc`.
+The debug output prints the benchmark expression, the `.inc` path, and the
+generated C source for each `.cxpr C` case.
+
 Example output from `./build/benchmarks/cxpr_bench_ir`:
 
 ```text

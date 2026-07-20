@@ -121,6 +121,120 @@ static double g_close[LOOKBACK_BARS];
 static double g_high[LOOKBACK_BARS];
 static int64_t g_lookback_cursor = 0;
 
+static const char* bench_c_model_inline_path(bench_c_model model) {
+    switch (model) {
+#ifdef CXPR_BENCH_IR_SIMPLE_ARITH_INLINE
+    case BENCH_C_SIMPLE_ARITH: return CXPR_BENCH_IR_SIMPLE_ARITH_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_NESTED_EXPR_INLINE
+    case BENCH_C_NESTED_EXPR: return CXPR_BENCH_IR_NESTED_EXPR_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_FUNCTION_CALL_INLINE
+    case BENCH_C_FUNCTION_CALL: return CXPR_BENCH_IR_FUNCTION_CALL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_DEFINED_FN_INLINE
+    case BENCH_C_DEFINED_FN: return CXPR_BENCH_IR_DEFINED_FN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_DEFINED_CHAIN_INLINE
+    case BENCH_C_DEFINED_CHAIN: return CXPR_BENCH_IR_DEFINED_CHAIN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_DEEP_DEFINED_INLINE
+    case BENCH_C_DEEP_DEFINED: return CXPR_BENCH_IR_DEEP_DEFINED_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
+    case BENCH_C_COMPLEX_SIGNAL: return CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_EXPR_INLINE
+    case BENCH_C_MIXED_EXPR: return CXPR_BENCH_IR_MIXED_EXPR_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_PIPE_INLINE
+    case BENCH_C_MIXED_PIPE: return CXPR_BENCH_IR_MIXED_PIPE_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
+    case BENCH_C_CONTEXT_CHURN: return CXPR_BENCH_IR_CONTEXT_CHURN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
+    case BENCH_C_STRUCT_SCALAR_MUL: return CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE
+    case BENCH_C_SCALAR_STRUCT_MUL: return CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE
+    case BENCH_C_STRUCT_STRUCT_MUL: return CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
+    case BENCH_C_STRUCT_STRUCT_ADD: return CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE
+    case BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS: return CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE
+    case BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS: return CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE
+    case BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS: return CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE
+    case BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS: return CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
+    case BENCH_C_LOOKBACK_LEAF: return CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LOOKBACK_MIXED_INLINE
+    case BENCH_C_LOOKBACK_MIXED: return CXPR_BENCH_IR_LOOKBACK_MIXED_INLINE;
+#endif
+    case BENCH_C_NONE:
+    default:
+        return NULL;
+    }
+}
+
+static int print_file(FILE* out, const char* path) {
+    char buf[4096];
+    size_t nread;
+    int last = '\n';
+    FILE* file = fopen(path, "rb");
+    if (!file) {
+        fprintf(stderr, "Failed to open generated C '%s'\n", path);
+        return 1;
+    }
+    while ((nread = fread(buf, 1, sizeof(buf), file)) > 0) {
+        if (fwrite(buf, 1, nread, out) != nread) {
+            fclose(file);
+            return 1;
+        }
+        last = buf[nread - 1];
+    }
+    if (ferror(file)) {
+        fprintf(stderr, "Failed to read generated C '%s'\n", path);
+        fclose(file);
+        return 1;
+    }
+    fclose(file);
+    if (last != '\n') fputc('\n', out);
+    return 0;
+}
+
+static int print_generated_c_case(const char* name, const char* expr, bench_c_model model, const char* filter, int* matched) {
+    const char* path = bench_c_model_inline_path(model);
+    if (filter && strcmp(name, filter) != 0) return 0;
+    if (filter) *matched = 1;
+    if (!path) {
+        if (filter) {
+            printf("\n=== %s ===\n", name);
+            printf(".cxpr expr: %s\n", expr);
+            printf(".inc path: -\n");
+            printf("No generated .cxpr C for this benchmark case.\n");
+        }
+        return 0;
+    }
+    printf("\n=== %s ===\n", name);
+    printf(".cxpr expr: %s\n", expr);
+    printf(".inc path: %s\n", path);
+    printf("--- generated C ---\n");
+    return print_file(stdout, path);
+}
+
 static double native_sq(double x) {
     return x * x;
 }
@@ -1792,7 +1906,34 @@ static void print_bench_header(const char* title) {
            "case", "iters", "AST ns/eval", "IR ns/eval", ".cxpr C ns/eval", "AST/IR", "IR/C");
 }
 
-int main(void) {
+static int print_generated_c(const bench_case* cases, size_t case_count,
+                             const typed_bench_case* typed_cases, size_t typed_case_count,
+                             const lookback_bench_case* lookback_cases, size_t lookback_case_count,
+                             const char* filter) {
+    size_t i;
+    int matched = filter ? 0 : 1;
+    for (i = 0; i < case_count; ++i) {
+        if (print_generated_c_case(cases[i].name, cases[i].expr, cases[i].c_model, filter, &matched)) return 1;
+    }
+    for (i = 0; i < typed_case_count; ++i) {
+        if (print_generated_c_case(typed_cases[i].name, typed_cases[i].expr, typed_cases[i].c_model, filter, &matched)) return 1;
+    }
+    for (i = 0; i < lookback_case_count; ++i) {
+        if (print_generated_c_case(lookback_cases[i].name, lookback_cases[i].expr, lookback_cases[i].c_model, filter, &matched)) return 1;
+    }
+    if (!matched) {
+        fprintf(stderr, "Unknown benchmark case '%s'\n", filter);
+        return 1;
+    }
+    return 0;
+}
+
+static void print_usage(const char* argv0) {
+    printf("usage: %s [--print-c [case]]\n", argv0);
+    printf("  --print-c [case]   print generated .cxpr C include files and exit\n");
+}
+
+int main(int argc, char** argv) {
     const bench_case cases[] = {
         { "simple_arith", "a + b * c - d / e", 500000, 0, BENCH_C_SIMPLE_ARITH },
         { "nested_expr", "((a + b) * (c - d) / (e + f)) > g ? h : i", 400000, 0, BENCH_C_NESTED_EXPR },
@@ -1828,11 +1969,31 @@ int main(void) {
         { "lookback_mixed", "(close + high[1]) - close[3]", 200000, BENCH_C_LOOKBACK_MIXED },
         { "lookback_nested", "close[1][2] + high[2]", 200000, BENCH_C_NONE },
     };
+    const size_t case_count = sizeof(cases) / sizeof(cases[0]);
+    const size_t typed_case_count = sizeof(typed_cases) / sizeof(typed_cases[0]);
+    const size_t lookback_case_count = sizeof(lookback_cases) / sizeof(lookback_cases[0]);
     size_t i;
     cxpr_error err = {0};
-    cxpr_parser* parser = cxpr_parser_new();
-    cxpr_context* ctx = cxpr_context_new();
-    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_parser* parser;
+    cxpr_context* ctx;
+    cxpr_registry* reg;
+
+    if (argc > 3 || (argc >= 2 && strcmp(argv[1], "--print-c") != 0 && strcmp(argv[1], "--help") != 0)) {
+        print_usage(argv[0]);
+        return 2;
+    }
+    if (argc >= 2 && strcmp(argv[1], "--help") == 0) {
+        print_usage(argv[0]);
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "--print-c") == 0) {
+        return print_generated_c(cases, case_count, typed_cases, typed_case_count,
+                                 lookback_cases, lookback_case_count, argc == 3 ? argv[2] : NULL);
+    }
+
+    parser = cxpr_parser_new();
+    ctx = cxpr_context_new();
+    reg = cxpr_registry_new();
 
     if (!parser || !ctx || !reg) {
         fprintf(stderr, "Failed to initialize benchmark state\n");
@@ -1939,17 +2100,17 @@ int main(void) {
     printf("cxpr AST vs IR benchmark\n");
 
     print_bench_header("Scalar");
-    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+    for (i = 0; i < case_count; ++i) {
         bench_one(parser, ctx, reg, &cases[i]);
     }
 
     print_bench_header("Typed Struct");
-    for (i = 0; i < sizeof(typed_cases) / sizeof(typed_cases[0]); ++i) {
+    for (i = 0; i < typed_case_count; ++i) {
         bench_one_typed(parser, ctx, reg, &typed_cases[i]);
     }
 
     print_bench_header("Lookback");
-    for (i = 0; i < sizeof(lookback_cases) / sizeof(lookback_cases[0]); ++i) {
+    for (i = 0; i < lookback_case_count; ++i) {
         bench_one_lookback(parser, ctx, reg, &lookback_cases[i]);
     }
 
