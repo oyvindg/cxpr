@@ -74,6 +74,8 @@ bool cxpr_struct_map_clone(cxpr_struct_map* dst, const cxpr_struct_map* src);
 /** @brief Store or replace one deep-copied struct binding in a struct map. */
 void cxpr_context_store_struct(cxpr_struct_map* map, const char* name,
                                const cxpr_struct_value* value);
+/** @brief Remove one struct binding by name from a struct map. */
+void cxpr_context_remove_struct(cxpr_struct_map* map, const char* name);
 /** @brief Look up one struct binding by name from a struct map. */
 const cxpr_struct_value* cxpr_context_lookup_struct_map(const cxpr_struct_map* map,
                                                         const char* name);

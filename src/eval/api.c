@@ -326,6 +326,17 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
 
     case CXPR_NODE_VARIABLE:
         found = false;
+        if (ctx && (strchr(ast->data.variable.name, '.') ||
+                    cxpr_context_get_struct(ctx, ast->data.variable.name))) {
+            cxpr_value value = cxpr_context_get_param_typed(ctx, ast->data.variable.name, &found);
+            if (found && value.type == CXPR_VALUE_NUMBER) {
+                *out = value.d;
+                cxpr_value_free(&value);
+                return true;
+            }
+            cxpr_value_free(&value);
+            if (found) return false;
+        }
         if (ctx) {
             cxpr_ast* mutable_ast = (cxpr_ast*)ast;
             found = cxpr_eval_root_slot_cached_number(

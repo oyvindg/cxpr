@@ -20,7 +20,7 @@ static bool cxpr_model_string_exists(char* const* values, size_t count, const ch
 static bool cxpr_model_constant_exists(const cxpr_model* model, const char* name) {
     if (!model) return false;
     for (size_t i = 0; i < model->constant_count; ++i) {
-        if (cxpr_model_names_match(model->constants[i].name, name)) return true;
+        if (cxpr_model_reference_matches_symbol(name, model->constants[i].name)) return true;
     }
     return false;
 }

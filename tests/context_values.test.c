@@ -129,9 +129,45 @@ static void test_extended_value_clone_paths(void) {
     cxpr_value_free(&clone);
 }
 
+static void test_struct_param_value_paths(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    const char* fields[] = {"x", "y", "z"};
+    cxpr_value values[] = {cxpr_num(0.0), cxpr_num(1.0), cxpr_num(2.0)};
+    cxpr_struct_value* zero = cxpr_struct_value_new(fields, values, 3u);
+    cxpr_value zero_value = cxpr_struct(zero);
+    cxpr_value loaded;
+    bool found = false;
+
+    assert(ctx);
+    assert(zero);
+    cxpr_context_set_param_value(ctx, "zero", &zero_value);
+    cxpr_struct_value_free(zero);
+
+    loaded = cxpr_context_get_param_typed(ctx, "zero", &found);
+    assert(found);
+    assert(loaded.type == CXPR_VALUE_STRUCT);
+    assert(loaded.s != NULL);
+    assert(loaded.s->field_count == 3u);
+    cxpr_value_free(&loaded);
+
+    loaded = cxpr_context_get_param_typed(ctx, "zero.y", &found);
+    assert(found);
+    assert(loaded.type == CXPR_VALUE_NUMBER);
+    assert(loaded.d == 1.0);
+    cxpr_value_free(&loaded);
+
+    cxpr_context_set_param(ctx, "zero", 5.0);
+    loaded = cxpr_context_get_param_typed(ctx, "zero.y", &found);
+    assert(!found);
+    cxpr_value_free(&loaded);
+
+    cxpr_context_free(ctx);
+}
+
 int main(void) {
     test_context_value_paths();
     test_extended_value_clone_paths();
+    test_struct_param_value_paths();
     printf("  \xE2\x9C\x93 context_values\n");
     return 0;
 }

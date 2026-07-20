@@ -1441,6 +1441,49 @@ static void test_compile_and_eval_model_program(void) {
     printf("  ✓ test_compile_and_eval_model_program\n");
 }
 
+static void test_compile_and_eval_struct_param_and_shorthand_record(void) {
+    cxpr_error err = {0};
+    bool found = false;
+    cxpr_value value;
+    cxpr_model* model = parse_model_ok(
+        "model struct_param\n"
+        "in { close }\n"
+        "$zero = { x: 0, y = 0, z: 0 }\n"
+        "x = close + $zero.x\n"
+        "y = close + $zero.y + 1\n"
+        "point = { x, y }\n"
+        "sum = point.x + point.y + $zero.z\n"
+        "out { sum }\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    cxpr_context* ctx = cxpr_context_new();
+
+    assert(program != NULL);
+    assert(ctx != NULL);
+    assert(cxpr_model_program_seed_defaults(program, ctx, NULL, &err));
+
+    value = cxpr_context_get_param_typed(ctx, "zero.x", &found);
+    assert(found);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(value.d == 0.0);
+    cxpr_value_free(&value);
+
+    cxpr_context_set(ctx, "close", 4.0);
+    assert(cxpr_eval_model_program(program, ctx, NULL, &err));
+    assert(cxpr_context_get(ctx, "sum", &found) == 9.0);
+    assert(found);
+
+    value = cxpr_context_get_field(ctx, "point", "y", &found);
+    assert(found);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(value.d == 5.0);
+    cxpr_value_free(&value);
+
+    cxpr_context_free(ctx);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_compile_and_eval_struct_param_and_shorthand_record\n");
+}
+
 static void test_compile_model_defined_function_without_host_registration(void) {
     cxpr_error err = {0};
     bool found = false;
@@ -3073,6 +3116,7 @@ int main(void) {
     test_eval_order_uses_existing_expression_toposort();
     test_eval_order_rejects_cycles();
     test_compile_and_eval_model_program();
+    test_compile_and_eval_struct_param_and_shorthand_record();
     test_compile_model_defined_function_without_host_registration();
     test_output_list_syntax();
     test_function_block_out_expression();

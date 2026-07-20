@@ -51,6 +51,19 @@ static void test_parser_expression_forms(void) {
     assert(cxpr_ast_type(cxpr_ast_right(ast)) == CXPR_NODE_BINARY_OP);
     cxpr_ast_free(ast);
 
+    ast = cxpr_parse(p, "{ x = 0, y: 1, z }", &err);
+    assert(ast);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_RECORD);
+    assert(cxpr_ast_record_field_count(ast) == 3);
+    assert(strcmp(cxpr_ast_record_field_name(ast, 0), "x") == 0);
+    assert(strcmp(cxpr_ast_record_field_name(ast, 1), "y") == 0);
+    assert(strcmp(cxpr_ast_record_field_name(ast, 2), "z") == 0);
+    assert(cxpr_ast_type(cxpr_ast_record_field_value(ast, 0)) == CXPR_NODE_NUMBER);
+    assert(cxpr_ast_type(cxpr_ast_record_field_value(ast, 1)) == CXPR_NODE_NUMBER);
+    assert(cxpr_ast_type(cxpr_ast_record_field_value(ast, 2)) == CXPR_NODE_IDENTIFIER);
+    assert(strcmp(cxpr_ast_identifier_name(cxpr_ast_record_field_value(ast, 2)), "z") == 0);
+    cxpr_ast_free(ast);
+
     cxpr_parser_free(p);
 }
 

@@ -119,10 +119,18 @@ static cxpr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
             names[count] = cxpr_parser_token_to_string(&p->current);
             if (!names[count]) goto fail;
             cxpr_parser_advance(p);
-            if (!cxpr_parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' after record field name")) {
+            if (cxpr_parser_match(p, CXPR_TOK_ASSIGN) ||
+                cxpr_parser_match(p, CXPR_TOK_COLON)) {
+                values[count] = cxpr_parse_expression(p);
+            } else {
+                values[count] = cxpr_ast_new_identifier(names[count]);
+            }
+            if (!values[count]) {
+                p->had_error = true;
+                p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+                p->last_error.message = "Out of memory";
                 goto fail;
             }
-            values[count] = cxpr_parse_expression(p);
             if (!values[count] || p->had_error) goto fail;
             count++;
         } while (cxpr_parser_match(p, CXPR_TOK_COMMA));

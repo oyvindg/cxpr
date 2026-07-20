@@ -301,6 +301,35 @@ void cxpr_context_store_struct(cxpr_struct_map* map, const char* name,
     map->count++;
 }
 
+void cxpr_context_remove_struct(cxpr_struct_map* map, const char* name) {
+    cxpr_struct_map_entry* slot;
+    size_t index;
+
+    if (!map || !name) return;
+    slot = cxpr_struct_map_find_slot(map, name);
+    if (!slot || !slot->name) return;
+    index = (size_t)(slot - map->entries);
+
+    free(slot->name);
+    slot->name = NULL;
+    cxpr_struct_value_free(slot->value);
+    slot->value = NULL;
+    if (map->count > 0u) map->count--;
+
+    index = (index + 1u) % map->capacity;
+    while (map->entries[index].name) {
+        cxpr_struct_map_entry displaced = map->entries[index];
+        cxpr_struct_map_entry* target;
+        map->entries[index].name = NULL;
+        map->entries[index].value = NULL;
+        if (map->count > 0u) map->count--;
+        target = cxpr_struct_map_find_slot(map, displaced.name);
+        *target = displaced;
+        map->count++;
+        index = (index + 1u) % map->capacity;
+    }
+}
+
 const cxpr_struct_value* cxpr_context_lookup_struct_map(const cxpr_struct_map* map,
                                                         const char* name) {
     const cxpr_struct_map_entry* entry;
