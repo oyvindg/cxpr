@@ -8,8 +8,10 @@
 static void cxpr_model_compiled_binding_free(cxpr_model_compiled_binding* binding) {
     if (!binding) return;
     free(binding->name);
+    free(binding->source);
     cxpr_ast_free(binding->ast);
     binding->name = NULL;
+    binding->source = NULL;
     binding->name_hash = 0u;
     binding->result_kind = CXPR_IR_VIEW_RESULT_UNKNOWN;
     binding->ast = NULL;

@@ -192,6 +192,42 @@ static const cxpr_model_compiled_binding* cxpr_model_c_binding_for_name(
     return NULL;
 }
 
+static const char* cxpr_model_c_source_for_name(const cxpr_model_program* program,
+                                                const char* name) {
+    const cxpr_model_compiled_binding* binding;
+    if (!program || !name) return NULL;
+    binding = cxpr_model_c_binding_for_name(program, name);
+    if (binding && binding->source) return binding->source;
+    for (size_t i = 0u; i < program->state_default_count; ++i) {
+        if (cxpr_model_names_match(program->state_defaults[i].name, name)) {
+            return program->state_defaults[i].source;
+        }
+    }
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (cxpr_model_names_match(program->constants[i].name, name)) {
+            return program->constants[i].source;
+        }
+    }
+    return NULL;
+}
+
+static void cxpr_model_c_emit_source_comment(cxpr_model_c_buf* b,
+                                             const char* label,
+                                             const char* source) {
+    if (!b || !source || !source[0]) return;
+    cxpr_model_c_printf(b, "    // %s: ", label ? label : ".cxpr");
+    for (const char* p = source; *p; ++p) {
+        unsigned char ch = (unsigned char)*p;
+        if (ch == '\n' || ch == '\r' || ch == '\t' || ch < 32u) {
+            cxpr_model_c_puts(b, " ");
+        } else {
+            char s[2] = { (char)ch, '\0' };
+            cxpr_model_c_puts(b, s);
+        }
+    }
+    cxpr_model_c_puts(b, "\n");
+}
+
 static const cxpr_ast* cxpr_model_producer_arg_for_param(const cxpr_ast* ast,
                                                          const char* param_name,
                                                          size_t param_index) {
@@ -3129,6 +3165,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                     if (owns_name) free(name);
                     goto oom;
                 }
+                cxpr_model_c_emit_source_comment(&b, ".cxpr", program->bindings[i].source);
                 cxpr_model_c_printf(&b, "    const double %s = %s;\n", name, common);
                 if (owns_name) free(name);
                 continue;
@@ -3217,6 +3254,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             if (owns_name) free(name);
             goto fail;
         }
+        cxpr_model_c_emit_source_comment(&b, ".cxpr", program->bindings[i].source);
         cxpr_model_c_printf(&b, "    const double %s = %s;\n", name, expr);
         free(expr);
         cse_names[i] = cxpr_strdup(name);
@@ -3264,6 +3302,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                 free(has_pending_name);
                 goto oom;
             }
+            cxpr_model_c_emit_source_comment(&b, ".cxpr", cxpr_model_c_source_for_name(program, name));
             cxpr_model_c_printf(
                 &b,
                 "    _cx_outputs[%zu] = _cx_state->%s ? _cx_state->%s : _cx_state->%s;\n",
@@ -3277,6 +3316,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         } else {
             char* local_name = cxpr_model_c_safe_name(name);
             if (!local_name) goto oom;
+            cxpr_model_c_emit_source_comment(&b, ".cxpr", cxpr_model_c_source_for_name(program, name));
             cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s;\n", out_i, local_name);
             free(local_name);
         }

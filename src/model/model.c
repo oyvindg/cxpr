@@ -1592,11 +1592,13 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         program->constant_count = model->constant_count;
         for (size_t i = 0; i < model->constant_count; ++i) {
             program->constants[i].name = cxpr_strdup(model->constants[i].name);
+            program->constants[i].source = cxpr_strdup(model->constants[i].source);
             program->constants[i].name_hash = cxpr_hash_string(model->constants[i].name);
             program->constants[i].ast = cxpr_ast_clone(model->constants[i].expr);
             program->constants[i].result_kind =
                 cxpr_model_infer_result_kind(program->constants[i].ast, compile_reg);
             if (!program->constants[i].name ||
+                !program->constants[i].source ||
                 !program->constants[i].ast) {
                 cxpr_model_program_free(program);
                 if (err && err->code == CXPR_OK) {
@@ -1629,11 +1631,13 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                 if (model->bindings[i].kind != CXPR_MODEL_BINDING_STATE) continue;
                 program->state_defaults[out_i].kind = model->bindings[i].kind;
                 program->state_defaults[out_i].name = cxpr_strdup(model->bindings[i].name);
+                program->state_defaults[out_i].source = cxpr_strdup(model->bindings[i].source);
                 program->state_defaults[out_i].name_hash = cxpr_hash_string(model->bindings[i].name);
                 program->state_defaults[out_i].ast = cxpr_ast_clone(model->bindings[i].expr);
                 program->state_defaults[out_i].result_kind =
                     cxpr_model_infer_result_kind(program->state_defaults[out_i].ast, compile_reg);
                 if (!program->state_defaults[out_i].name ||
+                    !program->state_defaults[out_i].source ||
                     !program->state_defaults[out_i].ast) {
                     cxpr_model_program_free(program);
                     if (err && err->code == CXPR_OK) {
@@ -1667,6 +1671,7 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
             size_t src_i = order[out_i];
             program->bindings[out_i].kind = model->bindings[src_i].kind;
             program->bindings[out_i].name = cxpr_strdup(model->bindings[src_i].name);
+            program->bindings[out_i].source = cxpr_strdup(model->bindings[src_i].source);
             program->bindings[out_i].name_hash = cxpr_hash_string(model->bindings[src_i].name);
             program->bindings[out_i].ast = cxpr_ast_clone(model->bindings[src_i].expr);
             program->bindings[out_i].result_kind =
@@ -1676,6 +1681,7 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                     program, program->bindings[out_i].name);
             }
             if (!program->bindings[out_i].name ||
+                !program->bindings[out_i].source ||
                 !program->bindings[out_i].ast) {
                 free(order);
                 cxpr_model_program_free(program);

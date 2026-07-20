@@ -1416,7 +1416,8 @@ To inspect the generated benchmark C, run:
 For subdirectory builds the generated inline files are written under the parent
 build tree, for example `build/libs/cxpr/benchmarks/ir_struct_struct_mul.inline.inc`.
 The debug output prints the benchmark expression, the `.inc` path, and the
-generated C source for each `.cxpr C` case.
+generated C source for each `.cxpr C` case. Generated model C includes `// .cxpr:`
+comments above emitted expressions to make scalarized output easier to inspect.
 
 Example output from `./build/benchmarks/cxpr_bench_ir`:
 

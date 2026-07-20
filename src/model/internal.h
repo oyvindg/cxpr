@@ -104,6 +104,7 @@ struct cxpr_model {
 typedef struct {
     cxpr_model_binding_kind kind;
     char* name;
+    char* source;
     unsigned long name_hash;
     cxpr_ir_view_result_kind result_kind;
     cxpr_ast* ast;
