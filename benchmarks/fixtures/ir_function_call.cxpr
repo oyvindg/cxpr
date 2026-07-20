@@ -1,0 +1,3 @@
+model ir_function_call
+in { a, b, c, d }
+out result = sqrt(a*a + b*b) + pow(c, 2) - abs(d)

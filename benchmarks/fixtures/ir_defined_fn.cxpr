@@ -1,0 +1,5 @@
+model ir_defined_fn
+in { a, b, c, d, e }
+fn sq(x) = x * x
+fn hyp2(x, y) = sqrt(sq(x) + sq(y))
+out result = hyp2(a, b) + hyp2(c, d) - sq(e)
