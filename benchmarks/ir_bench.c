@@ -35,6 +35,18 @@
 #ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
 #include CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
 #endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
+#include CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE
+#include CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
+#endif
 #ifdef CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
 #include CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
 #endif
@@ -54,6 +66,10 @@ typedef enum {
     BENCH_C_MIXED_EXPR,
     BENCH_C_MIXED_PIPE,
     BENCH_C_CONTEXT_CHURN,
+    BENCH_C_STRUCT_SCALAR_MUL,
+    BENCH_C_SCALAR_STRUCT_MUL,
+    BENCH_C_STRUCT_STRUCT_MUL,
+    BENCH_C_STRUCT_STRUCT_ADD,
     BENCH_C_LOOKBACK_LEAF,
     BENCH_C_LOOKBACK_MIXED,
 } bench_c_model;
@@ -72,6 +88,7 @@ typedef struct {
     size_t iterations;
     const char* field;
     int free_result;
+    bench_c_model c_model;
 } typed_bench_case;
 
 typedef struct {
@@ -841,6 +858,99 @@ static double time_c_mixed_pipe(size_t iterations, double* out_total) {
     return (double)(end - start) / (double)iterations;
 }
 
+static void fill_inputs_struct_unary(double* inputs) {
+    inputs[0] = 2.0;
+    inputs[1] = 4.0;
+    inputs[2] = 8.0;
+}
+
+static void fill_inputs_struct_binary(double* inputs) {
+    fill_inputs_struct_unary(inputs);
+    inputs[3] = 3.0;
+    inputs[4] = 5.0;
+    inputs[5] = 7.0;
+}
+
+static double time_c_struct_scalar_mul(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_scalar_mul_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_scalar_mul;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_scalar_struct_mul(size_t iterations, double* out_total) {
+    cxpr_bench_ir_scalar_struct_mul_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_scalar_struct_mul;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_mul(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_mul_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_mul;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_add(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_add_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_add;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
 static double time_c_context_churn(size_t iterations, double* out_total) {
     cxpr_bench_ir_context_churn_state state = {0};
     void (*volatile tick)(cxpr_bench_ir_context_churn_state*, const double*, const double*, double*) =
@@ -917,6 +1027,10 @@ static double time_c_model(bench_c_model model, size_t iterations, double* out_t
     case BENCH_C_MIXED_EXPR: return time_c_mixed_expr(iterations, out_total);
     case BENCH_C_MIXED_PIPE: return time_c_mixed_pipe(iterations, out_total);
     case BENCH_C_CONTEXT_CHURN: return time_c_context_churn(iterations, out_total);
+    case BENCH_C_STRUCT_SCALAR_MUL: return time_c_struct_scalar_mul(iterations, out_total);
+    case BENCH_C_SCALAR_STRUCT_MUL: return time_c_scalar_struct_mul(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_MUL: return time_c_struct_struct_mul(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_ADD: return time_c_struct_struct_add(iterations, out_total);
     case BENCH_C_LOOKBACK_LEAF: return time_c_lookback_leaf(iterations, out_total);
     case BENCH_C_LOOKBACK_MIXED: return time_c_lookback_mixed(iterations, out_total);
     default: return NAN;
@@ -1101,7 +1215,7 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
 static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                             const typed_bench_case* c) {
     long long ast_start, ast_end, ir_start, ir_end;
-    double ast_total, ir_total, ast_ns, ir_ns;
+    double ast_total, ir_total, c_total = 0.0, ast_ns, ir_ns, c_ns = NAN;
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
     cxpr_program* program;
@@ -1140,14 +1254,32 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
     g_sink += ast_total + ir_total;
 
-    printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
-           c->name,
-           c->iterations,
-           ast_ns,
-           ir_ns,
-           "-",
-           ast_ns / ir_ns,
-           "-");
+    if (c->c_model != BENCH_C_NONE) {
+        c_ns = time_c_model(c->c_model, c->iterations, &c_total);
+        if (fabs(ast_total - c_total) > 1e-9 * (1.0 + fabs(ast_total))) {
+            fprintf(stderr, "Typed AST/.cxpr C mismatch for '%s': %.17g vs %.17g\n",
+                    c->name, ast_total, c_total);
+            exit(1);
+        }
+        g_sink += c_total;
+        printf("%-18s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               c_ns,
+               ast_ns / ir_ns,
+               ir_ns / c_ns);
+    } else {
+        printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               "-",
+               ast_ns / ir_ns,
+               "-");
+    }
 
     cxpr_program_free(program);
     cxpr_ast_free(ast);
@@ -1580,12 +1712,12 @@ int main(void) {
         { "ast_handler_string", "bench_tf(a, \"1h\")", 200000, 0, BENCH_C_NONE },
     };
     const typed_bench_case typed_cases[] = {
-        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL, 0 },
-        { "producer_struct", "macd(12, 26, 9)", 150000, "histogram", 0 },
-        { "struct_scalar_mul", "vector * 2", 120000, "z", 1 },
-        { "scalar_struct_mul", "2 * vector", 120000, "z", 1 },
-        { "struct_struct_mul", "vector * weights", 100000, "z", 1 },
-        { "struct_struct_add", "vector + weights", 100000, "z", 1 },
+        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL, 0, BENCH_C_NONE },
+        { "producer_struct", "macd(12, 26, 9)", 150000, "histogram", 0, BENCH_C_NONE },
+        { "struct_scalar_mul", "vector * 2", 120000, "z", 1, BENCH_C_STRUCT_SCALAR_MUL },
+        { "scalar_struct_mul", "2 * vector", 120000, "z", 1, BENCH_C_SCALAR_STRUCT_MUL },
+        { "struct_struct_mul", "vector * weights", 100000, "z", 1, BENCH_C_STRUCT_STRUCT_MUL },
+        { "struct_struct_add", "vector + weights", 100000, "z", 1, BENCH_C_STRUCT_STRUCT_ADD },
     };
     const lookback_bench_case lookback_cases[] = {
         { "lookback_leaf", "close - close[3]", 250000, BENCH_C_LOOKBACK_LEAF },

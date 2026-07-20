@@ -1426,12 +1426,12 @@ ast_handler_string      200000        280.38        509.28               -      
 
 Typed Struct
 case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
-producer_field          150000        255.41        109.97               -      2.32x         -
-producer_struct         150000        525.60         73.97               -      7.11x         -
-struct_scalar_mul       120000        347.89        387.72               -      0.90x         -
-scalar_struct_mul       120000        359.80        412.46               -      0.87x         -
-struct_struct_mul       100000        525.43        578.08               -      0.91x         -
-struct_struct_add       100000        522.09        575.15               -      0.91x         -
+producer_field          150000        173.41        108.88               -      1.59x         -
+producer_struct         150000        565.17         74.61               -      7.57x         -
+struct_scalar_mul       120000        376.24        423.79            3.15      0.89x    134.67x
+scalar_struct_mul       120000        382.94        439.16            3.16      0.87x    138.96x
+struct_struct_mul       100000        556.14        613.99            3.06      0.91x    200.62x
+struct_struct_add       100000        546.65        629.59            3.16      0.87x    199.31x
 
 Lookback
 case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C

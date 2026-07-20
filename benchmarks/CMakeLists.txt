@@ -11,6 +11,10 @@ set(CXPR_BENCH_IR_MODELS
     mixed_expr
     mixed_pipe
     context_churn
+    struct_scalar_mul
+    scalar_struct_mul
+    struct_struct_mul
+    struct_struct_add
     lookback_leaf
     lookback_mixed)
 set(CXPR_BENCH_IR_MODEL_INCLUDES)
