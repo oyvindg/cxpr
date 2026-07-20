@@ -17,6 +17,7 @@ typedef struct {
     const char* expr;
     size_t iterations;
     const char* field;
+    int free_result;
 } typed_bench_case;
 
 typedef struct {
@@ -129,6 +130,31 @@ static void set_base_values(cxpr_context* ctx) {
     cxpr_context_set(ctx, "z", 13.5);
     cxpr_context_set(ctx, "m", 14.5);
     cxpr_context_set(ctx, "n", -15.5);
+}
+
+static void set_base_struct_values(cxpr_context* ctx) {
+    const char* fields[] = {"x", "y", "z"};
+    cxpr_value vector_values[] = {
+        cxpr_num(2.0),
+        cxpr_num(4.0),
+        cxpr_num(8.0),
+    };
+    cxpr_value weight_values[] = {
+        cxpr_num(3.0),
+        cxpr_num(5.0),
+        cxpr_num(7.0),
+    };
+    cxpr_struct_value* vector = cxpr_struct_value_new(fields, vector_values, 3u);
+    cxpr_struct_value* weights = cxpr_struct_value_new(fields, weight_values, 3u);
+
+    if (!vector || !weights) {
+        fprintf(stderr, "Failed to allocate benchmark structs\n");
+        exit(1);
+    }
+    cxpr_context_set_struct(ctx, "vector", vector);
+    cxpr_context_set_struct(ctx, "weights", weights);
+    cxpr_struct_value_free(weights);
+    cxpr_struct_value_free(vector);
 }
 
 static void init_lookback_bars(void) {
@@ -536,7 +562,7 @@ static double typed_value_to_double(const cxpr_value* value, const char* field) 
 }
 
 static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
-                             size_t iterations, const char* field) {
+                             size_t iterations, const char* field, int free_result) {
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
@@ -548,13 +574,14 @@ static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_
             exit(1);
         }
         total += typed_value_to_double(&value, field);
+        if (free_result) cxpr_value_free(&value);
     }
 
     return total;
 }
 
 static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, const cxpr_registry* reg,
-                            size_t iterations, const char* field) {
+                            size_t iterations, const char* field, int free_result) {
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
@@ -566,6 +593,7 @@ static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, cons
             exit(1);
         }
         total += typed_value_to_double(&value, field);
+        if (free_result) cxpr_value_free(&value);
     }
 
     return total;
@@ -686,13 +714,15 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     }
 
     set_base_values(ctx);
+    set_base_struct_values(ctx);
     ast_start = now_ns();
-    ast_total = time_ast_typed(ast, ctx, reg, c->iterations, c->field);
+    ast_total = time_ast_typed(ast, ctx, reg, c->iterations, c->field, c->free_result);
     ast_end = now_ns();
 
     set_base_values(ctx);
+    set_base_struct_values(ctx);
     ir_start = now_ns();
-    ir_total = time_ir_typed(program, ctx, reg, c->iterations, c->field);
+    ir_total = time_ir_typed(program, ctx, reg, c->iterations, c->field, c->free_result);
     ir_end = now_ns();
 
     if (fabs(ast_total - ir_total) > 1e-9 * (1.0 + fabs(ast_total))) {
@@ -1118,8 +1148,12 @@ int main(void) {
         { "ast_handler_string", "bench_tf(a, \"1h\")", 200000, 0 },
     };
     const typed_bench_case typed_cases[] = {
-        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL },
-        { "producer_struct", "macd(12, 26, 9)", 150000, "histogram" },
+        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL, 0 },
+        { "producer_struct", "macd(12, 26, 9)", 150000, "histogram", 0 },
+        { "struct_scalar_mul", "vector * 2", 120000, "z", 1 },
+        { "scalar_struct_mul", "2 * vector", 120000, "z", 1 },
+        { "struct_struct_mul", "vector * weights", 100000, "z", 1 },
+        { "struct_struct_add", "vector + weights", 100000, "z", 1 },
     };
     const lookback_bench_case lookback_cases[] = {
         { "lookback_leaf", "close - close[3]", 250000 },

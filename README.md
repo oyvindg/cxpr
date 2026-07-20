@@ -1425,6 +1425,10 @@ Typed Struct
 case                     iters   AST ns/eval    IR ns/eval   speedup
 producer_field          150000        152.34        136.40      1.12x
 producer_struct         150000        225.70         64.22      3.51x
+struct_scalar_mul       120000        350.58        419.18      0.84x
+scalar_struct_mul       120000        373.85        422.37      0.89x
+struct_struct_mul       100000        533.60        608.69      0.88x
+struct_struct_add       100000        544.41        603.71      0.90x
 
 IR-only
 case                     iters   AST ns/eval    IR ns/eval   speedup
