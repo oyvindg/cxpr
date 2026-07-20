@@ -1,0 +1,6 @@
+model ir_mixed_expr
+in { a, b, c, d, e, n }
+fn sq(x) = x * x
+fn hyp2(x, y) = sqrt(sq(x) + sq(y))
+fn clamp(x, lo, hi) = x < lo ? lo : (x > hi ? hi : x)
+out result = clamp(abs(n) + a * b, 0, 20) / 3 + hyp2(c, d) - sq(e)

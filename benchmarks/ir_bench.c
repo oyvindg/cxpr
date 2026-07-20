@@ -26,6 +26,12 @@
 #ifdef CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
 #include CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
 #endif
+#ifdef CXPR_BENCH_IR_MIXED_EXPR_INLINE
+#include CXPR_BENCH_IR_MIXED_EXPR_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_PIPE_INLINE
+#include CXPR_BENCH_IR_MIXED_PIPE_INLINE
+#endif
 #ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
 #include CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
 #endif
@@ -45,6 +51,8 @@ typedef enum {
     BENCH_C_DEFINED_CHAIN,
     BENCH_C_DEEP_DEFINED,
     BENCH_C_COMPLEX_SIGNAL,
+    BENCH_C_MIXED_EXPR,
+    BENCH_C_MIXED_PIPE,
     BENCH_C_CONTEXT_CHURN,
     BENCH_C_LOOKBACK_LEAF,
     BENCH_C_LOOKBACK_MIXED,
@@ -784,6 +792,55 @@ static double time_c_complex_signal(size_t iterations, double* out_total) {
     return (double)(end - start) / (double)iterations;
 }
 
+static void fill_inputs_mixed(double* inputs) {
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+    inputs[5] = -15.5;
+}
+
+static double time_c_mixed_expr(size_t iterations, double* out_total) {
+    cxpr_bench_ir_mixed_expr_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_mixed_expr_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_mixed_expr;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_mixed(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_mixed_pipe(size_t iterations, double* out_total) {
+    cxpr_bench_ir_mixed_pipe_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_mixed_pipe_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_mixed_pipe;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_mixed(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
 static double time_c_context_churn(size_t iterations, double* out_total) {
     cxpr_bench_ir_context_churn_state state = {0};
     void (*volatile tick)(cxpr_bench_ir_context_churn_state*, const double*, const double*, double*) =
@@ -857,6 +914,8 @@ static double time_c_model(bench_c_model model, size_t iterations, double* out_t
     case BENCH_C_DEFINED_CHAIN: return time_c_defined_chain(iterations, out_total);
     case BENCH_C_DEEP_DEFINED: return time_c_deep_defined(iterations, out_total);
     case BENCH_C_COMPLEX_SIGNAL: return time_c_complex_signal(iterations, out_total);
+    case BENCH_C_MIXED_EXPR: return time_c_mixed_expr(iterations, out_total);
+    case BENCH_C_MIXED_PIPE: return time_c_mixed_pipe(iterations, out_total);
     case BENCH_C_CONTEXT_CHURN: return time_c_context_churn(iterations, out_total);
     case BENCH_C_LOOKBACK_LEAF: return time_c_lookback_leaf(iterations, out_total);
     case BENCH_C_LOOKBACK_MIXED: return time_c_lookback_mixed(iterations, out_total);
@@ -1514,6 +1573,8 @@ int main(void) {
         { "deep_defined", "f5(a, b, c, d) + f5(e, f, g, h)", 80000, 0, BENCH_C_DEEP_DEFINED },
         { "deep_native", "native_f5(a, b, c, d) + native_f5(e, f, g, h)", 80000, 0, BENCH_C_NONE },
         { "complex_signal", "((a + b * c - d / e) > f ? f5(a, b, c, d) : f3(e, f, g)) + (h > i ? sq(x - y) : hyp2(z, m)) - abs(n)", 80000, 0, BENCH_C_COMPLEX_SIGNAL },
+        { "mixed_expr", "clamp(abs(n) + a * b, 0, 20) / 3 + hyp2(c, d) - sq(e)", 120000, 0, BENCH_C_MIXED_EXPR },
+        { "mixed_pipe", "(n |> abs |> add(a * b) |> clamp(0, 20) |> div(3)) + hyp2(c, d) - sq(e)", 120000, 0, BENCH_C_MIXED_PIPE },
         { "context_churn", "a + b * c - d / e + x * y - z", 200000, 1, BENCH_C_CONTEXT_CHURN },
         { "ast_handler_num", "bench_tf(a)", 200000, 0, BENCH_C_NONE },
         { "ast_handler_string", "bench_tf(a, \"1h\")", 200000, 0, BENCH_C_NONE },
@@ -1597,6 +1658,33 @@ int main(void) {
     err = cxpr_registry_define_fn(reg, "f5(a, b, c, d) => sqrt((a*a + b*b) + (c*c + d*d))");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define f5: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define_fn(reg, "add(x, y) => x + y");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define add: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define_fn(reg, "div(x, y) => x / y");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define div: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define_fn(reg, "clamp(x, lo, hi) => x < lo ? lo : (x > hi ? hi : x)");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define clamp: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
         cxpr_parser_free(parser);

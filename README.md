@@ -1418,6 +1418,8 @@ mixed_chain             120000         63.33         59.17               -      
 deep_defined             80000         42.46         73.87            4.76      0.57x     15.51x
 deep_native              80000         97.70         56.05               -      1.74x         -
 complex_signal           80000         85.95         86.40            5.95      0.99x     14.53x
+mixed_expr              120000         40.20         37.48            3.57      1.07x     10.50x
+mixed_pipe              120000         41.73         39.60            3.66      1.05x     10.82x
 context_churn           200000        167.60        147.46            5.87      1.14x     25.14x
 ast_handler_num         200000        296.54        520.66               -      0.57x         -
 ast_handler_string      200000        280.38        509.28               -      0.55x         -

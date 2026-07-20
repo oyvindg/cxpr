@@ -8,6 +8,8 @@ set(CXPR_BENCH_IR_MODELS
     defined_chain
     deep_defined
     complex_signal
+    mixed_expr
+    mixed_pipe
     context_churn
     lookback_leaf
     lookback_mixed)
