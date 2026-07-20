@@ -1412,59 +1412,59 @@ Example output from `./build/benchmarks/cxpr_bench_ir`:
 cxpr AST vs IR benchmark
 
 Scalar
-case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
-simple_arith            500000         34.53         26.75            3.07      1.29x      8.72x
-nested_expr             400000         43.08         40.24            3.11      1.07x     12.93x
-function_call           250000         46.47         43.61            3.02      1.07x     14.46x
-defined_fn              200000         33.00         29.08            4.63      1.13x      6.28x
-native_fn               200000         65.44         61.99               -      1.06x         -
-defined_chain           120000         50.50         47.14            9.07      1.07x      5.19x
-native_chain            120000         65.44         61.63               -      1.06x         -
-mixed_chain             120000         63.33         59.17               -      1.07x         -
-deep_defined             80000         42.46         73.87            4.76      0.57x     15.51x
-deep_native              80000         97.70         56.05               -      1.74x         -
-complex_signal           80000         85.95         86.40            5.95      0.99x     14.53x
-mixed_expr              120000         40.20         37.48            3.57      1.07x     10.50x
-mixed_pipe              120000         41.73         39.60            3.66      1.05x     10.82x
-context_churn           200000        167.60        147.46            5.87      1.14x     25.14x
-ast_handler_num         200000        296.54        520.66               -      0.57x         -
-ast_handler_string      200000        280.38        509.28               -      0.55x         -
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+simple_arith                  500000         39.43         28.81            3.13      1.37x      9.22x
+nested_expr                   400000         37.71         39.05            3.43      0.97x     11.37x
+function_call                 250000         43.63         41.84            2.98      1.04x     14.04x
+defined_fn                    200000         30.66         26.67            4.52      1.15x      5.90x
+native_fn                     200000         56.48         55.30               -      1.02x         -
+defined_chain                 120000         50.77         46.10            8.95      1.10x      5.15x
+native_chain                  120000         65.05         65.31               -      1.00x         -
+mixed_chain                   120000         66.46         63.59               -      1.05x         -
+deep_defined                   80000         49.47         42.33            4.72      1.17x      8.96x
+deep_native                    80000        104.47         53.28               -      1.96x         -
+complex_signal                 80000         68.78         67.52            6.32      1.02x     10.69x
+mixed_expr                    120000         43.26         41.11            3.79      1.05x     10.85x
+mixed_pipe                    120000         43.39         39.99            3.91      1.08x     10.22x
+context_churn                 200000        143.56        139.83            5.77      1.03x     24.23x
+ast_handler_num               200000        287.66        498.10               -      0.58x         -
+ast_handler_string            200000        290.61        525.24               -      0.55x         -
 
 Typed Struct
-case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
-producer_field          150000        180.36        103.52               -      1.74x         -
-producer_struct         150000        523.83         66.37               -      7.89x         -
-struct_scalar_mul       120000        405.14        417.69            3.00      0.97x    139.27x
-scalar_struct_mul       120000        407.13        415.49            3.00      0.98x    138.54x
-struct_struct_mul       100000        566.66        608.50            3.01      0.93x    202.29x
-struct_struct_add       100000        581.40        598.67            3.08      0.97x    194.11x
-struct_scalar_mul_all      100000       1187.80       1187.72            2.99      1.00x    397.80x
-scalar_struct_mul_all      100000       1293.41       1316.97            3.01      0.98x    437.51x
-struct_struct_mul_all       80000       1966.50       1938.81            3.06      1.01x    634.52x
-struct_struct_add_all       80000       1939.62       2124.92            3.05      0.91x    697.62x
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+producer_field                150000        187.42        113.55               -      1.65x         -
+producer_struct               150000        551.86         68.12               -      8.10x         -
+struct_scalar_mul             120000        422.32        418.55            3.00      1.01x    139.67x
+scalar_struct_mul             120000        411.23        427.87            2.96      0.96x    144.35x
+struct_struct_mul             100000        599.60        608.23            3.01      0.99x    202.06x
+struct_struct_add             100000        597.62        644.27            3.09      0.93x    208.62x
+struct_scalar_mul_all         100000       1274.36       1313.17            3.01      0.97x    436.76x
+scalar_struct_mul_all         100000       1317.62       1374.22            3.15      0.96x    435.81x
+struct_struct_mul_all          80000       1905.84       1910.81            3.04      1.00x    627.87x
+struct_struct_add_all          80000       1957.29       1884.30            3.08      1.04x    612.49x
 
 Lookback
-case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
-lookback_leaf           250000        119.12        119.51            3.15      1.00x     37.99x
-lookback_mixed          200000        175.30        174.79            3.41      1.00x     51.22x
-lookback_nested         200000        140.81        149.08               -      0.94x         -
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+lookback_leaf                 250000        115.55        110.19            3.05      1.05x     36.14x
+lookback_mixed                200000        160.50        156.40            3.00      1.03x     52.10x
+lookback_nested               200000        127.19        132.22               -      0.96x         -
 
 IR-only
-case                     iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
-context_slot            200000             -         44.84               -         -         -
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+context_slot                  200000             -         81.11               -         -         -
 
 Context Update Paths
-case                     iters     set ns/op     alt ns/op   speedup
-base_array              500000        138.35        129.98      1.06x
-mutate_array            500000         65.04         61.44      1.06x
-mutate_prehashed        500000         65.04         68.57      0.95x
-mutate_slot             500000         65.04          9.14      7.11x
+case                           iters     set ns/op     alt ns/op   speedup
+base_array                    500000        219.71        209.73      1.05x
+mutate_array                  500000        132.49        117.39      1.13x
+mutate_prehashed              500000        132.49        110.23      1.20x
+mutate_slot                   500000        132.49         10.10     13.12x
 
 Param Update Paths
-case                     iters     set ns/op     alt ns/op   speedup
-base_param_array        500000         97.45         87.72      1.11x
-mutate_param_array      500000         98.07         88.80      1.10x
-mutate_param_hash       500000         98.07         84.06      1.17x
+case                           iters     set ns/op     alt ns/op   speedup
+base_param_array              500000        154.81        152.06      1.02x
+mutate_param_array            500000        168.48        162.28      1.04x
+mutate_param_hash             500000        168.48        153.69      1.10x
 
 Overlay Paths
 case                           iters           ns/op        output

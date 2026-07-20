@@ -1289,7 +1289,7 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
     g_sink += ast_total + ir_total;
 
     if (isnan(c_ns)) {
-        printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
                c->name,
                c->iterations,
                ast_ns,
@@ -1298,7 +1298,7 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
                ast_ns / ir_ns,
                "-");
     } else {
-        printf("%-18s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
                c->name,
                c->iterations,
                ast_ns,
@@ -1362,7 +1362,7 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
             exit(1);
         }
         g_sink += c_total;
-        printf("%-18s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
                c->name,
                c->iterations,
                ast_ns,
@@ -1371,7 +1371,7 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
                ast_ns / ir_ns,
                ir_ns / c_ns);
     } else {
-        printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
                c->name,
                c->iterations,
                ast_ns,
@@ -1505,7 +1505,7 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
     g_sink += ast_total + ir_total;
 
     if (isnan(c_ns)) {
-        printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
                c->name,
                c->iterations,
                ast_ns,
@@ -1514,7 +1514,7 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
                ast_ns / ir_ns,
                "-");
     } else {
-        printf("%-18s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
                c->name,
                c->iterations,
                ast_ns,
@@ -1570,7 +1570,7 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     churn_ns = (double)(churn_end - churn_start) / (double)iterations;
     g_sink += churn_total;
 
-    printf("%-18s  %10zu  %12s  %12.2f  %14s  %8s  %8s\n",
+    printf("%-24s  %10zu  %12s  %12.2f  %14s  %8s  %8s\n",
            "context_slot", iterations, "-", churn_ns, "-", "-", "-");
 
     cxpr_program_free(program);
@@ -1593,15 +1593,15 @@ static void bench_context_update_paths(cxpr_context* ctx) {
     mutate_prehashed_ns = time_mutate_values_prehashed_only(ctx, iterations);
     mutate_slot_ns = time_mutate_values_slots_only(ctx, iterations);
 
-    printf("%-18s  %10s  %12s  %12s  %8s\n",
+    printf("%-24s  %10s  %12s  %12s  %8s\n",
            "case", "iters", "set ns/op", "alt ns/op", "speedup");
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "base_array", iterations, set_ns, array_ns, set_ns / array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_prehashed", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_slot", iterations, mutate_set_ns, mutate_slot_ns, mutate_set_ns / mutate_slot_ns);
 }
 
@@ -1619,13 +1619,13 @@ static void bench_param_update_paths(cxpr_context* ctx) {
     mutate_array_ns = time_mutate_params_array_only(ctx, iterations);
     mutate_prehashed_ns = time_mutate_params_prehashed_only(ctx, iterations);
 
-    printf("%-18s  %10s  %12s  %12s  %8s\n",
+    printf("%-24s  %10s  %12s  %12s  %8s\n",
            "case", "iters", "set ns/op", "alt ns/op", "speedup");
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "base_param_array", iterations, set_ns, array_ns, set_ns / array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_param_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_param_hash", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
 }
 
@@ -1788,7 +1788,7 @@ static void bench_context_overlay_paths(void) {
 
 static void print_bench_header(const char* title) {
     printf("\n%s\n", title);
-    printf("%-18s  %10s  %12s  %12s  %14s  %8s  %8s\n",
+    printf("%-24s  %10s  %12s  %12s  %14s  %8s  %8s\n",
            "case", "iters", "AST ns/eval", "IR ns/eval", ".cxpr C ns/eval", "AST/IR", "IR/C");
 }
 
