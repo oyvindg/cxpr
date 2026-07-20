@@ -1,5 +1,6 @@
 add_executable(cxpr_bench_ir ir_bench.c)
 target_link_libraries(cxpr_bench_ir PRIVATE cxpr)
+target_include_directories(cxpr_bench_ir PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 add_executable(cxpr_bench_engine engine_bench.c)
 target_link_libraries(cxpr_bench_engine PRIVATE cxpr)
