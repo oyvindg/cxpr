@@ -1,0 +1,7 @@
+model ir_complex_signal
+in { a, b, c, d, e, f, g, h, i, x, y, z, m, n }
+fn sq(x) = x * x
+fn hyp2(x, y) = sqrt(sq(x) + sq(y))
+fn f3(x, y, z) = sqrt(hyp2(x, y) + sq(z))
+fn f5(a, b, c, d) = sqrt((a*a + b*b) + (c*c + d*d))
+out result = ((a + b * c - d / e) > f ? f5(a, b, c, d) : f3(e, f, g)) + (h > i ? sq(x - y) : hyp2(z, m)) - abs(n)

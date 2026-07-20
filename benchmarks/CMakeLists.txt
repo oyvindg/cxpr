@@ -7,7 +7,10 @@ set(CXPR_BENCH_IR_MODELS
     defined_fn
     defined_chain
     deep_defined
-    context_churn)
+    complex_signal
+    context_churn
+    lookback_leaf
+    lookback_mixed)
 set(CXPR_BENCH_IR_MODEL_INCLUDES)
 foreach(model_name IN LISTS CXPR_BENCH_IR_MODELS)
     set(model_source "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/ir_${model_name}.cxpr")
