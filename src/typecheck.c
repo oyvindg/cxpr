@@ -84,8 +84,55 @@ static bool cxpr_typecheck_error(cxpr_error* err,
     return false;
 }
 
+static bool cxpr_typecheck_struct_shape_error(cxpr_error* err, const char* op) {
+    static _Thread_local char message[256];
+
+    if (err) {
+        snprintf(message, sizeof(message),
+                 "type error: '%s' requires matching struct fields",
+                 op ? op : "operator");
+        *err = (cxpr_error){0};
+        err->code = CXPR_ERR_TYPE_MISMATCH;
+        err->message = message;
+    }
+    return false;
+}
+
+static bool cxpr_typecheck_record_has_field(const cxpr_ast* record,
+                                            const char* field_name) {
+    if (!record || record->type != CXPR_NODE_RECORD || !field_name) return false;
+    for (size_t i = 0u; i < record->data.record.field_count; ++i) {
+        if (strcmp(record->data.record.field_names[i], field_name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool cxpr_typecheck_record_shapes_match(const cxpr_ast* left,
+                                               const cxpr_ast* right) {
+    if (!left || !right ||
+        left->type != CXPR_NODE_RECORD ||
+        right->type != CXPR_NODE_RECORD) {
+        return true;
+    }
+    if (left->data.record.field_count != right->data.record.field_count) return false;
+    for (size_t i = 0u; i < left->data.record.field_count; ++i) {
+        if (!cxpr_typecheck_record_has_field(right, left->data.record.field_names[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool cxpr_typecheck_is_numeric(cxpr_typecheck_static_type type) {
     return type == CXPR_STATIC_NUMBER || type == CXPR_STATIC_UNKNOWN;
+}
+
+static bool cxpr_typecheck_is_struct_arithmetic_operand(cxpr_typecheck_static_type type) {
+    return type == CXPR_STATIC_NUMBER ||
+           type == CXPR_STATIC_STRUCT ||
+           type == CXPR_STATIC_UNKNOWN;
 }
 
 static bool cxpr_typecheck_is_bool(cxpr_typecheck_static_type type) {
@@ -127,6 +174,23 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_ast* as
     case CXPR_TOK_MINUS:
     case CXPR_TOK_STAR:
     case CXPR_TOK_SLASH:
+        if (!cxpr_typecheck_is_struct_arithmetic_operand(lt)) {
+            cxpr_typecheck_error(err, cxpr_typecheck_op_name(op),
+                                 "number or struct operands", "left operand", left, lt);
+            return CXPR_STATIC_ERROR;
+        }
+        if (!cxpr_typecheck_is_struct_arithmetic_operand(rt)) {
+            cxpr_typecheck_error(err, cxpr_typecheck_op_name(op),
+                                 "number or struct operands", "right operand", right, rt);
+            return CXPR_STATIC_ERROR;
+        }
+        if (!cxpr_typecheck_record_shapes_match(left, right)) {
+            cxpr_typecheck_struct_shape_error(err, cxpr_typecheck_op_name(op));
+            return CXPR_STATIC_ERROR;
+        }
+        return (lt == CXPR_STATIC_STRUCT || rt == CXPR_STATIC_STRUCT)
+                   ? CXPR_STATIC_STRUCT
+                   : CXPR_STATIC_NUMBER;
     case CXPR_TOK_PERCENT:
     case CXPR_TOK_POWER:
         if (!cxpr_typecheck_is_numeric(lt)) {
@@ -230,6 +294,13 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_ast* ast,
     case CXPR_NODE_BOOL: return CXPR_STATIC_BOOL;
     case CXPR_NODE_STRING: return CXPR_STATIC_STRING;
     case CXPR_NODE_ARRAY: return CXPR_STATIC_ARRAY;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            cxpr_typecheck_static_type field_type =
+                cxpr_typecheck_infer(ast->data.record.field_values[i], reg, err);
+            if (field_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        }
+        return CXPR_STATIC_STRUCT;
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:
     case CXPR_NODE_FIELD_ACCESS:

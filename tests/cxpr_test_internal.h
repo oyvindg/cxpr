@@ -140,6 +140,8 @@ typedef struct {
     cxpr_typed_func_ptr typed_func;
     cxpr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
+    cxpr_ast_func_ptr model_producer;
+    void* model_producer_userdata;
     cxpr_ast_func_ptr ast_func_handler;
     void* ast_func_handler_userdata;
     cxpr_userdata_free_fn ast_func_handler_userdata_free;
@@ -176,6 +178,9 @@ typedef struct {
     size_t defined_param_count;
     char*** defined_param_fields;
     size_t* defined_param_field_counts;
+    char** defined_return_field_names;
+    cxpr_ast** defined_return_field_bodies;
+    size_t defined_return_field_count;
 } cxpr_func_entry;
 
 cxpr_func_entry* cxpr_registry_find(const cxpr_registry* reg, const char* name);

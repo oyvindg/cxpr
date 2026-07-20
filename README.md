@@ -377,7 +377,8 @@ body.position.x + body.velocity.x
 Supported language features:
 
 - Arithmetic: `+`, `-`, `*`, `/`, `%`, `^`, `**` (numbers; `+`/`-`/`*`/`/` also
-  drive the [timestamp/duration algebra](#timestamps-and-durations))
+  drive the [timestamp/duration algebra](#timestamps-and-durations) and
+  [struct arithmetic](#values-structs-and-contexts))
 - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (numbers, and ordering of two
   timestamps or two durations)
 - Set membership: `x in [a, b, c]`, `x not in [a, b, c]`,
@@ -576,6 +577,22 @@ can be defaulted with the built-in `coalesce`/`is_null` helpers
 and compiled paths. Timestamp and duration values reach expressions through
 struct fields and typed callbacks — not bare numeric context variables, whose
 fast-path stays double-only.
+
+Struct arithmetic applies `+`, `-`, `*`, and `/` field by field:
+
+```text
+quote * 2
+2 * quote
+quote + spread
+{ bid = 101.4, ask = 101.6 } - { bid = 0.1, ask = 0.1 }
+```
+
+Struct/struct operations require matching named fields. The result preserves the
+left operand's field order. Struct/scalar operations apply the scalar to every
+field and preserve operand order, so `10 - vector` differs from `vector - 10`.
+Fields may be numbers or other compatible typed values such as durations. Static
+record literals with mismatched fields fail during compile/typecheck; dynamic
+context or producer structs are validated at runtime.
 
 Contexts hold normal variables, `$params`, and named struct values:
 

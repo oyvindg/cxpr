@@ -153,6 +153,14 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             },
                             err);
 
+    case CXPR_NODE_RECORD:
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_CALL_AST,
+                                .ast = ast,
+                            },
+                            err);
+
     case CXPR_NODE_IDENTIFIER:
         {
             const cxpr_ir_subst_frame* owner = NULL;
