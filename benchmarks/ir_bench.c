@@ -15,6 +15,8 @@ typedef struct {
 typedef struct {
     const char* name;
     const char* expr;
+    const char* model_source;
+    const char* model_output;
     size_t iterations;
     const char* field;
     int free_result;
@@ -561,6 +563,12 @@ static double typed_value_to_double(const cxpr_value* value, const char* field) 
     return found ? NAN : NAN;
 }
 
+static cxpr_value bench_pickz_fn(const cxpr_value* args, size_t argc, void* userdata) {
+    (void)userdata;
+    if (argc != 1u) return cxpr_num(NAN);
+    return cxpr_num(typed_value_to_double(&args[0], "z"));
+}
+
 static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
                              size_t iterations, const char* field, int free_result) {
     size_t i;
@@ -594,6 +602,32 @@ static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, cons
         }
         total += typed_value_to_double(&value, field);
         if (free_result) cxpr_value_free(&value);
+    }
+
+    return total;
+}
+
+static double time_model_typed(const cxpr_model_program* program, cxpr_context* ctx,
+                               const cxpr_registry* reg, size_t iterations,
+                               const char* output, const char* field) {
+    size_t i;
+    double total = 0.0;
+    cxpr_error err = {0};
+
+    for (i = 0; i < iterations; ++i) {
+        bool found = false;
+        cxpr_value value;
+        if (!cxpr_eval_model_program(program, ctx, reg, &err)) {
+            fprintf(stderr, ".cxpr benchmark eval failed at iter %zu: %s\n", i, err.message);
+            exit(1);
+        }
+        value = cxpr_context_get_typed(ctx, output, &found);
+        if (!found) {
+            fprintf(stderr, ".cxpr benchmark output '%s' missing at iter %zu\n", output, i);
+            exit(1);
+        }
+        total += typed_value_to_double(&value, field);
+        cxpr_value_free(&value);
     }
 
     return total;
@@ -682,11 +716,12 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
     g_sink += ast_total + ir_total;
 
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx\n",
            c->name,
            c->iterations,
            ast_ns,
            ir_ns,
+           "-",
            ast_ns / ir_ns);
 
     cxpr_program_free(program);
@@ -695,11 +730,13 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
 
 static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                             const typed_bench_case* c) {
-    long long ast_start, ast_end, ir_start, ir_end;
-    double ast_total, ir_total, ast_ns, ir_ns;
+    long long ast_start, ast_end, ir_start, ir_end, model_start, model_end;
+    double ast_total, ir_total, model_total, ast_ns, ir_ns, model_ns;
     cxpr_error err = {0};
     cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
     cxpr_program* program;
+    cxpr_model* model = NULL;
+    cxpr_model_program* model_program = NULL;
 
     if (!ast) {
         fprintf(stderr, "Parse failed for '%s': %s\n", c->name, err.message);
@@ -711,6 +748,24 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
         cxpr_ast_free(ast);
         exit(1);
+    }
+    if (c->model_source) {
+        err = (cxpr_error){0};
+        model = cxpr_parse_model_source(c->model_source, &err);
+        if (!model) {
+            fprintf(stderr, ".cxpr parse failed for '%s': %s\n", c->name, err.message);
+            cxpr_program_free(program);
+            cxpr_ast_free(ast);
+            exit(1);
+        }
+        model_program = cxpr_compile_model(model, reg, &err);
+        if (!model_program) {
+            fprintf(stderr, ".cxpr compile failed for '%s': %s\n", c->name, err.message);
+            cxpr_model_free(model);
+            cxpr_program_free(program);
+            cxpr_ast_free(ast);
+            exit(1);
+        }
     }
 
     set_base_values(ctx);
@@ -730,18 +785,55 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
                 c->name, ast_total, ir_total);
         exit(1);
     }
+    model_ns = NAN;
+    if (model_program) {
+        bool input_found = false;
+        cxpr_value input_value;
+        set_base_values(ctx);
+        set_base_struct_values(ctx);
+        input_value = cxpr_context_get_typed(ctx, "vector", &input_found);
+        cxpr_value_free(&input_value);
+        if (!input_found) {
+            fprintf(stderr, ".cxpr benchmark input 'vector' missing before '%s'\n", c->name);
+            exit(1);
+        }
+        model_start = now_ns();
+        model_total = time_model_typed(model_program, ctx, reg, c->iterations,
+                                       c->model_output, c->field);
+        model_end = now_ns();
+        if (fabs(ast_total - model_total) > 1e-9 * (1.0 + fabs(ast_total))) {
+            fprintf(stderr, "Typed AST/.cxpr mismatch for '%s': %.17g vs %.17g\n",
+                    c->name, ast_total, model_total);
+            exit(1);
+        }
+        model_ns = (double)(model_end - model_start) / (double)c->iterations;
+        g_sink += model_total;
+    }
 
     ast_ns = (double)(ast_end - ast_start) / (double)c->iterations;
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
     g_sink += ast_total + ir_total;
 
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
-           c->name,
-           c->iterations,
-           ast_ns,
-           ir_ns,
-           ast_ns / ir_ns);
+    if (isnan(model_ns)) {
+        printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               "-",
+               ast_ns / ir_ns);
+    } else {
+        printf("%-18s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               model_ns,
+               ast_ns / ir_ns);
+    }
 
+    cxpr_model_program_free(model_program);
+    cxpr_model_free(model);
     cxpr_program_free(program);
     cxpr_ast_free(ast);
 }
@@ -856,11 +948,12 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
     g_sink += ast_total + ir_total;
 
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-18s  %10zu  %12.2f  %12.2f  %14s  %8.2fx\n",
            c->name,
            c->iterations,
            ast_ns,
            ir_ns,
+           "-",
            ast_ns / ir_ns);
 
     cxpr_program_free(program);
@@ -909,8 +1002,8 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     churn_ns = (double)(churn_end - churn_start) / (double)iterations;
     g_sink += churn_total;
 
-    printf("%-18s  %10zu  %12s  %12.2f  %8s\n",
-           "context_slot", iterations, "-", churn_ns, "-");
+    printf("%-18s  %10zu  %12s  %12.2f  %14s  %8s\n",
+           "context_slot", iterations, "-", churn_ns, "-", "-");
 
     cxpr_program_free(program);
     cxpr_ast_free(ast);
@@ -1127,8 +1220,8 @@ static void bench_context_overlay_paths(void) {
 
 static void print_bench_header(const char* title) {
     printf("\n%s\n", title);
-    printf("%-18s  %10s  %12s  %12s  %8s\n",
-           "case", "iters", "AST ns/eval", "IR ns/eval", "speedup");
+    printf("%-18s  %10s  %12s  %12s  %14s  %8s\n",
+           "case", "iters", "AST ns/eval", "IR ns/eval", ".cxpr ns/eval", "speedup");
 }
 
 int main(void) {
@@ -1148,12 +1241,20 @@ int main(void) {
         { "ast_handler_string", "bench_tf(a, \"1h\")", 200000, 0 },
     };
     const typed_bench_case typed_cases[] = {
-        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL, 0 },
-        { "producer_struct", "macd(12, 26, 9)", 150000, "histogram", 0 },
-        { "struct_scalar_mul", "vector * 2", 120000, "z", 1 },
-        { "scalar_struct_mul", "2 * vector", 120000, "z", 1 },
-        { "struct_struct_mul", "vector * weights", 100000, "z", 1 },
-        { "struct_struct_add", "vector + weights", 100000, "z", 1 },
+        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", NULL, NULL, 150000, NULL, 0 },
+        { "producer_struct", "macd(12, 26, 9)", NULL, NULL, 150000, "histogram", 0 },
+        { "struct_scalar_mul", "vector * 2",
+          "model struct_scalar_mul\nin { vector }\nresult = bench_pickz(vector * 2)\nout result\n",
+          "result", 120000, "z", 1 },
+        { "scalar_struct_mul", "2 * vector",
+          "model scalar_struct_mul\nin { vector }\nresult = bench_pickz(2 * vector)\nout result\n",
+          "result", 120000, "z", 1 },
+        { "struct_struct_mul", "vector * weights",
+          "model struct_struct_mul\nin { vector, weights }\nresult = bench_pickz(vector * weights)\nout result\n",
+          "result", 100000, "z", 1 },
+        { "struct_struct_add", "vector + weights",
+          "model struct_struct_add\nin { vector, weights }\nresult = bench_pickz(vector + weights)\nout result\n",
+          "result", 100000, "z", 1 },
     };
     const lookback_bench_case lookback_cases[] = {
         { "lookback_leaf", "close - close[3]", 250000 },
@@ -1177,6 +1278,7 @@ int main(void) {
     cxpr_registry_add(reg, "native_f5", native_f5_adapter, 4, 4, NULL, NULL);
     cxpr_registry_add_value(reg, "bench_tf", bench_tf_value_fn, 1, 1, NULL, NULL);
     cxpr_registry_add_ast_handler(reg, "bench_tf", bench_tf_ast_handler_fn, 1, 2, NULL, NULL);
+    cxpr_registry_add_value(reg, "bench_pickz", bench_pickz_fn, 1, 1, NULL, NULL);
     {
         const char* macd_fields[] = {"line", "signal", "histogram"};
         cxpr_registry_add_struct(reg, "macd", bench_macd, 3, 3, macd_fields, 3, NULL, NULL);

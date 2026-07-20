@@ -1406,33 +1406,33 @@ Example output from `./build/benchmarks/cxpr_bench_ir`:
 cxpr AST vs IR benchmark
 
 Scalar
-case                     iters   AST ns/eval    IR ns/eval   speedup
-simple_arith            500000         23.85         23.81      1.00x
-nested_expr             400000         42.72         36.13      1.18x
-function_call           250000         42.32         38.96      1.09x
-defined_fn              200000         36.68         30.77      1.19x
-native_fn               200000         33.26         28.52      1.17x
-defined_chain           120000         46.99         43.14      1.09x
-native_chain            120000         35.91         33.83      1.06x
-mixed_chain             120000         41.06         38.98      1.05x
-deep_defined             80000         46.17         42.77      1.08x
-deep_native              80000         92.54         34.20      2.71x
-context_churn           200000         97.71         98.00      1.00x
-ast_handler_num         200000        198.00        199.99      0.99x
-ast_handler_string      200000        212.47        199.79      1.06x
+case                     iters   AST ns/eval    IR ns/eval   .cxpr ns/eval   speedup
+simple_arith            500000         30.41         26.58               -      1.14x
+nested_expr             400000         36.68         31.23               -      1.17x
+function_call           250000         42.53         40.86               -      1.04x
+defined_fn              200000         30.74         25.93               -      1.19x
+native_fn               200000         88.89         87.93               -      1.01x
+defined_chain           120000         45.43         42.32               -      1.07x
+native_chain            120000         60.87         56.19               -      1.08x
+mixed_chain             120000         62.68         56.27               -      1.11x
+deep_defined             80000         40.81         39.15               -      1.04x
+deep_native              80000         93.59         51.40               -      1.82x
+context_churn           200000        134.07        128.93               -      1.04x
+ast_handler_num         200000        275.70        456.43               -      0.60x
+ast_handler_string      200000        297.83        499.33               -      0.60x
 
 Typed Struct
-case                     iters   AST ns/eval    IR ns/eval   speedup
-producer_field          150000        152.34        136.40      1.12x
-producer_struct         150000        225.70         64.22      3.51x
-struct_scalar_mul       120000        350.58        419.18      0.84x
-scalar_struct_mul       120000        373.85        422.37      0.89x
-struct_struct_mul       100000        533.60        608.69      0.88x
-struct_struct_add       100000        544.41        603.71      0.90x
+case                     iters   AST ns/eval    IR ns/eval   .cxpr ns/eval   speedup
+producer_field          150000        173.53        112.90               -      1.54x
+producer_struct         150000        528.81         70.59               -      7.49x
+struct_scalar_mul       120000        353.32        430.12         1279.52      0.82x
+scalar_struct_mul       120000        472.65        505.09         1350.85      0.94x
+struct_struct_mul       100000        596.99        715.50         1454.93      0.83x
+struct_struct_add       100000        559.52        653.29         1448.56      0.86x
 
 IR-only
-case                     iters   AST ns/eval    IR ns/eval   speedup
-context_slot            200000             -         40.12         -
+case                     iters   AST ns/eval    IR ns/eval   .cxpr ns/eval   speedup
+context_slot            200000             -         45.72               -         -
 
 Context Update Paths
 case                     iters     set ns/op     alt ns/op   speedup
@@ -1458,5 +1458,6 @@ sink=523307643.882822
 ```
 
 These numbers are machine-dependent, but they show the expected shape: IR evaluation
-is usually faster than AST evaluation, slot/prehashed update paths help the hottest loops,
-and overlay allocation/release is cheap when the overlay has no local state to destroy.
+is usually faster than AST evaluation, `.cxpr` model programs are compiled before timing,
+slot/prehashed update paths help the hottest loops, and overlay allocation/release is
+cheap when the overlay has no local state to destroy.
