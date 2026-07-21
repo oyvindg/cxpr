@@ -189,8 +189,16 @@ int cxpr_source_plan_render_ast_canonical(const cxpr_ast* ast, char** out_text) 
             if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_ternary_false_branch(ast))) return 0;
             return cxpr_source_canonical_text_append(out_text, ")");
         case CXPR_NODE_FIELD_ACCESS: {
+            const cxpr_ast* base = cxpr_ast_field_base(ast);
             const char* obj = cxpr_ast_field_object(ast);
             const char* fld = cxpr_ast_field_name(ast);
+            if (base) {
+                if (!fld) return 0;
+                if (!cxpr_source_canonical_text_append(out_text, "(")) return 0;
+                if (!cxpr_source_canonical_rendered_append(out_text, base)) return 0;
+                if (!cxpr_source_canonical_text_append(out_text, ").")) return 0;
+                return cxpr_source_canonical_text_append(out_text, fld);
+            }
             if (!obj || !fld) return 0;
             if (!cxpr_source_canonical_text_append(out_text, obj) ||
                 !cxpr_source_canonical_text_append(out_text, ".") ||

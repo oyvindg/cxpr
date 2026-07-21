@@ -342,6 +342,12 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
         return strcmp(left->data.variable.name, right->data.variable.name) == 0;
 
     case CXPR_NODE_FIELD_ACCESS:
+        if (left->data.field_access.base || right->data.field_access.base) {
+            return cxpr_ir_ast_equal(left->data.field_access.base,
+                                     right->data.field_access.base) &&
+                   left->data.field_access.field && right->data.field_access.field &&
+                   strcmp(left->data.field_access.field, right->data.field_access.field) == 0;
+        }
         return strcmp(left->data.field_access.full_key, right->data.field_access.full_key) == 0;
 
     case CXPR_NODE_CHAIN_ACCESS:

@@ -345,25 +345,18 @@ static void test_dotted_function_call(void) {
 static void test_grouped_function_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_ast* ast;
-    cxpr_producer_field_ref refs[4] = {0};
 
-    /* (macd(12, 26, 9)).signal must produce the same node as macd(12, 26, 9).signal */
     ast = parse_ok(p, "(macd(12, 26, 9)).signal");
-    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
-    assert(strcmp(cxpr_ast_producer_name(ast), "macd") == 0);
-    assert(strcmp(cxpr_ast_producer_field(ast), "signal") == 0);
-    assert(cxpr_ast_producer_argc(ast) == 3);
-    assert(cxpr_ast_producer_fields_used(ast, refs, 4) == 1);
-    assert(strcmp(refs[0].producer_name, "macd") == 0);
-    assert(strcmp(refs[0].field_name, "signal") == 0);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS);
+    assert(cxpr_ast_field_base(ast) != NULL);
+    assert(cxpr_ast_type(cxpr_ast_field_base(ast)) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_ast_field_name(ast), "signal") == 0);
     cxpr_ast_free(ast);
 
-    /* (adx(14)).adx — single-arg form */
     ast = parse_ok(p, "(adx(14)).adx");
-    assert(cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS);
-    assert(strcmp(cxpr_ast_producer_name(ast), "adx") == 0);
-    assert(strcmp(cxpr_ast_producer_field(ast), "adx") == 0);
-    assert(cxpr_ast_producer_argc(ast) == 1);
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS);
+    assert(cxpr_ast_field_base(ast) != NULL);
+    assert(strcmp(cxpr_ast_field_name(ast), "adx") == 0);
     cxpr_ast_free(ast);
 
     cxpr_parser_free(p);
@@ -377,7 +370,7 @@ static void test_grouped_function_field_access_in_expr(void) {
     /* (adx(14)).adx > 25 — used in a larger expression */
     ast = parse_ok(p, "(adx(14)).adx > 25");
     assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
-    assert(cxpr_ast_type(cxpr_ast_left(ast)) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(cxpr_ast_type(cxpr_ast_left(ast)) == CXPR_NODE_FIELD_ACCESS);
     assert(cxpr_ast_type(cxpr_ast_right(ast)) == CXPR_NODE_NUMBER);
     cxpr_ast_free(ast);
 
@@ -385,21 +378,31 @@ static void test_grouped_function_field_access_in_expr(void) {
     ast = parse_ok(p, "score((adx(14)).adx, 18, 35)");
     assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(cxpr_ast_function_argc(ast) == 3);
-    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 0)) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(cxpr_ast_type(cxpr_ast_function_arg(ast, 0)) == CXPR_NODE_FIELD_ACCESS);
     cxpr_ast_free(ast);
 
     cxpr_parser_free(p);
     printf("  ✓ test_grouped_function_field_access_in_expr\n");
 }
 
-static void test_grouped_field_access_error(void) {
+static void test_grouped_expression_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
+    cxpr_ast* ast;
 
-    /* (a + b).field — non-function-call inside parens must fail */
-    parse_fail(p, "(a + b).field");
+    ast = parse_ok(p, "({fast: 12, slow: 26}).fast");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS);
+    assert(cxpr_ast_type(cxpr_ast_field_base(ast)) == CXPR_NODE_RECORD);
+    assert(strcmp(cxpr_ast_field_name(ast), "fast") == 0);
+    cxpr_ast_free(ast);
+
+    ast = parse_ok(p, "(trend_up ? {risk: 1} : {risk: 2}).risk");
+    assert(cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS);
+    assert(cxpr_ast_type(cxpr_ast_field_base(ast)) == CXPR_NODE_TERNARY);
+    assert(strcmp(cxpr_ast_field_name(ast), "risk") == 0);
+    cxpr_ast_free(ast);
 
     cxpr_parser_free(p);
-    printf("  ✓ test_grouped_field_access_error\n");
+    printf("  ✓ test_grouped_expression_field_access\n");
 }
 
 static void test_function_named_args(void) {
@@ -837,7 +840,7 @@ int main(void) {
     test_dotted_function_call();
     test_grouped_function_field_access();
     test_grouped_function_field_access_in_expr();
-    test_grouped_field_access_error();
+    test_grouped_expression_field_access();
     test_function_named_args();
     test_producer_named_args();
 

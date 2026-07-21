@@ -49,6 +49,13 @@ static double cxpr_max_n(const double* args, size_t argc) {
     return out;
 }
 
+static double cxpr_mean_n(const double* args, size_t argc) {
+    double sum = 0.0;
+    if (!args || argc == 0) return 0.0;
+    for (size_t i = 0; i < argc; ++i) sum += args[i];
+    return sum / (double)argc;
+}
+
 static double cxpr_lerp(double a, double b, double t) {
     return a + (b - a) * t;
 }
@@ -421,6 +428,11 @@ double cxpr_max(const double* args, size_t argc, void* userdata) {
     return cxpr_max_n(args, argc);
 }
 
+double cxpr_mean(const double* args, size_t argc, void* userdata) {
+    (void)userdata;
+    return cxpr_mean_n(args, argc);
+}
+
 typedef enum {
     CXPR_DEFAULT_VARIADIC,
     CXPR_DEFAULT_NULLARY,
@@ -446,6 +458,7 @@ typedef struct {
 static const cxpr_default_entry cxpr_default_entries[] = {
     {"min", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_min}, 1, 8},
     {"max", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_max}, 1, 8},
+    {"mean", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_mean}, 1, 8},
     {"clamp", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_clamp}, 3, 3},
     {"sign", CXPR_DEFAULT_UNARY, {.unary = cxpr_sign}, 1, 1},
     {"add", CXPR_DEFAULT_BINARY, {.binary = cxpr_add}, 2, 2},
@@ -552,6 +565,7 @@ void cxpr_register_math(cxpr_registry* reg) {
 
     cxpr_registry_add(reg, "min", cxpr_min, 1, 8, NULL, NULL);
     cxpr_registry_add(reg, "max", cxpr_max, 1, 8, NULL, NULL);
+    cxpr_registry_add(reg, "mean", cxpr_mean, 1, 8, NULL, NULL);
     cxpr_registry_add_ternary(reg, "clamp", cxpr_clamp);
     cxpr_registry_add_unary(reg, "sign", cxpr_sign);
     cxpr_registry_add_binary(reg, "add", cxpr_add);

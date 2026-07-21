@@ -251,6 +251,14 @@ static cxpr_ast* cxpr_alias_expand_field(cxpr_alias_expand_ctx* ctx, const cxpr_
     cxpr_ast* expanded;
     cxpr_ast* out;
 
+    if (ast->data.field_access.base) {
+        expanded = cxpr_alias_expand_ast(ctx, ast->data.field_access.base);
+        if (!expanded) return NULL;
+        out = cxpr_ast_new_field_access_expr(expanded, ast->data.field_access.field);
+        if (!out) cxpr_ast_free(expanded);
+        return out;
+    }
+
     full_key = cxpr_alias_join2(ast->data.field_access.object, ast->data.field_access.field);
     if (!full_key) {
         cxpr_alias_set_error(ctx, "Out of memory", 0u);

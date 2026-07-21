@@ -1,0 +1,91 @@
+# Parent scene fixture for independent projectile state.
+# The two projectiles start with identical physical args, but have different ids and hit flags.
+
+model twin_projectiles_same_origin {
+    kind = "game_scene"
+}
+
+use projectile_entity
+
+in {
+    left_hit,
+    right_hit,
+    reset
+}
+
+$origin_x = 4
+$origin_y = 9
+$velocity_x = 1.5
+$velocity_y = 0
+
+left_active = projectile_entity(
+    projectile_id=101,
+    origin_x=$origin_x,
+    origin_y=$origin_y,
+    velocity_x=$velocity_x,
+    velocity_y=$velocity_y,
+    hit=left_hit,
+    despawn=0,
+    reset=reset).active
+
+right_active = projectile_entity(
+    projectile_id=102,
+    origin_x=$origin_x,
+    origin_y=$origin_y,
+    velocity_x=$velocity_x,
+    velocity_y=$velocity_y,
+    hit=right_hit,
+    despawn=0,
+    reset=reset).active
+
+left_age = projectile_entity(
+    projectile_id=101,
+    origin_x=$origin_x,
+    origin_y=$origin_y,
+    velocity_x=$velocity_x,
+    velocity_y=$velocity_y,
+    hit=left_hit,
+    despawn=0,
+    reset=reset).age
+
+right_age = projectile_entity(
+    projectile_id=102,
+    origin_x=$origin_x,
+    origin_y=$origin_y,
+    velocity_x=$velocity_x,
+    velocity_y=$velocity_y,
+    hit=right_hit,
+    despawn=0,
+    reset=reset).age
+
+left_damage = projectile_entity(
+    projectile_id=101,
+    origin_x=$origin_x,
+    origin_y=$origin_y,
+    velocity_x=$velocity_x,
+    velocity_y=$velocity_y,
+    hit=left_hit,
+    despawn=0,
+    reset=reset).impact_damage
+
+right_damage = projectile_entity(
+    projectile_id=102,
+    origin_x=$origin_x,
+    origin_y=$origin_y,
+    velocity_x=$velocity_x,
+    velocity_y=$velocity_y,
+    hit=right_hit,
+    despawn=0,
+    reset=reset).impact_damage
+
+same_origin_different_state = left_active != right_active
+
+out {
+    left_active,
+    right_active,
+    left_age,
+    right_age,
+    left_damage,
+    right_damage,
+    same_origin_different_state
+}

@@ -308,6 +308,12 @@ static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_
             return cxpr_printer_append_char(p, '$') &&
                    cxpr_printer_append(p, ast->data.variable.name);
         case CXPR_NODE_FIELD_ACCESS:
+            if (ast->data.field_access.base) {
+                return cxpr_printer_append_char(p, '(') &&
+                       cxpr_print_node(p, ast->data.field_access.base, 0) &&
+                       cxpr_printer_append(p, ").") &&
+                       cxpr_printer_append(p, ast->data.field_access.field);
+            }
             return cxpr_printer_append(p, ast->data.field_access.object) &&
                    cxpr_printer_append_char(p, '.') &&
                    cxpr_printer_append(p, ast->data.field_access.field);

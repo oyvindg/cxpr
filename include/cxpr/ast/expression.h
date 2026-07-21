@@ -74,6 +74,13 @@ cxpr_ast* cxpr_ast_new_variable(const char* name);
  */
 cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field);
 /**
+ * @brief Construct a field-access node over an arbitrary base expression.
+ * @param base Base expression that must evaluate to a struct.
+ * @param field Field name to access.
+ * @return Newly allocated AST node taking ownership of `base`, or NULL on allocation failure.
+ */
+cxpr_ast* cxpr_ast_new_field_access_expr(cxpr_ast* base, const char* field);
+/**
  * @brief Construct a producer-field access node.
  * @param name Producer name.
  * @param args Producer argument array.
@@ -230,6 +237,12 @@ const char* cxpr_ast_variable_name(const cxpr_ast* ast);
  * @return Borrowed object or prefix name.
  */
 const char* cxpr_ast_field_object(const cxpr_ast* ast);
+/**
+ * @brief Return the base expression for expression field-access nodes.
+ * @param ast Field-access node to inspect.
+ * @return Borrowed base expression, or NULL for legacy name-based field access.
+ */
+const cxpr_ast* cxpr_ast_field_base(const cxpr_ast* ast);
 /**
  * @brief Return the leaf field name for a field-access node.
  * @param ast Field-access node to inspect.

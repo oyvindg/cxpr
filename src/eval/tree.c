@@ -43,9 +43,53 @@ static const char* cxpr_eval_unknown_field_message(const char* name) {
     return message;
 }
 
+static cxpr_value cxpr_eval_struct_field_value(const cxpr_struct_value* record,
+                                               const char* field,
+                                               cxpr_error* err) {
+    if (!record || !field) {
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "Field access requires a struct base");
+    }
+    for (size_t i = 0u; i < record->field_count; ++i) {
+        if (record->field_names[i] && strcmp(record->field_names[i], field) == 0) {
+            return cxpr_value_clone(&record->field_values[i]);
+        }
+    }
+    return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                           cxpr_eval_unknown_field_message(field));
+}
+
 cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, cxpr_error* err) {
     bool found = false;
+    if (ast->data.field_access.base) {
+        const cxpr_ast* base_ast = ast->data.field_access.base;
+        if (base_ast->type == CXPR_NODE_FUNCTION_CALL && reg) {
+            cxpr_func_entry* entry =
+                cxpr_registry_find(reg, base_ast->data.function_call.name);
+            if (entry &&
+                (entry->struct_producer ||
+                 entry->model_producer ||
+                 entry->defined_return_field_count > 0u)) {
+                cxpr_ast producer_ast = {0};
+                producer_ast.type = CXPR_NODE_PRODUCER_ACCESS;
+                producer_ast.data.producer_access.name = base_ast->data.function_call.name;
+                producer_ast.data.producer_access.args = base_ast->data.function_call.args;
+                producer_ast.data.producer_access.arg_names = base_ast->data.function_call.arg_names;
+                producer_ast.data.producer_access.argc = base_ast->data.function_call.argc;
+                producer_ast.data.producer_access.field = ast->data.field_access.field;
+                return cxpr_eval_cached_producer_access(&producer_ast, ctx, reg, err);
+            }
+        }
+        cxpr_value base = cxpr_eval_node(ast->data.field_access.base, ctx, reg, err);
+        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+        if (base.type != CXPR_VALUE_STRUCT) {
+            return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                   "Field access requires a struct base");
+        }
+        return cxpr_eval_struct_field_value(base.s, ast->data.field_access.field, err);
+    }
+
     if (ctx && ctx->expression_scope) {
         cxpr_value scoped = cxpr_expression_lookup_typed_result(
             ctx->expression_scope,
@@ -57,7 +101,13 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
             ctx->expression_scope,
             ast->data.field_access.object,
             &found);
-        if (found && scoped.type != CXPR_VALUE_STRUCT) {
+        if (found) {
+            if (scoped.type == CXPR_VALUE_STRUCT) {
+                return cxpr_eval_struct_field_value(
+                    scoped.s,
+                    ast->data.field_access.field,
+                    err);
+            }
             return cxpr_eval_error(
                 err,
                 CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -454,24 +504,38 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
 
     case CXPR_NODE_RECORD: {
         cxpr_value* values = NULL;
+        cxpr_context* record_ctx = NULL;
         cxpr_struct_value* record;
         if (ast->data.record.field_count > 0u) {
             values = (cxpr_value*)calloc(ast->data.record.field_count, sizeof(cxpr_value));
             if (!values) {
                 return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
             }
+            record_ctx = cxpr_context_overlay_new(ctx);
+            if (!record_ctx) {
+                free(values);
+                return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            }
             for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
-                values[i] = cxpr_eval_node(ast->data.record.field_values[i], ctx, reg, err);
+                values[i] = cxpr_eval_node(ast->data.record.field_values[i],
+                                           record_ctx,
+                                           reg,
+                                           err);
                 if (err && err->code != CXPR_OK) {
                     for (size_t j = 0u; j <= i; ++j) cxpr_value_free(&values[j]);
+                    cxpr_context_free(record_ctx);
                     free(values);
                     return cxpr_num(NAN);
                 }
+                cxpr_context_set_value(record_ctx,
+                                       ast->data.record.field_names[i],
+                                       &values[i]);
             }
         }
         record = cxpr_struct_value_new((const char* const*)ast->data.record.field_names,
                                        values,
                                        ast->data.record.field_count);
+        if (record_ctx) cxpr_context_free(record_ctx);
         if (values) {
             for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
                 cxpr_value_free(&values[i]);

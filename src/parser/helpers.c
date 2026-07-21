@@ -52,6 +52,11 @@ cxpr_ast* cxpr_parser_clone_ast(const cxpr_ast* ast) {
     case CXPR_NODE_VARIABLE:
         return cxpr_ast_new_variable(ast->data.variable.name);
     case CXPR_NODE_FIELD_ACCESS:
+        if (ast->data.field_access.base) {
+            cxpr_ast* base = cxpr_parser_clone_ast(ast->data.field_access.base);
+            if (!base) return NULL;
+            return cxpr_ast_new_field_access_expr(base, ast->data.field_access.field);
+        }
         return cxpr_ast_new_field_access(ast->data.field_access.object, ast->data.field_access.field);
     case CXPR_NODE_CHAIN_ACCESS:
         return cxpr_ast_new_chain_access((const char* const*)ast->data.chain_access.path,

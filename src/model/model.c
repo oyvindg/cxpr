@@ -47,12 +47,12 @@ static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, cons
     return false;
 }
 
-static cxpr_ir_view_result_kind cxpr_model_infer_result_kind(const cxpr_ast* ast,
+static cxpr_model_result_kind cxpr_model_infer_result_kind(const cxpr_ast* ast,
                                                              const cxpr_registry* reg) {
     switch (cxpr_ir_infer_fast_result_kind(ast, reg, 0u)) {
-    case CXPR_IR_RESULT_DOUBLE: return CXPR_IR_VIEW_RESULT_NUMBER;
-    case CXPR_IR_RESULT_BOOL: return CXPR_IR_VIEW_RESULT_BOOL;
-    default: return CXPR_IR_VIEW_RESULT_UNKNOWN;
+    case CXPR_IR_RESULT_DOUBLE: return CXPR_MODEL_RESULT_NUMBER;
+    case CXPR_IR_RESULT_BOOL: return CXPR_MODEL_RESULT_BOOL;
+    default: return CXPR_MODEL_RESULT_UNKNOWN;
     }
 }
 
@@ -82,6 +82,10 @@ static const char* cxpr_model_import_leaf_name(const char* import_name);
 static const char* cxpr_model_import_namespace_name(const cxpr_model* model,
                                                     const char* import_name);
 static char* cxpr_model_parse_source_arg_metadata(const cxpr_model* model);
+static bool cxpr_model_parse_lifetime_metadata(const cxpr_model* model,
+                                               cxpr_model_lifetime* out_lifetime,
+                                               bool* out_saw_type,
+                                               cxpr_error* err);
 
 static const cxpr_model_program* cxpr_model_import_program_for_name(
     const cxpr_model* model,
@@ -364,16 +368,68 @@ static char* cxpr_model_dup_trimmed_metadata_value(const char* value) {
     return out;
 }
 
-static char* cxpr_model_parse_source_arg_metadata(const cxpr_model* model) {
+static const char* cxpr_model_model_field_value(const cxpr_model* model,
+                                                const char* key) {
+    const cxpr_model_host_block* block;
     if (!model) return NULL;
     for (size_t i = 0u; i < model->metadata_count; ++i) {
-        const char* value;
         if (model->metadatas[i].target_kind != CXPR_MODEL_METADATA_TARGET_MODEL) continue;
-        if (!cxpr_model_names_match(model->metadatas[i].name, "model")) continue;
-        value = cxpr_model_metadata_field_value(model, i, "source_arg");
-        if (value) return cxpr_model_dup_trimmed_metadata_value(value);
+        {
+            const char* value = cxpr_model_metadata_field_value(model, i, key);
+            if (value) return value;
+        }
+    }
+    block = cxpr_model_host_block_by_kind(model, "model");
+    return block ? cxpr_host_block_field_value_by_key(block, key) : NULL;
+}
+
+static char* cxpr_model_parse_source_arg_metadata(const cxpr_model* model) {
+    const char* value = cxpr_model_model_field_value(model, "source_arg");
+    if (value) {
+        return cxpr_model_dup_trimmed_metadata_value(value);
     }
     return NULL;
+}
+
+static bool cxpr_model_parse_lifetime_metadata(const cxpr_model* model,
+                                               cxpr_model_lifetime* out_lifetime,
+                                               bool* out_saw_type,
+                                               cxpr_error* err) {
+    cxpr_model_lifetime lifetime = CXPR_MODEL_LIFETIME_SINGLETON;
+    bool saw_type = false;
+    if (!model) {
+        if (out_lifetime) *out_lifetime = lifetime;
+        if (out_saw_type) *out_saw_type = false;
+        return true;
+    }
+    {
+        const char* value;
+        char* type;
+        value = cxpr_model_model_field_value(model, "lifecycle");
+        if (!value) value = cxpr_model_model_field_value(model, "type");
+        if (!value) goto done;
+        type = cxpr_model_dup_trimmed_metadata_value(value);
+        if (!type) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        saw_type = true;
+        if (cxpr_model_names_match(type, "singleton")) {
+            lifetime = CXPR_MODEL_LIFETIME_SINGLETON;
+        } else if (cxpr_model_names_match(type, "scoped")) {
+            lifetime = CXPR_MODEL_LIFETIME_SCOPED;
+        } else if (cxpr_model_names_match(type, "transient")) {
+            lifetime = CXPR_MODEL_LIFETIME_TRANSIENT;
+        } else {
+            free(type);
+            goto done;
+        }
+        free(type);
+    }
+done:
+    if (out_lifetime) *out_lifetime = lifetime;
+    if (out_saw_type) *out_saw_type = saw_type;
+    return true;
 }
 
 static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
@@ -437,6 +493,15 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_ast* ast,
                     }
                 }
                 for (size_t i = 0u; i < child->input_count; ++i) {
+                    bool call_supplies_input = false;
+                    for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
+                        const char* arg_name = cxpr_ast_producer_arg_name(ast, arg_i);
+                        if (arg_name && cxpr_model_names_match(arg_name, child->inputs[i])) {
+                            call_supplies_input = true;
+                            break;
+                        }
+                    }
+                    if (call_supplies_input) continue;
                     if (call_supplies_source &&
                         child->source_arg &&
                         cxpr_model_names_match(child->inputs[i], child->source_arg)) {
@@ -513,7 +578,13 @@ static bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
     for (size_t i = 0u; i < model->binding_count; ++i) {
         size_t nrefs;
         if (!cxpr_model_infer_child_inputs_from_ast(
-                model->bindings[i].expr, model, imports, import_count, &inputs, &input_count, err)) {
+                model->bindings[i].expr,
+                model,
+                imports,
+                import_count,
+                &inputs,
+                &input_count,
+                err)) {
             goto fail;
         }
         if (!infer_direct_refs) continue;
@@ -712,7 +783,7 @@ static void cxpr_model_slot_ref_free(cxpr_model_slot_ref* ref) {
     ref->name = NULL;
     ref->hash = 0u;
     ref->slot = 0u;
-    ref->result_kind = CXPR_IR_VIEW_RESULT_UNKNOWN;
+    ref->result_kind = CXPR_MODEL_RESULT_UNKNOWN;
 }
 
 void cxpr_model_fused_program_clear(cxpr_model_program* program) {
@@ -981,22 +1052,144 @@ cleanup:
     return ok;
 }
 
-static cxpr_ir_view_result_kind cxpr_model_state_default_result_kind(
+static cxpr_model_result_kind cxpr_model_state_default_result_kind(
     const cxpr_model_program* program,
     const char* name) {
-    if (!program || !name) return CXPR_IR_VIEW_RESULT_UNKNOWN;
+    if (!program || !name) return CXPR_MODEL_RESULT_UNKNOWN;
     for (size_t i = 0; i < program->state_default_count; ++i) {
         if (cxpr_model_names_match(program->state_defaults[i].name, name)) {
             return program->state_defaults[i].result_kind;
         }
     }
-    return CXPR_IR_VIEW_RESULT_UNKNOWN;
+    return CXPR_MODEL_RESULT_UNKNOWN;
+}
+
+static const cxpr_model_compile_options cxpr_model_default_compile_options = {
+    CXPR_MODEL_BACKEND_AUTO,
+    true,
+    false,
+};
+
+static bool cxpr_model_compile_options_resolve(
+    const cxpr_model_compile_options* options,
+    cxpr_model_compile_options* out,
+    cxpr_error* err) {
+    if (!out) return false;
+    *out = options ? *options : cxpr_model_default_compile_options;
+    switch (out->backend) {
+    case CXPR_MODEL_BACKEND_AUTO:
+    case CXPR_MODEL_BACKEND_IR:
+    case CXPR_MODEL_BACKEND_C:
+        break;
+    default:
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Invalid model compile backend option", 0, 0);
+        return false;
+    }
+    if (out->backend == CXPR_MODEL_BACKEND_IR && !out->fuse) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Model IR backend requires fuse=true", 0, 0);
+        return false;
+    }
+    if (out->enable_trace && out->backend != CXPR_MODEL_BACKEND_AUTO) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Model backend tracing is not supported for explicit backends", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+static void cxpr_model_program_drop_runnable_fast_path(cxpr_model_program* program) {
+    if (!program) return;
+    cxpr_ir_program_reset(&program->fused_ir);
+    program->has_fused_ir = false;
+}
+
+static bool cxpr_model_program_validate_c_backend(cxpr_model_program* program,
+                                                  cxpr_error* err) {
+    cxpr_error codegen_err = {0};
+    char* source = cxpr_model_program_to_c_tick_function(
+        program, "", "cxpr_model_backend_validate", &codegen_err);
+    if (!source) {
+        if (err) {
+            *err = codegen_err;
+            if (err->code == CXPR_OK) {
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "Model C backend is not supported for this model", 0, 0);
+            }
+        }
+        return false;
+    }
+    free(source);
+    if (err) err->code = CXPR_OK;
+    return true;
+}
+
+static bool cxpr_model_program_select_backend(cxpr_model_program* program,
+                                              const cxpr_model* model,
+                                              const cxpr_registry* compile_reg,
+                                              const cxpr_model_compile_options* options,
+                                              cxpr_error* err) {
+    if (!program || !options) return false;
+    program->requested_backend = options->backend;
+    program->selected_backend = CXPR_MODEL_BACKEND_AUTO;
+    program->compile_fuse = options->fuse;
+    program->compile_trace = options->enable_trace;
+
+    if (options->backend == CXPR_MODEL_BACKEND_AUTO) {
+        if (options->enable_trace) {
+            program->fused_disabled_opcode = "trace enabled";
+            return true;
+        }
+        if (!options->fuse) {
+            program->fused_disabled_opcode = "fast path disabled by compile options";
+            return true;
+        }
+        if (!cxpr_model_try_compile_fused_ir(program, model, compile_reg, err)) {
+            return false;
+        }
+        program->selected_backend = program->has_fused_ir
+                                        ? CXPR_MODEL_BACKEND_IR
+                                        : CXPR_MODEL_BACKEND_AUTO;
+        return true;
+    }
+
+    if (!cxpr_model_try_compile_fused_ir(program, model, compile_reg, err)) {
+        return false;
+    }
+
+    if (options->backend == CXPR_MODEL_BACKEND_IR) {
+        if (!program->has_fused_ir) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Model IR backend requires scalar fast-path support", 0, 0);
+            return false;
+        }
+        program->selected_backend = CXPR_MODEL_BACKEND_IR;
+        return true;
+    }
+
+    if (!options->fuse) {
+        cxpr_model_program_drop_runnable_fast_path(program);
+    }
+    if (!cxpr_model_program_validate_c_backend(program, err)) {
+        return false;
+    }
+    program->selected_backend = CXPR_MODEL_BACKEND_C;
+    return true;
 }
 
 cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
                                        const cxpr_registry* reg,
                                        cxpr_error* err) {
-    return cxpr_compile_model_with_imports(model, reg, NULL, 0u, err);
+    return cxpr_compile_model_with_options(model, reg, NULL, err);
+}
+
+cxpr_model_program* cxpr_compile_model_with_options(
+    const cxpr_model* model,
+    const cxpr_registry* reg,
+    const cxpr_model_compile_options* options,
+    cxpr_error* err) {
+    return cxpr_compile_model_with_imports_and_options(model, reg, NULL, 0u, options, err);
 }
 
 static const char* cxpr_model_import_namespace_for(const cxpr_model* model,
@@ -1328,9 +1521,8 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
         }
         entry->model_producer = cxpr_model_eval_child_producer;
         entry->model_producer_userdata = &program->children[i];
-        entry->min_args = child->constant_count;
-        entry->max_args = child->constant_count +
-                          (program->children[i].source_input_index != (size_t)-1 ? 1u : 0u);
+        entry->min_args = 0u;
+        entry->max_args = child->input_count + child->constant_count;
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
         entry->defined_return_field_names = cxpr_registry_clone_param_names(
@@ -1343,9 +1535,8 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
-            if (program->children[i].source_input_index != (size_t)-1) {
-                entry->defined_param_names[name_index++] =
-                    cxpr_strdup(program->children[i].source_arg);
+            for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
+                entry->defined_param_names[name_index++] = cxpr_strdup(child->inputs[in_i]);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                     return false;
@@ -1383,8 +1574,20 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                                                     const cxpr_model_import* imports,
                                                     size_t import_count,
                                                     cxpr_error* err) {
+    return cxpr_compile_model_with_imports_and_options(
+        model, reg, imports, import_count, NULL, err);
+}
+
+cxpr_model_program* cxpr_compile_model_with_imports_and_options(
+    const cxpr_model* model,
+    const cxpr_registry* reg,
+    const cxpr_model_import* imports,
+    size_t import_count,
+    const cxpr_model_compile_options* options,
+    cxpr_error* err) {
     cxpr_model_program* program;
     cxpr_model inferred_model = {0};
+    cxpr_model_compile_options compile_options;
     const cxpr_registry* compile_reg = reg;
     char** inferred_inputs = NULL;
     size_t inferred_input_count = 0u;
@@ -1394,6 +1597,9 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
     bool expanded_anonymous_outputs = false;
 
     if (err) *err = (cxpr_error){0};
+    if (!cxpr_model_compile_options_resolve(options, &compile_options, err)) {
+        return NULL;
+    }
     if (model && model->anonymous_output_count > 0u) {
         if (!cxpr_model_copy_bindings_and_outputs(&inferred_model, model, err)) {
             cxpr_model_expanded_copy_free(&inferred_model);
@@ -1440,6 +1646,23 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
         free(inferred_inputs);
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         return NULL;
+    }
+    program->requested_backend = compile_options.backend;
+    program->selected_backend = CXPR_MODEL_BACKEND_AUTO;
+    program->compile_fuse = compile_options.fuse;
+    program->compile_trace = compile_options.enable_trace;
+    program->lifetime = CXPR_MODEL_LIFETIME_SINGLETON;
+    {
+        bool saw_type = false;
+        if (!cxpr_model_parse_lifetime_metadata(model, &program->lifetime, &saw_type, err)) {
+            for (size_t d = 0; d < required_default_count; ++d) free(required_defaults[d]);
+            free(required_defaults);
+            for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);
+            free(inferred_inputs);
+            cxpr_model_program_free(program);
+            return NULL;
+        }
+        (void)saw_type;
     }
     program->source_arg = cxpr_model_parse_source_arg_metadata(model);
     if (model && cxpr_model_metadata_count(model) > 0u && !program->source_arg) {
@@ -1730,7 +1953,7 @@ compile_outputs:
         }
     }
 
-    if (!cxpr_model_try_compile_fused_ir(program, model, compile_reg, err)) {
+    if (!cxpr_model_program_select_backend(program, model, compile_reg, &compile_options, err)) {
         cxpr_model_program_free(program);
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
         free(inferred_inputs);

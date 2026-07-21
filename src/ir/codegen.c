@@ -162,6 +162,62 @@ static bool cxpr_ir_c_emit_load_arg(cxpr_ir_c_buf* b,
     return true;
 }
 
+static bool cxpr_ir_c_emit_load_local(cxpr_ir_c_buf* b,
+                                      const cxpr_c_program_arg* args,
+                                      size_t arg_count,
+                                      size_t local_index,
+                                      cxpr_error* err) {
+    const cxpr_c_program_arg* arg =
+        cxpr_ir_c_find_arg(args, arg_count, CXPR_C_PROGRAM_ARG_LOCAL, NULL, local_index);
+    char* c_name;
+
+    if (!arg) {
+        cxpr_ir_c_printf(b, "    _cx_s[_cx_sp++] = _cx_l[%zu];\n", local_index);
+        return !b->oom;
+    }
+    c_name = cxpr_ir_c_arg_name(arg, (size_t)(arg - args));
+    if (!c_name) return cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+    cxpr_ir_c_printf(b, "    _cx_s[_cx_sp++] = %s;\n", c_name);
+    free(c_name);
+    return true;
+}
+
+static bool cxpr_ir_c_emit_load_local_square(cxpr_ir_c_buf* b,
+                                             const cxpr_c_program_arg* args,
+                                             size_t arg_count,
+                                             size_t local_index,
+                                             cxpr_error* err) {
+    if (!cxpr_ir_c_emit_load_local(b, args, arg_count, local_index, err)) return false;
+    cxpr_ir_c_puts(b, "    _cx_s[_cx_sp - 1u] = _cx_s[_cx_sp - 1u] * _cx_s[_cx_sp - 1u];\n");
+    return !b->oom;
+}
+
+static size_t cxpr_ir_c_local_slot_count(const cxpr_ir_program* ir,
+                                         const cxpr_c_program_arg* args,
+                                         size_t arg_count) {
+    size_t count = 0u;
+
+    if (!ir) return 0u;
+    for (size_t i = 0u; i < ir->count; ++i) {
+        const cxpr_ir_instr* instr = &ir->code[i];
+        if (instr->op == CXPR_OP_STORE_LOCAL) {
+            if (instr->index + 1u > count) count = instr->index + 1u;
+        } else if (instr->op == CXPR_OP_LOAD_LOCAL ||
+                   instr->op == CXPR_OP_LOAD_LOCAL_SQUARE) {
+            if (!cxpr_ir_c_find_arg(
+                    args,
+                    arg_count,
+                    CXPR_C_PROGRAM_ARG_LOCAL,
+                    NULL,
+                    instr->index) &&
+                instr->index + 1u > count) {
+                count = instr->index + 1u;
+            }
+        }
+    }
+    return count;
+}
+
 static const char* cxpr_ir_c_unary_math(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_SQRT: return "sqrt";
@@ -215,6 +271,7 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
     const cxpr_ir_program* ir;
     const char* scalar_type = return_type && return_type[0] ? return_type : "double";
     char* safe_function_name;
+    size_t local_slot_count;
     cxpr_ir_c_buf b = {0};
 
     if (err) *err = (cxpr_error){0};
@@ -239,6 +296,10 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
     cxpr_ir_c_puts(&b, ") {\n");
     cxpr_ir_c_printf(&b, "    double _cx_s[%zu];\n", ir->count + 1u);
     cxpr_ir_c_puts(&b, "    unsigned _cx_sp = 0u;\n");
+    local_slot_count = cxpr_ir_c_local_slot_count(ir, args, arg_count);
+    if (local_slot_count > 0u) {
+        cxpr_ir_c_printf(&b, "    double _cx_l[%zu] = {0};\n", local_slot_count);
+    }
 
     for (size_t i = 0u; i < ir->count; ++i) {
         const cxpr_ir_instr* instr = &ir->code[i];
@@ -261,8 +322,7 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
                                          instr->name, 0u, err)) goto fail;
             break;
         case CXPR_OP_LOAD_LOCAL:
-            if (!cxpr_ir_c_emit_load_arg(&b, args, arg_count, CXPR_C_PROGRAM_ARG_LOCAL,
-                                         NULL, instr->index, err)) goto fail;
+            if (!cxpr_ir_c_emit_load_local(&b, args, arg_count, instr->index, err)) goto fail;
             break;
         case CXPR_OP_LOAD_VAR_SQUARE:
             if (!cxpr_ir_c_emit_load_arg(&b, args, arg_count, CXPR_C_PROGRAM_ARG_VAR,
@@ -275,9 +335,7 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
             cxpr_ir_c_puts(&b, "    _cx_s[_cx_sp - 1u] = _cx_s[_cx_sp - 1u] * _cx_s[_cx_sp - 1u];\n");
             break;
         case CXPR_OP_LOAD_LOCAL_SQUARE:
-            if (!cxpr_ir_c_emit_load_arg(&b, args, arg_count, CXPR_C_PROGRAM_ARG_LOCAL,
-                                         NULL, instr->index, err)) goto fail;
-            cxpr_ir_c_puts(&b, "    _cx_s[_cx_sp - 1u] = _cx_s[_cx_sp - 1u] * _cx_s[_cx_sp - 1u];\n");
+            if (!cxpr_ir_c_emit_load_local_square(&b, args, arg_count, instr->index, err)) goto fail;
             break;
         case CXPR_OP_ADD:
         case CXPR_OP_SUB:
@@ -385,11 +443,36 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
         case CXPR_OP_JUMP_IF_TRUE:
             cxpr_ir_c_printf(&b, "    if (_cx_s[--_cx_sp] != 0.0) goto L%zu;\n", instr->index);
             break;
+        case CXPR_OP_STORE_LOCAL:
+            cxpr_ir_c_printf(&b, "    _cx_l[%zu] = _cx_s[--_cx_sp];\n", instr->index);
+            break;
+        case CXPR_OP_CALL_AST:
+            if (instr->ast && cxpr_ast_type(instr->ast) == CXPR_NODE_FUNCTION_CALL) {
+                static char message[160];
+                const char* name = cxpr_ast_function_name(instr->ast);
+                (void)snprintf(
+                    message,
+                    sizeof(message),
+                    "Unsupported AST call for C backend: %s",
+                    name ? name : "");
+                cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX, message);
+            } else {
+                cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX, "Unsupported AST node for C backend");
+            }
+            goto fail;
         case CXPR_OP_RETURN:
             cxpr_ir_c_puts(&b, "    return _cx_s[--_cx_sp];\n");
             break;
         default:
-            cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX, "Unsupported IR opcode for C backend");
+            {
+                static char message[96];
+                (void)snprintf(
+                    message,
+                    sizeof(message),
+                    "Unsupported IR opcode for C backend: %u",
+                    (unsigned)instr->op);
+                cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX, message);
+            }
             goto fail;
         }
         if (b.oom) {

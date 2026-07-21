@@ -14,6 +14,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define EPSILON 1e-10
@@ -486,6 +487,58 @@ static void test_formula_struct_result_and_field_dependency(void) {
     printf("  ✓ test_formula_struct_result_and_field_dependency\n");
 }
 
+static void test_formula_defined_function_compiles_to_ir(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    const cxpr_program* program;
+    bool found = false;
+
+    assert(cxpr_registry_define_fn(reg, "above_floor(x, floor) => x > floor").code == CXPR_OK);
+    cxpr_context_set(ctx, "close", 101.0);
+    cxpr_context_set_param(ctx, "risk.floor", 100.0);
+
+    assert(cxpr_expression_add(evaluator, "entry", "above_floor(close, $risk.floor)", &err));
+    assert(cxpr_evaluator_compile(evaluator, &err));
+
+    program = cxpr_expression_program(evaluator, "entry", &found);
+    assert(found == true);
+    assert(program != NULL);
+    assert(cxpr_expression_instruction_count(evaluator, "entry", &found) > 0u);
+    assert(found == true);
+
+    cxpr_evaluator_eval(evaluator, ctx, &err);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_expression_get_bool(evaluator, "entry", &found) == true);
+    assert(found == true);
+
+    cxpr_evaluator_free(evaluator);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_formula_defined_function_compiles_to_ir\n");
+}
+
+static const char* test_param_lookup(const char* name, void* userdata) {
+    (void)userdata;
+    if (strcmp(name, "risk.floor") == 0) return "100";
+    if (strcmp(name, "enabled") == 0) return "true";
+    return NULL;
+}
+
+static void test_expression_inline_params_supports_nested_keys(void) {
+    char* text = cxpr_expression_inline_params(
+        "close > $risk.floor and note == \"$risk.floor\" and $enabled",
+        test_param_lookup,
+        NULL);
+
+    assert(text != NULL);
+    assert(strcmp(text, "close > 100 and note == \"$risk.floor\" and true") == 0);
+    free(text);
+    printf("  ✓ test_expression_inline_params_supports_nested_keys\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: get non-existent expression
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -529,6 +582,8 @@ int main(void) {
     test_formula_bool_result_is_typed();
     test_formula_bool_dependency_stays_typed();
     test_formula_struct_result_and_field_dependency();
+    test_formula_defined_function_compiles_to_ir();
+    test_expression_inline_params_supports_nested_keys();
     test_get_nonexistent();
     printf("All expression tests passed!\n");
     return 0;

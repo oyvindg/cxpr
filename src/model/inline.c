@@ -89,29 +89,38 @@ cxpr_ast* cxpr_model_inline_locals(const cxpr_ast* ast,
         const size_t field_count = cxpr_ast_record_field_count(ast);
         cxpr_ast** values = NULL;
         const char** names = NULL;
+        cxpr_model_local_binding* scoped_locals = NULL;
         if (field_count > 0u) {
             values = (cxpr_ast**)calloc(field_count, sizeof(cxpr_ast*));
             names = (const char**)calloc(field_count, sizeof(char*));
-            if (!values || !names) {
+            scoped_locals = (cxpr_model_local_binding*)calloc(local_count + field_count,
+                                                              sizeof(cxpr_model_local_binding));
+            if (!values || !names || !scoped_locals) {
                 free(values);
                 free(names);
+                free(scoped_locals);
                 return NULL;
             }
+            for (size_t i = 0u; i < local_count; ++i) scoped_locals[i] = locals[i];
             for (size_t i = 0u; i < field_count; ++i) {
                 names[i] = cxpr_ast_record_field_name(ast, i);
                 values[i] = cxpr_model_inline_locals(
-                    cxpr_ast_record_field_value(ast, i), locals, local_count);
+                    cxpr_ast_record_field_value(ast, i), scoped_locals, local_count + i);
                 if (!values[i]) {
                     for (size_t j = 0u; j < i; ++j) cxpr_ast_free(values[j]);
                     free(values);
                     free(names);
+                    free(scoped_locals);
                     return NULL;
                 }
+                scoped_locals[local_count + i].name = (char*)names[i];
+                scoped_locals[local_count + i].expr = values[i];
             }
         }
         {
             cxpr_ast* record = cxpr_ast_new_record(names, values, field_count);
             free(names);
+            free(scoped_locals);
             if (!record) {
                 for (size_t i = 0u; i < field_count; ++i) cxpr_ast_free(values[i]);
                 free(values);

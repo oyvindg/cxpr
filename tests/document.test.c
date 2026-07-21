@@ -113,6 +113,16 @@ static void test_document_model_extension_exposes_model_view(void) {
     cxpr_error err = {0};
     cxpr_document* document = cxpr_parse_model_document(source, &err);
     const cxpr_model* model;
+    cxpr_model_program* program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    cxpr_struct_value* signal;
+    cxpr_struct_value* position;
+    bool entry_ok = true;
+    const char* signal_fields[] = {"fills_next_session", "fills_session_close"};
+    cxpr_value signal_values[] = {cxpr_bool(false), cxpr_bool(false)};
+    const char* position_fields[] = {"entry_price", "bars_in_position"};
+    cxpr_value position_values[] = {cxpr_num(0.0), cxpr_num(0.0)};
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
@@ -350,6 +360,63 @@ static void test_document_ast_lowering_handles_use_aliases_and_groups(void) {
 
     cxpr_document_free(document);
     printf("  ✓ test_document_ast_lowering_handles_use_aliases_and_groups\n");
+}
+
+static void test_document_ast_lowering_handles_struct_input_blocks(void) {
+    const char* source =
+        "model struct_inputs\n"
+        "in signal { fills_next_session, fills_session_close }\n"
+        "in position {\n"
+        "  entry_price\n"
+        "  bars_in_position\n"
+        "}\n"
+        "entry_ok = not signal.fills_next_session and position.bars_in_position == 0\n"
+        "out entry_ok\n";
+    cxpr_error err = {0};
+    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    const cxpr_model* model;
+    cxpr_model_program* program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    cxpr_struct_value* signal;
+    cxpr_struct_value* position;
+    bool entry_ok = true;
+    const char* signal_fields[] = {"fills_next_session", "fills_session_close"};
+    cxpr_value signal_values[] = {cxpr_bool(false), cxpr_bool(false)};
+    const char* position_fields[] = {"entry_price", "bars_in_position"};
+    cxpr_value position_values[] = {cxpr_num(0.0), cxpr_num(0.0)};
+
+    assert(document != NULL);
+    assert(err.code == CXPR_OK);
+    model = cxpr_document_model(document);
+    assert(model != NULL);
+    assert(cxpr_model_input_count(model) == 4u);
+    assert(strcmp(cxpr_model_input(model, 0u), "signal.fills_next_session") == 0);
+    assert(strcmp(cxpr_model_input(model, 1u), "signal.fills_session_close") == 0);
+    assert(strcmp(cxpr_model_input(model, 2u), "position.entry_price") == 0);
+    assert(strcmp(cxpr_model_input(model, 3u), "position.bars_in_position") == 0);
+
+    program = cxpr_compile_model(model, NULL, &err);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    signal = cxpr_struct_value_new(signal_fields, signal_values, 2u);
+    position = cxpr_struct_value_new(position_fields, position_values, 2u);
+    assert(signal != NULL);
+    assert(position != NULL);
+    cxpr_context_set_struct(ctx, "signal", signal);
+    cxpr_context_set_struct(ctx, "position", position);
+    cxpr_struct_value_free(signal);
+    cxpr_struct_value_free(position);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_output_bool(session, "entry_ok", &entry_ok));
+    assert(entry_ok);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
+    cxpr_document_free(document);
+    printf("  ✓ test_document_ast_lowering_handles_struct_input_blocks\n");
 }
 
 static void test_document_ast_lowering_handles_scalar_function_declaration(void) {
@@ -626,6 +693,34 @@ static void test_document_ast_represents_advanced_existing_syntax(void) {
     printf("  ✓ test_document_ast_represents_advanced_existing_syntax\n");
 }
 
+static void test_document_ast_represents_struct_input_blocks(void) {
+    const char* source =
+        "model struct_input_shape\n"
+        "in signal { fills_next_session, fills_session_close }\n"
+        "out signal.fills_next_session\n";
+    cxpr_error err = {0};
+    cxpr_document_ast* syntax =
+        cxpr_parse_document_ast(source, "struct-inputs.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_document_ast_node* root;
+    const cxpr_document_ast_node* inputs;
+
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    root = cxpr_document_ast_root(syntax);
+    assert(cxpr_document_ast_child_count(root) == 3u);
+    inputs = cxpr_document_ast_child(root, 1u);
+    assert(cxpr_document_ast_node_kind(inputs) == CXPR_MODEL_AST_INPUT_BLOCK);
+    assert(strcmp(cxpr_document_ast_node_name(inputs), "signal") == 0);
+    assert(cxpr_document_ast_child_count(inputs) == 2u);
+    assert(strcmp(cxpr_document_ast_node_name(cxpr_document_ast_child(inputs, 0u)),
+                  "fills_next_session") == 0);
+    assert(strcmp(cxpr_document_ast_node_name(cxpr_document_ast_child(inputs, 1u)),
+                  "fills_session_close") == 0);
+
+    cxpr_document_ast_free(syntax);
+    printf("  ✓ test_document_ast_represents_struct_input_blocks\n");
+}
+
 static void test_load_document_file_is_primary_entrypoint(void) {
     const char* path = "/tmp/cxpr_document_manifest_test.cxpr";
     FILE* file = fopen(path, "wb");
@@ -649,6 +744,48 @@ static void test_load_document_file_is_primary_entrypoint(void) {
     printf("  ✓ test_load_document_file_is_primary_entrypoint\n");
 }
 
+static void test_manifest_document_accepts_comment_forms(void) {
+    const char* source =
+        "/** profile docs */\n"
+        "host_profile trading { // host block\n"
+        "  type = \"host_profile\" # line metadata\n"
+        "  source close { /** nested docs */\n"
+        "    type = \"series\" // inline\n"
+        "    scoped = true\n"
+        "  }\n"
+        "  input note {\n"
+        "    type = \"string with # and // preserved\"\n"
+        "  }\n"
+        "}\n";
+    cxpr_error err = {0};
+    cxpr_document* document = cxpr_parse_manifest(source, &err);
+    const cxpr_model_host_block* profile;
+    const cxpr_model_host_block* close_source;
+    const cxpr_model_host_block* note_input;
+
+    assert(document != NULL);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_document_host_block_count(document) == 1u);
+    profile = cxpr_document_host_block(document, "host_profile");
+    assert(profile != NULL);
+    assert(strcmp(cxpr_host_block_name(profile), "trading") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(profile, "type"),
+                  "\"host_profile\"") == 0);
+    close_source = cxpr_host_block_child_by_kind(profile, "source");
+    assert(close_source != NULL);
+    assert(strcmp(cxpr_host_block_name(close_source), "close") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(close_source, "type"),
+                  "\"series\"") == 0);
+    note_input = cxpr_host_block_child_by_kind(profile, "input");
+    assert(note_input != NULL);
+    assert(strcmp(cxpr_host_block_name(note_input), "note") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(note_input, "type"),
+                  "\"string with # and // preserved\"") == 0);
+
+    cxpr_document_free(document);
+    printf("  ✓ test_manifest_document_accepts_comment_forms\n");
+}
+
 int main(void) {
     printf("Running cxpr document tests...\n");
     test_manifest_document_accepts_host_blocks_without_model();
@@ -660,6 +797,7 @@ int main(void) {
     test_document_ast_lowering_equivalent_block_and_shorthand_forms();
     test_document_ast_lowering_rejects_state_output_assignment();
     test_document_ast_lowering_handles_use_aliases_and_groups();
+    test_document_ast_lowering_handles_struct_input_blocks();
     test_document_ast_lowering_handles_scalar_function_declaration();
     test_document_ast_lowering_handles_record_function_shorthand();
     test_document_ast_lowering_handles_scalar_function_block();
@@ -667,7 +805,9 @@ int main(void) {
     test_document_model_exposes_semantic_source_spans();
     test_document_ast_function_body_host_fields_and_visitor();
     test_document_ast_represents_advanced_existing_syntax();
+    test_document_ast_represents_struct_input_blocks();
     test_load_document_file_is_primary_entrypoint();
+    test_manifest_document_accepts_comment_forms();
     printf("All document tests passed.\n");
     return 0;
 }

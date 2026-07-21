@@ -339,6 +339,12 @@ static void test_macd_signal_producer(const double* args, size_t argc,
     out[0] = cxpr_num(args[0] - args[1] + args[2]);
 }
 
+static double test_macd_primary(const double* args, size_t argc, void* ud) {
+    (void)ud;
+    assert(argc == 3);
+    return args[0] - args[1];
+}
+
 static void test_function_call_field_access(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -347,9 +353,44 @@ static void test_function_call_field_access(void) {
     cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer,
                                       3, 3, fields, 1, NULL, NULL);
     ASSERT_DOUBLE_EQ(eval_ok("macd(12, 26, 9).signal", ctx, reg), -5.0);
+    ASSERT_DOUBLE_EQ(eval_ok("(macd(12, 26, 9)).signal", ctx, reg), -5.0);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_function_call_field_access\n");
+}
+
+static void test_grouped_function_call_field_access_prefers_struct_producer(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    const char* fields[] = {"signal"};
+    const char* params[] = {"slow", "fast", "period"};
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_add(reg, "macd", test_macd_primary, 3, 3, NULL, NULL);
+    cxpr_registry_add_struct(reg, "macd", test_macd_signal_producer, 3, 3, fields, 1, NULL, NULL);
+    assert(cxpr_registry_set_param_names(reg, "macd", params, 3));
+
+    ASSERT_DOUBLE_EQ(eval_ok("(macd(fast=9, slow=21, period=3)).signal", ctx, reg), 15.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_grouped_function_call_field_access_prefers_struct_producer\n");
+}
+
+static void test_grouped_expression_field_access(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+
+    cxpr_context_set_bool(ctx, "trend_up", true);
+    ASSERT_DOUBLE_EQ(eval_ok("({fast: 12, slow: 26}).fast", ctx, reg), 12.0);
+    ASSERT_DOUBLE_EQ(eval_ok("(trend_up ? {risk: 1} : {risk: 2}).risk", ctx, reg), 1.0);
+    cxpr_context_set_bool(ctx, "trend_up", false);
+    ASSERT_DOUBLE_EQ(eval_ok("(trend_up ? {risk: 1} : {risk: 2}).risk", ctx, reg), 2.0);
+
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_grouped_expression_field_access\n");
 }
 
 static void test_named_args_reorder_by_signature(void) {
@@ -380,6 +421,7 @@ static void test_named_args_for_producer_field_access(void) {
     assert(cxpr_registry_set_param_names(reg, "macd", params, 3));
 
     ASSERT_DOUBLE_EQ(eval_ok("macd(fast=9, slow=21, period=3).signal", ctx, reg), 15.0);
+    ASSERT_DOUBLE_EQ(eval_ok("(macd(fast=9, slow=21, period=3)).signal", ctx, reg), 15.0);
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -949,6 +991,8 @@ int main(void) {
     test_ternary();
     test_field_access();
     test_function_call_field_access();
+    test_grouped_function_call_field_access_prefers_struct_producer();
+    test_grouped_expression_field_access();
     test_named_args_reorder_by_signature();
     test_named_args_for_producer_field_access();
     test_named_args_for_producer_field_access_allow_omitted_leading_default();

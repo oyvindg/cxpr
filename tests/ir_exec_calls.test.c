@@ -14,6 +14,7 @@ cxpr_value cxpr_ir_call_producer_field(cxpr_func_entry* entry, const char* name,
                                        size_t argc, const char* field,
                                        cxpr_error* err);
 cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+                                       const cxpr_ast* call_ast,
                                        const cxpr_context* ctx,
                                        const cxpr_registry* reg,
                                        const cxpr_value* args,
@@ -68,7 +69,7 @@ static void test_ir_exec_call_helpers(void) {
     {
         cxpr_func_entry* def = cxpr_registry_find(reg, "sum2");
         assert(def);
-        value = cxpr_ir_call_defined_scalar(def, ctx, reg, args, 2, &err);
+        value = cxpr_ir_call_defined_scalar(def, NULL, ctx, reg, args, 2, &err);
         assert(err.code == CXPR_OK);
         assert(value.type == CXPR_VALUE_NUMBER);
         assert(value.d == 7.0);

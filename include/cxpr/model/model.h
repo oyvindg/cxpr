@@ -7,7 +7,6 @@
 #define CXPR_MODEL_H
 
 #include <cxpr/ast/expression.h>
-#include <cxpr/ir.h>
 #include <cxpr/source.h>
 #include <cxpr/types.h>
 
@@ -34,10 +33,46 @@ typedef enum {
     CXPR_MODEL_METADATA_TARGET_OUTPUT = 7,
 } cxpr_model_metadata_target_kind;
 
+typedef enum {
+    CXPR_MODEL_RESULT_UNKNOWN = 0,
+    CXPR_MODEL_RESULT_NUMBER = 1,
+    CXPR_MODEL_RESULT_BOOL = 2,
+} cxpr_model_result_kind;
+
+typedef enum {
+    CXPR_MODEL_BACKEND_AUTO = 0,
+    CXPR_MODEL_BACKEND_IR = 1,
+    CXPR_MODEL_BACKEND_C = 2,
+} cxpr_model_backend_kind;
+
+typedef struct {
+    cxpr_model_backend_kind backend;
+    bool fuse;
+    bool enable_trace;
+} cxpr_model_compile_options;
+
 typedef struct {
     const char* name;
     const cxpr_model_program* program;
 } cxpr_model_import;
+
+typedef struct cxpr_model_use_resolution {
+    const char* namespace_name;
+    int handled;
+} cxpr_model_use_resolution;
+
+typedef int (*cxpr_model_resolve_use_fn)(const cxpr_model* model,
+                                         size_t index,
+                                         const char* path,
+                                         const char* alias,
+                                         cxpr_model_use_resolution* out_resolution,
+                                         void* userdata,
+                                         cxpr_error* err);
+
+typedef struct cxpr_model_use_resolver {
+    cxpr_model_resolve_use_fn resolve;
+    void* userdata;
+} cxpr_model_use_resolver;
 
 /** @brief Opaque parsed host block node. */
 typedef struct cxpr_model_host_block cxpr_model_host_block;
@@ -124,6 +159,10 @@ bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
                                             size_t external_ref_count,
                                             cxpr_error* err);
 
+bool cxpr_model_resolve_uses(const cxpr_model* model,
+                             const cxpr_model_use_resolver* resolver,
+                             cxpr_error* err);
+
 /**
  * @brief Create a registry for host-defined model block kinds.
  *
@@ -192,9 +231,9 @@ bool cxpr_model_plan_bind_sources(const cxpr_model* model,
 /**
  * @brief Compile a parsed .cxpr model into immutable executable programs.
  *
- * The compiled model reuses the existing AST->IR compiler for each binding and
- * stores dependency order once. It does not register model bindings in a
- * runtime evaluator, avoiding per-tick binding setup.
+ * The compiled model stores dependency order once and may select an optimized
+ * scalar backend when the model shape supports it. It does not register model
+ * bindings in a runtime evaluator, avoiding per-tick binding setup.
  */
 cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
                                        const cxpr_registry* reg,
@@ -205,6 +244,25 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
                                                     const cxpr_model_import* imports,
                                                     size_t import_count,
                                                     cxpr_error* err);
+
+/**
+ * @brief Compile a parsed .cxpr model with explicit backend options.
+ *
+ * NULL options use `{ CXPR_MODEL_BACKEND_AUTO, true, false }`.
+ */
+cxpr_model_program* cxpr_compile_model_with_options(
+    const cxpr_model* model,
+    const cxpr_registry* reg,
+    const cxpr_model_compile_options* options,
+    cxpr_error* err);
+
+cxpr_model_program* cxpr_compile_model_with_imports_and_options(
+    const cxpr_model* model,
+    const cxpr_registry* reg,
+    const cxpr_model_import* imports,
+    size_t import_count,
+    const cxpr_model_compile_options* options,
+    cxpr_error* err);
 
 /** @brief Free a compiled .cxpr model program. */
 void cxpr_model_program_free(cxpr_model_program* program);
@@ -243,7 +301,7 @@ cxpr_model_binding_kind cxpr_model_program_binding_kind(const cxpr_model_program
                                                         size_t index);
 
 /** @brief Return the inferred scalar result kind for executable binding @p index. */
-cxpr_ir_view_result_kind cxpr_model_program_binding_result_kind(
+cxpr_model_result_kind cxpr_model_program_binding_result_kind(
     const cxpr_model_program* program,
     size_t index);
 
@@ -254,7 +312,7 @@ size_t cxpr_model_program_constant_count(const cxpr_model_program* program);
 const char* cxpr_model_program_constant_name(const cxpr_model_program* program, size_t index);
 
 /** @brief Return the inferred scalar result kind for parameter/default @p index. */
-cxpr_ir_view_result_kind cxpr_model_program_constant_result_kind(
+cxpr_model_result_kind cxpr_model_program_constant_result_kind(
     const cxpr_model_program* program,
     size_t index);
 
@@ -266,7 +324,7 @@ const char* cxpr_model_program_state_default_name(const cxpr_model_program* prog
                                                   size_t index);
 
 /** @brief Return the inferred scalar result kind for state initializer @p index. */
-cxpr_ir_view_result_kind cxpr_model_program_state_default_result_kind(
+cxpr_model_result_kind cxpr_model_program_state_default_result_kind(
     const cxpr_model_program* program,
     size_t index);
 
@@ -303,78 +361,90 @@ size_t cxpr_model_program_history_spec_depth(const cxpr_model_program* program, 
 /** @brief Return number of functions in the model-owned registry, for diagnostics/benchmarks. */
 size_t cxpr_model_program_function_count(const cxpr_model_program* program);
 
-/** @brief Return true when the compiled model uses one fused IR program for ticks. */
-bool cxpr_model_program_uses_fused_ir(const cxpr_model_program* program);
+/** @brief Return the backend requested at compile time. */
+cxpr_model_backend_kind cxpr_model_program_requested_backend(const cxpr_model_program* program);
 
-/** @brief Return fused IR instruction count, or 0 when fused IR is not active. */
-size_t cxpr_model_program_fused_ir_instruction_count(const cxpr_model_program* program);
+/** @brief Return the backend selected by compilation. AUTO means evaluator path. */
+cxpr_model_backend_kind cxpr_model_program_selected_backend(const cxpr_model_program* program);
 
-/** @brief Return first opcode that disabled fused IR, or NULL when fused is active/not attempted. */
-const char* cxpr_model_program_fused_ir_disabled_opcode(const cxpr_model_program* program);
+/** @brief Return whether compile options allowed backend fusion. */
+bool cxpr_model_program_compile_fuse_enabled(const cxpr_model_program* program);
 
-/** @brief Return the number of resolved fused runtime slots. */
-size_t cxpr_model_program_fused_slot_count(const cxpr_model_program* program);
+/** @brief Return whether compile options requested trace-friendly evaluation. */
+bool cxpr_model_program_compile_trace_enabled(const cxpr_model_program* program);
 
-/** @brief Return fused slot name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fused_slot_name(const cxpr_model_program* program, size_t index);
+/** @brief Return true when the compiled model uses the scalar fast-path backend for ticks. */
+bool cxpr_model_program_uses_fast_path(const cxpr_model_program* program);
 
-/** @brief Return the number of fused input slot references. */
-size_t cxpr_model_program_fused_input_count(const cxpr_model_program* program);
+/** @brief Return fast-path backend instruction count, or 0 when the fast path is not active. */
+size_t cxpr_model_program_fast_path_instruction_count(const cxpr_model_program* program);
 
-/** @brief Return fused input reference name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fused_input_name(const cxpr_model_program* program, size_t index);
+/** @brief Return why fast-path compilation was skipped, or NULL when active/not attempted. */
+const char* cxpr_model_program_fast_path_disabled_reason(const cxpr_model_program* program);
 
-/** @brief Return fused slot index read by input reference @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fused_input_slot(const cxpr_model_program* program, size_t index);
+/** @brief Return the number of resolved fast-path runtime slots. */
+size_t cxpr_model_program_fast_path_slot_count(const cxpr_model_program* program);
 
-/** @brief Return inferred scalar result kind for fused input reference @p index. */
-cxpr_ir_view_result_kind cxpr_model_program_fused_input_result_kind(
+/** @brief Return fast-path slot name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fast_path_slot_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return the number of fast-path input slot references. */
+size_t cxpr_model_program_fast_path_input_count(const cxpr_model_program* program);
+
+/** @brief Return fast-path input reference name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fast_path_input_name(const cxpr_model_program* program, size_t index);
+
+/** @brief Return fast-path slot index read by input reference @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fast_path_input_slot(const cxpr_model_program* program, size_t index);
+
+/** @brief Return inferred scalar result kind for fast-path input reference @p index. */
+cxpr_model_result_kind cxpr_model_program_fast_path_input_result_kind(
     const cxpr_model_program* program,
     size_t index);
 
-/** @brief Return the number of fused context export references. */
-size_t cxpr_model_program_fused_export_count(const cxpr_model_program* program);
+/** @brief Return the number of fast-path context export references. */
+size_t cxpr_model_program_fast_path_export_count(const cxpr_model_program* program);
 
-/** @brief Return fused export reference name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fused_export_name(const cxpr_model_program* program, size_t index);
+/** @brief Return fast-path export reference name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fast_path_export_name(const cxpr_model_program* program, size_t index);
 
-/** @brief Return fused slot index written by export reference @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fused_export_slot(const cxpr_model_program* program, size_t index);
+/** @brief Return fast-path slot index written by export reference @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fast_path_export_slot(const cxpr_model_program* program, size_t index);
 
-/** @brief Return inferred scalar result kind for fused export reference @p index. */
-cxpr_ir_view_result_kind cxpr_model_program_fused_export_result_kind(
+/** @brief Return inferred scalar result kind for fast-path export reference @p index. */
+cxpr_model_result_kind cxpr_model_program_fast_path_export_result_kind(
     const cxpr_model_program* program,
     size_t index);
 
-/** @brief Return the number of fused output references. */
-size_t cxpr_model_program_fused_output_count(const cxpr_model_program* program);
+/** @brief Return the number of fast-path output references. */
+size_t cxpr_model_program_fast_path_output_count(const cxpr_model_program* program);
 
-/** @brief Return fused output reference name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fused_output_name(const cxpr_model_program* program, size_t index);
+/** @brief Return fast-path output reference name @p index, or NULL when out of range. */
+const char* cxpr_model_program_fast_path_output_name(const cxpr_model_program* program, size_t index);
 
-/** @brief Return fused slot index read by output reference @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fused_output_slot(const cxpr_model_program* program, size_t index);
+/** @brief Return fast-path slot index read by output reference @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fast_path_output_slot(const cxpr_model_program* program, size_t index);
 
-/** @brief Return inferred scalar result kind for fused output reference @p index. */
-cxpr_ir_view_result_kind cxpr_model_program_fused_output_result_kind(
+/** @brief Return inferred scalar result kind for fast-path output reference @p index. */
+cxpr_model_result_kind cxpr_model_program_fast_path_output_result_kind(
     const cxpr_model_program* program,
     size_t index);
 
-/** @brief Return the number of fused atomic state commit mappings. */
-size_t cxpr_model_program_fused_commit_count(const cxpr_model_program* program);
+/** @brief Return the number of fast-path atomic state commit mappings. */
+size_t cxpr_model_program_fast_path_commit_count(const cxpr_model_program* program);
 
-/** @brief Return destination state slot for fused commit @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fused_commit_state_slot(const cxpr_model_program* program, size_t index);
+/** @brief Return destination state slot for fast-path commit @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fast_path_commit_state_slot(const cxpr_model_program* program, size_t index);
 
-/** @brief Return pending update slot for fused commit @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fused_commit_update_slot(const cxpr_model_program* program, size_t index);
+/** @brief Return pending update slot for fast-path commit @p index, or SIZE_MAX when invalid. */
+size_t cxpr_model_program_fast_path_commit_update_slot(const cxpr_model_program* program, size_t index);
 
 /**
  * @brief Emit a `.cxpr` model-defined scalar `fn` as a standalone C function.
  *
  * This uses the compiled model's own registry and does not require host
- * registration of the function. Unsupported dynamic IR returns NULL with
- * @p err set, so callers can keep the normal IR path as fallback.
+ * registration of the function. Unsupported dynamic backend codegen returns
+ * NULL with @p err set, so callers can keep the normal evaluator as fallback.
  */
 char* cxpr_model_program_function_to_c_function(const cxpr_model_program* program,
                                                 const char* name,
@@ -383,7 +453,7 @@ char* cxpr_model_program_function_to_c_function(const cxpr_model_program* progra
                                                 const char* function_name,
                                                 cxpr_error* err);
 /**
- * @brief Emit a fused scalar model as a standalone C tick function.
+ * @brief Emit a fast-path scalar model as a standalone C tick function.
  *
  * Generated ABI:
  * `typedef struct fn_state fn_state;`
@@ -441,7 +511,7 @@ char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
     const size_t* output_indices,
     size_t output_count,
     cxpr_error* err);
-/** @brief Legacy IR slot count. The generated state ABI does not expose slots. */
+/** @brief Legacy backend slot count. The generated state ABI does not expose slots. */
 size_t cxpr_model_program_c_slot_count(const cxpr_model_program* program);
 size_t cxpr_model_program_c_param_count(const cxpr_model_program* program);
 const char* cxpr_model_program_c_param_name(const cxpr_model_program* program, size_t index);
@@ -467,11 +537,11 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
                              const cxpr_registry* reg,
                              cxpr_error* err);
 /**
- * @brief Evaluate one fused model tick without materializing state/outputs into the context.
+ * @brief Evaluate one fast-path model tick without materializing state/outputs into the context.
  *
  * This is a hot-path API for hosts that write inputs through the session
  * context and read results through `cxpr_model_session_output_*`. It preserves
- * atomic state commits in fused slots, but skips per-tick context writes and
+ * atomic state commits in backend slots, but skips per-tick context writes and
  * history capture when the model does not require lookback history. Unsupported
  * models fall back to `cxpr_model_session_tick`.
  */

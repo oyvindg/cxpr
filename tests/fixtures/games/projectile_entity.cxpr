@@ -1,0 +1,54 @@
+# Stateful projectile entity fixture.
+# Projectiles can share origin, velocity, and damage, but each has separate age/lifetime state.
+
+model projectile_entity {
+    kind = "game_entity"
+    lifecycle = "scoped"
+    instance = "explicit_id"
+    identity_arg = "projectile_id"
+}
+
+in {
+    projectile_id,
+    origin_x,
+    origin_y,
+    velocity_x,
+    velocity_y,
+    hit,
+    despawn,
+    reset
+}
+
+$dt = 0.016
+$max_age = 120
+$damage = 10
+
+state {
+    initialized = 0
+    x = 0
+    y = 0
+    age = 0
+    active = 1
+}
+
+first_tick = initialized <= 0 or reset > 0
+next_x = first_tick ? origin_x : x + velocity_x * $dt
+next_y = first_tick ? origin_y : y + velocity_y * $dt
+next_age = first_tick ? 0 : age + 1
+next_active = reset > 0 ? 1 : (active > 0 and hit <= 0 and despawn <= 0 and next_age < $max_age)
+impact_damage = active > 0 and hit > 0 ? $damage : 0
+
+initialized := 1
+x := next_x
+y := next_y
+age := next_age
+active := next_active ? 1 : 0
+
+out {
+    projectile_id,
+    x,
+    y,
+    age,
+    active,
+    impact_damage
+}

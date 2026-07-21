@@ -223,6 +223,7 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
 }
 
 cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+                                       const cxpr_ast* call_ast,
                                        const cxpr_context* ctx,
                                        const cxpr_registry* reg,
                                        const cxpr_value* args,
@@ -262,7 +263,45 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
             return cxpr_num(NAN);
         }
         for (size_t i = 0; i < argc; ++i) {
-            if (args[i].type == CXPR_VALUE_NUMBER) {
+            const cxpr_ast* arg_ast =
+                (call_ast &&
+                 call_ast->type == CXPR_NODE_FUNCTION_CALL &&
+                 i < call_ast->data.function_call.argc)
+                    ? call_ast->data.function_call.args[i]
+                    : NULL;
+            if (entry->defined_param_fields &&
+                entry->defined_param_fields[i] &&
+                entry->defined_param_field_counts[i] > 0u &&
+                args[i].type != CXPR_VALUE_STRUCT &&
+                arg_ast &&
+                arg_ast->type == CXPR_NODE_IDENTIFIER) {
+                const char* root = arg_ast->data.identifier.name;
+                for (size_t f = 0u; f < entry->defined_param_field_counts[i]; ++f) {
+                    bool found = false;
+                    char key[256];
+                    double field_value;
+                    snprintf(key, sizeof(key), "%s.%s", root, entry->defined_param_fields[i][f]);
+                    field_value = cxpr_context_get(ctx, key, &found);
+                    if (!found) {
+                        snprintf(key, sizeof(key), "%s_%s", root, entry->defined_param_fields[i][f]);
+                        field_value = cxpr_context_get(ctx, key, &found);
+                    }
+                    if (!found) {
+                        if (err) {
+                            err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
+                            err->message = "Unknown struct field";
+                        }
+                        cxpr_context_free(tmp);
+                        return cxpr_num(NAN);
+                    }
+                    snprintf(key,
+                             sizeof(key),
+                             "%s.%s",
+                             entry->defined_param_names[i],
+                             entry->defined_param_fields[i][f]);
+                    cxpr_context_set(tmp, key, field_value);
+                }
+            } else if (args[i].type == CXPR_VALUE_NUMBER) {
                 cxpr_context_set(tmp, entry->defined_param_names[i], args[i].d);
             } else {
                 cxpr_context_set_value(tmp, entry->defined_param_names[i], &args[i]);
@@ -305,6 +344,12 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
         }
         result = cxpr_struct(record);
         return result;
+    }
+
+    if (entry->defined_body &&
+        call_ast &&
+        call_ast->type == CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_eval_defined_function(entry, call_ast, ctx, reg, err);
     }
 
     if (scalar_only &&

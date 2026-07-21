@@ -484,7 +484,7 @@ op_call_defined: {
     for (size_t i = 0; i < instr->index; ++i) {
         scalar_args[i] = cxpr_num(stack[sp - instr->index + i]);
     }
-    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, instr->payload, ctx, reg,
                                          scalar_args, instr->index, err);
     if (err && err->code != CXPR_OK) return NAN;
     sp -= instr->index;
@@ -951,7 +951,7 @@ opb_call_defined: {
     for (size_t i = 0; i < instr->index; ++i) {
         scalar_args[i] = cxpr_num(nstack[nsp - instr->index + i]);
     }
-    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, instr->payload, ctx, reg,
                                          scalar_args, instr->index, err);
     if (err && err->code != CXPR_OK) return false;
     nsp -= instr->index;

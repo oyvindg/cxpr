@@ -127,6 +127,22 @@ cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field) {
     return node;
 }
 
+cxpr_ast* cxpr_ast_new_field_access_expr(cxpr_ast* base, const char* field) {
+    cxpr_ast* node;
+
+    if (!base || !field) return NULL;
+    node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_FIELD_ACCESS;
+    node->data.field_access.base = base;
+    node->data.field_access.field = cxpr_strdup(field);
+    if (!node->data.field_access.field) {
+        cxpr_ast_free(node);
+        return NULL;
+    }
+    return node;
+}
+
 cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
     cxpr_ast* node;
     size_t total_len = 1;

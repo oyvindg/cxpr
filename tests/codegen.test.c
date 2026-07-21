@@ -471,6 +471,34 @@ static void test_defined_fn_to_c_function_builtin_calls(void) {
     printf("  defined_fn_to_c_function builtin calls OK\n");
 }
 
+static void test_defined_fn_to_c_function_minmax(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    char* code;
+
+    assert(reg != NULL);
+    cxpr_register_defaults(reg);
+    err = cxpr_registry_define_fn(
+        reg,
+        "risk(close, ref_close, peak_high, floor_pct) = "
+        "((peak_high - ref_close) / max(peak_high, close * floor_pct)) > 0.2");
+    assert(err.code == CXPR_OK);
+    code = cxpr_registry_defined_fn_to_c_function(
+        reg,
+        "risk",
+        "static inline",
+        "double",
+        "cxpr_fn_risk",
+        &err);
+    assert(code != NULL);
+    assert(err.code == CXPR_OK);
+    assert(strstr(code, "fmax(") != NULL);
+    assert(strstr(code, "Unsupported") == NULL);
+    free(code);
+    cxpr_registry_free(reg);
+    printf("  defined_fn_to_c_function minmax OK\n");
+}
+
 static void test_defined_fn_to_c_function_rejects_unknown(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -501,6 +529,7 @@ int main(void) {
     test_program_to_c_function_requires_explicit_bindings();
     test_defined_fn_to_c_function();
     test_defined_fn_to_c_function_builtin_calls();
+    test_defined_fn_to_c_function_minmax();
     test_defined_fn_to_c_function_rejects_unknown();
     printf("All codegen tests passed.\n");
     return 0;

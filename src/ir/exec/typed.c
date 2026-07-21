@@ -578,7 +578,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 CXPR_TYPED_PUSH(result);
                 break;
             }
-            result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+            result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, instr->payload, ctx, reg,
                                                  &stack[sp - instr->index], instr->index, err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             sp -= instr->index;

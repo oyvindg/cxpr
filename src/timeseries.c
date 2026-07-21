@@ -323,6 +323,123 @@ static cxpr_value cxpr_timeseries_window_agg_eval(const cxpr_ast* call_ast,
     return cxpr_num(sum);
 }
 
+static cxpr_value cxpr_timeseries_bars_since_extreme(const cxpr_ast* call_ast,
+                                                     const cxpr_context* ctx,
+                                                     const cxpr_registry* reg,
+                                                     void* userdata,
+                                                     cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    const cxpr_ast* samples_ast;
+    const cxpr_ast* mode_ast;
+    double samples_value = 0.0;
+    double mode = 0.0;
+    long long samples_ll;
+    double extreme = 0.0;
+    long long extreme_index = 0;
+    long long count = 0;
+
+    (void)userdata;
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    if (cxpr_ast_function_argc(call_ast) != 3u) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "bars_since_extreme expects value, samples, mode";
+        }
+        return cxpr_num(NAN);
+    }
+
+    value_ast = cxpr_ast_function_arg(call_ast, 0u);
+    samples_ast = cxpr_ast_function_arg(call_ast, 1u);
+    mode_ast = cxpr_ast_function_arg(call_ast, 2u);
+    if (!cxpr_eval_ast_number(samples_ast, ctx, reg, &samples_value, err) ||
+        !cxpr_eval_ast_number(mode_ast, ctx, reg, &mode, err)) {
+        return cxpr_num(NAN);
+    }
+    samples_ll = (long long)llround(samples_value);
+    if (!isfinite(samples_value) || fabs(samples_value - (double)samples_ll) > 1e-9 ||
+        samples_ll < 1) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "bars_since_extreme samples must be a positive integer";
+        }
+        return cxpr_num(NAN);
+    }
+
+    for (long long i = 0; i < samples_ll; ++i) {
+        double value = 0.0;
+        if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
+            return cxpr_num(NAN);
+        }
+        if (isnan(value)) continue;
+        if (count == 0 ||
+            (mode >= 0.0 && value > extreme) ||
+            (mode < 0.0 && value < extreme)) {
+            extreme = value;
+            extreme_index = i;
+        }
+        count++;
+    }
+    return cxpr_num(count == 0 ? 0.0 : (double)extreme_index);
+}
+
+static cxpr_value cxpr_timeseries_window_mean_absdev(const cxpr_ast* call_ast,
+                                                     const cxpr_context* ctx,
+                                                     const cxpr_registry* reg,
+                                                     void* userdata,
+                                                     cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    const cxpr_ast* samples_ast;
+    const cxpr_ast* center_ast;
+    double samples_value = 0.0;
+    double center = 0.0;
+    long long samples_ll;
+    double sum = 0.0;
+    long long count = 0;
+
+    (void)userdata;
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    if (cxpr_ast_function_argc(call_ast) != 3u) {
+        if (err) {
+            err->code = CXPR_ERR_WRONG_ARITY;
+            err->message = "window_mean_absdev expects value, samples, center";
+        }
+        return cxpr_num(NAN);
+    }
+
+    value_ast = cxpr_ast_function_arg(call_ast, 0u);
+    samples_ast = cxpr_ast_function_arg(call_ast, 1u);
+    center_ast = cxpr_ast_function_arg(call_ast, 2u);
+    if (!cxpr_eval_ast_number(samples_ast, ctx, reg, &samples_value, err) ||
+        !cxpr_eval_ast_number(center_ast, ctx, reg, &center, err)) {
+        return cxpr_num(NAN);
+    }
+    samples_ll = (long long)llround(samples_value);
+    if (!isfinite(samples_value) || fabs(samples_value - (double)samples_ll) > 1e-9 ||
+        samples_ll < 1) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "window_mean_absdev samples must be a positive integer";
+        }
+        return cxpr_num(NAN);
+    }
+    if (isnan(center)) return cxpr_num(0.0);
+
+    for (long long i = 0; i < samples_ll; ++i) {
+        double value = 0.0;
+        if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
+            return cxpr_num(NAN);
+        }
+        if (isnan(value)) continue;
+        sum += fabs(value - center);
+        count++;
+    }
+    return cxpr_num(count == 0 ? 0.0 : sum / (double)count);
+}
+
 static cxpr_value cxpr_timeseries_window_sum(const cxpr_ast* call_ast,
                                              const cxpr_context* ctx,
                                              const cxpr_registry* reg,
@@ -708,6 +825,22 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_add_timeseries(reg, "window_roc", cxpr_timeseries_window_roc, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "window_roc", value_samples_params, 2u);
+    {
+        static const char* bars_since_extreme_params[] = {"value", "samples", "mode"};
+        cxpr_registry_add_timeseries(reg, "bars_since_extreme",
+                                     cxpr_timeseries_bars_since_extreme, 3, 3,
+                                     CXPR_VALUE_NUMBER, NULL, NULL);
+        cxpr_registry_set_param_names(
+            reg, "bars_since_extreme", bars_since_extreme_params, 3u);
+    }
+    {
+        static const char* window_mean_absdev_params[] = {"value", "samples", "center"};
+        cxpr_registry_add_timeseries(reg, "window_mean_absdev",
+                                     cxpr_timeseries_window_mean_absdev, 3, 3,
+                                     CXPR_VALUE_NUMBER, NULL, NULL);
+        cxpr_registry_set_param_names(
+            reg, "window_mean_absdev", window_mean_absdev_params, 3u);
+    }
 }
 
 bool cxpr_timeseries_is_builtin(const char* name) {
@@ -730,5 +863,7 @@ bool cxpr_timeseries_is_builtin(const char* name) {
            strcmp(name, "window_highest") == 0 ||
            strcmp(name, "window_lowest") == 0 ||
            strcmp(name, "window_stddev") == 0 ||
-           strcmp(name, "window_roc") == 0;
+           strcmp(name, "window_roc") == 0 ||
+           strcmp(name, "bars_since_extreme") == 0 ||
+           strcmp(name, "window_mean_absdev") == 0;
 }

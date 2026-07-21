@@ -106,7 +106,7 @@ typedef struct {
     char* name;
     char* source;
     unsigned long name_hash;
-    cxpr_ir_view_result_kind result_kind;
+    cxpr_model_result_kind result_kind;
     cxpr_ast* ast;
 } cxpr_model_compiled_binding;
 
@@ -137,7 +137,7 @@ typedef struct {
     char* name;
     unsigned long hash;
     size_t slot;
-    cxpr_ir_view_result_kind result_kind;
+    cxpr_model_result_kind result_kind;
 } cxpr_model_slot_ref;
 
 typedef struct {
@@ -161,8 +161,24 @@ typedef struct {
     size_t source_input_index;
 } cxpr_model_child_program;
 
+typedef enum {
+    CXPR_MODEL_LIFETIME_SINGLETON = 0,
+    CXPR_MODEL_LIFETIME_SCOPED = 1,
+    CXPR_MODEL_LIFETIME_TRANSIENT = 2,
+} cxpr_model_lifetime;
+
+typedef struct {
+    char* key;
+    size_t child_index;
+    cxpr_model_session* session;
+} cxpr_model_child_instance;
+
 struct cxpr_model_program {
     cxpr_registry* registry;
+    cxpr_model_backend_kind requested_backend;
+    cxpr_model_backend_kind selected_backend;
+    bool compile_fuse;
+    bool compile_trace;
     cxpr_ir_program fused_ir;
     bool has_fused_ir;
     bool has_fused_layout;
@@ -187,6 +203,7 @@ struct cxpr_model_program {
     char** inputs;
     size_t input_count;
     char* source_arg;
+    cxpr_model_lifetime lifetime;
     cxpr_model_child_program* children;
     size_t child_count;
     cxpr_model_history_spec* history_specs;
@@ -196,6 +213,7 @@ struct cxpr_model_program {
 };
 
 struct cxpr_model_session {
+    const cxpr_model_program* program;
     cxpr_context* ctx;
     cxpr_model_output_state* outputs;
     size_t output_count;
@@ -217,6 +235,9 @@ struct cxpr_model_session {
     size_t fused_pending_count;
     cxpr_model_session** child_sessions;
     size_t child_session_count;
+    cxpr_model_child_instance* child_instances;
+    size_t child_instance_count;
+    size_t child_instance_capacity;
     cxpr_value* pending_values;
     size_t* pending_binding_indices;
     size_t pending_capacity;

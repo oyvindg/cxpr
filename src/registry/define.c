@@ -60,7 +60,7 @@ static bool collect_fields_in_ast(const cxpr_ast* node,
                                   cxpr_def_field_set* sets) {
     if (!node) return true;
 
-    if (node->type == CXPR_NODE_FIELD_ACCESS) {
+    if (node->type == CXPR_NODE_FIELD_ACCESS && !node->data.field_access.base) {
         const char* obj = node->data.field_access.object;
         const char* fld = node->data.field_access.field;
         for (size_t i = 0; i < param_count; i++) {
@@ -72,6 +72,9 @@ static bool collect_fields_in_ast(const cxpr_ast* node,
     }
 
     switch (node->type) {
+    case CXPR_NODE_FIELD_ACCESS:
+        return collect_fields_in_ast(
+            node->data.field_access.base, param_names, param_count, sets);
     case CXPR_NODE_BINARY_OP:
         return collect_fields_in_ast(node->data.binary_op.left, param_names, param_count, sets) &&
                collect_fields_in_ast(node->data.binary_op.right, param_names, param_count, sets);

@@ -555,7 +555,15 @@ static int build_model_imports(const char* model_path,
             free(import_path);
             continue;
         }
-        import_program = cxpr_compile_model(import_model, NULL, &err);
+        {
+            const cxpr_model_compile_options compile_options = {
+                CXPR_MODEL_BACKEND_C,
+                true,
+                false,
+            };
+            import_program = cxpr_compile_model_with_options(
+                import_model, NULL, &compile_options, &err);
+        }
         if (!import_program) {
             cxpr_model_free(import_model);
             free(import_combined);
@@ -718,7 +726,15 @@ static int emit_model_c(const char* model_path,
         if (!import_api) goto cleanup;
         for (size_t i = 0u; i < import_count; ++i) import_api[i] = compiled_imports[i].api;
     }
-    program = cxpr_compile_model_with_imports(model, NULL, import_api, import_count, &err);
+    {
+        const cxpr_model_compile_options compile_options = {
+            CXPR_MODEL_BACKEND_C,
+            true,
+            false,
+        };
+        program = cxpr_compile_model_with_imports_and_options(
+            model, NULL, import_api, import_count, &compile_options, &err);
+    }
     if (!program) {
         fprintf(stderr, "cxpr_model_codegen: compile failed: %s\n", err.message);
         goto cleanup;

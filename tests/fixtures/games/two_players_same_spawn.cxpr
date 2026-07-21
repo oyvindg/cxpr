@@ -1,0 +1,97 @@
+# Parent scene fixture for independent player state.
+# p1 and p2 intentionally share the same spawn position.
+
+model two_players_same_spawn {
+    kind = "game_scene"
+}
+
+use player_entity
+
+in {
+    p1_damage,
+    p2_damage,
+    p1_move_x,
+    p2_move_x,
+    reset
+}
+
+$same_x = 10
+$same_y = 20
+
+p1_health = player_entity(
+    entity_id=1,
+    spawn_x=$same_x,
+    spawn_y=$same_y,
+    move_x=p1_move_x,
+    move_y=0,
+    damage=p1_damage,
+    heal=0,
+    stamina_use=1,
+    reset=reset).health
+
+p2_health = player_entity(
+    entity_id=2,
+    spawn_x=$same_x,
+    spawn_y=$same_y,
+    move_x=p2_move_x,
+    move_y=0,
+    damage=p2_damage,
+    heal=0,
+    stamina_use=1,
+    reset=reset).health
+
+p1_x = player_entity(
+    entity_id=1,
+    spawn_x=$same_x,
+    spawn_y=$same_y,
+    move_x=p1_move_x,
+    move_y=0,
+    damage=p1_damage,
+    heal=0,
+    stamina_use=1,
+    reset=reset).x
+
+p2_x = player_entity(
+    entity_id=2,
+    spawn_x=$same_x,
+    spawn_y=$same_y,
+    move_x=p2_move_x,
+    move_y=0,
+    damage=p2_damage,
+    heal=0,
+    stamina_use=1,
+    reset=reset).x
+
+p1_alive = player_entity(
+    entity_id=1,
+    spawn_x=$same_x,
+    spawn_y=$same_y,
+    move_x=p1_move_x,
+    move_y=0,
+    damage=p1_damage,
+    heal=0,
+    stamina_use=1,
+    reset=reset).alive
+
+p2_alive = player_entity(
+    entity_id=2,
+    spawn_x=$same_x,
+    spawn_y=$same_y,
+    move_x=p2_move_x,
+    move_y=0,
+    damage=p2_damage,
+    heal=0,
+    stamina_use=1,
+    reset=reset).alive
+
+both_alive = p1_alive and p2_alive
+same_spawn_different_state = p1_health != p2_health
+
+out {
+    p1_health,
+    p2_health,
+    p1_x,
+    p2_x,
+    both_alive,
+    same_spawn_different_state
+}

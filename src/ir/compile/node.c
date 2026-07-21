@@ -33,7 +33,7 @@ static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
     }
 
     body = entry->defined_body;
-    if (body->type == CXPR_NODE_FIELD_ACCESS) {
+    if (body->type == CXPR_NODE_FIELD_ACCESS && !body->data.field_access.base) {
         body_param = body->data.field_access.object;
         body_field = body->data.field_access.field;
     } else if (body->type == CXPR_NODE_CHAIN_ACCESS && body->data.chain_access.depth == 2) {
@@ -67,6 +67,92 @@ static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
     }
 
     return false;
+}
+
+static bool cxpr_ir_defined_body_needs_ast_eval(const cxpr_ast* ast,
+                                                const cxpr_registry* reg,
+                                                size_t depth) {
+    size_t i;
+    if (!ast || depth > CXPR_IR_INLINE_DEPTH_LIMIT) return false;
+    switch (ast->type) {
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
+        if (entry && (entry->ast_func || entry->ast_func_handler)) return true;
+        if (entry && entry->defined_body &&
+            cxpr_ir_defined_body_needs_ast_eval(entry->defined_body, reg, depth + 1u)) {
+            return true;
+        }
+        for (i = 0u; i < ast->data.function_call.argc; ++i) {
+            if (cxpr_ir_defined_body_needs_ast_eval(
+                    ast->data.function_call.args[i], reg, depth)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (i = 0u; i < ast->data.producer_access.argc; ++i) {
+            if (cxpr_ir_defined_body_needs_ast_eval(
+                    ast->data.producer_access.args[i], reg, depth)) {
+                return true;
+            }
+        }
+        return false;
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_ir_defined_body_needs_ast_eval(ast->data.lookback.target, reg, depth) ||
+               cxpr_ir_defined_body_needs_ast_eval(ast->data.lookback.index, reg, depth);
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_ir_defined_body_needs_ast_eval(ast->data.binary_op.left, reg, depth) ||
+               cxpr_ir_defined_body_needs_ast_eval(ast->data.binary_op.right, reg, depth);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_ir_defined_body_needs_ast_eval(ast->data.unary_op.operand, reg, depth);
+    case CXPR_NODE_TERNARY:
+        return cxpr_ir_defined_body_needs_ast_eval(ast->data.ternary.condition, reg, depth) ||
+               cxpr_ir_defined_body_needs_ast_eval(ast->data.ternary.true_branch, reg, depth) ||
+               cxpr_ir_defined_body_needs_ast_eval(ast->data.ternary.false_branch, reg, depth);
+    case CXPR_NODE_FIELD_ACCESS:
+        return ast->data.field_access.base &&
+               cxpr_ir_defined_body_needs_ast_eval(ast->data.field_access.base, reg, depth);
+    case CXPR_NODE_ARRAY:
+        for (i = 0u; i < ast->data.array.count; ++i) {
+            if (cxpr_ir_defined_body_needs_ast_eval(ast->data.array.elements[i], reg, depth)) {
+                return true;
+            }
+        }
+        return false;
+    case CXPR_NODE_RECORD:
+        for (i = 0u; i < ast->data.record.field_count; ++i) {
+            if (cxpr_ir_defined_body_needs_ast_eval(
+                    ast->data.record.field_values[i], reg, depth)) {
+                return true;
+            }
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
+static bool cxpr_ir_defined_call_can_inline(const cxpr_func_entry* entry,
+                                            const cxpr_ast* call_ast,
+                                            const cxpr_registry* reg) {
+    if (!entry || !entry->defined_body || !call_ast ||
+        call_ast->type != CXPR_NODE_FUNCTION_CALL ||
+        entry->defined_return_field_count > 0u ||
+        entry->defined_param_count != call_ast->data.function_call.argc) {
+        return false;
+    }
+    if (cxpr_ir_defined_body_needs_ast_eval(entry->defined_body, reg, 0u)) {
+        return false;
+    }
+    for (size_t i = 0u; i < entry->defined_param_count; ++i) {
+        if (entry->defined_param_fields[i] &&
+            entry->defined_param_field_counts[i] > 0u) {
+            const cxpr_ast* arg = call_ast->data.function_call.args[i];
+            if (!arg || arg->type != CXPR_NODE_IDENTIFIER) return false;
+        }
+    }
+    return true;
 }
 
 bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
@@ -201,6 +287,18 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                             err);
 
     case CXPR_NODE_FIELD_ACCESS:
+        if (ast->data.field_access.base) {
+            if (!cxpr_ir_compile_node(ast->data.field_access.base, program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_GET_FIELD,
+                                    .name = ast->data.field_access.field,
+                                },
+                                err);
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_FIELD,
@@ -526,6 +624,27 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
+        if ((strcmp(fname, "min") == 0 || strcmp(fname, "max") == 0) &&
+            ast->data.function_call.argc >= 1 &&
+            ast->data.function_call.argc <= 8) {
+            size_t i;
+            for (i = 0; i < ast->data.function_call.argc; ++i) {
+                if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
+                                          local_names, local_count, subst, inline_depth, err)) {
+                    return false;
+                }
+            }
+            return cxpr_ir_emit(
+                program,
+                (cxpr_ir_instr){
+                    .op = CXPR_OP_CALL_FUNC,
+                    .func = entry,
+                    .payload = ast,
+                    .index = ast->data.function_call.argc,
+                },
+                err);
+        }
+
         if (entry->ast_func) {
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
@@ -648,7 +767,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                                 err);
         }
 
-        if (entry->defined_body && cxpr_ir_defined_is_scalar_only(entry)) {
+        if (entry->defined_body && cxpr_ir_defined_call_can_inline(entry, ast, reg)) {
             if (inline_depth < CXPR_IR_INLINE_DEPTH_LIMIT) {
                 cxpr_ir_subst_frame frame = {
                     .names = (const char* const*)entry->defined_param_names,

@@ -564,10 +564,28 @@ static void engine_scan_ast_with_offset(const cxpr_ast* ast,
             }
             break;
         }
-        case CXPR_NODE_FIELD_ACCESS:
+        case CXPR_NODE_RECORD:
+            for (i = 0; i < cxpr_ast_record_field_count(ast); ++i) {
+                engine_scan_ast_with_offset(cxpr_ast_record_field_value(ast, i), prog, inherited_lookback);
+            }
             break;
-        case CXPR_NODE_CHAIN_ACCESS:
+        case CXPR_NODE_FIELD_ACCESS: {
+            const cxpr_ast* base = cxpr_ast_field_base(ast);
+            const char* root = cxpr_ast_field_object(ast);
+            if (base) {
+                engine_scan_ast_with_offset(base, prog, inherited_lookback);
+            } else if (root && engine_is_expr_name(prog, root)) {
+                engine_track_expr(prog, root, inherited_lookback);
+            }
             break;
+        }
+        case CXPR_NODE_CHAIN_ACCESS: {
+            const char* root = cxpr_ast_chain_depth(ast) > 0u ? cxpr_ast_chain_segment(ast, 0u) : NULL;
+            if (root && engine_is_expr_name(prog, root)) {
+                engine_track_expr(prog, root, inherited_lookback);
+            }
+            break;
+        }
         case CXPR_NODE_PRODUCER_ACCESS:
             for (i = 0; i < cxpr_ast_producer_argc(ast); ++i) {
                 engine_scan_ast_with_offset(cxpr_ast_producer_arg(ast, i), prog, inherited_lookback);
@@ -619,6 +637,26 @@ static bool engine_struct_path_value(cxpr_value value,
     }
     *out = cur;
     return true;
+}
+
+static bool engine_tracked_expression_value(cxpr_engine_session* s,
+                                            int tracked_index,
+                                            size_t lookback,
+                                            cxpr_value* out) {
+    bool found = false;
+    if (!s || tracked_index < 0 || (size_t)tracked_index >= s->expr_ring_count || !out) {
+        return false;
+    }
+    if (lookback == 0u) {
+        const char* name = s->prog->tracked[tracked_index].name;
+        cxpr_value value = cxpr_expression_get(s->eval, name, &found);
+        if (found) {
+            *out = value;
+            return true;
+        }
+    }
+    *out = engine_ringb_read(&s->expr_rings[tracked_index], lookback, &found);
+    return found;
 }
 
 static bool engine_eval_call_args(const cxpr_ast* call_ast,
@@ -996,8 +1034,8 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
             /* Named-expression result ring (D16). */
             int ti = engine_tracked_index(s->prog, name);
             if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
-                bool found = false;
-                cxpr_value value = engine_ringb_read(&s->expr_rings[ti], n, &found);
+                cxpr_value value;
+                bool found = engine_tracked_expression_value(s, ti, n, &value);
                 *out = found ? value : cxpr_num(NAN);
                 return true;
             }
@@ -1007,8 +1045,8 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
         const char* root = cxpr_ast_chain_segment(target, 0u);
         int ti = engine_tracked_index(s->prog, root);
         if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
-            bool found = false;
-            cxpr_value value = engine_ringb_read(&s->expr_rings[ti], n, &found);
+            cxpr_value value;
+            bool found = engine_tracked_expression_value(s, ti, n, &value);
             if (!found) {
                 *out = cxpr_num(NAN);
                 return true;
@@ -1025,8 +1063,8 @@ static bool engine_lookback_resolver(const cxpr_ast* target, const cxpr_ast* ind
         const char* field = cxpr_ast_field_name(target);
         int ti = engine_tracked_index(s->prog, root);
         if (ti >= 0 && (size_t)ti < s->expr_ring_count) {
-            bool found = false;
-            cxpr_value value = engine_ringb_read(&s->expr_rings[ti], n, &found);
+            cxpr_value value;
+            bool found = engine_tracked_expression_value(s, ti, n, &value);
             if (!found) {
                 *out = cxpr_num(NAN);
                 return true;

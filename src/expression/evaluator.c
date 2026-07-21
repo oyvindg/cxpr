@@ -182,7 +182,6 @@ bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {
             evaluator->compiled = false;
             return false;
         }
-        if (analysis.uses_expressions) continue;
         entry->program = cxpr_compile(entry->ast, evaluator->registry, err);
         if (!entry->program) {
             cxpr_expression_wrap_compile_error(entry, err);

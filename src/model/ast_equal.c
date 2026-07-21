@@ -25,6 +25,12 @@ bool cxpr_model_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
         return cxpr_model_names_match(cxpr_ast_variable_name(left),
                                       cxpr_ast_variable_name(right));
     case CXPR_NODE_FIELD_ACCESS:
+        if (cxpr_ast_field_base(left) || cxpr_ast_field_base(right)) {
+            return cxpr_model_ast_equal(cxpr_ast_field_base(left),
+                                        cxpr_ast_field_base(right)) &&
+                   cxpr_model_names_match(cxpr_ast_field_name(left),
+                                          cxpr_ast_field_name(right));
+        }
         return cxpr_model_names_match(cxpr_ast_field_object(left),
                                       cxpr_ast_field_object(right)) &&
                cxpr_model_names_match(cxpr_ast_field_name(left),

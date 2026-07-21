@@ -343,24 +343,81 @@ static void test_parse_model_use_group_from_namespace(void) {
     printf("  ✓ test_parse_model_use_group_from_namespace\n");
 }
 
+typedef struct {
+    size_t count;
+    int saw_preset;
+} use_resolver_capture;
+
+static int capture_use_resolution(
+    const cxpr_model* model,
+    size_t index,
+    const char* path,
+    const char* alias,
+    cxpr_model_use_resolution* out_resolution,
+    void* userdata,
+    cxpr_error* err) {
+    use_resolver_capture* capture = (use_resolver_capture*)userdata;
+    (void)model;
+    (void)index;
+    (void)alias;
+    (void)err;
+    capture->count++;
+    if (strcmp(path, "presets/core_filter") == 0) {
+        capture->saw_preset = 1;
+        if (out_resolution) {
+            out_resolution->namespace_name = "core_filter";
+            out_resolution->handled = 1;
+        }
+    }
+    return 1;
+}
+
+static void test_model_resolve_uses_calls_host_callback(void) {
+    cxpr_error err = {0};
+    use_resolver_capture capture = {0};
+    cxpr_model_use_resolver resolver = {
+        .resolve = capture_use_resolution,
+        .userdata = &capture,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model use_resolver_model\n"
+        "use { core_filter } from presets\n"
+        "use indicators/bollinger\n"
+        "in close\n"
+        "out close\n");
+
+    assert(cxpr_model_resolve_uses(model, &resolver, &err));
+    assert(capture.count == 2u);
+    assert(capture.saw_preset == 1);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_model_resolve_uses_calls_host_callback\n");
+}
+
 static void test_parse_model_statement_metadata_block(void) {
     cxpr_model* model = parse_model_ok(
         "model strategy_model {\n"
+        "  type = preset\n"
         "  timeframe = \"15m\"\n"
         "  base_filter\n"
         "}\n"
         "in close\n"
         "out close\n");
     const cxpr_model_host_block* block = cxpr_model_host_block_at(model, 0u);
+    char* type = NULL;
 
     assert(strcmp(cxpr_model_name(model), "strategy_model") == 0);
     assert(cxpr_model_host_block_count(model) == 1u);
     assert(block != NULL);
     assert(strcmp(cxpr_host_block_kind(block), "model") == 0);
     assert(strcmp(cxpr_host_block_name(block), "strategy_model") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(block, "type"), "preset") == 0);
+    assert(cxpr_host_block_field_string_by_key(block, "type", &type));
+    assert(strcmp(type, "preset") == 0);
     assert(strcmp(cxpr_host_block_field_value_by_key(block, "timeframe"), "\"15m\"") == 0);
     assert(strcmp(cxpr_host_block_field_value_by_key(block, "base_filter"), "true") == 0);
 
+    free(type);
     cxpr_model_free(model);
     printf("  ✓ test_parse_model_statement_metadata_block\n");
 }
@@ -540,6 +597,30 @@ static void test_parse_model_host_blocks_preserve_body(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_parse_model_host_blocks_preserve_body\n");
+}
+
+static void test_parse_model_host_blocks_allow_numeric_names(void) {
+    const char* source =
+        "symbol SYNTH_CXPR {\n"
+        "    type = \"symbol\"\n"
+        "}\n"
+        "timeframe 1m {\n"
+        "    aggregate_from = \"tick\"\n"
+        "}\n"
+        "model symbol_manifest\n";
+    cxpr_model* model = parse_model_ok(source);
+
+    assert(cxpr_model_host_block_count(model) == 2u);
+    assert(strcmp(cxpr_model_host_block_kind(model, 0u), "symbol") == 0);
+    assert(strcmp(cxpr_model_host_block_name(model, 0u), "SYNTH_CXPR") == 0);
+    assert(strcmp(cxpr_model_host_block_kind(model, 1u), "timeframe") == 0);
+    assert(strcmp(cxpr_model_host_block_name(model, 1u), "1m") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(
+                      cxpr_model_host_block_at(model, 1u), "aggregate_from"),
+                  "\"tick\"") == 0);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_host_blocks_allow_numeric_names\n");
 }
 
 typedef struct {
@@ -1395,25 +1476,25 @@ static void test_compile_and_eval_model_program(void) {
     assert(strcmp(cxpr_model_program_binding_name(program, 0), "base") == 0);
     assert(strcmp(cxpr_model_program_binding_name(program, 1), "signal") == 0);
     assert(cxpr_model_program_binding_kind(program, 0) == CXPR_MODEL_BINDING_EXPR);
-    assert(cxpr_model_program_binding_result_kind(program, 0) == CXPR_IR_VIEW_RESULT_NUMBER);
-    assert(cxpr_model_program_binding_result_kind(program, 1) == CXPR_IR_VIEW_RESULT_BOOL);
+    assert(cxpr_model_program_binding_result_kind(program, 0) == CXPR_MODEL_RESULT_NUMBER);
+    assert(cxpr_model_program_binding_result_kind(program, 1) == CXPR_MODEL_RESULT_BOOL);
     assert(cxpr_model_program_constant_count(program) == 1);
     assert(strcmp(cxpr_model_program_constant_name(program, 0), "offset") == 0);
-    assert(cxpr_model_program_constant_result_kind(program, 0) == CXPR_IR_VIEW_RESULT_NUMBER);
+    assert(cxpr_model_program_constant_result_kind(program, 0) == CXPR_MODEL_RESULT_NUMBER);
     assert(cxpr_model_program_input_count(program) == 1);
     assert(strcmp(cxpr_model_program_input_name(program, 0), "close") == 0);
     assert(cxpr_model_program_output_count(program) == 1);
     assert(strcmp(cxpr_model_program_output_name(program, 0), "signal") == 0);
     assert(cxpr_model_program_history_spec_count(program) == 0);
     assert(cxpr_model_program_child_count(program) == 0);
-    if (cxpr_model_program_uses_fused_ir(program)) {
-        assert(cxpr_model_program_fused_slot_count(program) >= 3);
-        assert(cxpr_model_program_fused_input_count(program) == 1);
-        assert(strcmp(cxpr_model_program_fused_input_name(program, 0), "close") == 0);
-        assert(cxpr_model_program_fused_input_slot(program, 0) != (size_t)-1);
-        assert(cxpr_model_program_fused_output_count(program) == 1);
-        assert(strcmp(cxpr_model_program_fused_output_name(program, 0), "signal") == 0);
-        assert(cxpr_model_program_fused_output_result_kind(program, 0) == CXPR_IR_VIEW_RESULT_BOOL);
+    if (cxpr_model_program_uses_fast_path(program)) {
+        assert(cxpr_model_program_fast_path_slot_count(program) >= 3);
+        assert(cxpr_model_program_fast_path_input_count(program) == 1);
+        assert(strcmp(cxpr_model_program_fast_path_input_name(program, 0), "close") == 0);
+        assert(cxpr_model_program_fast_path_input_slot(program, 0) != (size_t)-1);
+        assert(cxpr_model_program_fast_path_output_count(program) == 1);
+        assert(strcmp(cxpr_model_program_fast_path_output_name(program, 0), "signal") == 0);
+        assert(cxpr_model_program_fast_path_output_result_kind(program, 0) == CXPR_MODEL_RESULT_BOOL);
     }
 
     assert(cxpr_model_program_seed_defaults(program, ctx, NULL, &err));
@@ -1482,6 +1563,95 @@ static void test_compile_and_eval_struct_param_and_shorthand_record(void) {
     cxpr_model_program_free(program);
     cxpr_model_free(model);
     printf("  ✓ test_compile_and_eval_struct_param_and_shorthand_record\n");
+}
+
+static void test_compile_model_backend_options(void) {
+    cxpr_error err = {0};
+    cxpr_model_compile_options options = {CXPR_MODEL_BACKEND_AUTO, false, false};
+    cxpr_model* model = parse_model_ok(
+        "model backend_options\n"
+        "in { close }\n"
+        "$offset = 3\n"
+        "base = close + $offset\n"
+        "signal = base > 10\n"
+        "out signal\n");
+    cxpr_model_program* program;
+    char* code;
+
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program != NULL);
+    assert(cxpr_model_program_requested_backend(program) == CXPR_MODEL_BACKEND_AUTO);
+    assert(cxpr_model_program_selected_backend(program) == CXPR_MODEL_BACKEND_AUTO);
+    assert(!cxpr_model_program_compile_fuse_enabled(program));
+    assert(!cxpr_model_program_compile_trace_enabled(program));
+    assert(!cxpr_model_program_uses_fast_path(program));
+    assert(cxpr_model_program_fast_path_disabled_reason(program) != NULL);
+    cxpr_model_program_free(program);
+
+    options.backend = CXPR_MODEL_BACKEND_IR;
+    options.fuse = true;
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program != NULL);
+    assert(cxpr_model_program_requested_backend(program) == CXPR_MODEL_BACKEND_IR);
+    assert(cxpr_model_program_selected_backend(program) == CXPR_MODEL_BACKEND_IR);
+    assert(cxpr_model_program_uses_fast_path(program));
+    cxpr_model_program_free(program);
+
+    options.backend = CXPR_MODEL_BACKEND_C;
+    options.fuse = false;
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program != NULL);
+    assert(cxpr_model_program_requested_backend(program) == CXPR_MODEL_BACKEND_C);
+    assert(cxpr_model_program_selected_backend(program) == CXPR_MODEL_BACKEND_C);
+    assert(!cxpr_model_program_uses_fast_path(program));
+    code = cxpr_model_program_to_c_tick_function(program, "static inline",
+                                                 "backend_options_tick", &err);
+    assert(code != NULL);
+    free(code);
+    cxpr_model_program_free(program);
+
+    options.backend = CXPR_MODEL_BACKEND_AUTO;
+    options.fuse = true;
+    options.enable_trace = true;
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program != NULL);
+    assert(cxpr_model_program_compile_trace_enabled(program));
+    assert(!cxpr_model_program_uses_fast_path(program));
+    cxpr_model_program_free(program);
+
+    options.backend = CXPR_MODEL_BACKEND_IR;
+    options.fuse = false;
+    options.enable_trace = false;
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program == NULL);
+    assert(err.code != CXPR_OK);
+
+    options.backend = CXPR_MODEL_BACKEND_IR;
+    options.fuse = true;
+    options.enable_trace = true;
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program == NULL);
+    assert(err.code != CXPR_OK);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_compile_model_backend_options\n");
+}
+
+static void test_compile_model_ir_backend_rejects_unsupported_model(void) {
+    cxpr_error err = {0};
+    cxpr_model_compile_options options = {CXPR_MODEL_BACKEND_IR, true, false};
+    cxpr_model* model = parse_model_ok(
+        "model backend_ir_unsupported\n"
+        "in { close }\n"
+        "point = { x = close, y = close + 1 }\n"
+        "out point\n");
+    cxpr_model_program* program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+
+    assert(program == NULL);
+    assert(err.code != CXPR_OK);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_compile_model_ir_backend_rejects_unsupported_model\n");
 }
 
 static void test_compile_model_defined_function_without_host_registration(void) {
@@ -2378,6 +2548,377 @@ static void test_imported_producer_repeated_calls_cache_same_args(void) {
     printf("  ✓ test_imported_producer_repeated_calls_cache_same_args\n");
 }
 
+static void test_imported_stateful_producer_calls_keep_independent_state(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model bb {\n"
+        "    source_arg = \"source\"\n"
+        "    lifecycle = \"scoped\"\n"
+        "}\n"
+        "in source\n"
+        "$period = 1\n"
+        "state { count = 0 }\n"
+        "upper = source + count * $period\n"
+        "count := count + 1\n"
+        "out upper\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    char* code;
+
+    if (!child_program) {
+        fprintf(stderr, "stateful child compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(child_program != NULL);
+    imports[0].name = "indicators/bb";
+    imports[0].program = child_program;
+
+    parent = parse_model_ok(
+        "model independent_child_instances\n"
+        "use indicators/bb\n"
+        "in close\n"
+        "fast = bb(close, 1).upper\n"
+        "slow = bb(close, 2).upper\n"
+        "out { fast, slow }\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "stateful child parent compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "fast", &value));
+    assert(value == 10.0);
+    assert(cxpr_model_session_output_number(session, "slow", &value));
+    assert(value == 10.0);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "fast", &value));
+    assert(value == 11.0);
+    assert(cxpr_model_session_output_number(session, "slow", &value));
+    assert(value == 12.0);
+
+    code = cxpr_model_program_to_c_tick_function(parent_program, "static inline",
+                                                 "independent_child_instances_tick", &err);
+    if (!code) {
+        fprintf(stderr, "stateful child C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "child_call_0_state"));
+    assert(strstr(code, "child_call_1_state"));
+    assert(strstr(code, "&_cx_state->child_call_0_state"));
+    assert(strstr(code, "&_cx_state->child_call_1_state"));
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_stateful_producer_calls_keep_independent_state\n");
+}
+
+static void test_imported_producer_default_singleton_shares_state(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model bb {\n"
+        "    source_arg = \"source\"\n"
+        "}\n"
+        "in source\n"
+        "$period = 1\n"
+        "state { count = 0 }\n"
+        "upper = source + count * $period\n"
+        "count := count + 1\n"
+        "out upper\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    assert(child_program != NULL);
+    imports[0].name = "indicators/bb";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "model singleton_child_instances\n"
+        "use indicators/bb\n"
+        "in close\n"
+        "fast = bb(close, 1).upper\n"
+        "slow = bb(close, 2).upper\n"
+        "out { fast, slow }\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "fast", &value));
+    assert(value == 10.0);
+    assert(cxpr_model_session_output_number(session, "slow", &value));
+    assert(value == 12.0);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "fast", &value));
+    assert(value == 12.0);
+    assert(cxpr_model_session_output_number(session, "slow", &value));
+    assert(value == 16.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_default_singleton_shares_state\n");
+}
+
+static void test_imported_producer_explicit_singleton_shares_state(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model counter {\n"
+        "    lifecycle = \"singleton\"\n"
+        "}\n"
+        "$scale = 1\n"
+        "state { count = 0 }\n"
+        "value = count * $scale\n"
+        "count := count + 1\n"
+        "out value\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+
+    assert(child_program != NULL);
+    imports[0].name = "counter";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "model explicit_singleton_parent\n"
+        "use counter\n"
+        "a = counter(1).value\n"
+        "b = counter(2).value\n"
+        "out { a, b }\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "a", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_number(session, "b", &value));
+    assert(value == 2.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_explicit_singleton_shares_state\n");
+}
+
+static void test_imported_producer_transient_resets_each_parent_tick(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model probe {\n"
+        "    lifecycle = \"transient\"\n"
+        "}\n"
+        "$id = 0\n"
+        "state { count = 0 }\n"
+        "value = count + $id * 0\n"
+        "count := count + 1\n"
+        "out value\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+
+    assert(child_program != NULL);
+    imports[0].name = "probe";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "model transient_parent\n"
+        "use probe\n"
+        "a = probe(1).value\n"
+        "a_again = probe(1).value\n"
+        "b = probe(2).value\n"
+        "out { a, a_again, b }\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "a", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_number(session, "a_again", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_number(session, "b", &value));
+    assert(value == 0.0);
+
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "a", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_number(session, "b", &value));
+    assert(value == 0.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_transient_resets_each_parent_tick\n");
+}
+
+static void test_game_two_players_fixture_keeps_scoped_state(void) {
+    cxpr_error err = {0};
+    char* child_source = read_fixture("fixtures/games/player_entity.cxpr");
+    char* parent_source = read_fixture("fixtures/games/two_players_same_spawn.cxpr");
+    cxpr_model* child = child_source ? parse_model_ok(child_source) : NULL;
+    cxpr_model_program* child_program = child ? cxpr_compile_model(child, NULL, &err) : NULL;
+    cxpr_model_import imports[1];
+    cxpr_model* parent = parent_source ? parse_model_ok(parent_source) : NULL;
+    cxpr_model_program* parent_program = NULL;
+    cxpr_model_session* session = NULL;
+    cxpr_context* ctx = NULL;
+    double value = 0.0;
+    bool flag = false;
+
+    assert(child_source != NULL);
+    assert(parent_source != NULL);
+    assert(child_program != NULL);
+    imports[0].name = "player_entity";
+    imports[0].program = child_program;
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "two players fixture compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "p1_damage", 0.0);
+    cxpr_context_set(ctx, "p2_damage", 0.0);
+    cxpr_context_set(ctx, "p1_move_x", 1.0);
+    cxpr_context_set(ctx, "p2_move_x", 2.0);
+    cxpr_context_set(ctx, "reset", 1.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "p1_x", &value));
+    assert(value == 10.0);
+    assert(cxpr_model_session_output_number(session, "p2_x", &value));
+    assert(value == 10.0);
+
+    cxpr_context_set(ctx, "p1_damage", 10.0);
+    cxpr_context_set(ctx, "p2_damage", 0.0);
+    cxpr_context_set(ctx, "p1_move_x", 1.0);
+    cxpr_context_set(ctx, "p2_move_x", 2.0);
+    cxpr_context_set(ctx, "reset", 0.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "p1_health", &value));
+    assert(value == 90.0);
+    assert(cxpr_model_session_output_number(session, "p2_health", &value));
+    assert(value == 100.0);
+    assert(cxpr_model_session_output_number(session, "p1_x", &value));
+    assert(fabs(value - 10.1) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "p2_x", &value));
+    assert(fabs(value - 10.2) < 1e-12);
+    assert(cxpr_model_session_output_bool(session, "same_spawn_different_state", &flag));
+    assert(flag);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    free(parent_source);
+    free(child_source);
+    printf("  ✓ test_game_two_players_fixture_keeps_scoped_state\n");
+}
+
+static void test_game_twin_projectiles_fixture_keeps_scoped_state(void) {
+    cxpr_error err = {0};
+    char* child_source = read_fixture("fixtures/games/projectile_entity.cxpr");
+    char* parent_source = read_fixture("fixtures/games/twin_projectiles_same_origin.cxpr");
+    cxpr_model* child = child_source ? parse_model_ok(child_source) : NULL;
+    cxpr_model_program* child_program = child ? cxpr_compile_model(child, NULL, &err) : NULL;
+    cxpr_model_import imports[1];
+    cxpr_model* parent = parent_source ? parse_model_ok(parent_source) : NULL;
+    cxpr_model_program* parent_program = NULL;
+    cxpr_model_session* session = NULL;
+    cxpr_context* ctx = NULL;
+    double value = 0.0;
+    bool flag = false;
+
+    assert(child_source != NULL);
+    assert(parent_source != NULL);
+    assert(child_program != NULL);
+    imports[0].name = "projectile_entity";
+    imports[0].program = child_program;
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "twin projectiles fixture compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "left_hit", 0.0);
+    cxpr_context_set(ctx, "right_hit", 0.0);
+    cxpr_context_set(ctx, "reset", 1.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "left_age", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_number(session, "right_age", &value));
+    assert(value == 0.0);
+
+    cxpr_context_set(ctx, "left_hit", 1.0);
+    cxpr_context_set(ctx, "right_hit", 0.0);
+    cxpr_context_set(ctx, "reset", 0.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "left_active", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_number(session, "right_active", &value));
+    assert(value == 1.0);
+    assert(cxpr_model_session_output_number(session, "left_damage", &value));
+    assert(value == 10.0);
+    assert(cxpr_model_session_output_number(session, "right_damage", &value));
+    assert(value == 0.0);
+    assert(cxpr_model_session_output_bool(session, "same_origin_different_state", &flag));
+    assert(flag);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    free(parent_source);
+    free(child_source);
+    printf("  ✓ test_game_twin_projectiles_fixture_keeps_scoped_state\n");
+}
+
 static void test_compile_nested_imports_keep_leaf_namespace(void) {
     cxpr_error err = {0};
     bool found = false;
@@ -2789,6 +3330,111 @@ static void test_function_record_shorthand_compiles_with_field_access(void) {
     printf("  ✓ test_function_record_shorthand_compiles_with_field_access\n");
 }
 
+static void test_local_record_fields_can_reference_previous_fields(void) {
+    cxpr_error err = {0};
+    bool found = false;
+    bool flag = false;
+    cxpr_model* model = parse_model_ok(
+        "model local_record_scope\n"
+        "in { close }\n"
+        "rec = {\n"
+        "    base = close,\n"
+        "    scaled = base + 2,\n"
+        "    ok = scaled > 10\n"
+        "}\n"
+        "score = rec.scaled\n"
+        "entry = rec.ok\n"
+        "out { score, entry }\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    cxpr_context* ctx = cxpr_context_new();
+
+    if (!program) {
+        fprintf(stderr, "local record scope compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    assert(ctx != NULL);
+
+    cxpr_context_set(ctx, "close", 9.0);
+    assert(cxpr_eval_model_program(program, ctx, NULL, &err));
+    assert(cxpr_context_get_field(ctx, "rec", "base", &found).d == 9.0 && found);
+    assert(cxpr_context_get_field(ctx, "rec", "scaled", &found).d == 11.0 && found);
+    assert(cxpr_context_get(ctx, "score", &found) == 11.0 && found);
+    assert(cxpr_context_get_bool(ctx, "entry", &found) && found);
+
+    cxpr_context_set(ctx, "close", 7.0);
+    assert(cxpr_eval_model_program(program, ctx, NULL, &err));
+    assert(cxpr_context_get_field(ctx, "rec", "scaled", &found).d == 9.0 && found);
+    flag = cxpr_context_get_bool(ctx, "entry", &found);
+    assert(!flag && found);
+
+    cxpr_context_free(ctx);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_local_record_fields_can_reference_previous_fields\n");
+}
+
+static void test_record_param_field_access_emits_c_tick(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model record_param_c\n"
+        "in { close }\n"
+        "$ltf = {\n"
+        "    min_return_pct = 0.001,\n"
+        "    threshold = min_return_pct + 1\n"
+        "}\n"
+        "entry = close > $ltf.threshold\n"
+        "out entry\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    char* code;
+
+    if (!program) {
+        fprintf(stderr, "record param compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    code = cxpr_model_program_to_c_tick_function(program, "static inline",
+                                                 "record_param_c_tick", &err);
+    if (!code) {
+        fprintf(stderr, "record param C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "_cx_input_0 > (0.001 + 1.0)") != NULL);
+    free(code);
+
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+
+    model = parse_model_ok(
+        "model nested_record_param_c\n"
+        "in { close }\n"
+        "$cfg = {\n"
+        "    ltf = { min_return = 0.001 }\n"
+        "}\n"
+        "entry = close > $cfg.ltf.min_return\n"
+        "out entry\n");
+    program = cxpr_compile_model(model, NULL, &err);
+    if (!program) {
+        fprintf(stderr, "nested record param compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    code = cxpr_model_program_to_c_tick_function(program, "static inline",
+                                                 "nested_record_param_c_tick", &err);
+    if (!code) {
+        fprintf(stderr, "nested record param C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "_cx_input_0 > 0.001") != NULL);
+    free(code);
+
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_record_param_field_access_emits_c_tick\n");
+}
+
 static void test_cxta_signal_compat_functions(void) {
     cxpr_error err = {0};
     bool found = false;
@@ -2978,7 +3624,7 @@ static void test_rsi_state_strategy_fixture_emits_c_tick(void) {
     model = parse_model_ok(source);
     program = cxpr_compile_model(model, NULL, &err);
     assert(program != NULL);
-    assert(cxpr_model_program_uses_fused_ir(program));
+    assert(cxpr_model_program_uses_fast_path(program));
     assert(cxpr_model_program_c_slot_count(program) == 0u);
     assert(cxpr_model_program_c_param_count(program) == 3u);
     assert(strcmp(cxpr_model_program_c_param_name(program, 0u), "rsi_period") == 0);
@@ -3072,6 +3718,7 @@ int main(void) {
     test_parse_model_with_declaration_metadata_blocks();
     test_parse_model_use_alias();
     test_parse_model_use_group_from_namespace();
+    test_model_resolve_uses_calls_host_callback();
     test_parse_model_statement_metadata_block();
     test_parse_model_exposes_function_sources();
     test_parse_model_function_block_return_continuation();
@@ -3080,6 +3727,7 @@ int main(void) {
     test_parse_model_rejects_legacy_name_statement();
     test_parse_model_rejects_decorator_metadata();
     test_parse_model_host_blocks_preserve_body();
+    test_parse_model_host_blocks_allow_numeric_names();
     test_parse_model_host_blocks_expose_nested_tree();
     test_parse_model_host_blocks_expose_typed_accessors();
     test_parse_model_host_blocks_expose_bare_flags();
@@ -3117,6 +3765,8 @@ int main(void) {
     test_eval_order_rejects_cycles();
     test_compile_and_eval_model_program();
     test_compile_and_eval_struct_param_and_shorthand_record();
+    test_compile_model_backend_options();
+    test_compile_model_ir_backend_rejects_unsupported_model();
     test_compile_model_defined_function_without_host_registration();
     test_output_list_syntax();
     test_function_block_out_expression();
@@ -3135,12 +3785,20 @@ int main(void) {
     test_compile_import_path_uses_leaf_namespace();
     test_imported_producer_source_arg_maps_call_source();
     test_imported_producer_repeated_calls_cache_same_args();
+    test_imported_stateful_producer_calls_keep_independent_state();
+    test_imported_producer_default_singleton_shares_state();
+    test_imported_producer_explicit_singleton_shares_state();
+    test_imported_producer_transient_resets_each_parent_tick();
+    test_game_two_players_fixture_keeps_scoped_state();
+    test_game_twin_projectiles_fixture_keeps_scoped_state();
     test_compile_nested_imports_keep_leaf_namespace();
     test_macd_record_cross_strategy_fixture();
     test_robot_hexapod_fixture_simulates_vec3_io();
     test_advanced_strategy_syntax_compiles_and_ticks();
     test_function_record_return_compiles_with_field_access();
     test_function_record_shorthand_compiles_with_field_access();
+    test_local_record_fields_can_reference_previous_fields();
+    test_record_param_field_access_emits_c_tick();
     test_cxta_signal_compat_functions();
     test_yaml_converted_ensemble_strategy_fixture();
     test_rsi_state_strategy_fixture();

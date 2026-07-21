@@ -99,6 +99,10 @@ typedef struct {
     const char* function_prefix;
     const double* literal_param_values;
     size_t literal_param_count;
+    bool inline_defined_functions;
+    char** child_call_keys;
+    size_t* child_call_child_indices;
+    size_t child_call_count;
 } cxpr_model_ast_c_target;
 
 typedef struct {
@@ -129,6 +133,9 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
                                       const char* function_prefix,
                                       const double* literal_param_values,
                                       size_t literal_param_count,
+                                      char** child_call_keys,
+                                      size_t* child_call_child_indices,
+                                      size_t child_call_count,
                                       cxpr_error* err);
 static char* cxpr_model_ast_expr_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
                                                  const cxpr_ast* ast,
@@ -188,6 +195,16 @@ static const cxpr_model_compiled_binding* cxpr_model_c_binding_for_name(
     for (size_t i = 0u; i < program->binding_count; ++i) {
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) continue;
         if (cxpr_model_names_match(program->bindings[i].name, name)) return &program->bindings[i];
+    }
+    return NULL;
+}
+
+static const cxpr_model_compiled_binding* cxpr_model_c_constant_for_name(
+    const cxpr_model_program* program,
+    const char* name) {
+    if (!program || !name) return NULL;
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (cxpr_model_names_match(program->constants[i].name, name)) return &program->constants[i];
     }
     return NULL;
 }
@@ -316,11 +333,199 @@ static size_t cxpr_model_c_child_index_for_entry(const cxpr_model_program* progr
     return (size_t)-1;
 }
 
+static char* cxpr_model_c_child_call_key(const cxpr_ast* ast) {
+    const char* name;
+    size_t argc;
+    size_t len;
+    size_t pos;
+    char* out;
+    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
+    name = cxpr_ast_producer_name(ast);
+    argc = cxpr_ast_producer_argc(ast);
+    if (!name) return NULL;
+    len = strlen(name) + 3u;
+    for (size_t i = 0u; i < argc; ++i) {
+        const char* arg_name = cxpr_ast_producer_arg_name(ast, i);
+        char* arg = cxpr_ast_to_string(cxpr_ast_producer_arg(ast, i));
+        len += arg_name ? strlen(arg_name) + 1u : 0u;
+        len += arg ? strlen(arg) : 0u;
+        len += 2u;
+        free(arg);
+    }
+    out = (char*)malloc(len + 1u);
+    if (!out) return NULL;
+    pos = (size_t)snprintf(out, len + 1u, "%s(", name);
+    for (size_t i = 0u; i < argc; ++i) {
+        const char* arg_name = cxpr_ast_producer_arg_name(ast, i);
+        char* arg = cxpr_ast_to_string(cxpr_ast_producer_arg(ast, i));
+        if (i > 0u && pos < len) out[pos++] = ',';
+        if (arg_name) {
+            size_t n = strlen(arg_name);
+            if (pos + n < len + 1u) memcpy(out + pos, arg_name, n);
+            pos += n;
+            if (pos < len) out[pos++] = '=';
+        }
+        if (arg) {
+            size_t n = strlen(arg);
+            if (pos + n < len + 1u) memcpy(out + pos, arg, n);
+            pos += n;
+            free(arg);
+        }
+    }
+    if (pos < len) out[pos++] = ')';
+    out[pos < len + 1u ? pos : len] = '\0';
+    return out;
+}
+
+static size_t cxpr_model_c_child_call_index_for_key(
+    char* const* keys,
+    const size_t* child_indices,
+    size_t count,
+    size_t child_index,
+    const char* key) {
+    if (!keys || !child_indices || !key) return (size_t)-1;
+    for (size_t i = 0u; i < count; ++i) {
+        if (child_indices[i] == child_index && keys[i] && strcmp(keys[i], key) == 0) {
+            return i;
+        }
+    }
+    return (size_t)-1;
+}
+
+static bool cxpr_model_c_child_call_collect_append(char*** keys,
+                                                   size_t** child_indices,
+                                                   size_t* count,
+                                                   size_t* capacity,
+                                                   size_t child_index,
+                                                   char* key,
+                                                   cxpr_error* err) {
+    char** grown_keys;
+    size_t* grown_indices;
+    if (!keys || !child_indices || !count || !capacity || !key) return true;
+    if (cxpr_model_c_child_call_index_for_key(
+            *keys, *child_indices, *count, child_index, key) != (size_t)-1) {
+        free(key);
+        return true;
+    }
+    if (*count >= *capacity) {
+        size_t next_capacity = *capacity == 0u ? 4u : *capacity * 2u;
+        grown_keys = (char**)realloc(*keys, next_capacity * sizeof(**keys));
+        if (!grown_keys) {
+            free(key);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        grown_indices = (size_t*)realloc(*child_indices, next_capacity * sizeof(**child_indices));
+        if (!grown_indices) {
+            free(key);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        *keys = grown_keys;
+        *child_indices = grown_indices;
+        *capacity = next_capacity;
+    }
+    (*keys)[*count] = key;
+    (*child_indices)[*count] = child_index;
+    (*count)++;
+    return true;
+}
+
+static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_program* program,
+                                                      const cxpr_ast* ast,
+                                                      char*** keys,
+                                                      size_t** child_indices,
+                                                      size_t* count,
+                                                      size_t* capacity,
+                                                      cxpr_error* err) {
+    if (!program || !ast) return true;
+    switch (cxpr_ast_type(ast)) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            if (!cxpr_model_c_collect_child_calls_from_ast(
+                    program, ast->data.array.elements[i], keys, child_indices, count, capacity, err)) {
+                return false;
+            }
+        }
+        return true;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            if (!cxpr_model_c_collect_child_calls_from_ast(
+                    program, ast->data.record.field_values[i], keys, child_indices, count, capacity, err)) {
+                return false;
+            }
+        }
+        return true;
+    case CXPR_NODE_FIELD_ACCESS:
+        return cxpr_model_c_collect_child_calls_from_ast(
+            program, ast->data.field_access.base, keys, child_indices, count, capacity, err);
+    case CXPR_NODE_PRODUCER_ACCESS: {
+        cxpr_func_entry* entry = cxpr_registry_find(program->registry, ast->data.producer_access.name);
+        if (entry && entry->model_producer) {
+            size_t child_index = cxpr_model_c_child_index_for_entry(program, entry);
+            char* key = cxpr_model_c_child_call_key(ast);
+            if (!key) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            if (child_index != (size_t)-1) {
+                if (!cxpr_model_c_child_call_collect_append(
+                        keys, child_indices, count, capacity, child_index, key, err)) {
+                    return false;
+                }
+            } else {
+                free(key);
+            }
+        }
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) {
+            if (!cxpr_model_c_collect_child_calls_from_ast(
+                    program, ast->data.producer_access.args[i], keys, child_indices, count, capacity, err)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.binary_op.left, keys, child_indices, count, capacity, err) &&
+               cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.binary_op.right, keys, child_indices, count, capacity, err);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_c_collect_child_calls_from_ast(
+            program, ast->data.unary_op.operand, keys, child_indices, count, capacity, err);
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+            if (!cxpr_model_c_collect_child_calls_from_ast(
+                    program, ast->data.function_call.args[i], keys, child_indices, count, capacity, err)) {
+                return false;
+            }
+        }
+        return true;
+    case CXPR_NODE_LOOKBACK:
+        return cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.lookback.target, keys, child_indices, count, capacity, err) &&
+               cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.lookback.index, keys, child_indices, count, capacity, err);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.ternary.condition, keys, child_indices, count, capacity, err) &&
+               cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.ternary.true_branch, keys, child_indices, count, capacity, err) &&
+               cxpr_model_c_collect_child_calls_from_ast(
+                   program, ast->data.ternary.false_branch, keys, child_indices, count, capacity, err);
+    default:
+        return true;
+    }
+}
+
 static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* program,
                                                  const cxpr_ast* ast,
                                                  const char* function_prefix,
                                                  const double* literal_param_values,
                                                  size_t literal_param_count,
+                                                 char** child_call_keys,
+                                                 size_t* child_call_child_indices,
+                                                 size_t child_call_count,
                                                  cxpr_error* err) {
     cxpr_func_entry* entry;
     const char* producer;
@@ -369,10 +574,28 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         size_t child_index = cxpr_model_c_child_index_for_entry(program, entry);
         const cxpr_model_program* child =
             child_index == (size_t)-1 ? NULL : program->children[child_index].program;
+        size_t child_call_index;
+        char* child_call_key;
         char* helper_name;
         cxpr_model_c_buf call = {0};
         if (!child) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Unknown child model producer", 0, 0);
+            return NULL;
+        }
+        child_call_key = cxpr_model_c_child_call_key(ast);
+        if (!child_call_key) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        child_call_index = cxpr_model_c_child_call_index_for_key(
+            child_call_keys,
+            child_call_child_indices,
+            child_call_count,
+            child_index,
+            child_call_key);
+        free(child_call_key);
+        if (child_call_index == (size_t)-1) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Unknown child model callsite", 0, 0);
             return NULL;
         }
         (void)producer;
@@ -382,11 +605,11 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             return NULL;
         }
         cxpr_model_c_printf(&call,
-                            "%s(&_cx_state->child_%zu_initialized, _cx_state->child_%zu_outputs, &_cx_state->child_%zu_state",
+                            "%s(&_cx_state->child_call_%zu_initialized, _cx_state->child_call_%zu_outputs, &_cx_state->child_call_%zu_state",
                             helper_name,
-                            child_index,
-                            child_index,
-                            child_index);
+                            child_call_index,
+                            child_call_index,
+                            child_call_index);
         free(helper_name);
         for (size_t i = 0u; i < child->input_count; ++i) {
             size_t input_index = 0u;
@@ -400,6 +623,9 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
                 .function_prefix = function_prefix,
                 .literal_param_values = literal_param_values,
                 .literal_param_count = literal_param_count,
+                .child_call_keys = child_call_keys,
+                .child_call_child_indices = child_call_child_indices,
+                .child_call_count = child_call_count,
             };
             target = (cxpr_c_target){
                 .api_version = CXPR_C_TARGET_API_VERSION,
@@ -430,6 +656,9 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             .function_prefix = function_prefix,
             .literal_param_values = literal_param_values,
             .literal_param_count = literal_param_count,
+            .child_call_keys = child_call_keys,
+            .child_call_child_indices = child_call_child_indices,
+            .child_call_count = child_call_count,
         };
         target = (cxpr_c_target){
             .api_version = CXPR_C_TARGET_API_VERSION,
@@ -470,11 +699,14 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         return NULL;
     }
     target_data = (cxpr_model_ast_c_target){
-        .program = program,
-        .function_prefix = function_prefix,
-        .literal_param_values = literal_param_values,
-        .literal_param_count = literal_param_count,
-    };
+            .program = program,
+            .function_prefix = function_prefix,
+            .literal_param_values = literal_param_values,
+            .literal_param_count = literal_param_count,
+            .child_call_keys = child_call_keys,
+            .child_call_child_indices = child_call_child_indices,
+            .child_call_count = child_call_count,
+        };
     target = (cxpr_c_target){
         .api_version = CXPR_C_TARGET_API_VERSION,
         .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
@@ -829,6 +1061,101 @@ fail:
     return NULL;
 }
 
+static char* cxpr_model_ast_record_field_to_c(
+    const cxpr_model_program* program,
+    const cxpr_ast* ast,
+    const char* field,
+    const cxpr_c_target* target,
+    cxpr_error* err,
+    unsigned depth) {
+    size_t selected_field = (size_t)-1;
+    const size_t field_count = cxpr_ast_record_field_count(ast);
+    const char* dot = strchr(field, '.');
+    const size_t segment_len = dot ? (size_t)(dot - field) : strlen(field);
+    const char* rest = dot ? dot + 1 : NULL;
+    char** field_exprs = NULL;
+    cxpr_model_ast_c_target* target_data = target ? (cxpr_model_ast_c_target*)target->userdata : NULL;
+    cxpr_model_ast_c_target inline_data;
+    cxpr_c_target inline_target;
+
+    if (!program || !ast || cxpr_ast_type(ast) != CXPR_NODE_RECORD ||
+        !field || !target || depth > 32u) {
+        return NULL;
+    }
+    if (segment_len == 0u || (rest && rest[0] == '\0')) return NULL;
+    for (size_t i = 0u; i < field_count; ++i) {
+        const char* field_name = cxpr_ast_record_field_name(ast, i);
+        if (field_name &&
+            strlen(field_name) == segment_len &&
+            strncmp(field_name, field, segment_len) == 0) {
+            selected_field = i;
+            break;
+        }
+    }
+    if (selected_field == (size_t)-1) return NULL;
+
+    field_exprs = (char**)calloc(field_count ? field_count : 1u, sizeof(char*));
+    if (!field_exprs) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return NULL;
+    }
+
+    inline_data = target_data ? *target_data : (cxpr_model_ast_c_target){0};
+    inline_target = *target;
+    inline_target.userdata = &inline_data;
+    for (size_t field_i = 0u; field_i <= selected_field; ++field_i) {
+        const size_t base_count = target_data ? target_data->param_count : 0u;
+        const size_t name_count = base_count + field_i;
+        char** names = (char**)calloc(name_count ? name_count : 1u, sizeof(char*));
+        char** exprs = (char**)calloc(name_count ? name_count : 1u, sizeof(char*));
+        if (!names || !exprs) {
+            free(names);
+            free(exprs);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            goto fail;
+        }
+        for (size_t i = 0u; i < base_count; ++i) {
+            names[i] = target_data->param_names[i];
+            exprs[i] = target_data->param_exprs ? target_data->param_exprs[i] : NULL;
+        }
+        for (size_t i = 0u; i < field_i; ++i) {
+            names[base_count + i] = (char*)cxpr_ast_record_field_name(ast, i);
+            exprs[base_count + i] = field_exprs[i];
+        }
+        inline_data.param_names = names;
+        inline_data.param_exprs = exprs;
+        inline_data.param_count = name_count;
+        if (field_i == selected_field && rest) {
+            field_exprs[field_i] = cxpr_model_ast_field_expr_to_c(
+                program,
+                cxpr_ast_record_field_value(ast, field_i),
+                rest,
+                &inline_target,
+                err,
+                depth + 1u);
+        } else {
+            field_exprs[field_i] = cxpr_ast_to_c(
+                cxpr_ast_record_field_value(ast, field_i), &inline_target, err);
+        }
+        free(names);
+        free(exprs);
+        if (!field_exprs[field_i]) goto fail;
+    }
+
+    {
+        char* out = field_exprs[selected_field];
+        field_exprs[selected_field] = NULL;
+        for (size_t i = 0u; i < field_count; ++i) free(field_exprs[i]);
+        free(field_exprs);
+        return out;
+    }
+
+fail:
+    for (size_t i = 0u; i < field_count; ++i) free(field_exprs[i]);
+    free(field_exprs);
+    return NULL;
+}
+
 static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
                                             const cxpr_ast* ast,
                                             const char* field,
@@ -839,18 +1166,37 @@ static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
 
     switch (cxpr_ast_type(ast)) {
     case CXPR_NODE_RECORD:
-        for (size_t i = 0u; i < cxpr_ast_record_field_count(ast); ++i) {
-            if (cxpr_model_names_match(cxpr_ast_record_field_name(ast, i), field)) {
-                return cxpr_ast_to_c(cxpr_ast_record_field_value(ast, i), target, err);
-            }
-        }
-        return NULL;
+        return cxpr_model_ast_record_field_to_c(program, ast, field, target, err, depth + 1u);
     case CXPR_NODE_IDENTIFIER: {
         const cxpr_model_compiled_binding* binding =
             cxpr_model_c_binding_for_name(program, cxpr_ast_identifier_name(ast));
         return binding
                    ? cxpr_model_ast_field_expr_to_c(
                          program, binding->ast, field, target, err, depth + 1u)
+                   : NULL;
+    }
+    case CXPR_NODE_VARIABLE: {
+        const char* variable_name = cxpr_ast_variable_name(ast);
+        const char* dot = variable_name ? strchr(variable_name, '.') : NULL;
+        if (dot && dot > variable_name && dot[1] != '\0') {
+            size_t root_len = (size_t)(dot - variable_name);
+            char* root = (char*)malloc(root_len + 1u);
+            if (!root) return NULL;
+            memcpy(root, variable_name, root_len);
+            root[root_len] = '\0';
+            const cxpr_model_compiled_binding* dotted_constant =
+                cxpr_model_c_constant_for_name(program, root);
+            free(root);
+            if (dotted_constant) {
+                return cxpr_model_ast_field_expr_to_c(
+                    program, dotted_constant->ast, dot + 1, target, err, depth + 1u);
+            }
+        }
+        const cxpr_model_compiled_binding* constant =
+            cxpr_model_c_constant_for_name(program, variable_name);
+        return constant
+                   ? cxpr_model_ast_field_expr_to_c(
+                         program, constant->ast, field, target, err, depth + 1u)
                    : NULL;
     }
     case CXPR_NODE_FUNCTION_CALL:
@@ -999,6 +1345,9 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             target ? target->function_prefix : NULL,
             target ? target->literal_param_values : NULL,
             target ? target->literal_param_count : 0u,
+            target ? target->child_call_keys : NULL,
+            target ? target->child_call_child_indices : NULL,
+            target ? target->child_call_count : 0u,
             err);
     }
     if (cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS) {
@@ -1020,9 +1369,38 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
                 program, binding->ast, ast->data.field_access.field, &field_target, err, 0u);
             if (expr) return expr;
         }
+        const cxpr_model_compiled_binding* constant =
+            cxpr_model_c_constant_for_name(program, ast->data.field_access.object);
+        if (constant) {
+            char* expr = cxpr_model_ast_field_expr_to_c(
+                program, constant->ast, ast->data.field_access.field, &field_target, err, 0u);
+            if (expr) return expr;
+        }
     }
     if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
         name = cxpr_ast_variable_name(ast);
+        const char* dot = name ? strchr(name, '.') : NULL;
+        if (dot && dot > name && dot[1] != '\0') {
+            size_t root_len = (size_t)(dot - name);
+            char* root = (char*)malloc(root_len + 1u);
+            if (!root) return NULL;
+            memcpy(root, name, root_len);
+            root[root_len] = '\0';
+            const cxpr_model_compiled_binding* constant =
+                cxpr_model_c_constant_for_name(program, root);
+            free(root);
+            if (constant) {
+                cxpr_c_target field_target = {
+                    .api_version = CXPR_C_TARGET_API_VERSION,
+                    .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+                    .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                    .userdata = target,
+                };
+                char* expr = cxpr_model_ast_field_expr_to_c(
+                    program, constant->ast, dot + 1, &field_target, err, 0u);
+                if (expr) return expr;
+            }
+        }
         index = cxpr_model_program_param_index(program, name);
         if (index == (size_t)-1) {
             if (err) {
@@ -1061,6 +1439,35 @@ static const char* cxpr_model_c_window_op(const char* name) {
     return NULL;
 }
 
+static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
+                                             const cxpr_ast* ast,
+                                             double* out) {
+    double left = 0.0;
+    double right = 0.0;
+    int op;
+    if (!ast || !out) return false;
+    if (cxpr_eval_constant_double(ast, out)) return true;
+    if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_ast_variable_name(ast);
+        size_t index = cxpr_model_program_param_index(program, name);
+        return index != (size_t)-1 &&
+               program->constants[index].ast &&
+               cxpr_eval_constant_double(program->constants[index].ast, out);
+    }
+    if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
+    if (!cxpr_model_c_constant_param_expr(program, cxpr_ast_left(ast), &left) ||
+        !cxpr_model_c_constant_param_expr(program, cxpr_ast_right(ast), &right)) {
+        return false;
+    }
+    op = cxpr_ast_operator(ast);
+    if (op == CXPR_TOK_PLUS) *out = left + right;
+    else if (op == CXPR_TOK_MINUS) *out = left - right;
+    else if (op == CXPR_TOK_STAR) *out = left * right;
+    else if (op == CXPR_TOK_SLASH && fabs(right) > 1e-12) *out = left / right;
+    else return false;
+    return true;
+}
+
 static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* program,
                                                 const cxpr_ast* period_ast,
                                                 size_t* out_capacity,
@@ -1068,18 +1475,7 @@ static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* progra
     double raw = 0.0;
     long period;
     if (!period_ast || !out_capacity) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
-        const char* name = cxpr_ast_variable_name(period_ast);
-        size_t index = cxpr_model_program_param_index(program, name);
-        if (index == (size_t)-1 ||
-            !program->constants[index].ast ||
-            !cxpr_eval_constant_double(program->constants[index].ast, &raw)) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "window period parameter requires a numeric default",
-                                 0, 0);
-            return false;
-        }
-    } else if (!cxpr_eval_constant_double(period_ast, &raw)) {
+    if (!cxpr_model_c_constant_param_expr(program, period_ast, &raw)) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              "window period must be a constant or model parameter default",
                              0, 0);
@@ -1634,6 +2030,8 @@ static bool cxpr_model_c_emit_runtime_state_typedef(
     const cxpr_model_program* program,
     const cxpr_model_window_plan* window_plan,
     const char* safe_name,
+    const size_t* child_call_child_indices,
+    size_t child_call_count,
     cxpr_error* err) {
     if (!b || !program || !safe_name) return false;
     cxpr_model_c_printf(b, "typedef struct %s_state {\n", safe_name);
@@ -1683,6 +2081,28 @@ static bool cxpr_model_c_emit_runtime_state_typedef(
                             i,
                             program->children[i].program && program->children[i].program->output_count
                                 ? program->children[i].program->output_count
+                                : 1u);
+        free(child_tick_name);
+    }
+    for (size_t i = 0u; i < child_call_count; ++i) {
+        size_t child_index = child_call_child_indices ? child_call_child_indices[i] : (size_t)-1;
+        char* child_tick_name;
+        if (child_index >= program->child_count) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid child model callsite", 0, 0);
+            return false;
+        }
+        child_tick_name = cxpr_model_c_child_tick_name(safe_name, child_index);
+        if (!child_tick_name) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        cxpr_model_c_printf(b, "    %s_state child_call_%zu_state;\n", child_tick_name, i);
+        cxpr_model_c_printf(b, "    uint8_t child_call_%zu_initialized;\n", i);
+        cxpr_model_c_printf(b, "    double child_call_%zu_outputs[%zu];\n",
+                            i,
+                            program->children[child_index].program &&
+                                    program->children[child_index].program->output_count
+                                ? program->children[child_index].program->output_count
                                 : 1u);
         free(child_tick_name);
     }
@@ -1849,18 +2269,7 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
 static bool cxpr_model_c_period_default_value(const cxpr_model_program* program,
                                               const cxpr_ast* period_ast,
                                               double* out_value) {
-    if (!period_ast || !out_value) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
-        const char* name = cxpr_ast_variable_name(period_ast);
-        size_t index = cxpr_model_program_param_index(program, name);
-        if (index == (size_t)-1 ||
-            !program->constants[index].ast ||
-            !cxpr_eval_constant_double(program->constants[index].ast, out_value)) {
-            return false;
-        }
-        return true;
-    }
-    return cxpr_eval_constant_double(period_ast, out_value);
+    return cxpr_model_c_constant_param_expr(program, period_ast, out_value);
 }
 
 static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
@@ -2177,6 +2586,8 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     const char* name = cxpr_ast_function_name(ast);
     const char* op = cxpr_model_c_window_op(name);
     bool is_roc = cxpr_model_names_match(name, "window_roc");
+    bool is_bars_since_extreme = cxpr_model_names_match(name, "bars_since_extreme");
+    bool is_window_mean_absdev = cxpr_model_names_match(name, "window_mean_absdev");
     const cxpr_ast* value_ast;
     const cxpr_ast* period_ast;
     size_t capacity = 0u;
@@ -2185,9 +2596,11 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     char* period_limit_expr = NULL;
     bool guard_values = false;
     cxpr_model_c_buf b = {0};
-    if (!program || (!op && !is_roc) || cxpr_ast_function_argc(ast) != 2u) {
+    if (!program || (!op && !is_roc && !is_bars_since_extreme && !is_window_mean_absdev) ||
+        cxpr_ast_function_argc(ast) !=
+            ((is_bars_since_extreme || is_window_mean_absdev) ? 3u : 2u)) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
-                             "window function expects two arguments", 0, 0);
+                             "window function has wrong arity", 0, 0);
         return NULL;
     }
     value_ast = cxpr_ast_function_arg(ast, 0u);
@@ -2273,6 +2686,102 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
             period_limit_expr);
         free(roc_period_expr);
         free(roc_limit_expr);
+        free(period_expr);
+        free(period_limit_expr);
+        if (b.oom) {
+            free(b.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        return b.data;
+    }
+    if (is_bars_since_extreme) {
+        const cxpr_ast* mode_ast = cxpr_ast_function_arg(ast, 2u);
+        char* mode_expr = cxpr_ast_to_c_at_offset(mode_ast, 0u, target, err);
+        if (!mode_expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            return NULL;
+        }
+        cxpr_model_c_puts(&b, "cxpr_model_bars_since_extreme_c((const double[]){");
+        for (size_t i = 0u; i < capacity; ++i) {
+            char* value_expr;
+            if (i > 0u) cxpr_model_c_puts(&b, ", ");
+            value_expr = cxpr_ast_to_c_at_offset(
+                value_ast, lookback_offset + (unsigned)i, target, err);
+            if (!value_expr) {
+                free(mode_expr);
+                free(period_expr);
+                free(period_limit_expr);
+                free(b.data);
+                return NULL;
+            }
+            if (!guard_values) {
+                cxpr_model_c_printf(&b, "(%s)", value_expr);
+            } else {
+                cxpr_model_c_printf(&b,
+                                    "((%zuu < (size_t)(%s)) ? (%s) : NAN)",
+                                    i,
+                                    period_limit_expr,
+                                    value_expr);
+            }
+            free(value_expr);
+        }
+        cxpr_model_c_printf(
+            &b,
+            "}, %zuu, %s, %s)",
+            capacity,
+            period_limit_expr,
+            mode_expr);
+        free(mode_expr);
+        free(period_expr);
+        free(period_limit_expr);
+        if (b.oom) {
+            free(b.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        return b.data;
+    }
+    if (is_window_mean_absdev) {
+        const cxpr_ast* center_ast = cxpr_ast_function_arg(ast, 2u);
+        char* center_expr = cxpr_ast_to_c_at_offset(center_ast, lookback_offset, target, err);
+        if (!center_expr) {
+            free(period_expr);
+            free(period_limit_expr);
+            return NULL;
+        }
+        cxpr_model_c_puts(&b, "cxpr_model_window_mean_absdev_c((const double[]){");
+        for (size_t i = 0u; i < capacity; ++i) {
+            char* value_expr;
+            if (i > 0u) cxpr_model_c_puts(&b, ", ");
+            value_expr = cxpr_ast_to_c_at_offset(
+                value_ast, lookback_offset + (unsigned)i, target, err);
+            if (!value_expr) {
+                free(center_expr);
+                free(period_expr);
+                free(period_limit_expr);
+                free(b.data);
+                return NULL;
+            }
+            if (!guard_values) {
+                cxpr_model_c_printf(&b, "(%s)", value_expr);
+            } else {
+                cxpr_model_c_printf(&b,
+                                    "((%zuu < (size_t)(%s)) ? (%s) : NAN)",
+                                    i,
+                                    period_limit_expr,
+                                    value_expr);
+            }
+            free(value_expr);
+        }
+        cxpr_model_c_printf(
+            &b,
+            "}, %zuu, %s, %s)",
+            capacity,
+            period_limit_expr,
+            center_expr);
+        free(center_expr);
         free(period_expr);
         free(period_limit_expr);
         if (b.oom) {
@@ -2401,6 +2910,32 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
         return b.data;
     }
 
+    if (cxpr_model_names_match(name, "mean") && argc >= 1u && argc <= 8u) {
+        if (handled) *handled = true;
+        cxpr_model_c_puts(&b, "((");
+        for (size_t i = 0u; i < argc; ++i) {
+            char* arg = cxpr_ast_to_c_at_offset(
+                cxpr_ast_function_arg(ast, i), lookback_offset, &target, err);
+            if (!arg) {
+                free(b.data);
+                return NULL;
+            }
+            if (i > 0u) cxpr_model_c_puts(&b, " + ");
+            cxpr_model_c_printf(&b, "(%s)", arg);
+            free(arg);
+        }
+        cxpr_model_c_printf(&b, ") / %.1f)", (double)argc);
+        if (b.oom) {
+            free(b.data);
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return NULL;
+        }
+        return b.data;
+    }
+
     if (cxpr_model_names_match(name, "if") && argc == 3u) {
         char* cond;
         char* yes;
@@ -2445,6 +2980,62 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
                 return NULL;
             }
             if (handled) *handled = true;
+            if (target_data->inline_defined_functions) {
+                char** names = NULL;
+                char** exprs = NULL;
+                cxpr_model_ast_c_target inline_data = *target_data;
+                cxpr_c_target inline_target = {
+                    .api_version = CXPR_C_TARGET_API_VERSION,
+                    .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+                    .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                    .userdata = &inline_data,
+                };
+                char* expr;
+                names = (char**)calloc(argc ? argc : 1u, sizeof(char*));
+                exprs = (char**)calloc(argc ? argc : 1u, sizeof(char*));
+                if (!names || !exprs) {
+                    free(names);
+                    free(exprs);
+                    if (err) {
+                        err->code = CXPR_ERR_OUT_OF_MEMORY;
+                        err->message = "Out of memory";
+                    }
+                    return NULL;
+                }
+                for (size_t i = 0u; i < argc; ++i) {
+                    names[i] = entry->defined_param_names[i];
+                    exprs[i] = cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, i),
+                                                       lookback_offset, &target, err);
+                    if (!exprs[i]) {
+                        for (size_t j = 0u; j < i; ++j) free(exprs[j]);
+                        free(exprs);
+                        free(names);
+                        return NULL;
+                    }
+                }
+                inline_data.param_names = names;
+                inline_data.param_exprs = exprs;
+                inline_data.param_count = argc;
+                expr = cxpr_ast_to_c_at_offset(entry->defined_body,
+                                               lookback_offset,
+                                               &inline_target,
+                                               err);
+                for (size_t i = 0u; i < argc; ++i) free(exprs[i]);
+                free(exprs);
+                free(names);
+                if (!expr) return NULL;
+                cxpr_model_c_printf(&b, "(%s)", expr);
+                free(expr);
+                if (b.oom) {
+                    free(b.data);
+                    if (err) {
+                        err->code = CXPR_ERR_OUT_OF_MEMORY;
+                        err->message = "Out of memory";
+                    }
+                    return NULL;
+                }
+                return b.data;
+            }
             fn_name = cxpr_model_c_scoped_function_name(target_data->function_prefix,
                                                         entry->name);
             if (!fn_name) {
@@ -2490,12 +3081,18 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
                                       const char* function_prefix,
                                       const double* literal_param_values,
                                       size_t literal_param_count,
+                                      char** child_call_keys,
+                                      size_t* child_call_child_indices,
+                                      size_t child_call_count,
                                       cxpr_error* err) {
     cxpr_model_ast_c_target userdata = {
         .program = program,
         .function_prefix = function_prefix,
         .literal_param_values = literal_param_values,
         .literal_param_count = literal_param_count,
+        .child_call_keys = child_call_keys,
+        .child_call_child_indices = child_call_child_indices,
+        .child_call_count = child_call_count,
     };
     cxpr_c_target target = {
         .api_version = CXPR_C_TARGET_API_VERSION,
@@ -2984,6 +3581,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     cxpr_model_window_plan window_plan = {0};
     cxpr_model_ast_c_target ast_target_data = {0};
     cxpr_c_target ast_target = {0};
+    size_t child_call_capacity = 0u;
 
     if (out_source) *out_source = NULL;
     if (!program || !program->has_fused_layout || !function_name || !out_source) return false;
@@ -2991,6 +3589,8 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     ast_target_data.function_prefix = function_name;
     ast_target_data.literal_param_values = literal_param_values;
     ast_target_data.literal_param_count = literal_param_count;
+    ast_target_data.inline_defined_functions =
+        qualifiers && strstr(qualifiers, "__device__") != NULL;
     ast_target.api_version = CXPR_C_TARGET_API_VERSION;
     ast_target.emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf;
     ast_target.emit_call_at_offset = cxpr_model_ast_c_emit_call;
@@ -3037,6 +3637,31 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         goto fail;
     }
     if (!cxpr_model_window_plan_build(program, &window_plan, err)) goto fail;
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        if (!needed_bindings[i]) continue;
+        if (!cxpr_model_c_collect_child_calls_from_ast(
+                program,
+                program->bindings[i].ast,
+                &ast_target_data.child_call_keys,
+                &ast_target_data.child_call_child_indices,
+                &ast_target_data.child_call_count,
+                &child_call_capacity,
+                err)) {
+            goto fail;
+        }
+    }
+    for (size_t i = 0u; i < program->history_spec_count; ++i) {
+        if (!cxpr_model_c_collect_child_calls_from_ast(
+                program,
+                program->history_specs[i].target,
+                &ast_target_data.child_call_keys,
+                &ast_target_data.child_call_child_indices,
+                &ast_target_data.child_call_count,
+                &child_call_capacity,
+                err)) {
+            goto fail;
+        }
+    }
     cxpr_model_c_emit_common_helpers(&b);
     safe_name = cxpr_model_c_safe_name(function_name);
     if (!safe_name) {
@@ -3045,13 +3670,20 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     }
     cxpr_model_c_printf(&b, "typedef struct %s_state %s_state;\n\n", safe_name, safe_name);
     if (!cxpr_model_c_emit_child_model_helpers(program, function_name, &b, err)) goto fail;
-    if (!cxpr_model_c_emit_defined_functions_ast(program, function_name, &b, err)) goto fail;
+    if (!ast_target_data.inline_defined_functions &&
+        !cxpr_model_c_emit_defined_functions_ast(program, function_name, &b, err)) goto fail;
     if (!cxpr_model_c_emit_state_typedefs(
             &b, program, &window_plan, safe_name, err)) {
         goto fail;
     }
     if (!cxpr_model_c_emit_runtime_state_typedef(
-            &b, program, &window_plan, safe_name, err)) {
+            &b,
+            program,
+            &window_plan,
+            safe_name,
+            ast_target_data.child_call_child_indices,
+            ast_target_data.child_call_count,
+            err)) {
         goto fail;
     }
     if (!cxpr_model_c_emit_slot_init_function(
@@ -3133,6 +3765,9 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     }
     for (size_t i = 0u; i < program->child_count; ++i) {
         cxpr_model_c_printf(&b, "    _cx_state->child_%zu_initialized = 0u;\n", i);
+    }
+    for (size_t i = 0u; i < ast_target_data.child_call_count; ++i) {
+        cxpr_model_c_printf(&b, "    _cx_state->child_call_%zu_initialized = 0u;\n", i);
     }
     for (size_t i = 0u; i < program->binding_count; ++i) {
         char* expr;
@@ -3332,6 +3967,9 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                                                function_name,
                                                literal_param_values,
                                                literal_param_count,
+                                               ast_target_data.child_call_keys,
+                                               ast_target_data.child_call_child_indices,
+                                               ast_target_data.child_call_count,
                                                err);
         } else {
             current = cxpr_model_c_current_symbol_expr(
@@ -3390,6 +4028,11 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     free(skip_bindings);
     for (size_t i = 0u; i < program->binding_count; ++i) free(cse_names[i]);
     free(cse_names);
+    for (size_t i = 0u; i < ast_target_data.child_call_count; ++i) {
+        free(ast_target_data.child_call_keys[i]);
+    }
+    free(ast_target_data.child_call_keys);
+    free(ast_target_data.child_call_child_indices);
     free(safe_name);
     cxpr_model_window_plan_free(&window_plan);
     *out_source = b.data;
@@ -3409,6 +4052,11 @@ fail:
         for (size_t i = 0u; i < program->binding_count; ++i) free(cse_names[i]);
         free(cse_names);
     }
+    for (size_t i = 0u; i < ast_target_data.child_call_count; ++i) {
+        free(ast_target_data.child_call_keys[i]);
+    }
+    free(ast_target_data.child_call_keys);
+    free(ast_target_data.child_call_child_indices);
     cxpr_model_window_plan_free(&window_plan);
     free(b.data);
     return false;

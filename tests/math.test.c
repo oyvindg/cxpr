@@ -236,6 +236,13 @@ static void test_builtin_if(void) {
     printf("  ✓ test_builtin_if\n");
 }
 
+static void test_builtin_mean(void) {
+    ASSERT_DOUBLE_EQ(eval_expr("mean(3)"), 3.0);
+    ASSERT_DOUBLE_EQ(eval_expr("mean(1, 2, 3)"), 2.0);
+    ASSERT_DOUBLE_EQ(eval_expr("mean(2, 4, 8, 10)"), 6.0);
+    printf("  ✓ test_builtin_mean\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Complex mathematical expressions
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -523,6 +530,7 @@ int main(void) {
     test_builtin_constants();
     test_builtin_nan_inf();
     test_builtin_if();
+    test_builtin_mean();
     test_complex_math();
     test_custom_functions();
     test_extreme_nested_expressions();

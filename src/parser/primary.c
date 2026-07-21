@@ -448,62 +448,25 @@ cxpr_ast* cxpr_parse_primary(cxpr_parser* p) {
             return NULL;
         }
         if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
-            char* fn_name;
-            cxpr_ast** fn_args;
-            char** fn_arg_names;
-            size_t fn_argc;
             char* field;
-            if (node->type != CXPR_NODE_FUNCTION_CALL) {
-                p->had_error = true;
-                p->last_error.code = CXPR_ERR_SYNTAX;
-                p->last_error.message = "Field access via '.' requires a function call inside parentheses";
-                p->last_error.position = p->current.position;
-                p->last_error.line = p->current.line;
-                p->last_error.column = p->current.column;
-                cxpr_ast_free(node);
-                return NULL;
-            }
-            fn_name = node->data.function_call.name;
-            fn_args = node->data.function_call.args;
-            fn_arg_names = node->data.function_call.arg_names;
-            fn_argc = node->data.function_call.argc;
-            node->data.function_call.name = NULL;
-            node->data.function_call.args = NULL;
-            node->data.function_call.arg_names = NULL;
-            node->data.function_call.argc = 0;
-            cxpr_ast_free(node);
-            node = NULL;
             cxpr_parser_advance(p);
             if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
-                free(fn_name);
-                for (size_t i = 0; i < fn_argc; ++i) {
-                    if (fn_arg_names) free(fn_arg_names[i]);
-                    cxpr_ast_free(fn_args[i]);
-                }
-                free(fn_args);
-                free(fn_arg_names);
                 p->had_error = true;
                 p->last_error.code = CXPR_ERR_SYNTAX;
                 p->last_error.message = "Expected field name after '.'";
                 p->last_error.position = p->current.position;
                 p->last_error.line = p->current.line;
                 p->last_error.column = p->current.column;
+                cxpr_ast_free(node);
                 return NULL;
             }
             field = cxpr_parser_token_to_string(&p->current);
             cxpr_parser_advance(p);
             if (!field) {
-                free(fn_name);
-                for (size_t i = 0; i < fn_argc; ++i) {
-                    if (fn_arg_names) free(fn_arg_names[i]);
-                    cxpr_ast_free(fn_args[i]);
-                }
-                free(fn_args);
-                free(fn_arg_names);
+                cxpr_ast_free(node);
                 return NULL;
             }
-            node = cxpr_ast_new_producer_access_named(fn_name, fn_args, fn_arg_names, fn_argc, field);
-            free(fn_name);
+            node = cxpr_ast_new_field_access_expr(node, field);
             free(field);
             if (!node) return NULL;
         }

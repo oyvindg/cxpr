@@ -20,6 +20,30 @@ typedef struct {
 } cxpr_expression_def;
 
 /**
+ * @brief Resolve one parameter name while rewriting expression source.
+ * @param name Parameter name without `$`; dotted names are passed through as-is.
+ * @param userdata Caller-supplied lookup context.
+ * @return Replacement source text, or NULL to leave this parameter reference unchanged.
+ */
+typedef const char* (*cxpr_expression_param_lookup_fn)(const char* name, void* userdata);
+
+/**
+ * @brief Inline known `$param` references in expression source.
+ *
+ * This is a lexical source rewrite that preserves quoted strings and supports
+ * dotted parameter names such as `$risk.floor`. The callback decides which
+ * names are known and returns source text to splice into the expression.
+ *
+ * @param expression Expression source string.
+ * @param lookup Parameter lookup callback.
+ * @param userdata Caller-supplied lookup context.
+ * @return Newly allocated rewritten source, or NULL on invalid input/allocation failure.
+ */
+char* cxpr_expression_inline_params(const char* expression,
+                                    cxpr_expression_param_lookup_fn lookup,
+                                    void* userdata);
+
+/**
  * @brief Add one named expression.
  * @param evaluator Destination expression evaluator.
  * @param name Expression name.

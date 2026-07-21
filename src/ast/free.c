@@ -52,6 +52,7 @@ void cxpr_ast_free(cxpr_ast* ast) {
             free(ast->data.variable.name);
             break;
         case CXPR_NODE_FIELD_ACCESS:
+            cxpr_ast_free(ast->data.field_access.base);
             free(ast->data.field_access.object);
             free(ast->data.field_access.field);
             free(ast->data.field_access.full_key);

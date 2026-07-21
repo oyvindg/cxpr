@@ -45,10 +45,38 @@ static char cxpr_lexer_peek_next(const cxpr_lexer* lexer) {
     return lexer->current[1];
 }
 
-/** @brief Skip whitespace characters, advancing position. */
+/** @brief Skip whitespace and cxpr comments, advancing position. */
 static void cxpr_lexer_skip_whitespace(cxpr_lexer* lexer) {
-    while (*lexer->current && isspace((unsigned char)*lexer->current)) {
-        cxpr_lexer_advance(lexer);
+    for (;;) {
+        while (*lexer->current && isspace((unsigned char)*lexer->current)) {
+            cxpr_lexer_advance(lexer);
+        }
+        if (*lexer->current == '#') {
+            while (*lexer->current && *lexer->current != '\n') {
+                cxpr_lexer_advance(lexer);
+            }
+            continue;
+        }
+        if (*lexer->current == '/' && lexer->current[1] == '/') {
+            while (*lexer->current && *lexer->current != '\n') {
+                cxpr_lexer_advance(lexer);
+            }
+            continue;
+        }
+        if (*lexer->current == '/' && lexer->current[1] == '*') {
+            cxpr_lexer_advance(lexer);
+            cxpr_lexer_advance(lexer);
+            while (*lexer->current) {
+                if (*lexer->current == '*' && lexer->current[1] == '/') {
+                    cxpr_lexer_advance(lexer);
+                    cxpr_lexer_advance(lexer);
+                    break;
+                }
+                cxpr_lexer_advance(lexer);
+            }
+            continue;
+        }
+        break;
     }
 }
 

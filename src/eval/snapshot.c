@@ -247,6 +247,10 @@ static char* cxpr_snapshot_label(const cxpr_ast* ast) {
             snprintf(buf, sizeof(buf), "$%s", cxpr_ast_variable_name(ast));
             return cxpr_snapshot_strdup(buf);
         case CXPR_NODE_FIELD_ACCESS:
+            if (cxpr_ast_field_base(ast)) {
+                snprintf(buf, sizeof(buf), "(expr).%s", cxpr_ast_field_name(ast));
+                return cxpr_snapshot_strdup(buf);
+            }
             snprintf(buf, sizeof(buf), "%s.%s",
                      cxpr_ast_field_object(ast), cxpr_ast_field_name(ast));
             return cxpr_snapshot_strdup(buf);
@@ -927,13 +931,18 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
             }
             break;
         case CXPR_NODE_FIELD_ACCESS:
-            child = cxpr_snapshot_add_text_child(b, ast, parent_id, "object",
-                                                 "identifier",
-                                                 "object",
-                                                 cxpr_ast_field_object(ast),
-                                                 active)
-                ? b->snapshot->node_count - 1u
-                : (size_t)-1;
+            if (cxpr_ast_field_base(ast)) {
+                child = cxpr_snapshot_visit(b, cxpr_ast_field_base(ast), parent_id, 1,
+                                            "base", active, inactive_reason);
+            } else {
+                child = cxpr_snapshot_add_text_child(b, ast, parent_id, "object",
+                                                     "identifier",
+                                                     "object",
+                                                     cxpr_ast_field_object(ast),
+                                                     active)
+                    ? b->snapshot->node_count - 1u
+                    : (size_t)-1;
+            }
             if (first_child == (size_t)-1) first_child = child;
             (void)cxpr_snapshot_add_text_child(b, ast, parent_id, "field",
                                                "field",

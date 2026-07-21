@@ -56,6 +56,7 @@ struct cxpr_ast {
             unsigned long cached_version;
         } variable;
         struct {
+            struct cxpr_ast* base;
             char* object;
             char* field;
             char* full_key;
@@ -176,6 +177,7 @@ cxpr_ast* cxpr_ast_new_variable(const char* name);
  * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field);
+cxpr_ast* cxpr_ast_new_field_access_expr(cxpr_ast* base, const char* field);
 /**
  * @brief Internal constructor for a multi-segment chain-access node.
  * @param path Borrowed segment array to copy.

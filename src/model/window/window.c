@@ -14,7 +14,9 @@ bool cxpr_model_window_is_function(const char* name) {
             strcmp(name, "window_highest") == 0 ||
             strcmp(name, "window_lowest") == 0 ||
             strcmp(name, "window_stddev") == 0 ||
-            strcmp(name, "window_roc") == 0);
+            strcmp(name, "window_roc") == 0 ||
+            strcmp(name, "bars_since_extreme") == 0 ||
+            strcmp(name, "window_mean_absdev") == 0);
 }
 
 static bool cxpr_model_window_constant_default(const cxpr_model* model,
@@ -29,6 +31,32 @@ static bool cxpr_model_window_constant_default(const cxpr_model* model,
     return false;
 }
 
+static bool cxpr_model_window_constant_expr(const cxpr_model* model,
+                                            const cxpr_ast* ast,
+                                            double* out) {
+    double left = 0.0;
+    double right = 0.0;
+    int op;
+    if (!ast || !out) return false;
+    if (cxpr_eval_constant_double(ast, out)) return true;
+    if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
+        return cxpr_model_window_constant_default(
+            model, cxpr_ast_variable_name(ast), out);
+    }
+    if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
+    if (!cxpr_model_window_constant_expr(model, cxpr_ast_left(ast), &left) ||
+        !cxpr_model_window_constant_expr(model, cxpr_ast_right(ast), &right)) {
+        return false;
+    }
+    op = cxpr_ast_operator(ast);
+    if (op == CXPR_TOK_PLUS) *out = left + right;
+    else if (op == CXPR_TOK_MINUS) *out = left - right;
+    else if (op == CXPR_TOK_STAR) *out = left * right;
+    else if (op == CXPR_TOK_SLASH && fabs(right) > 1e-12) *out = left / right;
+    else return false;
+    return true;
+}
+
 static bool cxpr_model_window_period_depth(const cxpr_model* model,
                                            const cxpr_ast* period_ast,
                                            size_t* out_depth,
@@ -36,15 +64,7 @@ static bool cxpr_model_window_period_depth(const cxpr_model* model,
     double raw = 0.0;
     long period;
     if (!period_ast || !out_depth) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
-        if (!cxpr_model_window_constant_default(
-                model, cxpr_ast_variable_name(period_ast), &raw)) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "window period parameter requires a numeric default",
-                                 0, 0);
-            return false;
-        }
-    } else if (!cxpr_eval_constant_double(period_ast, &raw)) {
+    if (!cxpr_model_window_constant_expr(model, period_ast, &raw)) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              "window period must be a constant or model parameter default",
                              0, 0);
@@ -155,18 +175,22 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
                cxpr_model_window_collect_target(model, cxpr_ast_ternary_false_branch(ast), base_depth, specs, count, err);
     case CXPR_NODE_FUNCTION_CALL:
         if (cxpr_model_window_is_function(cxpr_ast_function_name(ast))) {
+            const char* name = cxpr_ast_function_name(ast);
             size_t period_depth = 0u;
             size_t extra_depth = 0u;
-            if (cxpr_ast_function_argc(ast) != 2u) {
+            const size_t expected_argc =
+                (strcmp(name, "bars_since_extreme") == 0 ||
+                 strcmp(name, "window_mean_absdev") == 0) ? 3u : 2u;
+            if (cxpr_ast_function_argc(ast) != expected_argc) {
                 cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
-                                     "window function expects two arguments", 0, 0);
+                                     "window function has wrong arity", 0, 0);
                 return false;
             }
             if (!cxpr_model_window_period_depth(
                     model, cxpr_ast_function_arg(ast, 1u), &period_depth, err)) {
                 return false;
             }
-            extra_depth = cxpr_model_names_match(cxpr_ast_function_name(ast), "window_roc")
+            extra_depth = cxpr_model_names_match(name, "window_roc")
                 ? period_depth
                 : (period_depth > 0u ? period_depth - 1u : 0u);
             return cxpr_model_window_collect_target(
@@ -195,9 +219,11 @@ bool cxpr_model_window_collect_call(const cxpr_model* model,
     if (!call || cxpr_ast_type(call) != CXPR_NODE_FUNCTION_CALL) return true;
     name = cxpr_ast_function_name(call);
     if (!cxpr_model_window_is_function(name)) return true;
-    if (cxpr_ast_function_argc(call) != 2u) {
+    if (cxpr_ast_function_argc(call) !=
+        ((strcmp(name, "bars_since_extreme") == 0 ||
+          strcmp(name, "window_mean_absdev") == 0) ? 3u : 2u)) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
-                             "window function expects two arguments", 0, 0);
+                             "window function has wrong arity", 0, 0);
         return false;
     }
     if (!cxpr_model_window_period_depth(

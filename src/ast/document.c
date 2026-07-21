@@ -75,6 +75,73 @@ static char* cxpr_document_ast_trim_copy(const char* start, size_t len) {
     return cxpr_document_ast_substr(start, len);
 }
 
+static char* cxpr_document_ast_strip_comments(const char* source) {
+    char* out;
+    size_t len;
+    bool in_line_comment = false;
+    bool in_block_comment = false;
+    char quote = '\0';
+
+    if (!source) return NULL;
+    len = strlen(source);
+    out = cxpr_document_ast_substr(source, len);
+    if (!out) return NULL;
+
+    for (size_t i = 0u; i < len; ++i) {
+        char ch = out[i];
+        if (in_line_comment) {
+            if (ch == '\n') {
+                in_line_comment = false;
+            } else {
+                out[i] = ' ';
+            }
+            continue;
+        }
+        if (in_block_comment) {
+            if (ch == '*' && i + 1u < len && out[i + 1u] == '/') {
+                out[i] = ' ';
+                out[i + 1u] = ' ';
+                i++;
+                in_block_comment = false;
+            } else if (ch != '\n') {
+                out[i] = ' ';
+            }
+            continue;
+        }
+        if (quote) {
+            if (ch == '\\' && i + 1u < len) {
+                i++;
+                continue;
+            }
+            if (ch == quote) quote = '\0';
+            continue;
+        }
+        if (ch == '"' || ch == '\'') {
+            quote = ch;
+            continue;
+        }
+        if (ch == '#') {
+            out[i] = ' ';
+            in_line_comment = true;
+            continue;
+        }
+        if (ch == '/' && i + 1u < len && out[i + 1u] == '/') {
+            out[i] = ' ';
+            out[i + 1u] = ' ';
+            i++;
+            in_line_comment = true;
+            continue;
+        }
+        if (ch == '/' && i + 1u < len && out[i + 1u] == '*') {
+            out[i] = ' ';
+            out[i + 1u] = ' ';
+            i++;
+            in_block_comment = true;
+        }
+    }
+    return out;
+}
+
 static bool cxpr_document_ast_is_ident(const char* s) {
     if (!s || !(isalpha((unsigned char)*s) || *s == '_')) return false;
     for (s++; *s; ++s) {
@@ -258,6 +325,14 @@ static bool cxpr_document_ast_reserved_host_kind(const char* kind) {
     return false;
 }
 
+static bool cxpr_document_ast_host_name_start(char ch) {
+    return isalnum((unsigned char)ch) || ch == '_';
+}
+
+static bool cxpr_document_ast_host_name_char(char ch) {
+    return isalnum((unsigned char)ch) || ch == '_' || ch == '-';
+}
+
 static bool cxpr_document_ast_parse_host_start(const char* line,
                                                char** out_kind,
                                                char** out_name,
@@ -286,13 +361,13 @@ static bool cxpr_document_ast_parse_host_start(const char* line,
     while (*cursor && isspace((unsigned char)*cursor)) cursor++;
     if (cursor < open) {
         name_start = cursor;
-        if (!(isalpha((unsigned char)*cursor) || *cursor == '_')) {
+        if (!cxpr_document_ast_host_name_start(*cursor)) {
             free(*out_kind);
             *out_kind = NULL;
             return false;
         }
         cursor++;
-        while (isalnum((unsigned char)*cursor) || *cursor == '_' || *cursor == '-') cursor++;
+        while (cxpr_document_ast_host_name_char(*cursor)) cursor++;
         name_end = cursor;
         while (*cursor && isspace((unsigned char)*cursor)) cursor++;
         if (cursor != open) {
@@ -509,6 +584,27 @@ static bool cxpr_document_ast_parse_comma_or_line_decls(
         cursor++;
     }
     return true;
+}
+
+static bool cxpr_document_ast_parse_struct_input_decls(
+    cxpr_document_ast_parser* parser,
+    cxpr_document_ast_node* block,
+    const char* root,
+    const char* body,
+    size_t body_offset) {
+    if (!root || !*root) {
+        cxpr_document_ast_set_error(parser->err, CXPR_ERR_SYNTAX,
+                                    "Expected input struct name", 0u, 0u);
+        return false;
+    }
+    block->name = cxpr_strdup(root);
+    if (!block->name) {
+        cxpr_document_ast_set_error(parser->err, CXPR_ERR_OUT_OF_MEMORY,
+                                    "Out of memory", 0u, 0u);
+        return false;
+    }
+    return cxpr_document_ast_parse_comma_or_line_decls(
+        parser, block, CXPR_MODEL_AST_INPUT_DECL, body, body_offset, false);
 }
 
 static bool cxpr_document_ast_parse_function_body(cxpr_document_ast_parser* parser,
@@ -844,11 +940,20 @@ static bool cxpr_document_ast_parse_statement(cxpr_document_ast_parser* parser,
         if (node->kind == CXPR_MODEL_AST_INPUT_BLOCK) {
             char* open = strchr((char*)rest, '{');
             char* close = strrchr((char*)rest, '}');
+            char* root;
             if (!open || !close || close < open) goto syntax;
             *close = '\0';
-            ok = cxpr_document_ast_parse_comma_or_line_decls(
-                parser, node, CXPR_MODEL_AST_INPUT_DECL, open + 1,
-                start_offset + (size_t)(open + 1 - statement), false);
+            *open = '\0';
+            root = cxpr_document_ast_trim_in_place((char*)rest);
+            if (*root) {
+                ok = cxpr_document_ast_parse_struct_input_decls(
+                    parser, node, root, open + 1,
+                    start_offset + (size_t)(open + 1 - statement));
+            } else {
+                ok = cxpr_document_ast_parse_comma_or_line_decls(
+                    parser, node, CXPR_MODEL_AST_INPUT_DECL, open + 1,
+                    start_offset + (size_t)(open + 1 - statement), false);
+            }
         } else {
             node->name = cxpr_strdup(rest);
             ok = node->name != NULL;
@@ -1092,6 +1197,7 @@ cxpr_document_ast* cxpr_parse_document_ast(const char* source,
                                            cxpr_error* err) {
     cxpr_document_ast_parser parser;
     cxpr_document_ast* ast;
+    char* parse_source;
     size_t line_start = 0u;
     size_t statement_start = 0u;
     int brace_depth = 0;
@@ -1102,38 +1208,47 @@ cxpr_document_ast* cxpr_parse_document_ast(const char* source,
         cxpr_document_ast_set_error(err, CXPR_ERR_SYNTAX, "NULL document source", 0u, 0u);
         return NULL;
     }
+    parse_source = cxpr_document_ast_strip_comments(source);
+    if (!parse_source) {
+        cxpr_document_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+        return NULL;
+    }
 
     ast = (cxpr_document_ast*)calloc(1u, sizeof(*ast));
     if (!ast) {
+        free(parse_source);
         cxpr_document_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
         return NULL;
     }
     ast->source_name = cxpr_strdup(source_name ? source_name : "");
     ast->source_text = cxpr_strdup(source);
     ast->extensions = extensions;
-    parser.source = source;
+    parser.source = parse_source;
     parser.extensions = extensions;
-    parser.length = strlen(source);
+    parser.length = strlen(parse_source);
     parser.err = err;
     ast->root = cxpr_document_ast_node_new(
         CXPR_DOCUMENT_AST_FILE,
         cxpr_document_ast_span(&parser, 0u, parser.length));
     if (!ast->source_name || !ast->source_text || !ast->root) {
         cxpr_document_ast_free(ast);
+        free(parse_source);
         cxpr_document_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
         return NULL;
     }
 
     for (size_t i = 0u; i <= parser.length; ++i) {
         bool at_end = i == parser.length;
-        bool at_line = !at_end && source[i] == '\n';
+        bool at_line = !at_end && parse_source[i] == '\n';
         if (!at_end && !at_line) continue;
         {
             size_t line_end = i;
-            char* line = cxpr_document_ast_trim_copy(source + line_start, line_end - line_start);
+            char* line = cxpr_document_ast_trim_copy(
+                parse_source + line_start, line_end - line_start);
             bool blank;
             if (!line) {
                 cxpr_document_ast_free(ast);
+                free(parse_source);
                 cxpr_document_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
                 return NULL;
             }
@@ -1141,22 +1256,24 @@ cxpr_document_ast* cxpr_parse_document_ast(const char* source,
             if (blank) {
                 if (has_current && brace_depth <= 0) {
                     if (!cxpr_document_ast_parse_host_statement(
-                            &parser, ast->root, source + statement_start,
+                            &parser, ast->root, parse_source + statement_start,
                             statement_start, line_start > 0u ? line_start - 1u : line_start)) {
                         free(line);
                         cxpr_document_ast_free(ast);
+                        free(parse_source);
                         return NULL;
                     }
                     has_current = false;
                 }
             } else {
-                bool indented = isspace((unsigned char)source[line_start]) != 0;
+                bool indented = isspace((unsigned char)parse_source[line_start]) != 0;
                 if (has_current && brace_depth <= 0 && !indented) {
                     if (!cxpr_document_ast_parse_host_statement(
-                            &parser, ast->root, source + statement_start,
+                            &parser, ast->root, parse_source + statement_start,
                             statement_start, line_start > 0u ? line_start - 1u : line_start)) {
                         free(line);
                         cxpr_document_ast_free(ast);
+                        free(parse_source);
                         return NULL;
                     }
                     has_current = false;
@@ -1173,10 +1290,12 @@ cxpr_document_ast* cxpr_parse_document_ast(const char* source,
     }
     if (has_current &&
         !cxpr_document_ast_parse_host_statement(
-            &parser, ast->root, source + statement_start, statement_start, parser.length)) {
+            &parser, ast->root, parse_source + statement_start, statement_start, parser.length)) {
         cxpr_document_ast_free(ast);
+        free(parse_source);
         return NULL;
     }
+    free(parse_source);
     if (err) err->code = CXPR_OK;
     return ast;
 }

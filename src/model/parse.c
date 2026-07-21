@@ -146,6 +146,9 @@ static bool cxpr_model_is_reserved_host_block_kind(const char* kind) {
     return false;
 }
 
+static bool cxpr_model_host_ident_char(char ch);
+static bool cxpr_model_host_name_start(char ch);
+
 static bool cxpr_model_parse_host_block_start(const char* line,
                                               char** out_kind,
                                               char** out_name,
@@ -191,15 +194,13 @@ static bool cxpr_model_parse_host_block_start(const char* line,
     while (*cursor && isspace((unsigned char)*cursor)) cursor++;
     if (cursor < open) {
         name_start = cursor;
-        if (!(isalpha((unsigned char)*cursor) || *cursor == '_')) {
+        if (!cxpr_model_host_name_start(*cursor)) {
             free(*out_kind);
             *out_kind = NULL;
             return false;
         }
         cursor++;
-        while (*cursor && (isalnum((unsigned char)*cursor) || *cursor == '_' || *cursor == '-')) {
-            cursor++;
-        }
+        while (*cursor && cxpr_model_host_ident_char(*cursor)) cursor++;
         name_end = cursor;
         while (*cursor && isspace((unsigned char)*cursor)) cursor++;
         if (cursor != open) {
@@ -449,6 +450,10 @@ static bool cxpr_model_host_ident_char(char ch) {
     return isalnum((unsigned char)ch) || ch == '_' || ch == '-';
 }
 
+static bool cxpr_model_host_name_start(char ch) {
+    return isalnum((unsigned char)ch) || ch == '_';
+}
+
 static const char* cxpr_model_host_skip_ws(const char* cursor) {
     while (cursor && *cursor) {
         while (isspace((unsigned char)*cursor) || *cursor == ',') cursor++;
@@ -472,6 +477,20 @@ static const char* cxpr_model_host_parse_ident(const char* cursor,
     if (out_start) *out_start = NULL;
     if (out_len) *out_len = 0u;
     if (!cursor || !cxpr_model_host_ident_start(*cursor)) return NULL;
+    cursor++;
+    while (cxpr_model_host_ident_char(*cursor)) cursor++;
+    if (out_start) *out_start = start;
+    if (out_len) *out_len = (size_t)(cursor - start);
+    return cursor;
+}
+
+static const char* cxpr_model_host_parse_name(const char* cursor,
+                                              const char** out_start,
+                                              size_t* out_len) {
+    const char* start = cursor;
+    if (out_start) *out_start = NULL;
+    if (out_len) *out_len = 0u;
+    if (!cursor || !cxpr_model_host_name_start(*cursor)) return NULL;
     cursor++;
     while (cxpr_model_host_ident_char(*cursor)) cursor++;
     if (out_start) *out_start = start;
@@ -623,7 +642,7 @@ static bool cxpr_model_parse_host_block_items(cxpr_model_host_block* parent,
             cxpr_model_host_block* child = NULL;
 
             if (*probe != '{') {
-                const char* after_name = cxpr_model_host_parse_ident(probe, &name_start, &name_len);
+                const char* after_name = cxpr_model_host_parse_name(probe, &name_start, &name_len);
                 if (!after_name) {
                     cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                                          "Expected nested host block body", line_no, 1);
@@ -812,4 +831,3 @@ bool cxpr_model_collect_required_defaults(const cxpr_model* model,
     }
     return true;
 }
-

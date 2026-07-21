@@ -80,6 +80,7 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
         hash = cxpr_eval_hash_string(hash, ast->data.variable.name);
         break;
     case CXPR_NODE_FIELD_ACCESS:
+        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.field_access.base));
         hash = cxpr_eval_hash_string(hash, ast->data.field_access.object);
         hash = cxpr_eval_hash_string(hash, ast->data.field_access.field);
         break;
@@ -157,7 +158,8 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
     case CXPR_NODE_VARIABLE:
         return cxpr_eval_opt_string_equal(lhs->data.variable.name, rhs->data.variable.name);
     case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_eval_opt_string_equal(lhs->data.field_access.object, rhs->data.field_access.object) &&
+        return cxpr_eval_ast_equal(lhs->data.field_access.base, rhs->data.field_access.base) &&
+               cxpr_eval_opt_string_equal(lhs->data.field_access.object, rhs->data.field_access.object) &&
                cxpr_eval_opt_string_equal(lhs->data.field_access.field, rhs->data.field_access.field);
     case CXPR_NODE_CHAIN_ACCESS:
         if (lhs->data.chain_access.depth != rhs->data.chain_access.depth) return false;

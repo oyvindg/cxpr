@@ -97,6 +97,10 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                 out, ast->type == CXPR_NODE_FIELD_ACCESS ? "field_access" : "chain_access");
             out->uses_field_access = true;
             out->is_constant = false;
+            if (ast->type == CXPR_NODE_FIELD_ACCESS && ast->data.field_access.base) {
+                (void)cxpr_ast_analyze_node(
+                    ast->data.field_access.base, state, depth + 1, lookback_depth, ok);
+            }
             return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_PRODUCER_ACCESS: {
             cxpr_func_entry* entry = NULL;

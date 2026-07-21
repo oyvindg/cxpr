@@ -83,6 +83,10 @@ const char* cxpr_ast_field_object(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_FIELD_ACCESS) ? ast->data.field_access.object : NULL;
 }
 
+const cxpr_ast* cxpr_ast_field_base(const cxpr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_FIELD_ACCESS) ? ast->data.field_access.base : NULL;
+}
+
 const char* cxpr_ast_field_name(const cxpr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_FIELD_ACCESS) ? ast->data.field_access.field : NULL;
 }

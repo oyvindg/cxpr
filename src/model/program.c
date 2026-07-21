@@ -13,7 +13,7 @@ static void cxpr_model_compiled_binding_free(cxpr_model_compiled_binding* bindin
     binding->name = NULL;
     binding->source = NULL;
     binding->name_hash = 0u;
-    binding->result_kind = CXPR_IR_VIEW_RESULT_UNKNOWN;
+    binding->result_kind = CXPR_MODEL_RESULT_UNKNOWN;
     binding->ast = NULL;
 }
 
@@ -138,14 +138,14 @@ bool cxpr_eval_model_program(const cxpr_model_program* program,
     eval_reg = program->registry ? program->registry : reg;
 
     for (size_t i = 0; i < program->binding_count; ++i) {
-        if (program->bindings[i].result_kind == CXPR_IR_VIEW_RESULT_NUMBER) {
+        if (program->bindings[i].result_kind == CXPR_MODEL_RESULT_NUMBER) {
             double value = 0.0;
             if (!cxpr_eval_ast_number(
                     program->bindings[i].ast, ctx, eval_reg, &value, err)) {
                 return false;
             }
             cxpr_model_context_set_compiled_number(ctx, &program->bindings[i], value);
-        } else if (program->bindings[i].result_kind == CXPR_IR_VIEW_RESULT_BOOL) {
+        } else if (program->bindings[i].result_kind == CXPR_MODEL_RESULT_BOOL) {
             bool value = false;
             if (!cxpr_model_eval_ast_bool_result(
                     program->bindings[i].ast, ctx, eval_reg, &value, err)) {
@@ -181,12 +181,12 @@ cxpr_model_binding_kind cxpr_model_program_binding_kind(const cxpr_model_program
                : CXPR_MODEL_BINDING_EXPR;
 }
 
-cxpr_ir_view_result_kind cxpr_model_program_binding_result_kind(
+cxpr_model_result_kind cxpr_model_program_binding_result_kind(
     const cxpr_model_program* program,
     size_t index) {
     return program && index < program->binding_count
                ? program->bindings[index].result_kind
-               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+               : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
 size_t cxpr_model_program_constant_count(const cxpr_model_program* program) {
@@ -197,12 +197,12 @@ const char* cxpr_model_program_constant_name(const cxpr_model_program* program, 
     return program && index < program->constant_count ? program->constants[index].name : NULL;
 }
 
-cxpr_ir_view_result_kind cxpr_model_program_constant_result_kind(
+cxpr_model_result_kind cxpr_model_program_constant_result_kind(
     const cxpr_model_program* program,
     size_t index) {
     return program && index < program->constant_count
                ? program->constants[index].result_kind
-               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+               : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
 size_t cxpr_model_program_state_default_count(const cxpr_model_program* program) {
@@ -216,12 +216,12 @@ const char* cxpr_model_program_state_default_name(const cxpr_model_program* prog
                : NULL;
 }
 
-cxpr_ir_view_result_kind cxpr_model_program_state_default_result_kind(
+cxpr_model_result_kind cxpr_model_program_state_default_result_kind(
     const cxpr_model_program* program,
     size_t index) {
     return program && index < program->state_default_count
                ? program->state_defaults[index].result_kind
-               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+               : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
 size_t cxpr_model_program_output_count(const cxpr_model_program* program) {
@@ -272,95 +272,111 @@ size_t cxpr_model_program_function_count(const cxpr_model_program* program) {
     return program && program->registry ? program->registry->count : 0u;
 }
 
-bool cxpr_model_program_uses_fused_ir(const cxpr_model_program* program) {
+cxpr_model_backend_kind cxpr_model_program_requested_backend(const cxpr_model_program* program) {
+    return program ? program->requested_backend : CXPR_MODEL_BACKEND_AUTO;
+}
+
+cxpr_model_backend_kind cxpr_model_program_selected_backend(const cxpr_model_program* program) {
+    return program ? program->selected_backend : CXPR_MODEL_BACKEND_AUTO;
+}
+
+bool cxpr_model_program_compile_fuse_enabled(const cxpr_model_program* program) {
+    return program && program->compile_fuse;
+}
+
+bool cxpr_model_program_compile_trace_enabled(const cxpr_model_program* program) {
+    return program && program->compile_trace;
+}
+
+bool cxpr_model_program_uses_fast_path(const cxpr_model_program* program) {
     return program && program->has_fused_ir;
 }
 
-size_t cxpr_model_program_fused_ir_instruction_count(const cxpr_model_program* program) {
+size_t cxpr_model_program_fast_path_instruction_count(const cxpr_model_program* program) {
     return program && program->has_fused_ir ? program->fused_ir.count : 0u;
 }
 
-const char* cxpr_model_program_fused_ir_disabled_opcode(const cxpr_model_program* program) {
+const char* cxpr_model_program_fast_path_disabled_reason(const cxpr_model_program* program) {
     return program ? program->fused_disabled_opcode : NULL;
 }
 
-size_t cxpr_model_program_fused_slot_count(const cxpr_model_program* program) {
+size_t cxpr_model_program_fast_path_slot_count(const cxpr_model_program* program) {
     return program ? program->fused_slot_count : 0u;
 }
 
-const char* cxpr_model_program_fused_slot_name(const cxpr_model_program* program, size_t index) {
+const char* cxpr_model_program_fast_path_slot_name(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_slot_count ? program->fused_slot_names[index] : NULL;
 }
 
-size_t cxpr_model_program_fused_input_count(const cxpr_model_program* program) {
+size_t cxpr_model_program_fast_path_input_count(const cxpr_model_program* program) {
     return program ? program->fused_input_count : 0u;
 }
 
-const char* cxpr_model_program_fused_input_name(const cxpr_model_program* program, size_t index) {
+const char* cxpr_model_program_fast_path_input_name(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_input_count ? program->fused_inputs[index].name : NULL;
 }
 
-size_t cxpr_model_program_fused_input_slot(const cxpr_model_program* program, size_t index) {
+size_t cxpr_model_program_fast_path_input_slot(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_input_count ? program->fused_inputs[index].slot : (size_t)-1;
 }
 
-cxpr_ir_view_result_kind cxpr_model_program_fused_input_result_kind(
+cxpr_model_result_kind cxpr_model_program_fast_path_input_result_kind(
     const cxpr_model_program* program,
     size_t index) {
     return program && index < program->fused_input_count
                ? program->fused_inputs[index].result_kind
-               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+               : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
-size_t cxpr_model_program_fused_export_count(const cxpr_model_program* program) {
+size_t cxpr_model_program_fast_path_export_count(const cxpr_model_program* program) {
     return program ? program->fused_export_count : 0u;
 }
 
-const char* cxpr_model_program_fused_export_name(const cxpr_model_program* program, size_t index) {
+const char* cxpr_model_program_fast_path_export_name(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_export_count ? program->fused_exports[index].name : NULL;
 }
 
-size_t cxpr_model_program_fused_export_slot(const cxpr_model_program* program, size_t index) {
+size_t cxpr_model_program_fast_path_export_slot(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_export_count ? program->fused_exports[index].slot : (size_t)-1;
 }
 
-cxpr_ir_view_result_kind cxpr_model_program_fused_export_result_kind(
+cxpr_model_result_kind cxpr_model_program_fast_path_export_result_kind(
     const cxpr_model_program* program,
     size_t index) {
     return program && index < program->fused_export_count
                ? program->fused_exports[index].result_kind
-               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+               : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
-size_t cxpr_model_program_fused_output_count(const cxpr_model_program* program) {
+size_t cxpr_model_program_fast_path_output_count(const cxpr_model_program* program) {
     return program ? program->fused_output_count : 0u;
 }
 
-const char* cxpr_model_program_fused_output_name(const cxpr_model_program* program, size_t index) {
+const char* cxpr_model_program_fast_path_output_name(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_output_count ? program->fused_outputs[index].name : NULL;
 }
 
-size_t cxpr_model_program_fused_output_slot(const cxpr_model_program* program, size_t index) {
+size_t cxpr_model_program_fast_path_output_slot(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_output_count ? program->fused_outputs[index].slot : (size_t)-1;
 }
 
-cxpr_ir_view_result_kind cxpr_model_program_fused_output_result_kind(
+cxpr_model_result_kind cxpr_model_program_fast_path_output_result_kind(
     const cxpr_model_program* program,
     size_t index) {
     return program && index < program->fused_output_count
                ? program->fused_outputs[index].result_kind
-               : CXPR_IR_VIEW_RESULT_UNKNOWN;
+               : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
-size_t cxpr_model_program_fused_commit_count(const cxpr_model_program* program) {
+size_t cxpr_model_program_fast_path_commit_count(const cxpr_model_program* program) {
     return program ? program->fused_commit_count : 0u;
 }
 
-size_t cxpr_model_program_fused_commit_state_slot(const cxpr_model_program* program, size_t index) {
+size_t cxpr_model_program_fast_path_commit_state_slot(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_commit_count ? program->fused_commits[index].state_slot : (size_t)-1;
 }
 
-size_t cxpr_model_program_fused_commit_update_slot(const cxpr_model_program* program, size_t index) {
+size_t cxpr_model_program_fast_path_commit_update_slot(const cxpr_model_program* program, size_t index) {
     return program && index < program->fused_commit_count ? program->fused_commits[index].update_slot : (size_t)-1;
 }
 

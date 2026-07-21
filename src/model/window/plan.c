@@ -16,6 +16,35 @@ static size_t cxpr_model_window_plan_param_index(const cxpr_model_program* progr
     return (size_t)-1;
 }
 
+static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* program,
+                                                 const cxpr_ast* ast,
+                                                 double* out) {
+    double left = 0.0;
+    double right = 0.0;
+    int op;
+    if (!ast || !out) return false;
+    if (cxpr_eval_constant_double(ast, out)) return true;
+    if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_ast_variable_name(ast);
+        size_t index = cxpr_model_window_plan_param_index(program, name);
+        return index != (size_t)-1 &&
+               program->constants[index].ast &&
+               cxpr_eval_constant_double(program->constants[index].ast, out);
+    }
+    if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
+    if (!cxpr_model_window_plan_constant_expr(program, cxpr_ast_left(ast), &left) ||
+        !cxpr_model_window_plan_constant_expr(program, cxpr_ast_right(ast), &right)) {
+        return false;
+    }
+    op = cxpr_ast_operator(ast);
+    if (op == CXPR_TOK_PLUS) *out = left + right;
+    else if (op == CXPR_TOK_MINUS) *out = left - right;
+    else if (op == CXPR_TOK_STAR) *out = left * right;
+    else if (op == CXPR_TOK_SLASH && fabs(right) > 1e-12) *out = left / right;
+    else return false;
+    return true;
+}
+
 static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* program,
                                                    const cxpr_ast* period_ast,
                                                    size_t* out_capacity,
@@ -23,18 +52,7 @@ static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* pro
     double raw = 0.0;
     long period;
     if (!period_ast || !out_capacity) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
-        const char* name = cxpr_ast_variable_name(period_ast);
-        size_t index = cxpr_model_window_plan_param_index(program, name);
-        if (index == (size_t)-1 ||
-            !program->constants[index].ast ||
-            !cxpr_eval_constant_double(program->constants[index].ast, &raw)) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "window period parameter requires a numeric default",
-                                 0, 0);
-            return false;
-        }
-    } else if (!cxpr_eval_constant_double(period_ast, &raw)) {
+    if (!cxpr_model_window_plan_constant_expr(program, period_ast, &raw)) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              "window period must be a constant or model parameter default",
                              0, 0);

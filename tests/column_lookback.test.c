@@ -318,6 +318,62 @@ static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(vo
     cxpr_parser_free(parser);
 }
 
+static void test_defined_function_struct_arg_preserves_series_lookback(void) {
+    static const test_bar bars[] = {
+        {10.0, 11.0, 1.0},
+        {20.0, 55.0, 2.0},
+        {30.0, 33.0, 3.0},
+        {40.0, 44.0, 4.0},
+    };
+    int64_t cursor = 3;
+    cxpr_lookback_column columns[] = {
+        {"close", &bars[0].close, sizeof(bars[0]), 4},
+        {"high", &bars[0].high, sizeof(bars[0]), 4},
+    };
+    const char* session_fields[] = {"bar_index"};
+    cxpr_value session_values[] = {cxpr_num(1.0)};
+    cxpr_struct_value* session = cxpr_struct_value_new(session_fields, session_values, 1u);
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_ast* ast;
+
+    assert(parser);
+    assert(ctx);
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(session);
+    assert(cxpr_register_column_lookback(reg, columns, 2, &cursor));
+    cxpr_context_set_struct(ctx, "session", session);
+    cxpr_struct_value_free(session);
+    assert(cxpr_registry_define_fn(
+               reg,
+               "prior_for_session(close, high, session) => "
+               "session.bar_index == 1 ? close[2] + high[1] : 0").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(
+               reg,
+               "peak_for_session(high, session, bars) => "
+               "session.bar_index == 1 ? window_highest(high, bars) : 0").code == CXPR_OK);
+
+    ast = parse_or_die(parser, "prior_for_session(close, high, session)");
+    expect_double_eq(eval_number_or_die(ast, ctx, reg), 53.0,
+                     "AST defined fn preserves series lookback");
+    expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 53.0,
+                     "IR defined fn preserves series lookback");
+    cxpr_ast_free(ast);
+
+    ast = parse_or_die(parser, "peak_for_session(high, session, 3)");
+    expect_double_eq(eval_number_or_die(ast, ctx, reg), 55.0,
+                     "AST defined fn preserves window series arg");
+    expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 55.0,
+                     "IR defined fn preserves window series arg");
+    cxpr_ast_free(ast);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(parser);
+}
+
 static void test_column_lookback_rejects_invalid_registration(void) {
     cxpr_registry* reg = cxpr_registry_new();
     assert(reg);
@@ -335,6 +391,7 @@ int main(void) {
     test_column_lookback_returns_nan_for_warmup_or_out_of_range();
     test_expression_lookback_matches_ast_and_ir();
     test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved();
+    test_defined_function_struct_arg_preserves_series_lookback();
     test_column_lookback_rejects_invalid_registration();
     printf("All column lookback tests passed!\n");
     return 0;

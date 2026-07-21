@@ -323,6 +323,23 @@ static bool cxpr_document_lower_is_ident(const char* s) {
     return true;
 }
 
+static bool cxpr_document_lower_is_dotted_ident(const char* s) {
+    bool need_ident_start = true;
+    if (!s || *s == '\0') return false;
+    while (*s) {
+        if (need_ident_start) {
+            if (!(isalpha((unsigned char)*s) || *s == '_')) return false;
+            need_ident_start = false;
+        } else if (*s == '.') {
+            need_ident_start = true;
+        } else if (!(isalnum((unsigned char)*s) || *s == '_')) {
+            return false;
+        }
+        s++;
+    }
+    return !need_ident_start;
+}
+
 static bool cxpr_document_lower_is_use_path(const char* s) {
     const char* segment = s;
     if (!s || *s == '\0' || *s == '/') return false;
@@ -607,6 +624,41 @@ static bool cxpr_document_model_append_name_list(char*** values,
         }
     }
     free(owned);
+    return true;
+}
+
+static bool cxpr_document_model_append_struct_input_block(cxpr_model* model,
+                                                          const cxpr_document_ast_node* node,
+                                                          cxpr_error* err) {
+    const char* root = cxpr_document_ast_node_name(node);
+    if (!model || !root || !cxpr_document_lower_is_ident(root)) {
+        cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Invalid input struct name");
+        return false;
+    }
+    for (size_t i = 0u; i < cxpr_document_ast_child_count(node); ++i) {
+        const cxpr_document_ast_node* child = cxpr_document_ast_child(node, i);
+        const char* field = cxpr_document_ast_node_name(child);
+        size_t len;
+        char* dotted;
+        bool ok;
+        if (!field || !cxpr_document_lower_is_dotted_ident(field)) {
+            cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Invalid input field name");
+            return false;
+        }
+        len = strlen(root) + 1u + strlen(field);
+        dotted = (char*)malloc(len + 1u);
+        if (!dotted) {
+            cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            return false;
+        }
+        snprintf(dotted, len + 1u, "%s.%s", root, field);
+        ok = cxpr_document_model_append_string(&model->inputs, &model->input_count, dotted);
+        free(dotted);
+        if (!ok) {
+            cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1328,6 +1380,10 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
             }
             return cxpr_document_model_append_function(model, node, err);
         case CXPR_MODEL_AST_INPUT_BLOCK:
+            if (name && name[0] != '\0') {
+                return cxpr_document_model_append_struct_input_block(model, node, err);
+            }
+            return cxpr_document_lower_children_to_model(model, node, err);
         case CXPR_MODEL_AST_PARAM_BLOCK:
         case CXPR_MODEL_AST_STATE_BLOCK:
         case CXPR_MODEL_AST_OUTPUT_BLOCK:

@@ -83,6 +83,7 @@ bool cxpr_ir_call_memo_set(const cxpr_context* ctx,
                            cxpr_value value);
 /** @brief Execute one expression-defined function on the scalar-only IR path. */
 cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+                                       const cxpr_ast* call_ast,
                                        const cxpr_context* ctx,
                                        const cxpr_registry* reg,
                                        const cxpr_value* args,

@@ -248,11 +248,61 @@ static void test_defined_overlay_copies_prefixed_scalars(void) {
     cxpr_parser_free(p);
 }
 
+static void test_defined_function_accepts_record_literal_struct_arg(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    double out = 0.0;
+
+    assert(p && ctx && reg);
+    assert(cxpr_registry_define_fn(reg, "pick(v) => v.x + v.y").code == CXPR_OK);
+
+    ast = cxpr_parse(p, "pick({x = 40, y = 2})", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out == 42.0);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+}
+
+static void test_defined_function_accepts_flat_prefixed_struct_arg(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast;
+    double out = 0.0;
+
+    assert(p && ctx && reg);
+    assert(cxpr_registry_define_fn(reg, "session_sum(session) => session.open + session.bar_index").code == CXPR_OK);
+    cxpr_context_set(ctx, "session_open", 40.0);
+    cxpr_context_set(ctx, "session_bar_index", 2.0);
+
+    ast = cxpr_parse(p, "session_sum(session)", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out == 42.0);
+
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+}
+
 int main(void) {
     test_eval_call_paths();
     test_named_param_producer_cache_paths();
     test_prepare_const_key_with_param_args();
     test_defined_overlay_copies_prefixed_scalars();
+    test_defined_function_accepts_record_literal_struct_arg();
+    test_defined_function_accepts_flat_prefixed_struct_arg();
     printf("  \xE2\x9C\x93 eval_calls\n");
     return 0;
 }

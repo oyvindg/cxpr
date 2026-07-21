@@ -4,6 +4,7 @@
  */
 
 #include "core.h"
+#include "registry/internal.h"
 #include <cxpr/basket.h>
 #include <math.h>
 #include <string.h>
@@ -441,8 +442,12 @@ void cxpr_register_basket_builtins(cxpr_registry* reg) {
     cxpr_registry_add_ast(reg, "any", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_ast(reg, "all", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_ast(reg, "count", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_add_ast(reg, "min", cxpr_basket_eval_call, 1, 8, CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_add_ast(reg, "max", cxpr_basket_eval_call, 1, 8, CXPR_VALUE_NUMBER, NULL, NULL);
+    if (!cxpr_registry_find(reg, "min")) {
+        cxpr_registry_add_ast(reg, "min", cxpr_basket_eval_call, 1, 8, CXPR_VALUE_NUMBER, NULL, NULL);
+    }
+    if (!cxpr_registry_find(reg, "max")) {
+        cxpr_registry_add_ast(reg, "max", cxpr_basket_eval_call, 1, 8, CXPR_VALUE_NUMBER, NULL, NULL);
+    }
 }
 
 bool cxpr_ast_uses_basket_aggregates(const cxpr_ast* ast) {

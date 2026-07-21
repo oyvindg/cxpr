@@ -227,7 +227,7 @@ static void test_ir_eval_unknown_identifier(void) {
     double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Unknown identifier") == 0);
+    assert(strstr(err.message, "Unknown identifier") == err.message);
 
     cxpr_ir_program_reset(&program);
     cxpr_ast_free(ast);
@@ -511,6 +511,32 @@ static void test_ir_eval_field_access_matches_ast(void) {
     printf("  ✓ test_ir_eval_field_access_matches_ast\n");
 }
 
+static void test_ir_eval_grouped_expression_field_access(void) {
+    cxpr_parser* p = cxpr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(p, "(trend_up ? {risk: 1} : {risk: 2}).risk", &err);
+    cxpr_ir_program program = {0};
+    double result;
+
+    assert(ast);
+    cxpr_context_set_bool(ctx, "trend_up", false);
+    assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
+    assert(err.code == CXPR_OK);
+
+    result = cxpr_ir_exec(&program, ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_DOUBLE_EQ(result, 2.0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_parser_free(p);
+    printf("  ✓ test_ir_eval_grouped_expression_field_access\n");
+}
+
 static void test_ir_eval_unknown_field_access(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
@@ -525,7 +551,7 @@ static void test_ir_eval_unknown_field_access(void) {
     double result = cxpr_ir_exec(&program, ctx, NULL, &err);
     assert(isnan(result));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Unknown field access") == 0);
+    assert(strstr(err.message, "Unknown field access") == err.message);
 
     cxpr_ir_program_reset(&program);
     cxpr_ast_free(ast);
@@ -1786,6 +1812,7 @@ int main(void) {
     test_ir_eval_modulo_matches_ast();
     test_ir_eval_modulo_by_zero();
     test_ir_eval_field_access_matches_ast();
+    test_ir_eval_grouped_expression_field_access();
     test_ir_eval_unknown_field_access();
     test_ir_eval_comparisons_match_ast();
     test_ir_eval_not_matches_ast();

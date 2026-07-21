@@ -59,7 +59,7 @@ static bool cxpr_model_slot_ref_append(cxpr_model_slot_ref** refs,
                                        size_t* count,
                                        const char* name,
                                        size_t slot,
-                                       cxpr_ir_view_result_kind result_kind,
+                                       cxpr_model_result_kind result_kind,
                                        cxpr_error* err) {
     cxpr_model_slot_ref* grown;
     if (!refs || !count || !name) return false;
@@ -82,10 +82,10 @@ static bool cxpr_model_slot_ref_append(cxpr_model_slot_ref** refs,
     return true;
 }
 
-static cxpr_ir_view_result_kind cxpr_model_program_symbol_result_kind(
+static cxpr_model_result_kind cxpr_model_program_symbol_result_kind(
     const cxpr_model_program* program,
     const char* name) {
-    if (!program || !name) return CXPR_IR_VIEW_RESULT_UNKNOWN;
+    if (!program || !name) return CXPR_MODEL_RESULT_UNKNOWN;
     for (size_t i = 0; i < program->binding_count; ++i) {
         if (cxpr_model_names_match(program->bindings[i].name, name)) {
             return program->bindings[i].result_kind;
@@ -101,7 +101,7 @@ static cxpr_ir_view_result_kind cxpr_model_program_symbol_result_kind(
             return program->constants[i].result_kind;
         }
     }
-    return CXPR_IR_VIEW_RESULT_UNKNOWN;
+    return CXPR_MODEL_RESULT_UNKNOWN;
 }
 
 static bool cxpr_model_state_commit_append(cxpr_model_program* program,
@@ -254,7 +254,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
                                         &program->fused_input_count,
                                         model->inputs[i],
                                         slot,
-                                        CXPR_IR_VIEW_RESULT_NUMBER,
+                                        CXPR_MODEL_RESULT_NUMBER,
                                         err)) {
             cxpr_model_fused_program_clear(program);
             return false;
@@ -297,7 +297,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
     for (size_t i = 0; i < program->output_count; ++i) {
         size_t slot = cxpr_model_fused_slot_find(
             program->fused_slot_names, program->fused_slot_count, program->outputs[i]);
-        cxpr_ir_view_result_kind result_kind;
+        cxpr_model_result_kind result_kind;
         if (slot == (size_t)-1) {
             cxpr_model_fused_program_clear(program);
             return true;

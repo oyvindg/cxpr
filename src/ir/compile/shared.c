@@ -75,6 +75,7 @@ bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
                             err);
 
     case CXPR_NODE_FIELD_ACCESS:
+        if (ast->data.field_access.base) return false;
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = square ? CXPR_OP_LOAD_FIELD_SQUARE : CXPR_OP_LOAD_FIELD,

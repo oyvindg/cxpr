@@ -1,11 +1,24 @@
 #ifndef CXPR_MODEL_RUNTIME_H
 #define CXPR_MODEL_RUNTIME_H
 
+#if defined(DYN_CUDA_SOURCE_COMPOSED)
+typedef unsigned long size_t;
+#ifndef NAN
+#define NAN (0.0 / 0.0)
+#endif
+#define cxpr_model_runtime_isnan(x) ((x) != (x))
+#else
 #include <math.h>
 #include <stddef.h>
+#define cxpr_model_runtime_isnan(x) isnan(x)
+#endif
 
 #ifndef CXPR_MODEL_RUNTIME_LINKAGE
+#if defined(DYN_CUDA_SOURCE_COMPOSED)
+#define CXPR_MODEL_RUNTIME_LINKAGE static __device__ inline
+#else
 #define CXPR_MODEL_RUNTIME_LINKAGE static inline
+#endif
 #endif
 
 CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values,
@@ -21,7 +34,7 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values,
     if (limit > count) limit = count;
     for (size_t i = 0u; i < limit; ++i) {
         double x = values[i];
-        if (isnan(x)) continue;
+        if (cxpr_model_runtime_isnan(x)) continue;
         if (valid_count == 0u) extreme = x;
         if (op == 2 && x > extreme) extreme = x;
         if (op == 3 && x < extreme) extreme = x;
@@ -50,8 +63,8 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_roc_c(const double* values,
     if (index >= count) index = count - 1u;
     now = values[0];
     prev = values[index];
-    if (isnan(now)) return NAN;
-    if (isnan(prev) || fabs(prev) <= 1e-12) return 0.0;
+    if (cxpr_model_runtime_isnan(now)) return NAN;
+    if (cxpr_model_runtime_isnan(prev) || fabs(prev) <= 1e-12) return 0.0;
     return ((now - prev) / prev) * 100.0;
 }
 
@@ -69,8 +82,8 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_mean_roc_c(const double* val
         double now = values[i];
         double prev = (i + rp < count) ? values[i + rp] : NAN;
         double roc;
-        if (isnan(now)) continue;
-        roc = (isnan(prev) || fabs(prev) <= 1e-12)
+        if (cxpr_model_runtime_isnan(now)) continue;
+        roc = (cxpr_model_runtime_isnan(prev) || fabs(prev) <= 1e-12)
                   ? 0.0
                   : ((now - prev) / prev) * 100.0;
         sum += roc;
@@ -92,7 +105,7 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_midpoint_c(const double* hig
     for (size_t i = 0u; i < limit; ++i) {
         double hi = highs[i];
         double lo = lows[i];
-        if (isnan(hi) || isnan(lo)) continue;
+        if (cxpr_model_runtime_isnan(hi) || cxpr_model_runtime_isnan(lo)) continue;
         if (valid_count == 0u) {
             highest = hi;
             lowest = lo;
@@ -102,6 +115,48 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_midpoint_c(const double* hig
         valid_count++;
     }
     return valid_count == 0u ? 0.0 : (highest + lowest) * 0.5;
+}
+
+CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_bars_since_extreme_c(const double* values,
+                                                                  size_t count,
+                                                                  int samples,
+                                                                  double mode) {
+    size_t limit = samples < 1 ? 1u : (size_t)samples;
+    double extreme = 0.0;
+    size_t extreme_index = 0u;
+    size_t valid_count = 0u;
+    if (!values || count == 0u) return 0.0;
+    if (limit > count) limit = count;
+    for (size_t i = 0u; i < limit; ++i) {
+        double value = values[i];
+        if (cxpr_model_runtime_isnan(value)) continue;
+        if (valid_count == 0u ||
+            (mode >= 0.0 && value > extreme) ||
+            (mode < 0.0 && value < extreme)) {
+            extreme = value;
+            extreme_index = i;
+        }
+        valid_count++;
+    }
+    return valid_count == 0u ? 0.0 : (double)extreme_index;
+}
+
+CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_mean_absdev_c(const double* values,
+                                                                  size_t count,
+                                                                  int samples,
+                                                                  double center) {
+    size_t limit = samples < 1 ? 1u : (size_t)samples;
+    double sum = 0.0;
+    size_t valid_count = 0u;
+    if (!values || count == 0u || cxpr_model_runtime_isnan(center)) return 0.0;
+    if (limit > count) limit = count;
+    for (size_t i = 0u; i < limit; ++i) {
+        double value = values[i];
+        if (cxpr_model_runtime_isnan(value)) continue;
+        sum += fabs(value - center);
+        valid_count++;
+    }
+    return valid_count == 0u ? 0.0 : sum / (double)valid_count;
 }
 
 #endif
