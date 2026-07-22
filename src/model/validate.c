@@ -648,6 +648,21 @@ static char* cxpr_model_join_import_path(const char* dir, const char* use_name) 
     return out;
 }
 
+static char* cxpr_model_join_path2(const char* dir, const char* name) {
+    size_t dir_len;
+    size_t name_len;
+    int need_slash;
+    char* out;
+    if (!dir || !name) return NULL;
+    dir_len = strlen(dir);
+    name_len = strlen(name);
+    need_slash = dir_len > 0u && dir[dir_len - 1u] != '/';
+    out = (char*)malloc(dir_len + (need_slash ? 1u : 0u) + name_len + 1u);
+    if (!out) return NULL;
+    sprintf(out, "%s%s%s", dir, need_slash ? "/" : "", name);
+    return out;
+}
+
 static char* cxpr_model_join_dyn_cxpr_import_path(const char* root, const char* use_name) {
     size_t root_len;
     size_t use_len;
@@ -677,6 +692,60 @@ static char* cxpr_model_resolve_dyn_cxpr_import_from_ancestors(
     for (;;) {
         char* candidate = cxpr_model_join_dyn_cxpr_import_path(cursor, use_name);
         char* parent;
+        if (!candidate) {
+            free(cursor);
+            return NULL;
+        }
+        if (cxpr_model_path_exists(candidate)) {
+            free(cursor);
+            return candidate;
+        }
+        free(candidate);
+        if (strcmp(cursor, ".") == 0 || strcmp(cursor, "/") == 0) break;
+        parent = cxpr_model_path_dirname(cursor);
+        if (!parent) {
+            free(cursor);
+            return NULL;
+        }
+        if (strcmp(parent, cursor) == 0) {
+            free(parent);
+            break;
+        }
+        free(cursor);
+        cursor = parent;
+    }
+    free(cursor);
+    return NULL;
+}
+
+static char* cxpr_model_resolve_dyn_cxpr_import_from_cwd(const char* use_name) {
+    return cxpr_model_resolve_dyn_cxpr_import_from_ancestors(".", use_name);
+}
+
+static char* cxpr_model_resolve_preset_import_from_ancestors(
+    const char* dir,
+    const char* use_name) {
+    const char* preset_ref = use_name ? use_name + strlen("presets/") : NULL;
+    char* cursor;
+
+    if (!dir || !use_name ||
+        strncmp(use_name, "presets/", strlen("presets/")) != 0 ||
+        !preset_ref ||
+        preset_ref[0] == '\0') {
+        return NULL;
+    }
+    cursor = cxpr_model_path_strdup(dir);
+    if (!cursor) return NULL;
+    for (;;) {
+        char* preset_dir = cxpr_model_join_path2(cursor, "presets");
+        char* candidate = NULL;
+        char* parent;
+        if (!preset_dir) {
+            free(cursor);
+            return NULL;
+        }
+        candidate = cxpr_model_join_import_path(preset_dir, preset_ref);
+        free(preset_dir);
         if (!candidate) {
             free(cursor);
             return NULL;
@@ -740,9 +809,19 @@ static char* cxpr_model_resolve_use_file_path(const char* model_path, const char
             }
             free(path);
         }
+        path = cxpr_model_resolve_preset_import_from_ancestors(dir, use_name);
+        if (path) {
+            free(dir);
+            return path;
+        }
     }
     if (strncmp(use_name, "indicators/", strlen("indicators/")) == 0) {
         path = cxpr_model_resolve_dyn_cxpr_import_from_ancestors(dir, use_name);
+        if (path) {
+            free(dir);
+            return path;
+        }
+        path = cxpr_model_resolve_dyn_cxpr_import_from_cwd(use_name);
         if (path) {
             free(dir);
             return path;
