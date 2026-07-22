@@ -382,8 +382,19 @@ static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
         const cxpr_ast* index = cxpr_ast_lookback_index(ast);
         unsigned offset;
         unsigned next_offset;
-        if (!cxpr_lookback_literal_offset(
-                index, &offset, err, "C codegen requires constant integer lookback indexes")) return 0;
+        if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) {
+            if (target && target->api_version == CXPR_C_TARGET_API_VERSION &&
+                target->emit_lookback_at_offset) {
+                char* dynamic = target->emit_lookback_at_offset(
+                    ast, lookback_offset, target->userdata, err);
+                if (!dynamic) return 0;
+                cxpr_cg_puts(b, dynamic);
+                free(dynamic);
+                return !b->oom;
+            }
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "C codegen requires constant integer lookback indexes");
+        }
         if (!cxpr_lookback_add_unsigned(
                 lookback_offset, offset, &next_offset, err, "C codegen lookback offset overflow")) return 0;
         return cxpr_cg_emit_at_offset(

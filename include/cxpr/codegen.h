@@ -57,6 +57,11 @@ typedef char* (*cxpr_c_emit_call_at_offset_fn)(const cxpr_ast* ast,
                                                bool* handled,
                                                cxpr_error* err);
 
+typedef char* (*cxpr_c_emit_lookback_at_offset_fn)(const cxpr_ast* ast,
+                                                   unsigned lookback_offset,
+                                                   void* userdata,
+                                                   cxpr_error* err);
+
 /**
  * @brief Target description for a C-like backend (plain C, CUDA, WGSL, ...).
  *
@@ -77,6 +82,7 @@ typedef struct cxpr_c_target {
     unsigned api_version;
     cxpr_c_emit_leaf_at_offset_fn emit_leaf_at_offset;
     cxpr_c_emit_call_at_offset_fn emit_call_at_offset;
+    cxpr_c_emit_lookback_at_offset_fn emit_lookback_at_offset;
 } cxpr_c_target;
 
 /** @brief Source category for one generated cxpr_program C function argument. */

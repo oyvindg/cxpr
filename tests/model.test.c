@@ -2055,12 +2055,11 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
         "sum = window_sum(close, $period)\n"
         "mean = window_mean(close, $period)\n"
         "wma = window_wma(close, $period)\n"
-        "lag = window_lag(close, $period)\n"
         "hi = window_highest(close, $period)\n"
         "lo = window_lowest(close, $period)\n"
         "sd = window_stddev(close, $period)\n"
         "rocv = window_roc(close, $period)\n"
-        "out { sum, mean, wma, lag, hi, lo, sd, rocv }\n");
+        "out { sum, mean, wma, hi, lo, sd, rocv }\n");
     cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
     cxpr_model_session* session;
     cxpr_context* ctx;
@@ -2094,8 +2093,6 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
     assert(fabs(value - 14.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "wma", &value));
     assert(fabs(value - 14.666666666666666) < 1e-12);
-    assert(cxpr_model_session_output_number(session, "lag", &value));
-    assert(fabs(value - 10.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "hi", &value));
     assert(fabs(value - 16.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "lo", &value));

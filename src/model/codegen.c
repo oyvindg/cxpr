@@ -128,6 +128,10 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
                                         void* userdata,
                                         bool* handled,
                                         cxpr_error* err);
+static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
+                                            unsigned lookback_offset,
+                                            void* userdata,
+                                            cxpr_error* err);
 static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
                                       const cxpr_ast* ast,
                                       const char* function_prefix,
@@ -1428,6 +1432,66 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
         err->message = "Unsupported model C leaf";
     }
     return NULL;
+}
+
+static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
+                                            unsigned lookback_offset,
+                                            void* userdata,
+                                            cxpr_error* err) {
+    cxpr_model_ast_c_target* data = (cxpr_model_ast_c_target*)userdata;
+    const cxpr_model_program* program = data ? data->program : NULL;
+    const cxpr_ast* target_ast;
+    const cxpr_ast* index_ast;
+    cxpr_c_target target;
+    char* key = NULL;
+    char* index_expr = NULL;
+    char* current_expr = NULL;
+    size_t hist_index;
+    size_t depth;
+    size_t capacity;
+    char out[1024];
+
+    if (!data || !program || !ast || cxpr_ast_type(ast) != CXPR_NODE_LOOKBACK) return NULL;
+    target_ast = cxpr_ast_lookback_target(ast);
+    index_ast = cxpr_ast_lookback_index(ast);
+    if (!cxpr_model_lookback_target_key(target_ast, &key, err)) return NULL;
+    hist_index = cxpr_model_c_history_find(program, key);
+    free(key);
+    if (hist_index == (size_t)-1) {
+        cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                             "Unknown model C history target", 0, 0);
+        return NULL;
+    }
+    target = (cxpr_c_target){
+        .api_version = CXPR_C_TARGET_API_VERSION,
+        .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+        .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+        .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
+        .userdata = data,
+    };
+    index_expr = cxpr_ast_to_c_at_offset(index_ast, 0u, &target, err);
+    current_expr = cxpr_ast_to_c_at_offset(target_ast, lookback_offset, &target, err);
+    if (!index_expr || !current_expr) {
+        free(index_expr); free(current_expr);
+        return NULL;
+    }
+    depth = program->history_specs[hist_index].depth;
+    capacity = cxpr_model_c_history_capacity(depth);
+    if (lookback_offset != 0u) {
+        /* Nested dynamic lookbacks are conservatively bounded. */
+        snprintf(out, sizeof(out), "NAN");
+    } else if (cxpr_model_c_history_use_shift(depth)) {
+        snprintf(out, sizeof(out), "(((%s) <= 0.0) ? %s : ((%s) <= %zuu ? _cx_state->history_%zu.values[(size_t)(%s) - 1u] : NAN))",
+                 index_expr, current_expr, index_expr, depth, hist_index, index_expr);
+    } else if (cxpr_model_c_is_power_of_two(capacity)) {
+        snprintf(out, sizeof(out), "(((%s) <= 0.0) ? %s : ((%s) <= %zuu ? _cx_state->history_%zu.values[(_cx_history_next_%zu + %zuu - (size_t)(%s)) & %zuu] : NAN))",
+                 index_expr, current_expr, index_expr, depth, hist_index, hist_index, capacity, index_expr, capacity - 1u);
+    } else {
+        snprintf(out, sizeof(out), "(((%s) <= 0.0) ? %s : ((%s) <= %zuu ? _cx_state->history_%zu.values[(_cx_history_next_%zu + %zuu - (size_t)(%s)) %% %zuu] : NAN))",
+                 index_expr, current_expr, index_expr, depth, hist_index, hist_index, capacity, index_expr, capacity);
+    }
+    free(index_expr); free(current_expr);
+    return cxpr_strdup(out);
 }
 
 static const char* cxpr_model_c_window_op(const char* name) {
@@ -2741,7 +2805,6 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     const char* name = cxpr_ast_function_name(ast);
     const char* op = cxpr_model_c_window_op(name);
     bool is_roc = cxpr_model_names_match(name, "window_roc");
-    bool is_lag = cxpr_model_names_match(name, "window_lag");
     bool is_bars_since_extreme = cxpr_model_names_match(name, "bars_since_extreme");
     bool is_window_mean_absdev = cxpr_model_names_match(name, "window_mean_absdev");
     const cxpr_ast* value_ast;
@@ -2752,14 +2815,13 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     char* period_limit_expr = NULL;
     bool guard_values = false;
     cxpr_model_c_buf b = {0};
-    if (!program || (!op && !is_roc && !is_lag && !is_bars_since_extreme && !is_window_mean_absdev) ||
+    if (!program || (!op && !is_roc && !is_bars_since_extreme && !is_window_mean_absdev) ||
         cxpr_ast_function_argc(ast) !=
             ((is_bars_since_extreme || is_window_mean_absdev) ? 3u : 2u)) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
                              "window function has wrong arity", 0, 0);
         return NULL;
     }
-    if (is_lag) op = "6";
     value_ast = cxpr_ast_function_arg(ast, 0u);
     period_ast = cxpr_ast_function_arg(ast, 1u);
     guard_values = cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE;
@@ -2948,7 +3010,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         }
         return b.data;
     }
-    value_count = (is_roc || is_lag) ? capacity + 1u : capacity;
+    value_count = is_roc ? capacity + 1u : capacity;
     cxpr_model_c_puts(&b, is_roc
                           ? "cxpr_model_window_roc_c((const double[]){"
                           : "cxpr_model_window_eval_c((const double[]){");
@@ -2969,7 +3031,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         }
         if (!guard_values) {
             cxpr_model_c_printf(&b, "(%s)", value_expr);
-        } else if (is_roc || is_lag) {
+        } else if (is_roc) {
             cxpr_model_c_printf(&b,
                                 "((%zuu == 0u || %zuu <= (size_t)(%s)) ? (%s) : NAN)",
                                 i,
@@ -3751,6 +3813,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     ast_target.api_version = CXPR_C_TARGET_API_VERSION;
     ast_target.emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf;
     ast_target.emit_call_at_offset = cxpr_model_ast_c_emit_call;
+    ast_target.emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback;
     ast_target.userdata = &ast_target_data;
     state_next_names = (char**)calloc(program->fused_slot_count ? program->fused_slot_count : 1u,
                                       sizeof(char*));

@@ -251,9 +251,18 @@ bool cxpr_model_lookback_resolver(const cxpr_ast* target,
     (void)reg;
     (void)userdata;
     if (!target || !index || !out) return false;
-    if (!cxpr_lookback_literal_offset(index, &offset, err,
-                                      "model lookback requires constant integer index")) {
-        return false;
+    if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) {
+        double dynamic_offset = 0.0;
+        if (!cxpr_eval_ast_number(index, ctx, reg, &dynamic_offset, err) ||
+            !isfinite(dynamic_offset) || dynamic_offset < 0.0 ||
+            floor(dynamic_offset) != dynamic_offset || dynamic_offset > 512.0) {
+            if (err && err->code == CXPR_OK) {
+                err->code = CXPR_ERR_SYNTAX;
+                err->message = "Dynamic lookback index must be a non-negative integer";
+            }
+            return false;
+        }
+        offset = (unsigned)dynamic_offset;
     }
     if (!cxpr_model_lookback_target_key(target, &key, err)) return false;
     if (offset == 0u) {

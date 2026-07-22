@@ -55,12 +55,6 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values,
         }
         return weight_sum > 0.0 ? weighted_sum / weight_sum : 0.0;
     }
-    if (op == 6) {
-        size_t index = period < 1 ? 1u : (size_t)period;
-        return index < count && !cxpr_model_runtime_isnan(values[index])
-                   ? values[index]
-                   : NAN;
-    }
     if (op == 2 || op == 3) return extreme;
     if (op == 1) return sum / (double)valid_count;
     if (op == 4) {

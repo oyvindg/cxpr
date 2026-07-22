@@ -897,10 +897,7 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
         const cxpr_ast* target = cxpr_ast_lookback_target(ast);
         const cxpr_ast* index = cxpr_ast_lookback_index(ast);
         unsigned offset = 0u;
-        if (!cxpr_lookback_literal_offset(index, &offset, err,
-                                          "model lookback requires constant integer index")) {
-            return false;
-        }
+        if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) offset = 512u;
         {
             char* key = NULL;
             bool supported = cxpr_model_lookback_target_key(target, &key, err);

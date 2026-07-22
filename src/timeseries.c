@@ -547,28 +547,6 @@ static cxpr_value cxpr_timeseries_window_roc(const cxpr_ast* call_ast,
     return cxpr_num(((value - previous) / previous) * 100.0);
 }
 
-static cxpr_value cxpr_timeseries_window_lag(const cxpr_ast* call_ast,
-                                             const cxpr_context* ctx,
-                                             const cxpr_registry* reg,
-                                             void* userdata,
-                                             cxpr_error* err) {
-    const cxpr_ast* value_ast;
-    long long samples_ll;
-    double value = 0.0;
-    (void)userdata;
-    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
-        return cxpr_timeseries_call_error(call_ast, err);
-    }
-    value_ast = cxpr_ast_function_arg(call_ast, 0);
-    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
-        return cxpr_num(NAN);
-    }
-    if (!cxpr_eval_ast_number_at_offset(value_ast, (double)samples_ll, ctx, reg, &value, err)) {
-        return cxpr_num(NAN);
-    }
-    return cxpr_num(value);
-}
-
 static cxpr_value cxpr_timeseries_cross_above(const cxpr_ast* call_ast,
                                               const cxpr_context* ctx,
                                               const cxpr_registry* reg,
@@ -880,9 +858,6 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_add_timeseries(reg, "window_roc", cxpr_timeseries_window_roc, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "window_roc", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_lag", cxpr_timeseries_window_lag, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_lag", value_samples_params, 2u);
     {
         static const char* bars_since_extreme_params[] = {"value", "samples", "mode"};
         cxpr_registry_add_timeseries(reg, "bars_since_extreme",
@@ -923,7 +898,6 @@ bool cxpr_timeseries_is_builtin(const char* name) {
            strcmp(name, "window_lowest") == 0 ||
            strcmp(name, "window_stddev") == 0 ||
            strcmp(name, "window_roc") == 0 ||
-           strcmp(name, "window_lag") == 0 ||
            strcmp(name, "bars_since_extreme") == 0 ||
            strcmp(name, "window_mean_absdev") == 0;
 }

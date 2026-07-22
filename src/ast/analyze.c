@@ -236,7 +236,8 @@ static cxpr_expr_type cxpr_ast_analyze_node(const cxpr_ast* ast,
                     }
                 }
             } else {
-                cxpr_ast_note_unsupported_codegen(out, "lookback_index");
+                /* Target backends may lower dynamic indexes directly. */
+                if (out->max_lookback_depth < 512u) out->max_lookback_depth = 512u;
             }
             (void)cxpr_ast_analyze_node(
                 ast->data.lookback.target, state, depth + 1, lookback_depth, ok);
