@@ -84,6 +84,14 @@ static cxpr_model* parse_model_ok(const char* source) {
     return model;
 }
 
+static cxpr_value model_test_host_runtime_value(const cxpr_value* args,
+                                                size_t argc,
+                                                void* userdata) {
+    (void)userdata;
+    assert(argc == 1u);
+    return cxpr_num(args[0].d + 1.0);
+}
+
 static const cxpr_provider_scope_spec model_timeframe_scope = {"timeframe", true};
 static const cxpr_provider_source_spec model_close_source = {
     "close", 0u, 1u, &model_timeframe_scope};
@@ -341,6 +349,53 @@ static void test_parse_model_use_group_from_namespace(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_parse_model_use_group_from_namespace\n");
+}
+
+static void test_parse_model_use_comma_list_from_namespace(void) {
+    cxpr_model* model = parse_model_ok(
+        "model listed_uses\n"
+        "use asx, macd, rsi from indicators\n"
+        "in close\n"
+        "out close\n");
+
+    assert(cxpr_model_use_count(model) == 3);
+    assert(strcmp(cxpr_model_use(model, 0), "indicators/asx") == 0);
+    assert(strcmp(cxpr_model_use(model, 1), "indicators/macd") == 0);
+    assert(strcmp(cxpr_model_use(model, 2), "indicators/rsi") == 0);
+    assert(cxpr_model_use_alias(model, 0) == NULL);
+    assert(cxpr_model_use_alias(model, 1) == NULL);
+    assert(cxpr_model_use_alias(model, 2) == NULL);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_use_comma_list_from_namespace\n");
+}
+
+static void test_model_validate_use_files_checks_missing_targets(void) {
+    cxpr_error err = {0};
+    char model_path[1024];
+    cxpr_model* ok_model = parse_model_ok(
+        "model valid_use_file\n"
+        "use imports/ema\n"
+        "in close\n"
+        "out close\n");
+    cxpr_model* missing_model = parse_model_ok(
+        "model missing_use_file\n"
+        "use imports/macdx\n"
+        "in close\n"
+        "out close\n");
+
+    snprintf(model_path, sizeof(model_path), "%s/fixtures/use_file_probe.cxpr",
+             CXPR_TEST_SOURCE_DIR);
+    assert(cxpr_model_validate_use_files(ok_model, model_path, &err));
+    assert(err.code == CXPR_OK);
+    assert(!cxpr_model_validate_use_files(missing_model, model_path, &err));
+    assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "CXPR use target was not found") != NULL);
+
+    cxpr_model_free(ok_model);
+    cxpr_model_free(missing_model);
+    printf("  ✓ test_model_validate_use_files_checks_missing_targets\n");
 }
 
 typedef struct {
@@ -1652,6 +1707,30 @@ static void test_compile_model_ir_backend_rejects_unsupported_model(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_compile_model_ir_backend_rejects_unsupported_model\n");
+}
+
+static void test_compile_model_c_backend_rejects_unsupported_model(void) {
+    cxpr_error err = {0};
+    cxpr_model_compile_options options = {CXPR_MODEL_BACKEND_C, true, false};
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_model* model = parse_model_ok(
+        "model backend_c_unsupported\n"
+        "in { close }\n"
+        "value = host_runtime_value(close)\n"
+        "out value\n");
+    cxpr_model_program* program;
+
+    assert(reg != NULL);
+    cxpr_registry_add_value(
+        reg, "host_runtime_value", model_test_host_runtime_value, 1u, 1u, NULL, NULL);
+    program = cxpr_compile_model_with_options(model, reg, &options, &err);
+
+    assert(program == NULL);
+    assert(err.code != CXPR_OK);
+
+    cxpr_registry_free(reg);
+    cxpr_model_free(model);
+    printf("  ✓ test_compile_model_c_backend_rejects_unsupported_model\n");
 }
 
 static void test_compile_model_defined_function_without_host_registration(void) {
@@ -3718,6 +3797,8 @@ int main(void) {
     test_parse_model_with_declaration_metadata_blocks();
     test_parse_model_use_alias();
     test_parse_model_use_group_from_namespace();
+    test_parse_model_use_comma_list_from_namespace();
+    test_model_validate_use_files_checks_missing_targets();
     test_model_resolve_uses_calls_host_callback();
     test_parse_model_statement_metadata_block();
     test_parse_model_exposes_function_sources();
@@ -3767,6 +3848,7 @@ int main(void) {
     test_compile_and_eval_struct_param_and_shorthand_record();
     test_compile_model_backend_options();
     test_compile_model_ir_backend_rejects_unsupported_model();
+    test_compile_model_c_backend_rejects_unsupported_model();
     test_compile_model_defined_function_without_host_registration();
     test_output_list_syntax();
     test_function_block_out_expression();

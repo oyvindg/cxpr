@@ -1,5 +1,6 @@
 #include "model/internal.h"
 #include "registry/internal.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -586,6 +587,198 @@ bool cxpr_model_resolve_uses(const cxpr_model* model,
                 err)) {
             return false;
         }
+    }
+    if (err) err->code = CXPR_OK;
+    return true;
+}
+
+static char* cxpr_model_path_strdup(const char* s) {
+    size_t len;
+    char* copy;
+    if (!s) return NULL;
+    len = strlen(s);
+    copy = (char*)malloc(len + 1u);
+    if (!copy) return NULL;
+    memcpy(copy, s, len + 1u);
+    return copy;
+}
+
+static char* cxpr_model_path_strndup(const char* s, size_t len) {
+    char* copy;
+    if (!s) return NULL;
+    copy = (char*)malloc(len + 1u);
+    if (!copy) return NULL;
+    memcpy(copy, s, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static char* cxpr_model_path_dirname(const char* path) {
+    const char* slash = path ? strrchr(path, '/') : NULL;
+    if (!slash) return cxpr_model_path_strdup(".");
+    if (slash == path) return cxpr_model_path_strdup("/");
+    return cxpr_model_path_strndup(path, (size_t)(slash - path));
+}
+
+static int cxpr_model_path_exists(const char* path) {
+    FILE* f;
+    if (!path) return 0;
+    f = fopen(path, "rb");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
+}
+
+static char* cxpr_model_join_import_path(const char* dir, const char* use_name) {
+    size_t dir_len;
+    size_t use_len;
+    int need_slash;
+    int has_suffix;
+    char* out;
+    if (!dir || !use_name) return NULL;
+    dir_len = strlen(dir);
+    use_len = strlen(use_name);
+    need_slash = dir_len > 0u && dir[dir_len - 1u] != '/';
+    has_suffix = use_len > 5u && strcmp(use_name + use_len - 5u, ".cxpr") == 0;
+    out = (char*)malloc(dir_len + (need_slash ? 1u : 0u) + use_len +
+                        (has_suffix ? 1u : 6u));
+    if (!out) return NULL;
+    sprintf(out, "%s%s%s%s", dir, need_slash ? "/" : "", use_name,
+            has_suffix ? "" : ".cxpr");
+    return out;
+}
+
+static char* cxpr_model_join_dyn_cxpr_import_path(const char* root, const char* use_name) {
+    size_t root_len;
+    size_t use_len;
+    int need_slash;
+    int has_suffix;
+    size_t len;
+    char* out;
+    if (!root || !use_name) return NULL;
+    root_len = strlen(root);
+    use_len = strlen(use_name);
+    need_slash = root_len > 0u && root[root_len - 1u] != '/';
+    has_suffix = use_len > 5u && strcmp(use_name + use_len - 5u, ".cxpr") == 0;
+    len = root_len + (need_slash ? 1u : 0u) +
+          strlen("libs/dyn/cxpr/") + use_len + (has_suffix ? 0u : 5u) + 1u;
+    out = (char*)malloc(len);
+    if (!out) return NULL;
+    snprintf(out, len, "%s%slibs/dyn/cxpr/%s%s",
+             root, need_slash ? "/" : "", use_name, has_suffix ? "" : ".cxpr");
+    return out;
+}
+
+static char* cxpr_model_resolve_dyn_cxpr_import_from_ancestors(
+    const char* dir,
+    const char* use_name) {
+    char* cursor = cxpr_model_path_strdup(dir ? dir : ".");
+    if (!cursor) return NULL;
+    for (;;) {
+        char* candidate = cxpr_model_join_dyn_cxpr_import_path(cursor, use_name);
+        char* parent;
+        if (!candidate) {
+            free(cursor);
+            return NULL;
+        }
+        if (cxpr_model_path_exists(candidate)) {
+            free(cursor);
+            return candidate;
+        }
+        free(candidate);
+        if (strcmp(cursor, ".") == 0 || strcmp(cursor, "/") == 0) break;
+        parent = cxpr_model_path_dirname(cursor);
+        if (!parent) {
+            free(cursor);
+            return NULL;
+        }
+        if (strcmp(parent, cursor) == 0) {
+            free(parent);
+            break;
+        }
+        free(cursor);
+        cursor = parent;
+    }
+    free(cursor);
+    return NULL;
+}
+
+static char* cxpr_model_resolve_use_file_path(const char* model_path, const char* use_name) {
+    char* dir;
+    char* path;
+    if (!model_path || !use_name) return NULL;
+    dir = cxpr_model_path_dirname(model_path);
+    if (!dir) return NULL;
+    path = cxpr_model_join_import_path(dir, use_name);
+    if (!path) {
+        free(dir);
+        return NULL;
+    }
+    if (cxpr_model_path_exists(path)) {
+        free(dir);
+        return path;
+    }
+    free(path);
+    if (strncmp(use_name, "presets/", strlen("presets/")) == 0) {
+        const char* slash = strrchr(dir, '/');
+        const char* leaf = slash ? slash + 1 : dir;
+        if (strcmp(leaf, "presets") == 0) {
+            char* parent = cxpr_model_path_dirname(dir);
+            if (!parent) {
+                free(dir);
+                return NULL;
+            }
+            path = cxpr_model_join_import_path(parent, use_name);
+            free(parent);
+            if (!path) {
+                free(dir);
+                return NULL;
+            }
+            if (cxpr_model_path_exists(path)) {
+                free(dir);
+                return path;
+            }
+            free(path);
+        }
+    }
+    if (strncmp(use_name, "indicators/", strlen("indicators/")) == 0) {
+        path = cxpr_model_resolve_dyn_cxpr_import_from_ancestors(dir, use_name);
+        if (path) {
+            free(dir);
+            return path;
+        }
+    }
+    free(dir);
+    return NULL;
+}
+
+bool cxpr_model_validate_use_files(const cxpr_model* model,
+                                   const char* model_path,
+                                   cxpr_error* err) {
+    if (err) *err = (cxpr_error){0};
+    if (!model) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "NULL model", 0, 0);
+        return false;
+    }
+    if (!model_path || model_path[0] == '\0') {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Model path is required for use validation", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < model->use_count; ++i) {
+        char* path = cxpr_model_resolve_use_file_path(model_path, model->uses[i]);
+        if (!path) {
+            cxpr_source_span span = {0};
+            size_t line = 0u;
+            size_t column = 0u;
+            if (cxpr_model_use_source_span(model, i, &span)) {
+                line = span.start.line;
+                column = span.start.column;
+            }
+            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                                 "CXPR use target was not found", line, column);
+            return false;
+        }
+        free(path);
     }
     if (err) err->code = CXPR_OK;
     return true;

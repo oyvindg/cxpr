@@ -195,7 +195,7 @@ static void cxpr_provider_runtime_required_struct_register(
         min_args,
         max_args,
         NULL,
-        spec->return_type == CXPR_VALUE_BOOL ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER,
+        CXPR_VALUE_STRUCT,
         ctx,
         cxpr_provider_runtime_required_struct_context_free);
 
@@ -260,6 +260,34 @@ static void cxpr_provider_signature_family_add(cxpr_registry* reg,
         reg, name, min_args, max_args, CXPR_VALUE_NUMBER, host);
 }
 
+/* Build the expression-facing parameter order once so provider functions and
+ * their field aliases accept the same named-argument forms. Source-input
+ * providers expose `source` before numeric params, then an optional scope
+ * argument such as `timeframe`. */
+static size_t cxpr_provider_expr_param_names(
+    const cxpr_provider_fn_spec* spec,
+    const char** param_names,
+    size_t param_name_cap) {
+    size_t total_param_count = 0u;
+
+    if (!spec || !param_names || param_name_cap == 0u) return 0u;
+    if (!spec->params || spec->param_count == 0u) return 0u;
+    if (spec->param_count > param_name_cap) return 0u;
+    if ((spec->flags & CXPR_PROVIDER_FN_SOURCE_INPUT) != 0u) {
+        param_names[total_param_count++] = "source";
+    }
+    for (size_t i = 0u; i < spec->param_count; ++i) {
+        if (!spec->params[i].name || spec->params[i].name[0] == '\0') return 0u;
+        if (total_param_count >= param_name_cap) return 0u;
+        param_names[total_param_count++] = spec->params[i].name;
+    }
+    if (spec->scope && spec->scope->param_name && spec->scope->param_name[0] != '\0') {
+        if (total_param_count >= param_name_cap) return 0u;
+        param_names[total_param_count++] = spec->scope->param_name;
+    }
+    return total_param_count;
+}
+
 int cxpr_register_provider_fn_spec(
     cxpr_registry* reg,
     const cxpr_provider_fn_spec* spec,
@@ -287,18 +315,11 @@ int cxpr_register_provider_fn_spec(
 
     if (!spec->params || spec->param_count == 0u) return 1;
 
-    if (spec->param_count > CXPR_ARRAY_COUNT(param_names)) return 0;
-    if ((spec->flags & CXPR_PROVIDER_FN_SOURCE_INPUT) != 0u) {
-        param_names[total_param_count++] = "source";
-    }
-    for (size_t i = 0u; i < spec->param_count; ++i) {
-        if (!spec->params[i].name || spec->params[i].name[0] == '\0') return 0;
-        param_names[total_param_count++] = spec->params[i].name;
-    }
-    if (spec->scope && spec->scope->param_name && spec->scope->param_name[0] != '\0') {
-        if (total_param_count >= CXPR_ARRAY_COUNT(param_names)) return 0;
-        param_names[total_param_count++] = spec->scope->param_name;
-    }
+    total_param_count = cxpr_provider_expr_param_names(
+        spec,
+        param_names,
+        sizeof(param_names) / sizeof(param_names[0]));
+    if (total_param_count == 0u) return 0;
     if (total_param_count < max_args) return 1;
 
     return cxpr_registry_set_param_names(reg, spec->name, param_names, total_param_count) ? 1 : 0;
@@ -361,19 +382,17 @@ void cxpr_register_provider_signatures(
         const cxpr_provider_fn_spec* spec = fn_specs[source_index];
         size_t min_args = 0u;
         size_t max_args = 0u;
-        size_t field_min_args = 0u;
-        size_t field_max_args = 0u;
+        const char* field_param_names[64];
+        size_t field_param_count = 0u;
         size_t field_index;
 
         if (!spec) continue;
         cxpr_provider_host_visible_arg_range(spec, host, &min_args, &max_args);
-        field_min_args = spec->min_args;
-        field_max_args = spec->max_args;
-        if (host && host->override_arg_range) {
-            (void)host->override_arg_range(
-                spec, &field_min_args, &field_max_args, host->userdata);
-        }
         (void)cxpr_register_provider_fn_spec(reg, spec, host);
+        field_param_count = cxpr_provider_expr_param_names(
+            spec,
+            field_param_names,
+            sizeof(field_param_names) / sizeof(field_param_names[0]));
 
         if (!spec->fields && spec->field_count > 0u) continue;
         for (field_index = 0u; field_index < spec->field_count; ++field_index) {
@@ -384,7 +403,14 @@ void cxpr_register_provider_signatures(
             if (!field->name || field->name[0] == '\0') continue;
             written = snprintf(field_name, sizeof(field_name), "%s.%s", spec->name, field->name);
             if (written <= 0 || (size_t)written >= sizeof(field_name)) continue;
-            cxpr_provider_signature_family_add(reg, field_name, field_min_args, field_max_args, host);
+            cxpr_provider_signature_family_add(reg, field_name, min_args, max_args, host);
+            if (field_param_count >= max_args) {
+                (void)cxpr_registry_set_param_names(
+                    reg,
+                    field_name,
+                    field_param_names,
+                    field_param_count);
+            }
         }
     }
 

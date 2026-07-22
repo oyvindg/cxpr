@@ -818,7 +818,7 @@ static size_t rsi_fused_ir_instruction_count(void) {
     if (!model) abort();
     program = cxpr_compile_model(model, NULL, &err);
     if (!program) abort();
-    count = cxpr_model_program_fused_ir_instruction_count(program);
+    count = cxpr_model_program_fast_path_instruction_count(program);
     cxpr_model_program_free(program);
     cxpr_model_free(model);
     free(source);
@@ -836,7 +836,7 @@ static const char* rsi_fused_ir_disabled_opcode(void) {
     if (!model) abort();
     program = cxpr_compile_model(model, NULL, &err);
     if (!program) abort();
-    opcode = cxpr_model_program_fused_ir_disabled_opcode(program);
+    opcode = cxpr_model_program_fast_path_disabled_reason(program);
     cxpr_model_program_free(program);
     cxpr_model_free(model);
     free(source);

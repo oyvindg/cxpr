@@ -6,6 +6,7 @@
 #include "internal.h"
 #include "core.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,6 +48,25 @@ static void cxpr_registry_replace_entry(cxpr_func_entry* entry) {
     entry->has_return_type = false;
     entry->userdata = NULL;
     entry->userdata_free = NULL;
+}
+
+static int cxpr_registry_warn_overrides_enabled(void) {
+    const char* value = getenv("CXPR_REGISTRY_WARN_OVERRIDES");
+    return value &&
+           (strcmp(value, "1") == 0 ||
+            strcmp(value, "true") == 0 ||
+            strcmp(value, "TRUE") == 0 ||
+            strcmp(value, "on") == 0 ||
+            strcmp(value, "ON") == 0);
+}
+
+static void cxpr_registry_warn_overlay(const char* api, const char* name) {
+    if (!cxpr_registry_warn_overrides_enabled()) return;
+    fprintf(
+        stderr,
+        "cxpr_registry: warning: %s overlays existing entry '%s'; metadata will be preserved unless explicitly replaced\n",
+        api ? api : "registry update",
+        name ? name : "<unknown>");
 }
 
 void cxpr_registry_add_numeric(cxpr_registry* reg, const char* name,
@@ -201,6 +221,7 @@ void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
 
     cxpr_func_entry* entry = cxpr_registry_find(reg, name);
     if (entry) {
+        cxpr_registry_warn_overlay("add_ast_handler", name);
         if (entry->ast_func_handler_userdata_free) {
             entry->ast_func_handler_userdata_free(entry->ast_func_handler_userdata);
         }

@@ -557,11 +557,75 @@ static bool cxpr_document_lower_use_group(cxpr_model* model,
     return true;
 }
 
+static char* cxpr_document_lower_find_keyword(char* text, const char* keyword) {
+    size_t len = strlen(keyword);
+    if (!text || !keyword || len == 0u) return NULL;
+    for (char* cursor = text; *cursor; ++cursor) {
+        bool before = cursor == text || isspace((unsigned char)cursor[-1]);
+        bool after = cursor[len] == '\0' || isspace((unsigned char)cursor[len]);
+        if (before && after && strncmp(cursor, keyword, len) == 0) return cursor;
+    }
+    return NULL;
+}
+
+static bool cxpr_document_lower_use_from_list(cxpr_model* model,
+                                              char* text,
+                                              cxpr_error* err) {
+    char* cursor;
+    char* from_kw;
+    char* base;
+    char* item;
+    bool saw_item = false;
+    if (!model || !text) return false;
+    cursor = cxpr_document_lower_trim_in_place(text);
+    from_kw = cxpr_document_lower_find_keyword(cursor, "from");
+    if (!from_kw) return false;
+    *from_kw = '\0';
+    base = cxpr_document_lower_trim_in_place(from_kw + 4);
+    if (!cxpr_document_lower_is_use_path(base)) {
+        cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Invalid use group");
+        return false;
+    }
+    item = cursor;
+    while (item) {
+        char* next = strchr(item, ',');
+        char* path;
+        size_t path_len;
+        if (next) *next = '\0';
+        item = cxpr_document_lower_trim_in_place(item);
+        if (!cxpr_document_lower_is_ident(item)) {
+            cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Invalid use group");
+            return false;
+        }
+        path_len = strlen(base) + 1u + strlen(item);
+        path = (char*)malloc(path_len + 1u);
+        if (!path) {
+            cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            return false;
+        }
+        snprintf(path, path_len + 1u, "%s/%s", base, item);
+        if (!cxpr_document_model_append_use(model, path, NULL)) {
+            free(path);
+            cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            return false;
+        }
+        free(path);
+        saw_item = true;
+        item = next ? next + 1 : NULL;
+    }
+    if (!saw_item) {
+        cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Invalid use group");
+        return false;
+    }
+    return true;
+}
+
 static bool cxpr_document_lower_use(cxpr_model* model,
                                     const cxpr_document_ast_node* node,
                                     cxpr_error* err) {
     const char* text = cxpr_document_ast_node_text(node);
     char* owned;
+    char* trimmed;
     bool ok;
     if (!text) return false;
     owned = cxpr_strdup(text);
@@ -569,9 +633,14 @@ static bool cxpr_document_lower_use(cxpr_model* model,
         cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         return false;
     }
-    ok = *cxpr_document_lower_trim_in_place(owned) == '{'
-        ? cxpr_document_lower_use_group(model, owned, err)
-        : cxpr_document_lower_use_clause(model, owned, err);
+    trimmed = cxpr_document_lower_trim_in_place(owned);
+    if (*trimmed == '{') {
+        ok = cxpr_document_lower_use_group(model, trimmed, err);
+    } else if (cxpr_document_lower_find_keyword(trimmed, "from")) {
+        ok = cxpr_document_lower_use_from_list(model, trimmed, err);
+    } else {
+        ok = cxpr_document_lower_use_clause(model, trimmed, err);
+    }
     free(owned);
     return ok;
 }

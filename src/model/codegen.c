@@ -2272,11 +2272,43 @@ static bool cxpr_model_c_period_default_value(const cxpr_model_program* program,
     return cxpr_model_c_constant_param_expr(program, period_ast, out_value);
 }
 
+static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* program,
+                                                   const cxpr_ast* period_ast,
+                                                   size_t capacity,
+                                                   const cxpr_c_target* target) {
+    const cxpr_model_ast_c_target* target_data =
+        target ? (const cxpr_model_ast_c_target*)target->userdata : NULL;
+    double value = 0.0;
+    long rounded;
+
+    if (!program || !period_ast || capacity == 0u) return false;
+    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE &&
+        target_data &&
+        target_data->literal_param_values) {
+        const char* name = cxpr_ast_variable_name(period_ast);
+        size_t index = cxpr_model_program_param_index(program, name);
+        if (index != (size_t)-1 && index < target_data->literal_param_count) {
+            value = target_data->literal_param_values[index];
+        } else {
+            return false;
+        }
+    } else if (!cxpr_model_c_period_default_value(program, period_ast, &value) ||
+               cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+        return false;
+    }
+    if (!isfinite(value) || value < 1.0) value = 1.0;
+    rounded = lround(value);
+    if (rounded < 1) rounded = 1;
+    return (size_t)rounded == capacity;
+}
+
 static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
                                             const cxpr_ast* period_ast,
                                             size_t capacity,
                                             const cxpr_c_target* target,
                                             cxpr_error* err) {
+    const cxpr_model_ast_c_target* target_data =
+        target ? (const cxpr_model_ast_c_target*)target->userdata : NULL;
     double default_value = 0.0;
     long rounded;
     char default_raw[64];
@@ -2284,6 +2316,22 @@ static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
     cxpr_model_c_buf b = {0};
 
     if (!program || !period_ast || !target || capacity == 0u) return NULL;
+    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE &&
+        target_data &&
+        target_data->literal_param_values) {
+        const char* name = cxpr_ast_variable_name(period_ast);
+        size_t index = cxpr_model_program_param_index(program, name);
+        if (index != (size_t)-1 && index < target_data->literal_param_count) {
+            double literal = target_data->literal_param_values[index];
+            if (!isfinite(literal) || literal < 1.0) literal = 1.0;
+            rounded = lround(literal);
+            if (rounded < 1) rounded = 1;
+            if ((size_t)rounded == capacity) {
+                cxpr_model_c_printf(&b, "%zuu", capacity);
+                return b.oom ? NULL : b.data;
+            }
+        }
+    }
     if (cxpr_model_c_period_default_value(program, period_ast, &default_value) &&
         isfinite(default_value)) {
         rounded = lround(default_value < 1.0 ? 1.0 : default_value);
@@ -2338,6 +2386,8 @@ static bool cxpr_model_c_emit_planned_roc_aggregate_binding(
     size_t node_index;
     char* roc_limit_expr = NULL;
     char* aggregate_limit_expr = NULL;
+    bool static_roc;
+    bool static_aggregate;
 
     if (!b || !name || !plan || !node || !target || !program ||
         !node->has_child ||
@@ -2356,6 +2406,50 @@ static bool cxpr_model_c_emit_planned_roc_aggregate_binding(
     extra_base = cxpr_model_c_window_plan_base(program, node);
     if (extra_base == (size_t)-1 || aggregate_capacity == 0u) return false;
     node_index = (size_t)(node - plan->nodes);
+    static_roc = cxpr_model_c_period_is_static_capacity(
+        program, roc_period_ast, roc_capacity, target);
+    static_aggregate = cxpr_model_c_period_is_static_capacity(
+        program, aggregate_period_ast, aggregate_capacity, target);
+
+    if (static_roc && static_aggregate) {
+        char* now_expr = cxpr_ast_to_c_at_offset(value_ast, 0u, target, err);
+        char* prev_expr = now_expr
+                              ? cxpr_ast_to_c_at_offset(
+                                    value_ast, (unsigned)roc_capacity, target, err)
+                              : NULL;
+        if (!now_expr || !prev_expr) {
+            free(now_expr);
+            free(prev_expr);
+            return false;
+        }
+        cxpr_model_c_printf(
+            b,
+            "    double %s;\n"
+            "    { size_t _cx_next = (size_t)_cx_state->window_%zu.next; size_t _cx_count = (size_t)_cx_state->window_%zu.count; double _cx_sum = _cx_state->window_%zu.sum; double _cx_now = %s; double _cx_prev = %s; double _cx_roc = isnan(_cx_now) ? NAN : ((isnan(_cx_prev) || fabs(_cx_prev) <= 1e-12) ? 0.0 : ((_cx_now - _cx_prev) / _cx_prev) * 100.0); double _cx_old = _cx_state->window_%zu.values[_cx_next]; if (!isnan(_cx_old)) { _cx_sum -= _cx_old; if (_cx_count > 0u) _cx_count--; } if (!isnan(_cx_roc)) { _cx_sum += _cx_roc; _cx_count++; } _cx_state->window_%zu.values[_cx_next] = _cx_roc; _cx_state->window_%zu.next = (%s)((_cx_next + 1u) %% %zuu); _cx_state->window_%zu.count = (%s)_cx_count; _cx_state->window_%zu.sum = _cx_sum; %s = _cx_count == 0u ? 0.0 : %s; }\n",
+            name,
+            node_index,
+            node_index,
+            node_index,
+            now_expr,
+            prev_expr,
+            node_index,
+            node_index,
+            node_index,
+            cxpr_model_c_window_counter_type(node),
+            aggregate_capacity,
+            node_index,
+            cxpr_model_c_window_counter_type(node),
+            node_index,
+            name,
+            node->op == CXPR_MODEL_WINDOW_PLAN_OP_MEAN ? "_cx_sum / (double)_cx_count" : "_cx_sum");
+        free(now_expr);
+        free(prev_expr);
+        if (b->oom) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        return true;
+    }
 
     roc_limit_expr = cxpr_model_c_period_limit_expr(
         program, roc_period_ast, roc_capacity, target, err);
@@ -2440,6 +2534,7 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
     char* period_limit_expr = NULL;
     char* value_expr = NULL;
     cxpr_model_c_buf fallback = {0};
+    bool static_period;
 
     if (!b || !name || !plan || !node || !target || !program ||
         node->has_child ||
@@ -2452,6 +2547,8 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
     period_ast = node->period_ast;
     capacity = node->period_capacity;
     node_index = (size_t)(node - plan->nodes);
+    static_period = cxpr_model_c_period_is_static_capacity(
+        program, period_ast, capacity, target);
 
     period_limit_expr = cxpr_model_c_period_limit_expr(
         program, period_ast, capacity, target, err);
@@ -2490,6 +2587,36 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
         free(value_expr);
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         return false;
+    }
+
+    if (static_period) {
+        cxpr_model_c_printf(
+            b,
+            "    double %s;\n"
+            "    { size_t _cx_next = (size_t)_cx_state->window_%zu.next; size_t _cx_count = (size_t)_cx_state->window_%zu.count; double _cx_sum = _cx_state->window_%zu.sum; double _cx_value = %s; double _cx_old = _cx_state->window_%zu.values[_cx_next]; if (!isnan(_cx_old)) { _cx_sum -= _cx_old; if (_cx_count > 0u) _cx_count--; } if (!isnan(_cx_value)) { _cx_sum += _cx_value; _cx_count++; } _cx_state->window_%zu.values[_cx_next] = _cx_value; _cx_state->window_%zu.next = (%s)((_cx_next + 1u) %% %zuu); _cx_state->window_%zu.count = (%s)_cx_count; _cx_state->window_%zu.sum = _cx_sum; %s = _cx_count == 0u ? 0.0 : %s; }\n",
+            name,
+            node_index,
+            node_index,
+            node_index,
+            value_expr,
+            node_index,
+            node_index,
+            node_index,
+            cxpr_model_c_window_counter_type(node),
+            capacity,
+            node_index,
+            cxpr_model_c_window_counter_type(node),
+            node_index,
+            name,
+            node->op == CXPR_MODEL_WINDOW_PLAN_OP_MEAN ? "_cx_sum / (double)_cx_count" : "_cx_sum");
+        free(fallback.data);
+        free(period_limit_expr);
+        free(value_expr);
+        if (b->oom) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        return true;
     }
 
     cxpr_model_c_printf(

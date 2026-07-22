@@ -288,6 +288,19 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
 
     case CXPR_NODE_FIELD_ACCESS:
         if (ast->data.field_access.base) {
+            const cxpr_ast* base = ast->data.field_access.base;
+            if (base->type == CXPR_NODE_FUNCTION_CALL && reg) {
+                cxpr_func_entry* entry =
+                    cxpr_registry_find(reg, base->data.function_call.name);
+                if (entry && entry->ast_func_handler) {
+                    return cxpr_ir_emit(program,
+                                        (cxpr_ir_instr){
+                                            .op = CXPR_OP_CALL_AST,
+                                            .ast = ast,
+                                        },
+                                        err);
+                }
+            }
             if (!cxpr_ir_compile_node(ast->data.field_access.base, program, reg,
                                       local_names, local_count, subst, inline_depth, err)) {
                 return false;

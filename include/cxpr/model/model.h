@@ -164,6 +164,16 @@ bool cxpr_model_resolve_uses(const cxpr_model* model,
                              cxpr_error* err);
 
 /**
+ * @brief Validate that every model `use` path resolves to an existing .cxpr file.
+ *
+ * Paths are resolved relative to @p model_path. `indicators/...` imports also
+ * probe ancestor `libs/dyn/cxpr/...` directories to match cxpr codegen tooling.
+ */
+bool cxpr_model_validate_use_files(const cxpr_model* model,
+                                   const char* model_path,
+                                   cxpr_error* err);
+
+/**
  * @brief Create a registry for host-defined model block kinds.
  *
  * The registry copies specs by value and borrows spec strings/userdata.
@@ -488,7 +498,9 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
  * @p param_values must contain one value for each
  * `cxpr_model_program_c_param_name(program, i)` entry. The generated function
  * keeps the normal params pointer in its ABI for caller compatibility, but the
- * emitted expression code does not load from it.
+ * emitted expression code does not load from it. Window periods that resolve to
+ * these literals are emitted as fixed hot-path state updates; dynamic-period
+ * fallback code is omitted for those windows.
  */
 char* cxpr_model_program_to_c_tick_function_with_params(const cxpr_model_program* program,
                                                         const char* qualifiers,
@@ -525,7 +537,12 @@ void cxpr_model_session_free(cxpr_model_session* session);
 /** @brief Return the session-owned context for host input writes and output reads. */
 cxpr_context* cxpr_model_session_context(cxpr_model_session* session);
 /**
- * @brief Evaluate one deterministic model tick and atomically commit state updates.
+ * @brief Evaluate one deterministic model tick with the reference/tooling runtime.
+ *
+ * This interpreter-style session API exists for diagnostics, editor/tooling,
+ * parity tests, and explicit fallback paths. Production/backtest/optimizer
+ * per-bar loops should use generated C from `cxpr_model_program_to_c_tick_function*`
+ * when the caller requires hot-path execution.
  *
  * Expressions in tick N read state from the start of that tick. State update
  * values are staged during evaluation and committed at the start of the next

@@ -409,6 +409,50 @@ static void output_selection_free(size_t* indices) {
     free(indices);
 }
 
+static const char* model_backend_name(cxpr_model_backend_kind backend) {
+    switch (backend) {
+    case CXPR_MODEL_BACKEND_AUTO:
+        return "AUTO";
+    case CXPR_MODEL_BACKEND_IR:
+        return "IR";
+    case CXPR_MODEL_BACKEND_C:
+        return "C";
+    default:
+        return "unknown";
+    }
+}
+
+static const char* bool_name(int value) {
+    return value ? "true" : "false";
+}
+
+static void print_model_backend_error(const char* phase,
+                                      const char* model_path,
+                                      const cxpr_model* model,
+                                      const cxpr_model_program* program,
+                                      const cxpr_model_compile_options* options,
+                                      const cxpr_error* err) {
+    const char* model_name = model ? cxpr_model_name(model) : NULL;
+    cxpr_model_backend_kind requested_backend =
+        program ? cxpr_model_program_requested_backend(program)
+                : (options ? options->backend : CXPR_MODEL_BACKEND_AUTO);
+    const char* selected_backend =
+        program ? model_backend_name(cxpr_model_program_selected_backend(program)) : "none";
+    int fuse = program ? (int)cxpr_model_program_compile_fuse_enabled(program)
+                       : (options ? (int)options->fuse : 0);
+
+    fprintf(stderr,
+            "cxpr_model_codegen: %s failed for model=%s path=%s "
+            "backend=%s selected=%s fuse=%s: %s\n",
+            phase ? phase : "backend",
+            model_name ? model_name : "(unnamed)",
+            model_path ? model_path : "(unknown)",
+            model_backend_name(requested_backend),
+            selected_backend,
+            bool_name(fuse),
+            (err && err->message) ? err->message : "(null)");
+}
+
 static int output_selection_parse(const cxpr_model_program* program,
                                   const char* csv,
                                   size_t** out_indices,
@@ -700,6 +744,11 @@ static int emit_model_c(const char* model_path,
     size_t output_count = 0u;
     artifact_file_sink meta_sink = {0};
     artifact_file_sink graph_sink = {0};
+    const cxpr_model_compile_options compile_options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
     int rc = 1;
 
     source = read_file(model_path);
@@ -726,17 +775,10 @@ static int emit_model_c(const char* model_path,
         if (!import_api) goto cleanup;
         for (size_t i = 0u; i < import_count; ++i) import_api[i] = compiled_imports[i].api;
     }
-    {
-        const cxpr_model_compile_options compile_options = {
-            CXPR_MODEL_BACKEND_C,
-            true,
-            false,
-        };
-        program = cxpr_compile_model_with_imports_and_options(
-            model, NULL, import_api, import_count, &compile_options, &err);
-    }
+    program = cxpr_compile_model_with_imports_and_options(
+        model, NULL, import_api, import_count, &compile_options, &err);
     if (!program) {
-        fprintf(stderr, "cxpr_model_codegen: compile failed: %s\n", err.message);
+        print_model_backend_error("compile", model_path, model, NULL, &compile_options, &err);
         goto cleanup;
     }
 
@@ -797,8 +839,7 @@ static int emit_model_c(const char* model_path,
         c_options.include_headers = 1;
         if (!cxpr_plugin_run_model_backend(
                 &event, cxpr_c_plugin_backend(), &c_options, &host, &err)) {
-            fprintf(stderr, "cxpr_model_codegen: C emit failed: %s\n",
-                    err.message ? err.message : "(null)");
+            print_model_backend_error("C emit", model_path, model, program, &compile_options, &err);
             if (c_sink.file) {
                 fclose(c_sink.file);
                 c_sink.file = NULL;
