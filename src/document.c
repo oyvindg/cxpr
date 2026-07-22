@@ -558,9 +558,13 @@ static bool cxpr_document_lower_use_group(cxpr_model* model,
 }
 
 static char* cxpr_document_lower_find_keyword(char* text, const char* keyword) {
-    size_t len = strlen(keyword);
-    if (!text || !keyword || len == 0u) return NULL;
-    for (char* cursor = text; *cursor; ++cursor) {
+    size_t len;
+    size_t text_len;
+    if (!text || !keyword) return NULL;
+    len = strlen(keyword);
+    if (len == 0u) return NULL;
+    text_len = strlen(text);
+    for (char* cursor = text; (size_t)(cursor - text) + len <= text_len; ++cursor) {
         bool before = cursor == text || isspace((unsigned char)cursor[-1]);
         bool after = cursor[len] == '\0' || isspace((unsigned char)cursor[len]);
         if (before && after && strncmp(cursor, keyword, len) == 0) return cursor;

@@ -31,6 +31,27 @@ static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* progr
                program->constants[index].ast &&
                cxpr_eval_constant_double(program->constants[index].ast, out);
     }
+    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = cxpr_ast_function_name(ast);
+        size_t argc = cxpr_ast_function_argc(ast);
+        if ((!cxpr_model_names_match(name, "min") &&
+             !cxpr_model_names_match(name, "max")) || argc == 0u ||
+            !cxpr_model_window_plan_constant_expr(
+                program, cxpr_ast_function_arg(ast, 0u), out)) {
+            return false;
+        }
+        for (size_t i = 1u; i < argc; ++i) {
+            double value = 0.0;
+            if (!cxpr_model_window_plan_constant_expr(
+                    program, cxpr_ast_function_arg(ast, i), &value)) {
+                return false;
+            }
+            *out = cxpr_model_names_match(name, "min")
+                       ? fmin(*out, value)
+                       : fmax(*out, value);
+        }
+        return true;
+    }
     if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
     if (!cxpr_model_window_plan_constant_expr(program, cxpr_ast_left(ast), &left) ||
         !cxpr_model_window_plan_constant_expr(program, cxpr_ast_right(ast), &right)) {
@@ -52,12 +73,7 @@ static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* pro
     double raw = 0.0;
     long period;
     if (!period_ast || !out_capacity) return false;
-    if (!cxpr_model_window_plan_constant_expr(program, period_ast, &raw)) {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "window period must be a constant or model parameter default",
-                             0, 0);
-        return false;
-    }
+    if (!cxpr_model_window_plan_constant_expr(program, period_ast, &raw)) raw = 512.0;
     if (!isfinite(raw) || raw < 1.0) raw = 1.0;
     period = lround(raw);
     if (period < 1) period = 1;
@@ -69,6 +85,7 @@ static cxpr_model_window_plan_op cxpr_model_window_plan_op_for_name(const char* 
     if (cxpr_model_names_match(name, "window_roc")) return CXPR_MODEL_WINDOW_PLAN_OP_ROC;
     if (cxpr_model_names_match(name, "window_sum")) return CXPR_MODEL_WINDOW_PLAN_OP_SUM;
     if (cxpr_model_names_match(name, "window_mean")) return CXPR_MODEL_WINDOW_PLAN_OP_MEAN;
+    if (cxpr_model_names_match(name, "window_wma")) return CXPR_MODEL_WINDOW_PLAN_OP_WMA;
     if (cxpr_model_names_match(name, "window_stddev")) return CXPR_MODEL_WINDOW_PLAN_OP_STDDEV;
     if (cxpr_model_names_match(name, "window_highest")) return CXPR_MODEL_WINDOW_PLAN_OP_HIGHEST;
     if (cxpr_model_names_match(name, "window_lowest")) return CXPR_MODEL_WINDOW_PLAN_OP_LOWEST;

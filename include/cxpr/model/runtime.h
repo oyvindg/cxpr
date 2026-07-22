@@ -43,6 +43,24 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values,
         valid_count++;
     }
     if (valid_count == 0u) return 0.0;
+    if (op == 5) {
+        double weighted_sum = 0.0;
+        double weight_sum = 0.0;
+        size_t weight = 1u;
+        for (size_t i = limit; i > 0u; --i, ++weight) {
+            double x = values[i - 1u];
+            if (cxpr_model_runtime_isnan(x)) continue;
+            weighted_sum += x * (double)weight;
+            weight_sum += (double)weight;
+        }
+        return weight_sum > 0.0 ? weighted_sum / weight_sum : 0.0;
+    }
+    if (op == 6) {
+        size_t index = period < 1 ? 1u : (size_t)period;
+        return index < count && !cxpr_model_runtime_isnan(values[index])
+                   ? values[index]
+                   : NAN;
+    }
     if (op == 2 || op == 3) return extreme;
     if (op == 1) return sum / (double)valid_count;
     if (op == 4) {
@@ -51,6 +69,24 @@ CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values,
         return sqrt(variance > 0.0 ? variance : 0.0);
     }
     return sum;
+}
+
+CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_wma_c(const double* values,
+                                                          size_t count,
+                                                          int period) {
+    size_t limit = period < 1 ? 1u : (size_t)period;
+    double weighted_sum = 0.0;
+    double weight_sum = 0.0;
+    size_t weight = 1u;
+    if (!values || count == 0u) return 0.0;
+    if (limit > count) limit = count;
+    for (size_t i = limit; i > 0u; --i, ++weight) {
+        double value = values[i - 1u];
+        if (cxpr_model_runtime_isnan(value)) continue;
+        weighted_sum += value * (double)weight;
+        weight_sum += (double)weight;
+    }
+    return weight_sum > 0.0 ? weighted_sum / weight_sum : 0.0;
 }
 
 CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_roc_c(const double* values,

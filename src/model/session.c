@@ -1042,6 +1042,17 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
         return false;
     }
     eval_reg = program->registry ? program->registry : reg;
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        const cxpr_model_compiled_binding* param = &program->constants[i];
+        bool found = false;
+        double value;
+        if (!param->has_min_value && !param->has_max_value) continue;
+        value = cxpr_context_get(session->ctx, param->name, &found);
+        if (!found) continue;
+        if (param->has_min_value && value < param->min_value) value = param->min_value;
+        if (param->has_max_value && value > param->max_value) value = param->max_value;
+        cxpr_context_set_prehashed(session->ctx, param->name, param->name_hash, value);
+    }
     previous_active_session = g_model_active_session;
     g_model_active_session = session;
     cxpr_context_clear_cached_structs(session->ctx);

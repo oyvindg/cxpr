@@ -108,6 +108,10 @@ typedef struct {
     unsigned long name_hash;
     cxpr_model_result_kind result_kind;
     cxpr_ast* ast;
+    double min_value;
+    double max_value;
+    bool has_min_value;
+    bool has_max_value;
 } cxpr_model_compiled_binding;
 
 typedef struct {

@@ -1433,6 +1433,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
 static const char* cxpr_model_c_window_op(const char* name) {
     if (cxpr_model_names_match(name, "window_sum")) return "0";
     if (cxpr_model_names_match(name, "window_mean")) return "1";
+    if (cxpr_model_names_match(name, "window_wma")) return "5";
     if (cxpr_model_names_match(name, "window_highest")) return "2";
     if (cxpr_model_names_match(name, "window_lowest")) return "3";
     if (cxpr_model_names_match(name, "window_stddev")) return "4";
@@ -1453,6 +1454,27 @@ static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
         return index != (size_t)-1 &&
                program->constants[index].ast &&
                cxpr_eval_constant_double(program->constants[index].ast, out);
+    }
+    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = cxpr_ast_function_name(ast);
+        size_t argc = cxpr_ast_function_argc(ast);
+        if ((!cxpr_model_names_match(name, "min") &&
+             !cxpr_model_names_match(name, "max")) || argc == 0u ||
+            !cxpr_model_c_constant_param_expr(
+                program, cxpr_ast_function_arg(ast, 0u), out)) {
+            return false;
+        }
+        for (size_t i = 1u; i < argc; ++i) {
+            double value = 0.0;
+            if (!cxpr_model_c_constant_param_expr(
+                    program, cxpr_ast_function_arg(ast, i), &value)) {
+                return false;
+            }
+            *out = cxpr_model_names_match(name, "min")
+                       ? fmin(*out, value)
+                       : fmax(*out, value);
+        }
+        return true;
     }
     if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
     if (!cxpr_model_c_constant_param_expr(program, cxpr_ast_left(ast), &left) ||
@@ -1475,12 +1497,17 @@ static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* progra
     double raw = 0.0;
     long period;
     if (!period_ast || !out_capacity) return false;
-    if (!cxpr_model_c_constant_param_expr(program, period_ast, &raw)) {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "window period must be a constant or model parameter default",
-                             0, 0);
-        return false;
+    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_ast_variable_name(period_ast);
+        const cxpr_model_compiled_binding* binding =
+            cxpr_model_c_constant_for_name(program, name);
+        if (binding && binding->has_max_value && isfinite(binding->max_value)) {
+            raw = binding->max_value;
+            goto resolved;
+        }
     }
+    if (!cxpr_model_c_constant_param_expr(program, period_ast, &raw)) raw = 512.0;
+resolved:
     if (!isfinite(raw) || raw < 1.0) raw = 1.0;
     period = lround(raw);
     if (period < 1) period = 1;
@@ -1726,6 +1753,7 @@ static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
 static int cxpr_model_c_window_op_code(const char* name) {
     if (cxpr_model_names_match(name, "window_sum")) return 0;
     if (cxpr_model_names_match(name, "window_mean")) return 1;
+    if (cxpr_model_names_match(name, "window_wma")) return 5;
     if (cxpr_model_names_match(name, "window_highest")) return 2;
     if (cxpr_model_names_match(name, "window_lowest")) return 3;
     if (cxpr_model_names_match(name, "window_stddev")) return 4;
@@ -2713,6 +2741,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     const char* name = cxpr_ast_function_name(ast);
     const char* op = cxpr_model_c_window_op(name);
     bool is_roc = cxpr_model_names_match(name, "window_roc");
+    bool is_lag = cxpr_model_names_match(name, "window_lag");
     bool is_bars_since_extreme = cxpr_model_names_match(name, "bars_since_extreme");
     bool is_window_mean_absdev = cxpr_model_names_match(name, "window_mean_absdev");
     const cxpr_ast* value_ast;
@@ -2723,13 +2752,14 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     char* period_limit_expr = NULL;
     bool guard_values = false;
     cxpr_model_c_buf b = {0};
-    if (!program || (!op && !is_roc && !is_bars_since_extreme && !is_window_mean_absdev) ||
+    if (!program || (!op && !is_roc && !is_lag && !is_bars_since_extreme && !is_window_mean_absdev) ||
         cxpr_ast_function_argc(ast) !=
             ((is_bars_since_extreme || is_window_mean_absdev) ? 3u : 2u)) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
                              "window function has wrong arity", 0, 0);
         return NULL;
     }
+    if (is_lag) op = "6";
     value_ast = cxpr_ast_function_arg(ast, 0u);
     period_ast = cxpr_ast_function_arg(ast, 1u);
     guard_values = cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE;
@@ -2918,7 +2948,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         }
         return b.data;
     }
-    value_count = is_roc ? capacity + 1u : capacity;
+    value_count = (is_roc || is_lag) ? capacity + 1u : capacity;
     cxpr_model_c_puts(&b, is_roc
                           ? "cxpr_model_window_roc_c((const double[]){"
                           : "cxpr_model_window_eval_c((const double[]){");
@@ -2939,7 +2969,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         }
         if (!guard_values) {
             cxpr_model_c_printf(&b, "(%s)", value_expr);
-        } else if (is_roc) {
+        } else if (is_roc || is_lag) {
             cxpr_model_c_printf(&b,
                                 "((%zuu == 0u || %zuu <= (size_t)(%s)) ? (%s) : NAN)",
                                 i,
@@ -3866,7 +3896,24 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     }
     if (!literal_param_values || literal_param_count < program->constant_count) {
         for (size_t i = 0u; i < program->constant_count; ++i) {
-            cxpr_model_c_printf(&b, "    const double _cx_param_%zu = _cx_params[%zu];\n", i, i);
+            const cxpr_model_compiled_binding* param = &program->constants[i];
+            if (param->has_min_value && param->has_max_value) {
+                cxpr_model_c_printf(
+                    &b,
+                    "    const double _cx_param_%zu = fmax(%.17g, fmin(%.17g, _cx_params[%zu]));\n",
+                    i, param->min_value, param->max_value, i);
+            } else if (param->has_min_value) {
+                cxpr_model_c_printf(
+                    &b, "    const double _cx_param_%zu = fmax(%.17g, _cx_params[%zu]);\n",
+                    i, param->min_value, i);
+            } else if (param->has_max_value) {
+                cxpr_model_c_printf(
+                    &b, "    const double _cx_param_%zu = fmin(%.17g, _cx_params[%zu]);\n",
+                    i, param->max_value, i);
+            } else {
+                cxpr_model_c_printf(
+                    &b, "    const double _cx_param_%zu = _cx_params[%zu];\n", i, i);
+            }
         }
     }
     for (size_t i = 0u; i < program->state_default_count; ++i) {

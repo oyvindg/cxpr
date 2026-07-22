@@ -11,10 +11,12 @@ bool cxpr_model_window_is_function(const char* name) {
     return name &&
            (strcmp(name, "window_sum") == 0 ||
             strcmp(name, "window_mean") == 0 ||
+            strcmp(name, "window_wma") == 0 ||
             strcmp(name, "window_highest") == 0 ||
             strcmp(name, "window_lowest") == 0 ||
             strcmp(name, "window_stddev") == 0 ||
             strcmp(name, "window_roc") == 0 ||
+            strcmp(name, "window_lag") == 0 ||
             strcmp(name, "bars_since_extreme") == 0 ||
             strcmp(name, "window_mean_absdev") == 0);
 }
@@ -43,6 +45,27 @@ static bool cxpr_model_window_constant_expr(const cxpr_model* model,
         return cxpr_model_window_constant_default(
             model, cxpr_ast_variable_name(ast), out);
     }
+    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = cxpr_ast_function_name(ast);
+        size_t argc = cxpr_ast_function_argc(ast);
+        if ((!cxpr_model_names_match(name, "min") &&
+             !cxpr_model_names_match(name, "max")) || argc == 0u ||
+            !cxpr_model_window_constant_expr(
+                model, cxpr_ast_function_arg(ast, 0u), out)) {
+            return false;
+        }
+        for (size_t i = 1u; i < argc; ++i) {
+            double value = 0.0;
+            if (!cxpr_model_window_constant_expr(
+                    model, cxpr_ast_function_arg(ast, i), &value)) {
+                return false;
+            }
+            *out = cxpr_model_names_match(name, "min")
+                       ? fmin(*out, value)
+                       : fmax(*out, value);
+        }
+        return true;
+    }
     if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
     if (!cxpr_model_window_constant_expr(model, cxpr_ast_left(ast), &left) ||
         !cxpr_model_window_constant_expr(model, cxpr_ast_right(ast), &right)) {
@@ -64,12 +87,21 @@ static bool cxpr_model_window_period_depth(const cxpr_model* model,
     double raw = 0.0;
     long period;
     if (!period_ast || !out_depth) return false;
-    if (!cxpr_model_window_constant_expr(model, period_ast, &raw)) {
-        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "window period must be a constant or model parameter default",
-                             0, 0);
-        return false;
+    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+        const char* param_name = cxpr_ast_variable_name(period_ast);
+        for (size_t i = 0u; i < cxpr_model_metadata_count(model); ++i) {
+            const char* target;
+            if (cxpr_model_metadata_target_kind_at(model, i) !=
+                CXPR_MODEL_METADATA_TARGET_PARAM) continue;
+            target = cxpr_model_metadata_target_name(model, i);
+            if (target && cxpr_model_names_match(target, param_name) &&
+                cxpr_model_metadata_field_number(model, i, "max", &raw)) {
+                goto resolved;
+            }
+        }
     }
+    if (!cxpr_model_window_constant_expr(model, period_ast, &raw)) raw = 512.0;
+resolved:
     if (!isfinite(raw) || raw < 1.0) raw = 1.0;
     period = lround(raw);
     if (period < 1) period = 1;
@@ -190,7 +222,8 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
                     model, cxpr_ast_function_arg(ast, 1u), &period_depth, err)) {
                 return false;
             }
-            extra_depth = cxpr_model_names_match(name, "window_roc")
+            extra_depth = (cxpr_model_names_match(name, "window_roc") ||
+                           cxpr_model_names_match(name, "window_lag"))
                 ? period_depth
                 : (period_depth > 0u ? period_depth - 1u : 0u);
             return cxpr_model_window_collect_target(
@@ -231,7 +264,8 @@ bool cxpr_model_window_collect_call(const cxpr_model* model,
         return false;
     }
     if (period_depth == 0u) return true;
-    if (cxpr_model_names_match(name, "window_roc")) {
+    if (cxpr_model_names_match(name, "window_roc") ||
+        cxpr_model_names_match(name, "window_lag")) {
         return cxpr_model_window_collect_target(
             model, cxpr_ast_function_arg(call, 0u), period_depth, specs, count, err);
     }

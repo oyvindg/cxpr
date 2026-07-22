@@ -1690,7 +1690,6 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
         cxpr_model_program_free(program);
         return NULL;
     }
-
     if (model->function_count > 0 || model->record_function_count > 0u ||
         import_count > 0u ||
         (!reg && required_default_count > 0u) ||
@@ -1820,6 +1819,20 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             program->constants[i].ast = cxpr_ast_clone(model->constants[i].expr);
             program->constants[i].result_kind =
                 cxpr_model_infer_result_kind(program->constants[i].ast, compile_reg);
+            for (size_t m = 0u; m < cxpr_model_metadata_count(model); ++m) {
+                const char* target;
+                if (cxpr_model_metadata_target_kind_at(model, m) !=
+                    CXPR_MODEL_METADATA_TARGET_PARAM) continue;
+                target = cxpr_model_metadata_target_name(model, m);
+                if (!target || !cxpr_model_names_match(target, model->constants[i].name)) continue;
+                program->constants[i].has_min_value =
+                    cxpr_model_metadata_field_number(
+                        model, m, "min", &program->constants[i].min_value);
+                program->constants[i].has_max_value =
+                    cxpr_model_metadata_field_number(
+                        model, m, "max", &program->constants[i].max_value);
+                break;
+            }
             if (!program->constants[i].name ||
                 !program->constants[i].source ||
                 !program->constants[i].ast) {

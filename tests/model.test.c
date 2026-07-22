@@ -2054,11 +2054,13 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
         "$period = 3\n"
         "sum = window_sum(close, $period)\n"
         "mean = window_mean(close, $period)\n"
+        "wma = window_wma(close, $period)\n"
+        "lag = window_lag(close, $period)\n"
         "hi = window_highest(close, $period)\n"
         "lo = window_lowest(close, $period)\n"
         "sd = window_stddev(close, $period)\n"
         "rocv = window_roc(close, $period)\n"
-        "out { sum, mean, hi, lo, sd, rocv }\n");
+        "out { sum, mean, wma, lag, hi, lo, sd, rocv }\n");
     cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
     cxpr_model_session* session;
     cxpr_context* ctx;
@@ -2076,6 +2078,8 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
     assert(fabs(value - 10.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "mean", &value));
     assert(fabs(value - 10.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "wma", &value));
+    assert(fabs(value - 10.0) < 1e-12);
 
     cxpr_context_set(ctx, "close", 12.0);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
@@ -2088,6 +2092,10 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
     assert(fabs(value - 42.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "mean", &value));
     assert(fabs(value - 14.0) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "wma", &value));
+    assert(fabs(value - 14.666666666666666) < 1e-12);
+    assert(cxpr_model_session_output_number(session, "lag", &value));
+    assert(fabs(value - 10.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "hi", &value));
     assert(fabs(value - 16.0) < 1e-12);
     assert(cxpr_model_session_output_number(session, "lo", &value));
@@ -2109,6 +2117,47 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
     cxpr_model_program_free(program);
     cxpr_model_free(model);
     printf("  ✓ test_session_window_builtin_autoregisters_and_emits_c\n");
+}
+
+static void test_session_window_roc_accepts_max_period(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    char* code = NULL;
+    cxpr_model* model = parse_model_ok(
+        "model window_roc_max_period\n"
+        "in { close }\n"
+        "$period = 0\n"
+        "value = window_roc(close, max(1, $period))\n"
+        "out value\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    if (!program) fprintf(stderr, "window max period compile failed: %s\n", err.message);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    cxpr_context_set(ctx, "close", 12.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(fabs(value - 20.0) < 1e-12);
+
+    code = cxpr_model_program_to_c_tick_function(program, "static inline",
+                                                 "window_roc_max_period_tick", &err);
+    if (!code) fprintf(stderr, "window max period C emit failed: %s\n", err.message);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_model_window_roc_c") != NULL);
+    assert(strstr(code, "fmax(1") != NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_session_window_roc_accepts_max_period\n");
 }
 
 static void test_session_record_field_lookback(void) {
@@ -3514,6 +3563,43 @@ static void test_record_param_field_access_emits_c_tick(void) {
     printf("  ✓ test_record_param_field_access_emits_c_tick\n");
 }
 
+static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model window_floor\n"
+        "in { high }\n"
+        "$period = 14 { min = 1, max = 32 }\n"
+        "value = window_highest(high, $period)\n"
+        "out value\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    char* code;
+    bool found = false;
+
+    assert(program != NULL);
+    code = cxpr_model_program_to_c_tick_function(
+        program, "static inline", "window_floor_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_history32") != NULL);
+    assert(strstr(code, "fmin((double)32u, round(_cx_param_0))") != NULL);
+    assert(strstr(code, "}, 32u, (int)fmax") != NULL);
+
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "period", 40.0);
+    cxpr_context_set(ctx, "high", 10.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_context_get(ctx, "period", &found) == 32.0 && found);
+
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_window_param_bounds_drive_capacity_and_session_clamp\n");
+}
+
 static void test_cxta_signal_compat_functions(void) {
     cxpr_error err = {0};
     bool found = false;
@@ -3857,6 +3943,7 @@ int main(void) {
     test_session_expression_lookback();
     test_session_cross_functions_capture_argument_history();
     test_session_window_builtin_autoregisters_and_emits_c();
+    test_session_window_roc_accepts_max_period();
     test_session_record_field_lookback();
     test_session_direct_record_producer_lookback();
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
@@ -3881,6 +3968,7 @@ int main(void) {
     test_function_record_shorthand_compiles_with_field_access();
     test_local_record_fields_can_reference_previous_fields();
     test_record_param_field_access_emits_c_tick();
+    test_window_param_bounds_drive_capacity_and_session_clamp();
     test_cxta_signal_compat_functions();
     test_yaml_converted_ensemble_strategy_fixture();
     test_rsi_state_strategy_fixture();

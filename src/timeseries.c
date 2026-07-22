@@ -460,6 +460,36 @@ static cxpr_value cxpr_timeseries_window_mean(const cxpr_ast* call_ast,
         call_ast, ctx, reg, CXPR_TIMESERIES_AGG_MEAN, err);
 }
 
+static cxpr_value cxpr_timeseries_window_wma(const cxpr_ast* call_ast,
+                                             const cxpr_context* ctx,
+                                             const cxpr_registry* reg,
+                                             void* userdata,
+                                             cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    long long samples_ll;
+    double weighted_sum = 0.0;
+    double weight_sum = 0.0;
+    (void)userdata;
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    value_ast = cxpr_ast_function_arg(call_ast, 0);
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
+        return cxpr_num(NAN);
+    }
+    for (long long i = 0; i < samples_ll; ++i) {
+        double value = 0.0;
+        double weight = (double)(samples_ll - i);
+        if (!cxpr_eval_ast_number_at_offset(value_ast, (double)i, ctx, reg, &value, err)) {
+            return cxpr_num(NAN);
+        }
+        if (isnan(value)) continue;
+        weighted_sum += value * weight;
+        weight_sum += weight;
+    }
+    return cxpr_num(weight_sum > 0.0 ? weighted_sum / weight_sum : 0.0);
+}
+
 static cxpr_value cxpr_timeseries_window_highest_value(const cxpr_ast* call_ast,
                                                        const cxpr_context* ctx,
                                                        const cxpr_registry* reg,
@@ -515,6 +545,28 @@ static cxpr_value cxpr_timeseries_window_roc(const cxpr_ast* call_ast,
     if (isnan(value)) return cxpr_num(NAN);
     if (isnan(previous) || fabs(previous) <= 1e-12) return cxpr_num(0.0);
     return cxpr_num(((value - previous) / previous) * 100.0);
+}
+
+static cxpr_value cxpr_timeseries_window_lag(const cxpr_ast* call_ast,
+                                             const cxpr_context* ctx,
+                                             const cxpr_registry* reg,
+                                             void* userdata,
+                                             cxpr_error* err) {
+    const cxpr_ast* value_ast;
+    long long samples_ll;
+    double value = 0.0;
+    (void)userdata;
+    if (!call_ast || cxpr_ast_type(call_ast) != CXPR_NODE_FUNCTION_CALL) {
+        return cxpr_timeseries_call_error(call_ast, err);
+    }
+    value_ast = cxpr_ast_function_arg(call_ast, 0);
+    if (!cxpr_timeseries_read_samples(call_ast, ctx, reg, 1, &samples_ll, err)) {
+        return cxpr_num(NAN);
+    }
+    if (!cxpr_eval_ast_number_at_offset(value_ast, (double)samples_ll, ctx, reg, &value, err)) {
+        return cxpr_num(NAN);
+    }
+    return cxpr_num(value);
 }
 
 static cxpr_value cxpr_timeseries_cross_above(const cxpr_ast* call_ast,
@@ -813,6 +865,9 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_add_timeseries(reg, "window_mean", cxpr_timeseries_window_mean, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "window_mean", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_wma", cxpr_timeseries_window_wma, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_wma", value_samples_params, 2u);
     cxpr_registry_add_timeseries(reg, "window_highest", cxpr_timeseries_window_highest_value, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "window_highest", value_samples_params, 2u);
@@ -825,6 +880,9 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_add_timeseries(reg, "window_roc", cxpr_timeseries_window_roc, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "window_roc", value_samples_params, 2u);
+    cxpr_registry_add_timeseries(reg, "window_lag", cxpr_timeseries_window_lag, 2, 2,
+                                 CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "window_lag", value_samples_params, 2u);
     {
         static const char* bars_since_extreme_params[] = {"value", "samples", "mode"};
         cxpr_registry_add_timeseries(reg, "bars_since_extreme",
@@ -860,10 +918,12 @@ bool cxpr_timeseries_is_builtin(const char* name) {
            strcmp(name, "lowest") == 0 ||
            strcmp(name, "window_sum") == 0 ||
            strcmp(name, "window_mean") == 0 ||
+           strcmp(name, "window_wma") == 0 ||
            strcmp(name, "window_highest") == 0 ||
            strcmp(name, "window_lowest") == 0 ||
            strcmp(name, "window_stddev") == 0 ||
            strcmp(name, "window_roc") == 0 ||
+           strcmp(name, "window_lag") == 0 ||
            strcmp(name, "bars_since_extreme") == 0 ||
            strcmp(name, "window_mean_absdev") == 0;
 }
