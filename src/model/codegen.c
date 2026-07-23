@@ -1845,7 +1845,6 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
     fn_name = cxpr_ast_function_name(ast);
     op = cxpr_model_c_window_op_code(fn_name);
     if (op < 0) return false;
-    if (op != 1 && op != 4) return false;
     value_ast = cxpr_ast_function_arg(ast, 0u);
     if (cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
         cxpr_model_window_is_function(cxpr_ast_function_name(value_ast))) {
@@ -1873,7 +1872,7 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
 
     cxpr_model_c_printf(
         b,
-        "    double %s; { const size_t _cx_limit = (size_t)(%s); double _cx_sum = 0.0; double _cx_sumsq = 0.0; double _cx_extreme = 0.0; size_t _cx_count = 0u;\n",
+        "    double %s; { const size_t _cx_limit = (size_t)(%s); double _cx_sum = 0.0; double _cx_sumsq = 0.0; double _cx_weighted_sum = 0.0; double _cx_weight_sum = 0.0; double _cx_extreme = 0.0; size_t _cx_count = 0u;\n",
         name,
         period_limit_expr);
     {
@@ -1883,7 +1882,7 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
                 &loop, "_cx_x", value_ast, "_cx_i", target, program, err)) {
             cxpr_model_c_printf(
                 &loop,
-                "            if (!isnan(_cx_x)) { if (_cx_count == 0u) _cx_extreme = _cx_x; if (%d == 2 && _cx_x > _cx_extreme) _cx_extreme = _cx_x; if (%d == 3 && _cx_x < _cx_extreme) _cx_extreme = _cx_x; _cx_sum += _cx_x; _cx_sumsq += _cx_x * _cx_x; _cx_count++; }\n"
+                "            if (!isnan(_cx_x)) { double _cx_weight = (double)(_cx_limit - _cx_i); if (_cx_count == 0u) _cx_extreme = _cx_x; if (%d == 2 && _cx_x > _cx_extreme) _cx_extreme = _cx_x; if (%d == 3 && _cx_x < _cx_extreme) _cx_extreme = _cx_x; _cx_sum += _cx_x; _cx_sumsq += _cx_x * _cx_x; _cx_weighted_sum += _cx_x * _cx_weight; _cx_weight_sum += _cx_weight; _cx_count++; }\n"
                 "        }\n",
                 op,
                 op);
@@ -1905,6 +1904,11 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
                     b,
                     "        if (_cx_count == 0u) %s = 0.0; else { double _cx_mean = _cx_sum / (double)_cx_count; double _cx_var = (_cx_sumsq / (double)_cx_count) - _cx_mean * _cx_mean; %s = sqrt(_cx_var > 0.0 ? _cx_var : 0.0); } }\n",
                     name,
+                    name);
+            } else if (op == 5) {
+                cxpr_model_c_printf(
+                    b,
+                    "        %s = _cx_weight_sum > 0.0 ? _cx_weighted_sum / _cx_weight_sum : 0.0; }\n",
                     name);
             } else {
                 cxpr_model_c_printf(b, "        %s = _cx_count == 0u ? 0.0 : _cx_sum; }\n", name);
@@ -1934,9 +1938,10 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
         }
         cxpr_model_c_printf(
             b,
-            "        if (%zuu < _cx_limit) { double _cx_x = %s; if (!isnan(_cx_x)) { if (_cx_count == 0u) _cx_extreme = _cx_x; if (%d == 2 && _cx_x > _cx_extreme) _cx_extreme = _cx_x; if (%d == 3 && _cx_x < _cx_extreme) _cx_extreme = _cx_x; _cx_sum += _cx_x; _cx_sumsq += _cx_x * _cx_x; _cx_count++; } }\n",
+            "        if (%zuu < _cx_limit) { double _cx_x = %s; if (!isnan(_cx_x)) { double _cx_weight = (double)(_cx_limit - %zuu); if (_cx_count == 0u) _cx_extreme = _cx_x; if (%d == 2 && _cx_x > _cx_extreme) _cx_extreme = _cx_x; if (%d == 3 && _cx_x < _cx_extreme) _cx_extreme = _cx_x; _cx_sum += _cx_x; _cx_sumsq += _cx_x * _cx_x; _cx_weighted_sum += _cx_x * _cx_weight; _cx_weight_sum += _cx_weight; _cx_count++; } }\n",
             i,
             value_expr,
+            i,
             op,
             op);
         free(value_expr);
@@ -1950,6 +1955,11 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
             b,
             "        if (_cx_count == 0u) %s = 0.0; else { double _cx_mean = _cx_sum / (double)_cx_count; double _cx_var = (_cx_sumsq / (double)_cx_count) - _cx_mean * _cx_mean; %s = sqrt(_cx_var > 0.0 ? _cx_var : 0.0); } }\n",
             name,
+            name);
+    } else if (op == 5) {
+        cxpr_model_c_printf(
+            b,
+            "        %s = _cx_weight_sum > 0.0 ? _cx_weighted_sum / _cx_weight_sum : 0.0; }\n",
             name);
     } else {
         cxpr_model_c_printf(b, "        %s = _cx_count == 0u ? 0.0 : _cx_sum; }\n", name);

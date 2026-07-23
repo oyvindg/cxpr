@@ -2106,8 +2106,9 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
                                                  "window_builtin_tick", &err);
     if (!code) fprintf(stderr, "window model C emit failed: %s\n", err.message);
     assert(code != NULL);
-    assert(strstr(code, "cxpr_model_window_eval_c") != NULL);
     assert(strstr(code, "cxpr_model_window_roc_c") != NULL);
+    assert(strstr(code, "_cx_weighted_sum") != NULL);
+    assert(strstr(code, "for (size_t _cx_i = 0u; _cx_i < _cx_limit; ++_cx_i)") != NULL);
     free(code);
 
     cxpr_model_session_free(session);
@@ -3580,7 +3581,7 @@ static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     assert(code != NULL);
     assert(strstr(code, "cxpr_history32") != NULL);
     assert(strstr(code, "fmin((double)32u, round(_cx_param_0))") != NULL);
-    assert(strstr(code, "}, 32u, (int)fmax") != NULL);
+    assert(strstr(code, "for (size_t _cx_i = 0u; _cx_i < _cx_limit; ++_cx_i)") != NULL);
 
     session = cxpr_model_session_new(program, NULL, &err);
     assert(session != NULL);
