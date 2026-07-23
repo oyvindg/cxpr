@@ -643,6 +643,11 @@ static void test_timeseries_builtin_name_introspection(void) {
     assert(cxpr_timeseries_is_builtin("lowest"));
     assert(cxpr_timeseries_is_builtin("bars_since_extreme"));
     assert(cxpr_timeseries_is_builtin("window_mean_absdev"));
+    assert(cxpr_window_ir_count() == 9u);
+    assert(cxpr_window_ir_find("window_highest")->op == CXPR_WINDOW_OP_HIGHEST);
+    assert(cxpr_window_ir_find("window_lowest")->reduction ==
+           CXPR_WINDOW_REDUCE_LOWEST);
+    assert(cxpr_window_ir_find("not_a_window") == NULL);
     assert(!cxpr_timeseries_is_builtin("ema"));
     assert(!cxpr_timeseries_is_builtin(NULL));
     printf("  \xE2\x9C\x93 test_timeseries_builtin_name_introspection\n");

@@ -82,14 +82,8 @@ static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* pro
 }
 
 static cxpr_model_window_plan_op cxpr_model_window_plan_op_for_name(const char* name) {
-    if (cxpr_model_names_match(name, "window_roc")) return CXPR_MODEL_WINDOW_PLAN_OP_ROC;
-    if (cxpr_model_names_match(name, "window_sum")) return CXPR_MODEL_WINDOW_PLAN_OP_SUM;
-    if (cxpr_model_names_match(name, "window_mean")) return CXPR_MODEL_WINDOW_PLAN_OP_MEAN;
-    if (cxpr_model_names_match(name, "window_wma")) return CXPR_MODEL_WINDOW_PLAN_OP_WMA;
-    if (cxpr_model_names_match(name, "window_stddev")) return CXPR_MODEL_WINDOW_PLAN_OP_STDDEV;
-    if (cxpr_model_names_match(name, "window_highest")) return CXPR_MODEL_WINDOW_PLAN_OP_HIGHEST;
-    if (cxpr_model_names_match(name, "window_lowest")) return CXPR_MODEL_WINDOW_PLAN_OP_LOWEST;
-    return CXPR_MODEL_WINDOW_PLAN_OP_NONE;
+    const cxpr_window_ir* window = cxpr_window_ir_find(name);
+    return window ? window->op : CXPR_MODEL_WINDOW_PLAN_OP_NONE;
 }
 
 static bool cxpr_model_window_plan_append(cxpr_model_window_plan* plan,

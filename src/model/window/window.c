@@ -8,16 +8,7 @@
 #include <string.h>
 
 bool cxpr_model_window_is_function(const char* name) {
-    return name &&
-           (strcmp(name, "window_sum") == 0 ||
-            strcmp(name, "window_mean") == 0 ||
-            strcmp(name, "window_wma") == 0 ||
-            strcmp(name, "window_highest") == 0 ||
-            strcmp(name, "window_lowest") == 0 ||
-            strcmp(name, "window_stddev") == 0 ||
-            strcmp(name, "window_roc") == 0 ||
-            strcmp(name, "bars_since_extreme") == 0 ||
-            strcmp(name, "window_mean_absdev") == 0);
+    return cxpr_window_ir_find(name) != NULL;
 }
 
 static bool cxpr_model_window_constant_default(const cxpr_model* model,
@@ -209,9 +200,8 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
             const char* name = cxpr_ast_function_name(ast);
             size_t period_depth = 0u;
             size_t extra_depth = 0u;
-            const size_t expected_argc =
-                (strcmp(name, "bars_since_extreme") == 0 ||
-                 strcmp(name, "window_mean_absdev") == 0) ? 3u : 2u;
+            const cxpr_window_ir* window = cxpr_window_ir_find(name);
+            const size_t expected_argc = window ? window->arity : 0u;
             if (cxpr_ast_function_argc(ast) != expected_argc) {
                 cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
                                      "window function has wrong arity", 0, 0);
@@ -221,9 +211,8 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
                     model, cxpr_ast_function_arg(ast, 1u), &period_depth, err)) {
                 return false;
             }
-            extra_depth = cxpr_model_names_match(name, "window_roc")
-                ? period_depth
-                : (period_depth > 0u ? period_depth - 1u : 0u);
+            extra_depth = period_depth + window->history_tail;
+            if (extra_depth > 0u) extra_depth--;
             return cxpr_model_window_collect_target(
                 model, cxpr_ast_function_arg(ast, 0u), base_depth + extra_depth,
                 specs, count, err);
@@ -246,13 +235,13 @@ bool cxpr_model_window_collect_call(const cxpr_model* model,
                                     size_t* count,
                                     cxpr_error* err) {
     const char* name;
+    const cxpr_window_ir* window;
     size_t period_depth = 0u;
     if (!call || cxpr_ast_type(call) != CXPR_NODE_FUNCTION_CALL) return true;
     name = cxpr_ast_function_name(call);
     if (!cxpr_model_window_is_function(name)) return true;
-    if (cxpr_ast_function_argc(call) !=
-        ((strcmp(name, "bars_since_extreme") == 0 ||
-          strcmp(name, "window_mean_absdev") == 0) ? 3u : 2u)) {
+    window = cxpr_window_ir_find(name);
+    if (!window || cxpr_ast_function_argc(call) != window->arity) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
                              "window function has wrong arity", 0, 0);
         return false;
@@ -262,12 +251,8 @@ bool cxpr_model_window_collect_call(const cxpr_model* model,
         return false;
     }
     if (period_depth == 0u) return true;
-    if (cxpr_model_names_match(name, "window_roc")) {
-        return cxpr_model_window_collect_target(
-            model, cxpr_ast_function_arg(call, 0u), period_depth, specs, count, err);
-    }
     return cxpr_model_window_collect_target(
         model, cxpr_ast_function_arg(call, 0u),
-        period_depth > 0u ? period_depth - 1u : 0u,
+        period_depth + window->history_tail - 1u,
         specs, count, err);
 }

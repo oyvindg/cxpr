@@ -5,6 +5,7 @@
 
 #include "registry/internal.h" // IWYU pragma: keep
 #include <cxpr/ast/expression.h>
+#include <cxpr/window.h>
 #include <math.h>
 #include <string.h>
 
@@ -837,42 +838,39 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_add_timeseries(reg, "lowest", cxpr_timeseries_lowest, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "lowest", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_sum", cxpr_timeseries_window_sum, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_sum", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_mean", cxpr_timeseries_window_mean, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_mean", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_wma", cxpr_timeseries_window_wma, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_wma", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_highest", cxpr_timeseries_window_highest_value, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_highest", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_lowest", cxpr_timeseries_window_lowest_value, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_lowest", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_stddev", cxpr_timeseries_window_stddev, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_stddev", value_samples_params, 2u);
-    cxpr_registry_add_timeseries(reg, "window_roc", cxpr_timeseries_window_roc, 2, 2,
-                                 CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_set_param_names(reg, "window_roc", value_samples_params, 2u);
-    {
+    for (size_t i = 0u; i < cxpr_window_ir_count(); ++i) {
         static const char* bars_since_extreme_params[] = {"value", "samples", "mode"};
-        cxpr_registry_add_timeseries(reg, "bars_since_extreme",
-                                     cxpr_timeseries_bars_since_extreme, 3, 3,
-                                     CXPR_VALUE_NUMBER, NULL, NULL);
-        cxpr_registry_set_param_names(
-            reg, "bars_since_extreme", bars_since_extreme_params, 3u);
-    }
-    {
         static const char* window_mean_absdev_params[] = {"value", "samples", "center"};
-        cxpr_registry_add_timeseries(reg, "window_mean_absdev",
-                                     cxpr_timeseries_window_mean_absdev, 3, 3,
-                                     CXPR_VALUE_NUMBER, NULL, NULL);
-        cxpr_registry_set_param_names(
-            reg, "window_mean_absdev", window_mean_absdev_params, 3u);
+        const cxpr_window_ir* window = cxpr_window_ir_at(i);
+        cxpr_timeseries_func_ptr fn = NULL;
+        const char* const* params = value_samples_params;
+        switch (window->op) {
+        case CXPR_WINDOW_OP_SUM: fn = cxpr_timeseries_window_sum; break;
+        case CXPR_WINDOW_OP_MEAN: fn = cxpr_timeseries_window_mean; break;
+        case CXPR_WINDOW_OP_WMA: fn = cxpr_timeseries_window_wma; break;
+        case CXPR_WINDOW_OP_HIGHEST:
+            fn = cxpr_timeseries_window_highest_value;
+            break;
+        case CXPR_WINDOW_OP_LOWEST:
+            fn = cxpr_timeseries_window_lowest_value;
+            break;
+        case CXPR_WINDOW_OP_STDDEV: fn = cxpr_timeseries_window_stddev; break;
+        case CXPR_WINDOW_OP_ROC: fn = cxpr_timeseries_window_roc; break;
+        case CXPR_WINDOW_OP_BARS_SINCE_EXTREME:
+            fn = cxpr_timeseries_bars_since_extreme;
+            params = bars_since_extreme_params;
+            break;
+        case CXPR_WINDOW_OP_MEAN_ABSDEV:
+            fn = cxpr_timeseries_window_mean_absdev;
+            params = window_mean_absdev_params;
+            break;
+        default: break;
+        }
+        if (!fn) continue;
+        cxpr_registry_add_timeseries(
+            reg, window->name, fn, (int)window->arity, (int)window->arity,
+            CXPR_VALUE_NUMBER, NULL, NULL);
+        cxpr_registry_set_param_names(reg, window->name, params, window->arity);
     }
 }
 
@@ -891,13 +889,5 @@ bool cxpr_timeseries_is_builtin(const char* name) {
            strcmp(name, "roc") == 0 ||
            strcmp(name, "highest") == 0 ||
            strcmp(name, "lowest") == 0 ||
-           strcmp(name, "window_sum") == 0 ||
-           strcmp(name, "window_mean") == 0 ||
-           strcmp(name, "window_wma") == 0 ||
-           strcmp(name, "window_highest") == 0 ||
-           strcmp(name, "window_lowest") == 0 ||
-           strcmp(name, "window_stddev") == 0 ||
-           strcmp(name, "window_roc") == 0 ||
-           strcmp(name, "bars_since_extreme") == 0 ||
-           strcmp(name, "window_mean_absdev") == 0;
+           cxpr_window_ir_find(name) != NULL;
 }

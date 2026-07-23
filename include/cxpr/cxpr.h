@@ -38,5 +38,6 @@
 #include <cxpr/source.h>
 #include <cxpr/thread.h>
 #include <cxpr/typecheck.h>
+#include <cxpr/window.h>
 
 #endif /* CXPR_H */

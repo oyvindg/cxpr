@@ -1495,13 +1495,12 @@ static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
 }
 
 static const char* cxpr_model_c_window_op(const char* name) {
-    if (cxpr_model_names_match(name, "window_sum")) return "0";
-    if (cxpr_model_names_match(name, "window_mean")) return "1";
-    if (cxpr_model_names_match(name, "window_wma")) return "5";
-    if (cxpr_model_names_match(name, "window_highest")) return "2";
-    if (cxpr_model_names_match(name, "window_lowest")) return "3";
-    if (cxpr_model_names_match(name, "window_stddev")) return "4";
-    return NULL;
+    static const char* const codes[] = {"0", "1", "2", "3", "4", "5"};
+    const cxpr_window_ir* window = cxpr_window_ir_find(name);
+    return window && window->reduction >= CXPR_WINDOW_REDUCE_SUM &&
+                   window->reduction <= CXPR_WINDOW_REDUCE_WEIGHTED_MEAN
+               ? codes[window->reduction]
+               : NULL;
 }
 
 static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
@@ -1815,13 +1814,8 @@ static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
 }
 
 static int cxpr_model_c_window_op_code(const char* name) {
-    if (cxpr_model_names_match(name, "window_sum")) return 0;
-    if (cxpr_model_names_match(name, "window_mean")) return 1;
-    if (cxpr_model_names_match(name, "window_wma")) return 5;
-    if (cxpr_model_names_match(name, "window_highest")) return 2;
-    if (cxpr_model_names_match(name, "window_lowest")) return 3;
-    if (cxpr_model_names_match(name, "window_stddev")) return 4;
-    return -1;
+    const cxpr_window_ir* window = cxpr_window_ir_find(name);
+    return window ? (int)window->reduction : -1;
 }
 
 static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
@@ -2814,9 +2808,12 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
                                                cxpr_error* err) {
     const char* name = cxpr_ast_function_name(ast);
     const char* op = cxpr_model_c_window_op(name);
-    bool is_roc = cxpr_model_names_match(name, "window_roc");
-    bool is_bars_since_extreme = cxpr_model_names_match(name, "bars_since_extreme");
-    bool is_window_mean_absdev = cxpr_model_names_match(name, "window_mean_absdev");
+    const cxpr_window_ir* window = cxpr_window_ir_find(name);
+    bool is_roc = window && window->op == CXPR_WINDOW_OP_ROC;
+    bool is_bars_since_extreme =
+        window && window->op == CXPR_WINDOW_OP_BARS_SINCE_EXTREME;
+    bool is_window_mean_absdev =
+        window && window->op == CXPR_WINDOW_OP_MEAN_ABSDEV;
     const cxpr_ast* value_ast;
     const cxpr_ast* period_ast;
     size_t capacity = 0u;
@@ -2825,9 +2822,9 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     char* period_limit_expr = NULL;
     bool guard_values = false;
     cxpr_model_c_buf b = {0};
-    if (!program || (!op && !is_roc && !is_bars_since_extreme && !is_window_mean_absdev) ||
-        cxpr_ast_function_argc(ast) !=
-            ((is_bars_since_extreme || is_window_mean_absdev) ? 3u : 2u)) {
+    if (!program || !window ||
+        (!op && !is_roc && !is_bars_since_extreme && !is_window_mean_absdev) ||
+        cxpr_ast_function_argc(ast) != window->arity) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
                              "window function has wrong arity", 0, 0);
         return NULL;
