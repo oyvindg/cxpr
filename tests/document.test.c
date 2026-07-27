@@ -178,6 +178,37 @@ static void test_document_exposes_owned_syntax_tree(void) {
     printf("  ✓ test_document_exposes_owned_syntax_tree\n");
 }
 
+static void test_document_ast_exposes_compact_initial_state_update(void) {
+    const char* source =
+        "model counter\n"
+        "bars := bars + 1 initial 0\n"
+        "out bars\n";
+    cxpr_error err = {0};
+    cxpr_document_ast* syntax =
+        cxpr_parse_document_ast(source, "counter.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_document_ast_node* root;
+    const cxpr_document_ast_node* update;
+    const cxpr_document_ast_node* declaration;
+
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    root = cxpr_document_ast_root(syntax);
+    assert(cxpr_document_ast_child_count(root) == 3u);
+    update = cxpr_document_ast_child(root, 1u);
+    assert(cxpr_document_ast_node_kind(update) == CXPR_MODEL_AST_INITIAL_STATE_UPDATE);
+    assert(strcmp(cxpr_document_ast_node_name(update), "bars") == 0);
+    assert(cxpr_document_ast_node_expression(update) != NULL);
+    assert(cxpr_document_ast_child_count(update) == 1u);
+    declaration = cxpr_document_ast_child(update, 0u);
+    assert(cxpr_document_ast_node_kind(declaration) == CXPR_MODEL_AST_STATE_DECL);
+    assert(strcmp(cxpr_document_ast_node_name(declaration), "bars") == 0);
+    assert(strcmp(cxpr_document_ast_node_text(declaration), "0") == 0);
+    assert(cxpr_document_ast_node_expression(declaration) != NULL);
+
+    cxpr_document_ast_free(syntax);
+    printf("  ✓ test_document_ast_exposes_compact_initial_state_update\n");
+}
+
 static void test_parse_document_ast_preserves_block_shapes(void) {
     const char* source =
         "project { name = \"dynasty\" }\n"
@@ -792,6 +823,7 @@ int main(void) {
     test_manifest_document_rejects_model_syntax_without_extension();
     test_document_model_extension_exposes_model_view();
     test_document_exposes_owned_syntax_tree();
+    test_document_ast_exposes_compact_initial_state_update();
     test_parse_document_ast_preserves_block_shapes();
     test_document_ast_lowers_to_independent_document();
     test_document_ast_lowering_equivalent_block_and_shorthand_forms();

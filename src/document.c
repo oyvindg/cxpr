@@ -203,6 +203,9 @@ static cxpr_visit_control cxpr_document_map_source_span_node(
         case CXPR_MODEL_AST_STATE_UPDATE:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_STATE_UPDATE, span);
             break;
+        case CXPR_MODEL_AST_INITIAL_STATE_UPDATE:
+            cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_STATE_UPDATE, span);
+            break;
         case CXPR_MODEL_AST_BINDING:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_EXPR, span);
             break;
@@ -1475,6 +1478,10 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
         case CXPR_MODEL_AST_STATE_UPDATE:
             return cxpr_document_model_append_binding(
                 model, CXPR_MODEL_BINDING_STATE_UPDATE, node);
+        case CXPR_MODEL_AST_INITIAL_STATE_UPDATE:
+            return cxpr_document_lower_children_to_model(model, node, err) &&
+                   cxpr_document_model_append_binding(
+                       model, CXPR_MODEL_BINDING_STATE_UPDATE, node);
         case CXPR_MODEL_AST_BINDING:
             return cxpr_document_model_append_binding(model, CXPR_MODEL_BINDING_EXPR, node) &&
                    cxpr_document_lower_metadata_children(

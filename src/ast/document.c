@@ -504,6 +504,101 @@ static bool cxpr_document_ast_assign_name_update(cxpr_document_ast_node* node,
     return node->name && node->text && node->expression;
 }
 
+static char* cxpr_document_ast_find_top_level_keyword(char* text, const char* keyword) {
+    int paren = 0;
+    int brace = 0;
+    int bracket = 0;
+    char quote = '\0';
+    size_t keyword_len = strlen(keyword);
+    char* cursor = text;
+
+    while (cursor && *cursor) {
+        char ch = *cursor;
+        if (quote) {
+            if (ch == '\\' && cursor[1]) {
+                cursor += 2;
+                continue;
+            }
+            if (ch == quote) quote = '\0';
+        } else if (ch == '"' || ch == '\'') {
+            quote = ch;
+        } else if (ch == '(') {
+            paren++;
+        } else if (ch == ')' && paren > 0) {
+            paren--;
+        } else if (ch == '{') {
+            brace++;
+        } else if (ch == '}' && brace > 0) {
+            brace--;
+        } else if (ch == '[') {
+            bracket++;
+        } else if (ch == ']' && bracket > 0) {
+            bracket--;
+        } else if (paren == 0 && brace == 0 && bracket == 0 &&
+                   strncmp(cursor, keyword, keyword_len) == 0 &&
+                   (cursor == text || isspace((unsigned char)cursor[-1])) &&
+                   isspace((unsigned char)cursor[keyword_len])) {
+            return cursor;
+        }
+        cursor++;
+    }
+    return NULL;
+}
+
+static bool cxpr_document_ast_assign_initial_state_update(
+    cxpr_document_ast_node* node,
+    char* statement,
+    size_t line,
+    size_t column,
+    cxpr_error* err) {
+    char* op = strstr(statement, ":=");
+    char* initial;
+    char* name;
+    char* update_expr;
+    char* initial_expr;
+    cxpr_document_ast_node* declaration;
+
+    if (!op) return false;
+    initial = cxpr_document_ast_find_top_level_keyword(op + 2, "initial");
+    if (!initial) return false;
+    *initial = '\0';
+    initial_expr = cxpr_document_ast_trim_in_place(initial + strlen("initial"));
+    *op = '\0';
+    name = cxpr_document_ast_trim_in_place(statement);
+    update_expr = cxpr_document_ast_trim_in_place(op + 2);
+    if (!cxpr_document_ast_is_ident(name)) {
+        cxpr_document_ast_set_error(err, CXPR_ERR_SYNTAX,
+                                    "Invalid state update name", line, column);
+        return false;
+    }
+    if (*update_expr == '\0' || *initial_expr == '\0') {
+        cxpr_document_ast_set_error(err, CXPR_ERR_SYNTAX,
+                                    "Expected expressions before and after 'initial'",
+                                    line, column);
+        return false;
+    }
+
+    node->name = cxpr_strdup(name);
+    node->text = cxpr_strdup(update_expr);
+    node->expression = cxpr_document_ast_parse_expr(update_expr, line, column, err);
+    declaration = cxpr_document_ast_node_new(
+        CXPR_MODEL_AST_STATE_DECL,
+        node->span);
+    if (!node->name || !node->text || !node->expression || !declaration) {
+        cxpr_document_ast_node_free(declaration);
+        return false;
+    }
+    declaration->name = cxpr_strdup(name);
+    declaration->text = cxpr_strdup(initial_expr);
+    declaration->expression = cxpr_document_ast_parse_expr(initial_expr, line, column, err);
+    if (!declaration->name || !declaration->text || !declaration->expression ||
+        !cxpr_document_ast_append_child(node, declaration)) {
+        cxpr_document_ast_node_free(declaration);
+        return false;
+    }
+    return true;
+}
+
 static bool cxpr_document_ast_parse_comma_or_line_decls(
     cxpr_document_ast_parser* parser,
     cxpr_document_ast_node* block,
@@ -1086,10 +1181,18 @@ static bool cxpr_document_ast_parse_statement(cxpr_document_ast_parser* parser,
                 span.start.line, span.start.column + 1u, parser->err);
         }
     } else if (strstr(statement, ":=")) {
-        node = cxpr_document_ast_node_new(CXPR_MODEL_AST_STATE_UPDATE, span);
+        char* initial = cxpr_document_ast_find_top_level_keyword(
+            strstr(statement, ":=") + 2, "initial");
+        node = cxpr_document_ast_node_new(
+            initial ? CXPR_MODEL_AST_INITIAL_STATE_UPDATE : CXPR_MODEL_AST_STATE_UPDATE,
+            span);
         if (!node) goto oom;
-        ok = cxpr_document_ast_assign_name_update(
-            node, statement, span.start.line, span.start.column + 1u, parser->err);
+        ok = initial
+                 ? cxpr_document_ast_assign_initial_state_update(
+                       node, statement,
+                       span.start.line, span.start.column + 1u, parser->err)
+                 : cxpr_document_ast_assign_name_update(
+                       node, statement, span.start.line, span.start.column + 1u, parser->err);
     } else if (strchr(statement, '=')) {
         node = cxpr_document_ast_node_new(CXPR_MODEL_AST_BINDING, span);
         if (!node) goto oom;

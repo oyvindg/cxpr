@@ -628,6 +628,17 @@ bool cxpr_engine_snapshot_flow(const cxpr_engine_session* session,
                                cxpr_eval_snapshot_flow* out_flow,
                                cxpr_error* err);
 
+/**
+ * @brief Build a flow snapshot while resolving missing values from a parent context.
+ *
+ * Mirrors the fallback tick APIs and is useful to hosts that keep domain state
+ * outside the engine-owned persistent context.
+ */
+bool cxpr_engine_snapshot_flow_fallback(const cxpr_engine_session* session,
+                                        const cxpr_context* parent_ctx,
+                                        cxpr_eval_snapshot_flow* out_flow,
+                                        cxpr_error* err);
+
 #ifdef __cplusplus
 }
 #endif

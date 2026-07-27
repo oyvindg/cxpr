@@ -1118,6 +1118,40 @@ static void test_parse_state_init_and_update_state(void) {
     printf("  ✓ test_parse_state_init_and_update_state\n");
 }
 
+static void test_parse_compact_initial_state_update(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* model = parse_model_ok(
+        "model compact_state\n"
+        "bars := bars + 1 initial 0\n"
+        "out bars\n");
+    cxpr_model_program* program;
+    cxpr_model_session* session;
+
+    assert(cxpr_model_binding_count(model) == 2u);
+    assert(strcmp(cxpr_model_binding_name(model, 0u), "bars") == 0);
+    assert(cxpr_model_binding_kind_at(model, 0u) == CXPR_MODEL_BINDING_STATE);
+    assert(strcmp(cxpr_model_binding_name(model, 1u), "bars") == 0);
+    assert(cxpr_model_binding_kind_at(model, 1u) == CXPR_MODEL_BINDING_STATE_UPDATE);
+    assert(cxpr_model_validate(model, &err));
+
+    program = cxpr_compile_model(model, NULL, &err);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "bars", &value));
+    assert(value == 1.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "bars", &value));
+    assert(value == 2.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_compact_initial_state_update\n");
+}
+
 static void test_parse_inline_state_assignment_and_output(void) {
     cxpr_error err = {0};
     double value = 0.0;
@@ -3907,6 +3941,7 @@ int main(void) {
     test_parse_model_rejects_meta_as_host_block();
     test_model_plan_bind_sources_exports_scoped_timeframes();
     test_parse_state_init_and_update_state();
+    test_parse_compact_initial_state_update();
     test_parse_inline_state_assignment_and_output();
     test_parse_out_expr_assignment_adds_output();
     test_parse_out_state_update_assignment_adds_output();

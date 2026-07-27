@@ -522,6 +522,8 @@ typedef struct compiled_model_import {
     char* source;
     cxpr_model* model;
     cxpr_model_program* program;
+    struct compiled_model_import* imports;
+    size_t import_count;
 } compiled_model_import;
 
 static char* resolve_import_path_for_model(const char* dir, const char* use_name) {
@@ -541,6 +543,7 @@ static char* resolve_import_path_for_model(const char* dir, const char* use_name
 static void compiled_imports_free(compiled_model_import* imports, size_t count) {
     if (!imports) return;
     for (size_t i = 0u; i < count; ++i) {
+        compiled_imports_free(imports[i].imports, imports[i].import_count);
         cxpr_model_program_free(imports[i].program);
         cxpr_model_free(imports[i].model);
         free(imports[i].path);
@@ -573,6 +576,9 @@ static int build_model_imports(const char* model_path,
         char* import_combined;
         cxpr_model* import_model;
         cxpr_model_program* import_program;
+        compiled_model_import* nested_imports = NULL;
+        cxpr_model_import* nested_import_api = NULL;
+        size_t nested_import_count = 0u;
         compiled_model_import* grown;
         const char* model_name;
         if (!import_path) goto cleanup;
@@ -582,22 +588,47 @@ static int build_model_imports(const char* model_path,
             goto cleanup;
         }
         import_combined = build_source_with_imports(import_path, import_source);
-        free(import_source);
         if (!import_combined) {
+            free(import_source);
             free(import_path);
             goto cleanup;
         }
         import_model = cxpr_parse_model_source(import_combined, &err);
         if (!import_model) {
+            free(import_source);
             free(import_combined);
             free(import_path);
             goto cleanup;
         }
         if (cxpr_model_output_count(import_model) == 0u) {
             cxpr_model_free(import_model);
+            free(import_source);
             free(import_combined);
             free(import_path);
             continue;
+        }
+        if (!build_model_imports(import_path, import_source,
+                                 &nested_imports, &nested_import_count)) {
+            cxpr_model_free(import_model);
+            free(import_source);
+            free(import_combined);
+            free(import_path);
+            goto cleanup;
+        }
+        free(import_source);
+        if (nested_import_count > 0u) {
+            nested_import_api =
+                (cxpr_model_import*)calloc(nested_import_count, sizeof(*nested_import_api));
+            if (!nested_import_api) {
+                compiled_imports_free(nested_imports, nested_import_count);
+                cxpr_model_free(import_model);
+                free(import_combined);
+                free(import_path);
+                goto cleanup;
+            }
+            for (size_t nested = 0u; nested < nested_import_count; ++nested) {
+                nested_import_api[nested] = nested_imports[nested].api;
+            }
         }
         {
             const cxpr_model_compile_options compile_options = {
@@ -605,10 +636,13 @@ static int build_model_imports(const char* model_path,
                 true,
                 false,
             };
-            import_program = cxpr_compile_model_with_options(
-                import_model, NULL, &compile_options, &err);
+            import_program = cxpr_compile_model_with_imports_and_options(
+                import_model, NULL, nested_import_api, nested_import_count,
+                &compile_options, &err);
         }
+        free(nested_import_api);
         if (!import_program) {
+            compiled_imports_free(nested_imports, nested_import_count);
             cxpr_model_free(import_model);
             free(import_combined);
             free(import_path);
@@ -631,6 +665,8 @@ static int build_model_imports(const char* model_path,
         imports[count].source = import_combined;
         imports[count].model = import_model;
         imports[count].program = import_program;
+        imports[count].imports = nested_imports;
+        imports[count].import_count = nested_import_count;
         count++;
     }
     ok = 1;

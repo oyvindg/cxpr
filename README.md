@@ -74,6 +74,17 @@ No external dependencies. C11 required.
 
 Use `cxpr` when you need an embeddable expression evaluator in plain C without bringing in a scripting runtime.
 
+State can be declared and updated locally:
+
+```cxpr
+bars := bars + 1 initial 0
+```
+
+This is equivalent to `state { bars = 0 }` followed by `bars := bars + 1`.
+The block form remains accepted for compatibility, but new models should prefer
+the local form. It can be deprecated after existing models and formatters have
+been migrated.
+
 ## Core Concepts
 
 - `cxpr_parser`: parses source text into an AST

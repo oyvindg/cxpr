@@ -1945,3 +1945,20 @@ bool cxpr_engine_snapshot_flow(const cxpr_engine_session* session,
     g_engine_tls_session = previous_session;
     return ok;
 }
+
+bool cxpr_engine_snapshot_flow_fallback(const cxpr_engine_session* session,
+                                        const cxpr_context* parent_ctx,
+                                        cxpr_eval_snapshot_flow* out_flow,
+                                        cxpr_error* err) {
+    const cxpr_context* previous_parent;
+    bool ok;
+
+    if (!session || !session->ctx || !parent_ctx) {
+        return cxpr_engine_snapshot_flow(session, out_flow, err);
+    }
+    previous_parent = session->ctx->parent;
+    session->ctx->parent = parent_ctx;
+    ok = cxpr_engine_snapshot_flow(session, out_flow, err);
+    session->ctx->parent = previous_parent;
+    return ok;
+}

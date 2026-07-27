@@ -78,6 +78,9 @@ typedef enum {
     /** @brief Staged state update using `:=`. */
     CXPR_MODEL_AST_STATE_UPDATE,
 
+    /** @brief State declaration and staged update using `name := expression initial expression`. */
+    CXPR_MODEL_AST_INITIAL_STATE_UPDATE,
+
     /** @brief Top-level calculated binding. */
     CXPR_MODEL_AST_BINDING,
 

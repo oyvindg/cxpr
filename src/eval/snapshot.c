@@ -123,6 +123,53 @@ static char* cxpr_snapshot_array_text(const cxpr_array_value* array) {
     return out;
 }
 
+static char* cxpr_snapshot_struct_text(const cxpr_struct_value* value) {
+    char* out = NULL;
+    size_t len = 0u;
+    size_t cap = 0u;
+    size_t shown;
+
+    if (!value) return cxpr_snapshot_strdup("{}");
+    shown = value->field_count < 6u ? value->field_count : 6u;
+    if (!cxpr_snapshot_append_text(&out, &len, &cap, "{")) return NULL;
+    for (size_t i = 0; i < shown; ++i) {
+        char* field_value = cxpr_snapshot_value_text(&value->field_values[i]);
+        if (!field_value) {
+            free(out);
+            return NULL;
+        }
+        if (i > 0u && !cxpr_snapshot_append_text(&out, &len, &cap, ", ")) {
+            free(field_value);
+            free(out);
+            return NULL;
+        }
+        if (!cxpr_snapshot_append_text(&out, &len, &cap,
+                                       value->field_names[i] ? value->field_names[i] : "") ||
+            !cxpr_snapshot_append_text(&out, &len, &cap, ": ") ||
+            !cxpr_snapshot_append_text(&out, &len, &cap, field_value)) {
+            free(field_value);
+            free(out);
+            return NULL;
+        }
+        free(field_value);
+    }
+    if (value->field_count > shown) {
+        if (shown > 0u && !cxpr_snapshot_append_text(&out, &len, &cap, ", ")) {
+            free(out);
+            return NULL;
+        }
+        if (!cxpr_snapshot_append_text(&out, &len, &cap, "...")) {
+            free(out);
+            return NULL;
+        }
+    }
+    if (!cxpr_snapshot_append_text(&out, &len, &cap, "}")) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
 static char* cxpr_snapshot_value_text(const cxpr_value* value) {
     char buf[64];
 
@@ -141,7 +188,7 @@ static char* cxpr_snapshot_value_text(const cxpr_value* value) {
             snprintf(buf, sizeof(buf), "%lld", (long long)value->i64);
             return cxpr_snapshot_strdup(buf);
         case CXPR_VALUE_STRUCT:
-            return cxpr_snapshot_strdup("{struct}");
+            return cxpr_snapshot_struct_text(value->s);
         case CXPR_VALUE_ARRAY:
             return cxpr_snapshot_array_text(value->a);
         default:
@@ -690,7 +737,7 @@ static bool cxpr_snapshot_eval_node(cxpr_snapshot_builder* b,
         return true;
     }
     if (!cxpr_snapshot_set_value(node, &value)) {
-        cxpr_value_free(&value);
+        if (cxpr_ast_type(ast) != CXPR_NODE_STRING) cxpr_value_free(&value);
         b->failed = 1;
         if (b->err) {
             *b->err = (cxpr_error){0};
@@ -699,7 +746,11 @@ static bool cxpr_snapshot_eval_node(cxpr_snapshot_builder* b,
         }
         return false;
     }
-    cxpr_value_free(&value);
+    /*
+     * String literal evaluation borrows storage owned by the AST. Releasing it
+     * here invalidates later parent-node evaluation in the same snapshot walk.
+     */
+    if (cxpr_ast_type(ast) != CXPR_NODE_STRING) cxpr_value_free(&value);
     return true;
 }
 
