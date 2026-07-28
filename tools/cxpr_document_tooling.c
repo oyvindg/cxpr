@@ -58,52 +58,52 @@ static void json_string(const char* text) {
     fputc('"', stdout);
 }
 
-static const char* node_kind_name(cxpr_document_ast_kind kind) {
+static const char* node_kind_name(cxpr_doc_ast_kind kind) {
     switch (kind) {
-    case CXPR_DOCUMENT_AST_FILE: return "file";
-    case CXPR_DOCUMENT_AST_HOST_BLOCK: return "hostBlock";
-    case CXPR_DOCUMENT_AST_HOST_FIELD: return "hostField";
-    case CXPR_DOCUMENT_AST_MODEL_DECL: return "model";
-    case CXPR_MODEL_AST_USE: return "use";
-    case CXPR_MODEL_AST_INPUT_DECL: return "input";
-    case CXPR_MODEL_AST_INPUT_BLOCK: return "inputBlock";
-    case CXPR_MODEL_AST_PARAM_DECL: return "param";
-    case CXPR_MODEL_AST_PARAM_BLOCK: return "paramBlock";
-    case CXPR_MODEL_AST_FUNCTION_DECL: return "function";
-    case CXPR_MODEL_AST_FUNCTION_BODY: return "functionBody";
-    case CXPR_MODEL_AST_LOCAL_BINDING: return "local";
-    case CXPR_MODEL_AST_RETURN: return "return";
-    case CXPR_MODEL_AST_STATE_DECL: return "state";
-    case CXPR_MODEL_AST_STATE_BLOCK: return "stateBlock";
-    case CXPR_MODEL_AST_STATE_UPDATE: return "stateUpdate";
-    case CXPR_MODEL_AST_BINDING: return "binding";
-    case CXPR_MODEL_AST_OUTPUT_DECL: return "output";
-    case CXPR_MODEL_AST_OUTPUT_BLOCK: return "outputBlock";
-    case CXPR_MODEL_AST_OUTPUT_STATE_UPDATE: return "outputStateUpdate";
-    case CXPR_MODEL_AST_ANONYMOUS_OUTPUT: return "anonymousOutput";
-    case CXPR_MODEL_AST_METADATA: return "metadata";
+    case CXPR_DOC_AST_FILE: return "file";
+    case CXPR_DOC_AST_HOST_BLOCK: return "hostBlock";
+    case CXPR_DOC_AST_HOST_FIELD: return "hostField";
+    case CXPR_DOC_AST_MODEL_DECL: return "model";
+    case CXPR_DOC_AST_USE: return "use";
+    case CXPR_DOC_AST_INPUT_DECL: return "input";
+    case CXPR_DOC_AST_INPUT_BLOCK: return "inputBlock";
+    case CXPR_DOC_AST_PARAM_DECL: return "param";
+    case CXPR_DOC_AST_PARAM_BLOCK: return "paramBlock";
+    case CXPR_DOC_AST_FUNCTION_DECL: return "function";
+    case CXPR_DOC_AST_FUNCTION_BODY: return "functionBody";
+    case CXPR_DOC_AST_LOCAL_BINDING: return "local";
+    case CXPR_DOC_AST_RETURN: return "return";
+    case CXPR_DOC_AST_STATE_DECL: return "state";
+    case CXPR_DOC_AST_STATE_BLOCK: return "stateBlock";
+    case CXPR_DOC_AST_STATE_UPDATE: return "stateUpdate";
+    case CXPR_DOC_AST_BINDING: return "binding";
+    case CXPR_DOC_AST_OUTPUT_DECL: return "output";
+    case CXPR_DOC_AST_OUTPUT_BLOCK: return "outputBlock";
+    case CXPR_DOC_AST_OUTPUT_STATE_UPDATE: return "outputStateUpdate";
+    case CXPR_DOC_AST_ANONYMOUS_OUTPUT: return "anonymousOutput";
+    case CXPR_DOC_AST_METADATA: return "metadata";
     default: return "unknown";
     }
 }
 
-static const char* token_type(cxpr_document_ast_kind kind) {
+static const char* token_type(cxpr_doc_ast_kind kind) {
     switch (kind) {
-    case CXPR_DOCUMENT_AST_HOST_BLOCK: return "block";
-    case CXPR_DOCUMENT_AST_MODEL_DECL: return "assignment";
-    case CXPR_MODEL_AST_USE: return "import";
-    case CXPR_MODEL_AST_INPUT_DECL: return "input";
-    case CXPR_MODEL_AST_PARAM_DECL: return "parameter";
-    case CXPR_MODEL_AST_FUNCTION_DECL: return "function";
-    case CXPR_MODEL_AST_LOCAL_BINDING: return "variable";
-    case CXPR_MODEL_AST_STATE_DECL:
-    case CXPR_MODEL_AST_STATE_UPDATE:
-    case CXPR_MODEL_AST_OUTPUT_STATE_UPDATE:
+    case CXPR_DOC_AST_HOST_BLOCK: return "block";
+    case CXPR_DOC_AST_MODEL_DECL: return "assignment";
+    case CXPR_DOC_AST_USE: return "import";
+    case CXPR_DOC_AST_INPUT_DECL: return "input";
+    case CXPR_DOC_AST_PARAM_DECL: return "parameter";
+    case CXPR_DOC_AST_FUNCTION_DECL: return "function";
+    case CXPR_DOC_AST_LOCAL_BINDING: return "variable";
+    case CXPR_DOC_AST_STATE_DECL:
+    case CXPR_DOC_AST_STATE_UPDATE:
+    case CXPR_DOC_AST_OUTPUT_STATE_UPDATE:
         return "state";
-    case CXPR_MODEL_AST_BINDING:
-    case CXPR_MODEL_AST_OUTPUT_DECL:
+    case CXPR_DOC_AST_BINDING:
+    case CXPR_DOC_AST_OUTPUT_DECL:
         return "assignment";
-    case CXPR_DOCUMENT_AST_HOST_FIELD:
-    case CXPR_MODEL_AST_METADATA:
+    case CXPR_DOC_AST_HOST_FIELD:
+    case CXPR_DOC_AST_METADATA:
         return "property";
     default:
         return NULL;
@@ -162,32 +162,32 @@ static int span_find_name(const char* source,
     return 0;
 }
 
-static int is_outline_node(cxpr_document_ast_kind kind) {
+static int is_outline_node(cxpr_doc_ast_kind kind) {
     switch (kind) {
-    case CXPR_DOCUMENT_AST_HOST_BLOCK:
-    case CXPR_DOCUMENT_AST_MODEL_DECL:
-    case CXPR_MODEL_AST_USE:
-    case CXPR_MODEL_AST_INPUT_DECL:
-    case CXPR_MODEL_AST_PARAM_DECL:
-    case CXPR_MODEL_AST_FUNCTION_DECL:
-    case CXPR_MODEL_AST_STATE_DECL:
-    case CXPR_MODEL_AST_STATE_UPDATE:
-    case CXPR_MODEL_AST_BINDING:
-    case CXPR_MODEL_AST_OUTPUT_DECL:
-    case CXPR_MODEL_AST_OUTPUT_STATE_UPDATE:
-    case CXPR_MODEL_AST_ANONYMOUS_OUTPUT:
+    case CXPR_DOC_AST_HOST_BLOCK:
+    case CXPR_DOC_AST_MODEL_DECL:
+    case CXPR_DOC_AST_USE:
+    case CXPR_DOC_AST_INPUT_DECL:
+    case CXPR_DOC_AST_PARAM_DECL:
+    case CXPR_DOC_AST_FUNCTION_DECL:
+    case CXPR_DOC_AST_STATE_DECL:
+    case CXPR_DOC_AST_STATE_UPDATE:
+    case CXPR_DOC_AST_BINDING:
+    case CXPR_DOC_AST_OUTPUT_DECL:
+    case CXPR_DOC_AST_OUTPUT_STATE_UPDATE:
+    case CXPR_DOC_AST_ANONYMOUS_OUTPUT:
         return 1;
     default:
         return 0;
     }
 }
 
-static void emit_outline_node(const cxpr_document_ast_node* node, int* comma) {
-    cxpr_document_ast_kind kind = cxpr_document_ast_node_kind(node);
-    const char* name = cxpr_document_ast_node_name(node);
-    const char* text = cxpr_document_ast_node_text(node);
-    const char* value = cxpr_document_ast_node_value(node);
-    cxpr_source_span span = cxpr_document_ast_node_span(node);
+static void emit_outline_node(const cxpr_doc_ast_node* node, int* comma) {
+    cxpr_doc_ast_kind kind = cxpr_doc_ast_node_kind(node);
+    const char* name = cxpr_doc_ast_node_name(node);
+    const char* text = cxpr_doc_ast_node_text(node);
+    const char* value = cxpr_doc_ast_node_value(node);
+    cxpr_source_span span = cxpr_doc_ast_node_span(node);
     if (!is_outline_node(kind)) return;
     if (*comma) fputc(',', stdout);
     *comma = 1;
@@ -202,11 +202,11 @@ static void emit_outline_node(const cxpr_document_ast_node* node, int* comma) {
     fputc('}', stdout);
 }
 
-static void emit_fold_node(const cxpr_document_ast_node* node, int* comma) {
-    cxpr_source_span span = cxpr_document_ast_node_span(node);
+static void emit_fold_node(const cxpr_doc_ast_node* node, int* comma) {
+    cxpr_source_span span = cxpr_doc_ast_node_span(node);
     if (line_zero(span.end) <= line_zero(span.start)) return;
-    if (cxpr_document_ast_child_count(node) == 0u &&
-        cxpr_document_ast_node_kind(node) != CXPR_DOCUMENT_AST_HOST_BLOCK) {
+    if (cxpr_doc_ast_node_child_count(node) == 0u &&
+        cxpr_doc_ast_node_kind(node) != CXPR_DOC_AST_HOST_BLOCK) {
         return;
     }
     if (*comma) fputc(',', stdout);
@@ -216,13 +216,13 @@ static void emit_fold_node(const cxpr_document_ast_node* node, int* comma) {
     fputc('}', stdout);
 }
 
-static void emit_token_node(const cxpr_document_ast_node* node,
+static void emit_token_node(const cxpr_doc_ast_node* node,
                             const char* source,
                             int* comma) {
-    cxpr_document_ast_kind kind = cxpr_document_ast_node_kind(node);
+    cxpr_doc_ast_kind kind = cxpr_doc_ast_node_kind(node);
     const char* type = token_type(kind);
-    const char* name = cxpr_document_ast_node_name(node);
-    cxpr_source_span span = cxpr_document_ast_node_span(node);
+    const char* name = cxpr_doc_ast_node_name(node);
+    cxpr_source_span span = cxpr_doc_ast_node_span(node);
     size_t line;
     size_t col;
     size_t len;
@@ -239,35 +239,35 @@ static void emit_token_node(const cxpr_document_ast_node* node,
     fputc('}', stdout);
 }
 
-static void walk_outline(const cxpr_document_ast_node* node, int* comma) {
+static void walk_outline(const cxpr_doc_ast_node* node, int* comma) {
     size_t count;
     if (!node) return;
     emit_outline_node(node, comma);
-    count = cxpr_document_ast_child_count(node);
+    count = cxpr_doc_ast_node_child_count(node);
     for (size_t i = 0u; i < count; ++i) {
-        walk_outline(cxpr_document_ast_child(node, i), comma);
+        walk_outline(cxpr_doc_ast_node_child(node, i), comma);
     }
 }
 
-static void walk_folds(const cxpr_document_ast_node* node, int* comma) {
+static void walk_folds(const cxpr_doc_ast_node* node, int* comma) {
     size_t count;
     if (!node) return;
     emit_fold_node(node, comma);
-    count = cxpr_document_ast_child_count(node);
+    count = cxpr_doc_ast_node_child_count(node);
     for (size_t i = 0u; i < count; ++i) {
-        walk_folds(cxpr_document_ast_child(node, i), comma);
+        walk_folds(cxpr_doc_ast_node_child(node, i), comma);
     }
 }
 
-static void walk_tokens(const cxpr_document_ast_node* node,
+static void walk_tokens(const cxpr_doc_ast_node* node,
                         const char* source,
                         int* comma) {
     size_t count;
     if (!node) return;
     emit_token_node(node, source, comma);
-    count = cxpr_document_ast_child_count(node);
+    count = cxpr_doc_ast_node_child_count(node);
     for (size_t i = 0u; i < count; ++i) {
-        walk_tokens(cxpr_document_ast_child(node, i), source, comma);
+        walk_tokens(cxpr_doc_ast_node_child(node, i), source, comma);
     }
 }
 
@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
     const char* source_name = "<stdin>";
     char* source;
     cxpr_error err = {0};
-    cxpr_document_ast* ast;
+    cxpr_doc_ast* ast;
     int comma = 0;
 
     for (int i = 1; i < argc; ++i) {
@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    ast = cxpr_parse_document_ast(
+    ast = cxpr_doc_ast_parse(
         source,
         source_name,
         CXPR_DOCUMENT_EXTENSION_MODEL,
@@ -307,16 +307,16 @@ int main(int argc, char** argv) {
     }
 
     fputs("{\"ok\":true,\"outline\":[", stdout);
-    walk_outline(cxpr_document_ast_root(ast), &comma);
+    walk_outline(cxpr_doc_ast_root(ast), &comma);
     fputs("],\"folds\":[", stdout);
     comma = 0;
-    walk_folds(cxpr_document_ast_root(ast), &comma);
+    walk_folds(cxpr_doc_ast_root(ast), &comma);
     fputs("],\"tokens\":[", stdout);
     comma = 0;
-    walk_tokens(cxpr_document_ast_root(ast), source, &comma);
+    walk_tokens(cxpr_doc_ast_root(ast), source, &comma);
     fputs("]}\n", stdout);
 
-    cxpr_document_ast_free(ast);
+    cxpr_doc_ast_free(ast);
     free(source);
     return 0;
 }

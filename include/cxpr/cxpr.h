@@ -21,7 +21,7 @@
 #include <cxpr/generated.h>
 #include <cxpr/execution.h>
 #include <cxpr/document/document.h>
-#include <cxpr/ast/document.h>
+#include <cxpr/doc/ast.h>
 #include <cxpr/model/model.h>
 #include <cxpr/model/imports.h>
 #include <cxpr/alias.h>

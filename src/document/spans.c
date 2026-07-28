@@ -132,49 +132,49 @@ static void cxpr_document_map_host_block_span(cxpr_document_span_mapper* mapper,
 }
 
 static cxpr_visit_control cxpr_document_map_source_span_node(
-    const cxpr_document_ast_node* node,
+    const cxpr_doc_ast_node* node,
     void* userdata) {
     cxpr_document_span_mapper* mapper = (cxpr_document_span_mapper*)userdata;
-    const char* name = cxpr_document_ast_node_name(node);
-    cxpr_source_span span = cxpr_document_ast_node_span(node);
+    const char* name = cxpr_doc_ast_node_name(node);
+    cxpr_source_span span = cxpr_doc_ast_node_span(node);
 
-    switch (cxpr_document_ast_node_kind(node)) {
-        case CXPR_DOCUMENT_AST_HOST_BLOCK:
+    switch (cxpr_doc_ast_node_kind(node)) {
+        case CXPR_DOC_AST_HOST_BLOCK:
             cxpr_document_map_host_block_span(mapper, name, span);
             break;
-        case CXPR_DOCUMENT_AST_MODEL_DECL:
+        case CXPR_DOC_AST_MODEL_DECL:
             if (mapper->model && cxpr_document_names_match(mapper->model->name, name)) {
                 mapper->model->name_span = span;
                 mapper->model->has_name_span = true;
             }
             break;
-        case CXPR_MODEL_AST_USE:
-            cxpr_document_map_use_span(mapper, cxpr_document_ast_node_text(node), span);
+        case CXPR_DOC_AST_USE:
+            cxpr_document_map_use_span(mapper, cxpr_doc_ast_node_text(node), span);
             break;
-        case CXPR_MODEL_AST_INPUT_DECL:
+        case CXPR_DOC_AST_INPUT_DECL:
             cxpr_document_map_input_span(mapper, name, span);
             break;
-        case CXPR_MODEL_AST_PARAM_DECL:
+        case CXPR_DOC_AST_PARAM_DECL:
             cxpr_document_map_constant_span(mapper, name, span);
             break;
-        case CXPR_MODEL_AST_STATE_DECL:
+        case CXPR_DOC_AST_STATE_DECL:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_STATE, span);
             break;
-        case CXPR_MODEL_AST_STATE_UPDATE:
+        case CXPR_DOC_AST_STATE_UPDATE:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_STATE_UPDATE, span);
             break;
-        case CXPR_MODEL_AST_INITIAL_STATE_UPDATE:
+        case CXPR_DOC_AST_INITIAL_STATE_UPDATE:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_STATE_UPDATE, span);
             break;
-        case CXPR_MODEL_AST_BINDING:
+        case CXPR_DOC_AST_BINDING:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_EXPR, span);
             break;
-        case CXPR_MODEL_AST_OUTPUT_STATE_UPDATE:
+        case CXPR_DOC_AST_OUTPUT_STATE_UPDATE:
             cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_STATE_UPDATE, span);
             cxpr_document_map_output_span(mapper, name, span);
             break;
-        case CXPR_MODEL_AST_OUTPUT_DECL:
-            if (cxpr_document_ast_node_expression(node)) {
+        case CXPR_DOC_AST_OUTPUT_DECL:
+            if (cxpr_doc_ast_node_expr(node)) {
                 cxpr_document_map_binding_span(mapper, name, CXPR_MODEL_BINDING_EXPR, span);
             }
             cxpr_document_map_output_span(mapper, name, span);
@@ -268,12 +268,12 @@ static void cxpr_document_map_metadata_spans(cxpr_model* model) {
 }
 
 void cxpr_document_map_source_spans(cxpr_model* model,
-                                           const cxpr_document_ast* syntax) {
+                                           const cxpr_doc_ast* syntax) {
     cxpr_document_span_mapper mapper;
     if (!model || !syntax) return;
     cxpr_document_model_prepare_span_storage(model);
     mapper = (cxpr_document_span_mapper){0};
     mapper.model = model;
-    (void)cxpr_document_ast_visit(syntax, cxpr_document_map_source_span_node, &mapper);
+    (void)cxpr_doc_ast_visit(syntax, cxpr_document_map_source_span_node, &mapper);
     cxpr_document_map_metadata_spans(model);
 }

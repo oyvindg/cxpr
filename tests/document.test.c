@@ -16,14 +16,14 @@ typedef struct {
     size_t returns;
 } document_ast_visit_counts;
 
-static cxpr_visit_control count_document_ast_nodes(const cxpr_document_ast_node* node,
+static cxpr_visit_control count_document_ast_nodes(const cxpr_doc_ast_node* node,
                                                    void* userdata) {
     document_ast_visit_counts* counts = (document_ast_visit_counts*)userdata;
     counts->total++;
-    if (cxpr_document_ast_node_kind(node) == CXPR_DOCUMENT_AST_HOST_FIELD) {
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_HOST_FIELD) {
         counts->host_fields++;
     }
-    if (cxpr_document_ast_node_kind(node) == CXPR_MODEL_AST_RETURN) {
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_RETURN) {
         counts->returns++;
     }
     return CXPR_VISIT_CONTINUE;
@@ -212,29 +212,29 @@ static void test_document_exposes_owned_syntax_tree(void) {
         "out signal := close\n";
     cxpr_error err = {0};
     cxpr_document* document = cxpr_parse_model_document(source, &err);
-    const cxpr_document_ast* syntax;
-    const cxpr_document_ast_node* root;
-    const cxpr_document_ast_node* state_block;
-    const cxpr_document_ast_node* output_update;
+    const cxpr_doc_ast* syntax;
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* state_block;
+    const cxpr_doc_ast_node* output_update;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
     syntax = cxpr_document_syntax(document);
     assert(syntax != NULL);
-    root = cxpr_document_ast_root(syntax);
+    root = cxpr_doc_ast_root(syntax);
     assert(root != NULL);
-    assert(cxpr_document_ast_node_kind(root) == CXPR_DOCUMENT_AST_FILE);
-    assert(cxpr_document_ast_child_count(root) == 4u);
-    state_block = cxpr_document_ast_child(root, 2u);
-    output_update = cxpr_document_ast_child(root, 3u);
-    assert(cxpr_document_ast_node_kind(state_block) == CXPR_MODEL_AST_STATE_BLOCK);
-    assert(cxpr_document_ast_child_count(state_block) == 1u);
-    assert(strcmp(cxpr_document_ast_node_name(cxpr_document_ast_child(state_block, 0u)),
+    assert(cxpr_doc_ast_node_kind(root) == CXPR_DOC_AST_FILE);
+    assert(cxpr_doc_ast_node_child_count(root) == 4u);
+    state_block = cxpr_doc_ast_node_child(root, 2u);
+    output_update = cxpr_doc_ast_node_child(root, 3u);
+    assert(cxpr_doc_ast_node_kind(state_block) == CXPR_DOC_AST_STATE_BLOCK);
+    assert(cxpr_doc_ast_node_child_count(state_block) == 1u);
+    assert(strcmp(cxpr_doc_ast_node_name(cxpr_doc_ast_node_child(state_block, 0u)),
                   "signal") == 0);
-    assert(cxpr_document_ast_node_kind(output_update) ==
-           CXPR_MODEL_AST_OUTPUT_STATE_UPDATE);
-    assert(strcmp(cxpr_document_ast_node_name(output_update), "signal") == 0);
-    assert(cxpr_document_ast_node_expression(output_update) != NULL);
+    assert(cxpr_doc_ast_node_kind(output_update) ==
+           CXPR_DOC_AST_OUTPUT_STATE_UPDATE);
+    assert(strcmp(cxpr_doc_ast_node_name(output_update), "signal") == 0);
+    assert(cxpr_doc_ast_node_expr(output_update) != NULL);
 
     cxpr_document_free(document);
     printf("  ✓ test_document_exposes_owned_syntax_tree\n");
@@ -246,28 +246,28 @@ static void test_document_ast_exposes_compact_initial_state_update(void) {
         "bars := bars + 1 initial 0\n"
         "out bars\n";
     cxpr_error err = {0};
-    cxpr_document_ast* syntax =
-        cxpr_parse_document_ast(source, "counter.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-    const cxpr_document_ast_node* root;
-    const cxpr_document_ast_node* update;
-    const cxpr_document_ast_node* declaration;
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "counter.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* update;
+    const cxpr_doc_ast_node* declaration;
 
     assert(syntax != NULL);
     assert(err.code == CXPR_OK);
-    root = cxpr_document_ast_root(syntax);
-    assert(cxpr_document_ast_child_count(root) == 3u);
-    update = cxpr_document_ast_child(root, 1u);
-    assert(cxpr_document_ast_node_kind(update) == CXPR_MODEL_AST_INITIAL_STATE_UPDATE);
-    assert(strcmp(cxpr_document_ast_node_name(update), "bars") == 0);
-    assert(cxpr_document_ast_node_expression(update) != NULL);
-    assert(cxpr_document_ast_child_count(update) == 1u);
-    declaration = cxpr_document_ast_child(update, 0u);
-    assert(cxpr_document_ast_node_kind(declaration) == CXPR_MODEL_AST_STATE_DECL);
-    assert(strcmp(cxpr_document_ast_node_name(declaration), "bars") == 0);
-    assert(strcmp(cxpr_document_ast_node_text(declaration), "0") == 0);
-    assert(cxpr_document_ast_node_expression(declaration) != NULL);
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 3u);
+    update = cxpr_doc_ast_node_child(root, 1u);
+    assert(cxpr_doc_ast_node_kind(update) == CXPR_DOC_AST_INITIAL_STATE_UPDATE);
+    assert(strcmp(cxpr_doc_ast_node_name(update), "bars") == 0);
+    assert(cxpr_doc_ast_node_expr(update) != NULL);
+    assert(cxpr_doc_ast_node_child_count(update) == 1u);
+    declaration = cxpr_doc_ast_node_child(update, 0u);
+    assert(cxpr_doc_ast_node_kind(declaration) == CXPR_DOC_AST_STATE_DECL);
+    assert(strcmp(cxpr_doc_ast_node_name(declaration), "bars") == 0);
+    assert(strcmp(cxpr_doc_ast_node_text(declaration), "0") == 0);
+    assert(cxpr_doc_ast_node_expr(declaration) != NULL);
 
-    cxpr_document_ast_free(syntax);
+    cxpr_doc_ast_free(syntax);
     printf("  ✓ test_document_ast_exposes_compact_initial_state_update\n");
 }
 
@@ -282,62 +282,62 @@ static void test_parse_document_ast_preserves_block_shapes(void) {
         "score := score + close\n"
         "out score { role = \"score\" }\n";
     cxpr_error err = {0};
-    cxpr_document_ast* syntax =
-        cxpr_parse_document_ast(source, "shape.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-    const cxpr_document_ast_node* root;
-    const cxpr_document_ast_node* host;
-    const cxpr_document_ast_node* model_decl;
-    const cxpr_document_ast_node* params;
-    const cxpr_document_ast_node* slow_param;
-    const cxpr_document_ast_node* metadata;
-    const cxpr_document_ast_node* state;
-    const cxpr_document_ast_node* update;
-    const cxpr_document_ast_node* output;
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "shape.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* host;
+    const cxpr_doc_ast_node* model_decl;
+    const cxpr_doc_ast_node* params;
+    const cxpr_doc_ast_node* slow_param;
+    const cxpr_doc_ast_node* metadata;
+    const cxpr_doc_ast_node* state;
+    const cxpr_doc_ast_node* update;
+    const cxpr_doc_ast_node* output;
     cxpr_source_span update_span;
 
     assert(syntax != NULL);
     assert(err.code == CXPR_OK);
-    assert(strcmp(cxpr_document_ast_source_name(syntax), "shape.cxpr") == 0);
-    root = cxpr_document_ast_root(syntax);
-    assert(cxpr_document_ast_child_count(root) == 6u);
-    host = cxpr_document_ast_child(root, 0u);
-    params = cxpr_document_ast_child(root, 2u);
-    state = cxpr_document_ast_child(root, 3u);
-    update = cxpr_document_ast_child(root, 4u);
-    assert(cxpr_document_ast_node_kind(host) == CXPR_DOCUMENT_AST_HOST_BLOCK);
-    assert(strcmp(cxpr_document_ast_node_name(host), "project") == 0);
-    model_decl = cxpr_document_ast_child(root, 1u);
-    assert(cxpr_document_ast_node_kind(model_decl) == CXPR_DOCUMENT_AST_MODEL_DECL);
-    assert(cxpr_document_ast_child_count(model_decl) == 1u);
-    metadata = cxpr_document_ast_child(model_decl, 0u);
-    assert(cxpr_document_ast_node_kind(metadata) == CXPR_MODEL_AST_METADATA);
-    assert(strstr(cxpr_document_ast_node_text(metadata), "source_arg") != NULL);
-    assert(cxpr_document_ast_node_kind(params) == CXPR_MODEL_AST_PARAM_BLOCK);
-    assert(cxpr_document_ast_child_count(params) == 2u);
-    slow_param = cxpr_document_ast_child(params, 1u);
-    assert(strcmp(cxpr_document_ast_node_name(slow_param), "slow") == 0);
-    assert(cxpr_document_ast_node_expression(slow_param) != NULL);
-    assert(cxpr_document_ast_child_count(slow_param) == 1u);
-    metadata = cxpr_document_ast_child(slow_param, 0u);
-    assert(cxpr_document_ast_node_kind(metadata) == CXPR_MODEL_AST_METADATA);
-    assert(strstr(cxpr_document_ast_node_text(metadata), "max = 80") != NULL);
-    assert(cxpr_document_ast_node_span(metadata).start.line == 3u);
-    assert(cxpr_document_ast_node_kind(state) == CXPR_MODEL_AST_STATE_BLOCK);
-    assert(cxpr_document_ast_child_count(state) == 1u);
-    assert(cxpr_document_ast_node_kind(update) == CXPR_MODEL_AST_STATE_UPDATE);
-    assert(strcmp(cxpr_document_ast_node_name(update), "score") == 0);
-    update_span = cxpr_document_ast_node_span(update);
+    assert(strcmp(cxpr_doc_ast_source_name(syntax), "shape.cxpr") == 0);
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 6u);
+    host = cxpr_doc_ast_node_child(root, 0u);
+    params = cxpr_doc_ast_node_child(root, 2u);
+    state = cxpr_doc_ast_node_child(root, 3u);
+    update = cxpr_doc_ast_node_child(root, 4u);
+    assert(cxpr_doc_ast_node_kind(host) == CXPR_DOC_AST_HOST_BLOCK);
+    assert(strcmp(cxpr_doc_ast_node_name(host), "project") == 0);
+    model_decl = cxpr_doc_ast_node_child(root, 1u);
+    assert(cxpr_doc_ast_node_kind(model_decl) == CXPR_DOC_AST_MODEL_DECL);
+    assert(cxpr_doc_ast_node_child_count(model_decl) == 1u);
+    metadata = cxpr_doc_ast_node_child(model_decl, 0u);
+    assert(cxpr_doc_ast_node_kind(metadata) == CXPR_DOC_AST_METADATA);
+    assert(strstr(cxpr_doc_ast_node_text(metadata), "source_arg") != NULL);
+    assert(cxpr_doc_ast_node_kind(params) == CXPR_DOC_AST_PARAM_BLOCK);
+    assert(cxpr_doc_ast_node_child_count(params) == 2u);
+    slow_param = cxpr_doc_ast_node_child(params, 1u);
+    assert(strcmp(cxpr_doc_ast_node_name(slow_param), "slow") == 0);
+    assert(cxpr_doc_ast_node_expr(slow_param) != NULL);
+    assert(cxpr_doc_ast_node_child_count(slow_param) == 1u);
+    metadata = cxpr_doc_ast_node_child(slow_param, 0u);
+    assert(cxpr_doc_ast_node_kind(metadata) == CXPR_DOC_AST_METADATA);
+    assert(strstr(cxpr_doc_ast_node_text(metadata), "max = 80") != NULL);
+    assert(cxpr_doc_ast_node_span(metadata).start.line == 3u);
+    assert(cxpr_doc_ast_node_kind(state) == CXPR_DOC_AST_STATE_BLOCK);
+    assert(cxpr_doc_ast_node_child_count(state) == 1u);
+    assert(cxpr_doc_ast_node_kind(update) == CXPR_DOC_AST_STATE_UPDATE);
+    assert(strcmp(cxpr_doc_ast_node_name(update), "score") == 0);
+    update_span = cxpr_doc_ast_node_span(update);
     assert(update_span.start.line == 7u);
     assert(update_span.end.offset > update_span.start.offset);
-    output = cxpr_document_ast_child(root, 5u);
-    assert(cxpr_document_ast_node_kind(output) == CXPR_MODEL_AST_OUTPUT_DECL);
-    assert(strcmp(cxpr_document_ast_node_name(output), "score") == 0);
-    assert(cxpr_document_ast_child_count(output) == 1u);
-    metadata = cxpr_document_ast_child(output, 0u);
-    assert(cxpr_document_ast_node_kind(metadata) == CXPR_MODEL_AST_METADATA);
-    assert(strstr(cxpr_document_ast_node_text(metadata), "role") != NULL);
+    output = cxpr_doc_ast_node_child(root, 5u);
+    assert(cxpr_doc_ast_node_kind(output) == CXPR_DOC_AST_OUTPUT_DECL);
+    assert(strcmp(cxpr_doc_ast_node_name(output), "score") == 0);
+    assert(cxpr_doc_ast_node_child_count(output) == 1u);
+    metadata = cxpr_doc_ast_node_child(output, 0u);
+    assert(cxpr_doc_ast_node_kind(metadata) == CXPR_DOC_AST_METADATA);
+    assert(strstr(cxpr_doc_ast_node_text(metadata), "role") != NULL);
 
-    cxpr_document_ast_free(syntax);
+    cxpr_doc_ast_free(syntax);
     printf("  ✓ test_parse_document_ast_preserves_block_shapes\n");
 }
 
@@ -348,14 +348,14 @@ static void test_document_ast_lowers_to_independent_document(void) {
         "signal = close > 0\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_document_ast* syntax =
-        cxpr_parse_document_ast(source, "lower.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "lower.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
     cxpr_document* document;
     const cxpr_model* model;
 
     assert(syntax != NULL);
-    document = cxpr_lower_document_ast(syntax, &err);
-    cxpr_document_ast_free(syntax);
+    document = cxpr_doc_ast_lower(syntax, &err);
+    cxpr_doc_ast_free(syntax);
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
@@ -696,45 +696,45 @@ static void test_document_ast_function_body_host_fields_and_visitor(void) {
         "}\n"
         "out impulse(close, 10, 2)\n";
     cxpr_error err = {0};
-    cxpr_document_ast* syntax =
-        cxpr_parse_document_ast(source, "fn.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-    const cxpr_document_ast_node* root;
-    const cxpr_document_ast_node* host;
-    const cxpr_document_ast_node* function;
-    const cxpr_document_ast_node* body;
-    const cxpr_document_ast_node* ret;
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "fn.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* host;
+    const cxpr_doc_ast_node* function;
+    const cxpr_doc_ast_node* body;
+    const cxpr_doc_ast_node* ret;
     document_ast_visit_counts counts = {0};
 
     assert(syntax != NULL);
     assert(err.code == CXPR_OK);
-    root = cxpr_document_ast_root(syntax);
-    assert(cxpr_document_ast_child_count(root) == 4u);
-    host = cxpr_document_ast_child(root, 0u);
-    function = cxpr_document_ast_child(root, 2u);
-    assert(cxpr_document_ast_node_kind(host) == CXPR_DOCUMENT_AST_HOST_BLOCK);
-    assert(cxpr_document_ast_child_count(host) == 2u);
-    assert(strcmp(cxpr_document_ast_node_name(cxpr_document_ast_child(host, 0u)),
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 4u);
+    host = cxpr_doc_ast_node_child(root, 0u);
+    function = cxpr_doc_ast_node_child(root, 2u);
+    assert(cxpr_doc_ast_node_kind(host) == CXPR_DOC_AST_HOST_BLOCK);
+    assert(cxpr_doc_ast_node_child_count(host) == 2u);
+    assert(strcmp(cxpr_doc_ast_node_name(cxpr_doc_ast_node_child(host, 0u)),
                   "name") == 0);
-    assert(strcmp(cxpr_document_ast_node_text(cxpr_document_ast_child(host, 1u)),
+    assert(strcmp(cxpr_doc_ast_node_text(cxpr_doc_ast_node_child(host, 1u)),
                   "\"c\"") == 0);
-    assert(cxpr_document_ast_node_kind(function) == CXPR_MODEL_AST_FUNCTION_DECL);
-    assert(cxpr_document_ast_child_count(function) == 1u);
-    body = cxpr_document_ast_child(function, 0u);
-    assert(cxpr_document_ast_node_kind(body) == CXPR_MODEL_AST_FUNCTION_BODY);
-    assert(cxpr_document_ast_child_count(body) == 3u);
-    assert(cxpr_document_ast_node_kind(cxpr_document_ast_child(body, 0u)) ==
-           CXPR_MODEL_AST_LOCAL_BINDING);
-    ret = cxpr_document_ast_child(body, 2u);
-    assert(cxpr_document_ast_node_kind(ret) == CXPR_MODEL_AST_RETURN);
-    assert(cxpr_document_ast_node_expression(ret) != NULL);
+    assert(cxpr_doc_ast_node_kind(function) == CXPR_DOC_AST_FUNCTION_DECL);
+    assert(cxpr_doc_ast_node_child_count(function) == 1u);
+    body = cxpr_doc_ast_node_child(function, 0u);
+    assert(cxpr_doc_ast_node_kind(body) == CXPR_DOC_AST_FUNCTION_BODY);
+    assert(cxpr_doc_ast_node_child_count(body) == 3u);
+    assert(cxpr_doc_ast_node_kind(cxpr_doc_ast_node_child(body, 0u)) ==
+           CXPR_DOC_AST_LOCAL_BINDING);
+    ret = cxpr_doc_ast_node_child(body, 2u);
+    assert(cxpr_doc_ast_node_kind(ret) == CXPR_DOC_AST_RETURN);
+    assert(cxpr_doc_ast_node_expr(ret) != NULL);
 
-    assert(cxpr_document_ast_visit(syntax, count_document_ast_nodes, &counts) ==
+    assert(cxpr_doc_ast_visit(syntax, count_document_ast_nodes, &counts) ==
            CXPR_VISIT_CONTINUE);
     assert(counts.total >= 9u);
     assert(counts.host_fields == 2u);
     assert(counts.returns == 1u);
 
-    cxpr_document_ast_free(syntax);
+    cxpr_doc_ast_free(syntax);
     printf("  ✓ test_document_ast_function_body_host_fields_and_visitor\n");
 }
 
@@ -748,41 +748,41 @@ static void test_document_ast_represents_advanced_existing_syntax(void) {
         "  prev + x / max(1, period)\n"
         "out bb(close, 1)\n";
     cxpr_error err = {0};
-    cxpr_document_ast* syntax =
-        cxpr_parse_document_ast(source, "advanced.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-    const cxpr_document_ast_node* root;
-    const cxpr_document_ast_node* model_decl;
-    const cxpr_document_ast_node* grouped_use;
-    const cxpr_document_ast_node* aliased_use;
-    const cxpr_document_ast_node* inputs;
-    const cxpr_document_ast_node* function;
-    const cxpr_document_ast_node* output;
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "advanced.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* model_decl;
+    const cxpr_doc_ast_node* grouped_use;
+    const cxpr_doc_ast_node* aliased_use;
+    const cxpr_doc_ast_node* inputs;
+    const cxpr_doc_ast_node* function;
+    const cxpr_doc_ast_node* output;
 
     assert(syntax != NULL);
     assert(err.code == CXPR_OK);
-    root = cxpr_document_ast_root(syntax);
-    assert(cxpr_document_ast_child_count(root) == 6u);
-    model_decl = cxpr_document_ast_child(root, 0u);
-    grouped_use = cxpr_document_ast_child(root, 1u);
-    aliased_use = cxpr_document_ast_child(root, 2u);
-    inputs = cxpr_document_ast_child(root, 3u);
-    function = cxpr_document_ast_child(root, 4u);
-    output = cxpr_document_ast_child(root, 5u);
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 6u);
+    model_decl = cxpr_doc_ast_node_child(root, 0u);
+    grouped_use = cxpr_doc_ast_node_child(root, 1u);
+    aliased_use = cxpr_doc_ast_node_child(root, 2u);
+    inputs = cxpr_doc_ast_node_child(root, 3u);
+    function = cxpr_doc_ast_node_child(root, 4u);
+    output = cxpr_doc_ast_node_child(root, 5u);
 
-    assert(cxpr_document_ast_node_kind(model_decl) == CXPR_DOCUMENT_AST_MODEL_DECL);
-    assert(cxpr_document_ast_child_count(model_decl) == 1u);
-    assert(cxpr_document_ast_node_kind(grouped_use) == CXPR_MODEL_AST_USE);
-    assert(strstr(cxpr_document_ast_node_text(grouped_use), "from indicators") != NULL);
-    assert(cxpr_document_ast_node_kind(aliased_use) == CXPR_MODEL_AST_USE);
-    assert(strstr(cxpr_document_ast_node_text(aliased_use), " as r") != NULL);
-    assert(cxpr_document_ast_node_kind(inputs) == CXPR_MODEL_AST_INPUT_BLOCK);
-    assert(cxpr_document_ast_child_count(inputs) == 3u);
-    assert(cxpr_document_ast_node_kind(function) == CXPR_MODEL_AST_FUNCTION_DECL);
-    assert(cxpr_document_ast_node_expression(function) != NULL);
-    assert(cxpr_document_ast_node_kind(output) == CXPR_MODEL_AST_ANONYMOUS_OUTPUT);
-    assert(cxpr_document_ast_node_expression(output) != NULL);
+    assert(cxpr_doc_ast_node_kind(model_decl) == CXPR_DOC_AST_MODEL_DECL);
+    assert(cxpr_doc_ast_node_child_count(model_decl) == 1u);
+    assert(cxpr_doc_ast_node_kind(grouped_use) == CXPR_DOC_AST_USE);
+    assert(strstr(cxpr_doc_ast_node_text(grouped_use), "from indicators") != NULL);
+    assert(cxpr_doc_ast_node_kind(aliased_use) == CXPR_DOC_AST_USE);
+    assert(strstr(cxpr_doc_ast_node_text(aliased_use), " as r") != NULL);
+    assert(cxpr_doc_ast_node_kind(inputs) == CXPR_DOC_AST_INPUT_BLOCK);
+    assert(cxpr_doc_ast_node_child_count(inputs) == 3u);
+    assert(cxpr_doc_ast_node_kind(function) == CXPR_DOC_AST_FUNCTION_DECL);
+    assert(cxpr_doc_ast_node_expr(function) != NULL);
+    assert(cxpr_doc_ast_node_kind(output) == CXPR_DOC_AST_ANONYMOUS_OUTPUT);
+    assert(cxpr_doc_ast_node_expr(output) != NULL);
 
-    cxpr_document_ast_free(syntax);
+    cxpr_doc_ast_free(syntax);
     printf("  ✓ test_document_ast_represents_advanced_existing_syntax\n");
 }
 
@@ -792,25 +792,25 @@ static void test_document_ast_represents_struct_input_blocks(void) {
         "in signal { fills_next_session, fills_session_close }\n"
         "out signal.fills_next_session\n";
     cxpr_error err = {0};
-    cxpr_document_ast* syntax =
-        cxpr_parse_document_ast(source, "struct-inputs.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-    const cxpr_document_ast_node* root;
-    const cxpr_document_ast_node* inputs;
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "struct-inputs.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* inputs;
 
     assert(syntax != NULL);
     assert(err.code == CXPR_OK);
-    root = cxpr_document_ast_root(syntax);
-    assert(cxpr_document_ast_child_count(root) == 3u);
-    inputs = cxpr_document_ast_child(root, 1u);
-    assert(cxpr_document_ast_node_kind(inputs) == CXPR_MODEL_AST_INPUT_BLOCK);
-    assert(strcmp(cxpr_document_ast_node_name(inputs), "signal") == 0);
-    assert(cxpr_document_ast_child_count(inputs) == 2u);
-    assert(strcmp(cxpr_document_ast_node_name(cxpr_document_ast_child(inputs, 0u)),
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 3u);
+    inputs = cxpr_doc_ast_node_child(root, 1u);
+    assert(cxpr_doc_ast_node_kind(inputs) == CXPR_DOC_AST_INPUT_BLOCK);
+    assert(strcmp(cxpr_doc_ast_node_name(inputs), "signal") == 0);
+    assert(cxpr_doc_ast_node_child_count(inputs) == 2u);
+    assert(strcmp(cxpr_doc_ast_node_name(cxpr_doc_ast_node_child(inputs, 0u)),
                   "fills_next_session") == 0);
-    assert(strcmp(cxpr_document_ast_node_name(cxpr_document_ast_child(inputs, 1u)),
+    assert(strcmp(cxpr_doc_ast_node_name(cxpr_doc_ast_node_child(inputs, 1u)),
                   "fills_session_close") == 0);
 
-    cxpr_document_ast_free(syntax);
+    cxpr_doc_ast_free(syntax);
     printf("  ✓ test_document_ast_represents_struct_input_blocks\n");
 }
 

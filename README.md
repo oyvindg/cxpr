@@ -78,7 +78,7 @@ The main types are:
 | Type | Purpose |
 | --- | --- |
 | `cxpr_expr_ast` | Parsed expression tree |
-| `cxpr_document_ast` | Source-oriented tree for a complete `.cxpr` document |
+| `cxpr_doc_ast` | Source-oriented tree for a complete `.cxpr` document |
 | `cxpr_document` | Parsed document containing host blocks and optionally a model |
 | `cxpr_model` | Validated semantic representation of model declarations |
 | `cxpr_expr_compiled` | Compiled typed IR for one expression |
@@ -576,10 +576,10 @@ accessors and the visitor API.
 The document AST can be visited without lowering:
 
 ```c
-cxpr_document_ast* ast = cxpr_parse_document_ast(
+cxpr_doc_ast* ast = cxpr_doc_ast_parse(
     source, "controller.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-cxpr_document_ast_visit(ast, visitor, userdata);
-cxpr_document_ast_free(ast);
+cxpr_doc_ast_visit(ast, visitor, userdata);
+cxpr_doc_ast_free(ast);
 ```
 
 Lowering converts source-oriented syntax into a semantic `cxpr_model`.
