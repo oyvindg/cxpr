@@ -6,7 +6,7 @@
 #include "internal.h"
 #include <stdlib.h>
 
-void cxpr_parser_advance(cxpr_parser* p) {
+void cxpr_expr_parser_advance(cxpr_expr_parser* p) {
     p->previous = p->current;
     p->current = cxpr_lexer_next(&p->lexer);
     if (p->current.type == CXPR_TOK_ERROR) {
@@ -19,19 +19,19 @@ void cxpr_parser_advance(cxpr_parser* p) {
     }
 }
 
-bool cxpr_parser_check(const cxpr_parser* p, cxpr_token_type type) {
+bool cxpr_expr_parser_check(const cxpr_expr_parser* p, cxpr_token_type type) {
     return p->current.type == type;
 }
 
-bool cxpr_parser_match(cxpr_parser* p, cxpr_token_type type) {
-    if (!cxpr_parser_check(p, type)) return false;
-    cxpr_parser_advance(p);
+bool cxpr_expr_parser_match(cxpr_expr_parser* p, cxpr_token_type type) {
+    if (!cxpr_expr_parser_check(p, type)) return false;
+    cxpr_expr_parser_advance(p);
     return true;
 }
 
-bool cxpr_parser_expect(cxpr_parser* p, cxpr_token_type type, const char* message) {
-    if (cxpr_parser_check(p, type)) {
-        cxpr_parser_advance(p);
+bool cxpr_expr_parser_expect(cxpr_expr_parser* p, cxpr_token_type type, const char* message) {
+    if (cxpr_expr_parser_check(p, type)) {
+        cxpr_expr_parser_advance(p);
         return true;
     }
     p->had_error = true;
@@ -43,7 +43,7 @@ bool cxpr_parser_expect(cxpr_parser* p, cxpr_token_type type, const char* messag
     return false;
 }
 
-static bool cxpr_parser_token_starts_primary(cxpr_token_type type) {
+static bool cxpr_expr_parser_token_starts_primary(cxpr_token_type type) {
     switch (type) {
         case CXPR_TOK_NUMBER:
         case CXPR_TOK_IDENTIFIER:
@@ -58,15 +58,15 @@ static bool cxpr_parser_token_starts_primary(cxpr_token_type type) {
     }
 }
 
-cxpr_parser* cxpr_parser_new(void) {
-    return (cxpr_parser*)calloc(1, sizeof(cxpr_parser));
+cxpr_expr_parser* cxpr_expr_parser_new(void) {
+    return (cxpr_expr_parser*)calloc(1, sizeof(cxpr_expr_parser));
 }
 
-void cxpr_parser_free(cxpr_parser* p) {
+void cxpr_expr_parser_free(cxpr_expr_parser* p) {
     free(p);
 }
 
-cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_parser* p, const char* expression, cxpr_error* err) {
+cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_expr_parser* p, const char* expression, cxpr_error* err) {
     if (!p || !expression) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -78,7 +78,7 @@ cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_parser* p, const char* expression, cxpr_
     cxpr_lexer_init(&p->lexer, expression);
     p->had_error = false;
     p->last_error = (cxpr_error){0};
-    cxpr_parser_advance(p);
+    cxpr_expr_parser_advance(p);
 
     if (p->had_error) {
         if (err) *err = p->last_error;
@@ -93,10 +93,10 @@ cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_parser* p, const char* expression, cxpr_
         return NULL;
     }
 
-    if (!cxpr_parser_check(p, CXPR_TOK_EOF)) {
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_EOF)) {
         p->had_error = true;
         p->last_error.code = CXPR_ERR_SYNTAX;
-        p->last_error.message = cxpr_parser_token_starts_primary(p->current.type)
+        p->last_error.message = cxpr_expr_parser_token_starts_primary(p->current.type)
                                     ? "Implicit multiplication is not supported; use '*' explicitly"
                                     : "Unexpected token after expression";
         p->last_error.position = p->current.position;

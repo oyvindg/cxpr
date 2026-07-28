@@ -218,7 +218,7 @@ static cxpr_expr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
 
 static cxpr_expr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char* name) {
     const char* expression;
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_expr_ast* ast = NULL;
     cxpr_expr_ast* expanded = NULL;
     cxpr_error parse_err = {0};
@@ -226,7 +226,7 @@ static cxpr_expr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const 
     expression = cxpr_alias_lookup(ctx, name);
     if (!expression) return NULL;
     if (!cxpr_alias_stack_push(ctx, name)) return NULL;
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         cxpr_alias_set_error(ctx, "Out of memory", 0u);
         goto cleanup;
@@ -240,7 +240,7 @@ static cxpr_expr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const 
 
 cleanup:
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_alias_stack_pop(ctx);
     return expanded;
 }
@@ -421,7 +421,7 @@ int cxpr_expand_aliases(const char* expression,
                         size_t alias_count,
                         char** out_expression,
                         cxpr_error* err) {
-    cxpr_parser* parser = NULL;
+    cxpr_expr_parser* parser = NULL;
     cxpr_expr_ast* ast = NULL;
     cxpr_expr_ast* expanded = NULL;
     cxpr_alias_expand_ctx ctx = {0};
@@ -430,7 +430,7 @@ int cxpr_expand_aliases(const char* expression,
     if (err) *err = (cxpr_error){0};
     if (!out_expression) return 0;
     *out_expression = NULL;
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         if (err) {
             err->message = "Out of memory";
@@ -457,6 +457,6 @@ cleanup:
     free(ctx.stack);
     cxpr_expr_ast_free(expanded);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return ok;
 }

@@ -14,7 +14,7 @@
 #define EPSILON 1e-10
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
 
-static cxpr_expr_ast* parse_or_die(cxpr_parser* p, const char* expr) {
+static cxpr_expr_ast* parse_or_die(cxpr_expr_parser* p, const char* expr) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
@@ -101,7 +101,7 @@ static cxpr_value scale_eval_ast_fn(const cxpr_expr_ast* call_ast,
 }
 
 static void test_ast_function_can_read_variable_argument(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -119,12 +119,12 @@ static void test_ast_function_can_read_variable_argument(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_function_can_read_variable_argument\n");
 }
 
 static void test_ast_function_can_eval_nested_expression(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -142,16 +142,16 @@ static void test_ast_function_can_eval_nested_expression(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_function_can_eval_nested_expression\n");
 }
 
 static void test_ast_function_compiles_via_ast_ir_opcode(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     double result = 0.0;
 
     cxpr_register_defaults(reg);
@@ -159,23 +159,23 @@ static void test_ast_function_compiles_via_ast_ir_opcode(void) {
     cxpr_context_set_param(ctx, "threshold", 5.0);
 
     cxpr_expr_ast* ast = parse_or_die(p, "pick_param($threshold)");
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &result, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &result, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(result, 5.0);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_function_compiles_via_ast_ir_opcode\n");
 }
 
 static void test_ast_function_userdata_cleanup_on_overwrite_and_free(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -205,7 +205,7 @@ static void test_ast_function_userdata_cleanup_on_overwrite_and_free(void) {
     cxpr_registry_free(reg);
     assert(g_ast_userdata_free_count == 2);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_function_userdata_cleanup_on_overwrite_and_free\n");
 }
 
@@ -375,7 +375,7 @@ static bool ir_program_has_opcode(const cxpr_ir_program* prog, cxpr_opcode opcod
 }
 
 static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -391,24 +391,24 @@ static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 102.0);
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 102.0);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
 
     /* Overwrite with value function: should restore regular compile/eval behavior. */
     cxpr_registry_add_value(reg, "mode", mode_value_fn, 1, 1, NULL, NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 3.0);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 3.0);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
 
     /* Overwrite with typed function: typed path should work unchanged. */
     cxpr_registry_add_typed(reg, "mode", mode_typed_fn, 1, 1, arg_types, CXPR_VALUE_NUMBER, NULL, NULL);
@@ -416,35 +416,35 @@ static void test_registry_overwrite_ast_value_typed_ast_sequence(void) {
     assert(err.code == CXPR_OK);
     assert(typed_out.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(typed_out.d, 20.0);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program(prog, ctx, reg, &typed_out, &err));
+    assert(cxpr_expr_compiled_eval(prog, ctx, reg, &typed_out, &err));
     assert(err.code == CXPR_OK);
     assert(typed_out.type == CXPR_VALUE_NUMBER);
     ASSERT_DOUBLE_EQ(typed_out.d, 20.0);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
 
     /* Overwrite back to AST function: compiled programs delegate via CALL_AST again. */
     cxpr_registry_add_ast(reg, "mode", mode_ast_fn, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 102.0);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 102.0);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_registry_overwrite_ast_value_typed_ast_sequence\n");
 }
 
 static void test_ast_handler_numeric_calls_compile_to_scalar_ir(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -466,26 +466,26 @@ static void test_ast_handler_numeric_calls_compile_to_scalar_ir(void) {
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
     assert(!ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
 
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
 
     g_mode_ast_handler_calls = 0;
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 3.0);
     assert(g_mode_ast_handler_calls == 0);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_numeric_calls_compile_to_scalar_ir\n");
 }
 
 static void test_ast_handler_string_calls_fall_back_to_ast_in_ir(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -507,26 +507,26 @@ static void test_ast_handler_string_calls_fall_back_to_ast_in_ir(void) {
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
     assert(ir_program_has_opcode(&ir, CXPR_OP_ADD));
 
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
 
     g_mode_ast_handler_calls = 0;
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 1007.0);
     assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_string_calls_fall_back_to_ast_in_ir\n");
 }
 
 static void test_ast_handler_identifier_calls_fall_back_to_ast_in_ir(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -548,21 +548,21 @@ static void test_ast_handler_identifier_calls_fall_back_to_ast_in_ir(void) {
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
     assert(ir_program_has_opcode(&ir, CXPR_OP_ADD));
 
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
 
     g_source_pick_ast_handler_calls = 0;
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 47.0);
     assert(g_source_pick_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_identifier_calls_fall_back_to_ast_in_ir\n");
 }
 
@@ -599,7 +599,7 @@ static void test_expression_compile_supports_timeframe_handler(void) {
 }
 
 static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -622,21 +622,21 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_AST));
     assert(ir_program_has_opcode(&ir, CXPR_OP_ADD));
 
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
 
     g_trend_ast_handler_calls = 0;
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 2007.0);
     assert(g_trend_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_producer_access_string_calls_fall_back_to_ast_in_ir\n");
 }
 
@@ -645,7 +645,7 @@ static void test_producer_access_string_calls_fall_back_to_ast_in_ir(void) {
  * mode_tf(close / 100) — BINARY_OP(IDENTIFIER, NUMBER) → CALL_AST.
  */
 static void test_ast_handler_passthrough_binary_op_with_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -664,19 +664,19 @@ static void test_ast_handler_passthrough_binary_op_with_identifier(void) {
 
     cxpr_context_set(ctx, "close", 100.0);
     g_mode_ast_handler_calls = 0;
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 2.0);
     assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_passthrough_binary_op_with_identifier\n");
 }
 
@@ -685,7 +685,7 @@ static void test_ast_handler_passthrough_binary_op_with_identifier(void) {
  * mode_tf(2 + 3) — BINARY_OP(NUMBER, NUMBER) → CALL_FUNC, not CALL_AST.
  */
 static void test_ast_handler_no_passthrough_binary_op_constants_only(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -703,19 +703,19 @@ static void test_ast_handler_no_passthrough_binary_op_constants_only(void) {
     assert(ir_program_has_opcode(&ir, CXPR_OP_CALL_FUNC));
 
     g_mode_ast_handler_calls = 0;
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 6.0);
     assert(g_mode_ast_handler_calls == 0);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_no_passthrough_binary_op_constants_only\n");
 }
 
@@ -724,7 +724,7 @@ static void test_ast_handler_no_passthrough_binary_op_constants_only(void) {
  * mode_tf(-close) — UNARY_OP(IDENTIFIER) → CALL_AST.
  */
 static void test_ast_handler_passthrough_unary_op_with_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -743,19 +743,19 @@ static void test_ast_handler_passthrough_unary_op_with_identifier(void) {
 
     cxpr_context_set(ctx, "close", 5.0);
     g_mode_ast_handler_calls = 0;
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, -4.0);
     assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_passthrough_unary_op_with_identifier\n");
 }
 
@@ -764,7 +764,7 @@ static void test_ast_handler_passthrough_unary_op_with_identifier(void) {
  * mode_tf(close[3]) — LOOKBACK → CALL_AST.
  */
 static void test_ast_handler_passthrough_lookback_arg(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
 
@@ -782,7 +782,7 @@ static void test_ast_handler_passthrough_lookback_arg(void) {
     cxpr_ir_program_reset(&ir);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_passthrough_lookback_arg\n");
 }
 
@@ -791,7 +791,7 @@ static void test_ast_handler_passthrough_lookback_arg(void) {
  * mode_tf(x > 0 ? close : 0) — TERNARY(…, IDENTIFIER, …) → CALL_AST.
  */
 static void test_ast_handler_passthrough_ternary_with_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -811,19 +811,19 @@ static void test_ast_handler_passthrough_ternary_with_identifier(void) {
     cxpr_context_set(ctx, "x", 1.0);
     cxpr_context_set(ctx, "close", 50.0);
     g_mode_ast_handler_calls = 0;
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 51.0);
     assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_passthrough_ternary_with_identifier\n");
 }
 
@@ -832,7 +832,7 @@ static void test_ast_handler_passthrough_ternary_with_identifier(void) {
  * mode_tf((close + high) / 2) — deeply nested identifiers → CALL_AST.
  */
 static void test_ast_handler_passthrough_nested_binary_ops(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -851,19 +851,19 @@ static void test_ast_handler_passthrough_nested_binary_ops(void) {
     cxpr_context_set(ctx, "close", 100.0);
     cxpr_context_set(ctx, "high", 110.0);
     g_mode_ast_handler_calls = 0;
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 106.0);
     assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_passthrough_nested_binary_ops\n");
 }
 
@@ -872,7 +872,7 @@ static void test_ast_handler_passthrough_nested_binary_ops(void) {
  * mode_tf(sqrt(close)) — inner arg is FUNCTION_CALL → CALL_AST.
  */
 static void test_ast_handler_passthrough_function_call_arg(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -890,19 +890,19 @@ static void test_ast_handler_passthrough_function_call_arg(void) {
 
     cxpr_context_set(ctx, "close", 16.0);
     g_mode_ast_handler_calls = 0;
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
-    assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 5.0);
     assert(g_mode_ast_handler_calls == 1);
 
     cxpr_ir_program_reset(&ir);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_handler_passthrough_function_call_arg\n");
 }
 

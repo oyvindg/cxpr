@@ -600,19 +600,19 @@ static bool cxpr_document_model_append_function(cxpr_model* model,
 }
 
 static cxpr_expr_ast* cxpr_document_lower_parse_expr(const char* text, cxpr_error* err) {
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_expr_ast* ast;
     if (!text || *text == '\0') {
         cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Expected expression");
         return NULL;
     }
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         return NULL;
     }
     ast = cxpr_expr_ast_parse(parser, text, err);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return ast;
 }
 

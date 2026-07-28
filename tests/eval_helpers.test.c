@@ -10,7 +10,7 @@ void cxpr_eval_memo_clear(cxpr_context* ctx);
 void cxpr_eval_memo_leave(cxpr_context* ctx);
 
 static void test_eval_helper_functions(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_expr_ast* clone;
@@ -32,7 +32,7 @@ static void test_eval_helper_functions(void) {
     assert(ast);
     assert(cxpr_eval_ast_contains_string_literal(ast));
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_eval_memo_clear_accepts_context_and_null(void) {

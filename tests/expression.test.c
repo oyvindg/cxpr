@@ -40,7 +40,7 @@ static void test_single_formula(void) {
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
-    const cxpr_program* program;
+    const cxpr_expr_compiled* program;
     bool found;
     double val;
 
@@ -50,12 +50,12 @@ static void test_single_formula(void) {
     program = cxpr_expression_program(evaluator, "result", &found);
     assert(found);
     assert(program != NULL);
-    assert(cxpr_ir_view_count(program) > 0u);
-    assert(cxpr_expression_instruction_count(evaluator, "result", &found) == cxpr_ir_view_count(program));
+    assert(cxpr_expr_compiled_ir_count(program) > 0u);
+    assert(cxpr_expression_instruction_count(evaluator, "result", &found) == cxpr_expr_compiled_ir_count(program));
     assert(found);
-    assert(cxpr_expression_dependency_instruction_count(evaluator, "result", &found) == cxpr_ir_view_count(program));
+    assert(cxpr_expression_dependency_instruction_count(evaluator, "result", &found) == cxpr_expr_compiled_ir_count(program));
     assert(found);
-    assert(cxpr_expression_total_instruction_count(evaluator) == cxpr_ir_view_count(program));
+    assert(cxpr_expression_total_instruction_count(evaluator) == cxpr_expr_compiled_ir_count(program));
     cxpr_evaluator_eval(evaluator, ctx, &err);
     assert(err.code == CXPR_OK);
 
@@ -493,7 +493,7 @@ static void test_formula_defined_function_compiles_to_ir(void) {
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
-    const cxpr_program* program;
+    const cxpr_expr_compiled* program;
     bool found = false;
 
     assert(cxpr_registry_define_fn(reg, "above_floor(x, floor) => x > floor").code == CXPR_OK);

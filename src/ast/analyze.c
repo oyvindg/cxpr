@@ -301,18 +301,18 @@ bool cxpr_analyze(const cxpr_expr_ast* ast, const cxpr_registry* reg,
 
 bool cxpr_analyze_expr(const char* expression, const cxpr_registry* reg,
                        cxpr_analysis* out_analysis, cxpr_error* err) {
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_expr_ast* ast;
     bool ok;
 
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         cxpr_expr_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         return false;
     }
 
     ast = cxpr_expr_ast_parse(parser, expression, err);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     if (!ast) return false;
 
     ok = cxpr_analyze(ast, reg, out_analysis, err);

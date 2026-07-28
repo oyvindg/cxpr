@@ -4,7 +4,7 @@
 #include <string.h>
 
 static void test_eval_api_wrappers(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -71,7 +71,7 @@ static void test_eval_api_wrappers(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 int main(void) {

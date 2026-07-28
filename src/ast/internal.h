@@ -11,7 +11,7 @@
 /** @brief Internal owned AST node representation. */
 struct cxpr_expr_ast {
     cxpr_expr_ast_kind type;
-    cxpr_program* compiled_cache;
+    cxpr_expr_compiled* compiled_cache;
     const struct cxpr_registry* compiled_registry;
     unsigned long compiled_registry_version;
     bool compiled_cache_failed;

@@ -35,7 +35,7 @@ static void test_macd_strategy_producer(const double* args, size_t argc,
 static void test_parse_complex_macd_strategy_pipe(void) {
     const char* producer_fields[] = {"line", "signal", "histogram"};
     const char* producer_params[] = {"fast", "slow", "period"};
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_analysis info;
     cxpr_error err = {0};
@@ -61,7 +61,7 @@ static void test_parse_complex_macd_strategy_pipe(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_complex_macd_strategy_pipe\n");
 }
 
@@ -75,14 +75,14 @@ static void test_complex_macd_strategy_pipe_matches_nested(void) {
         "clamp(abs(macd(fast=12, slow=26, period=9).histogram), 0, 1) > $hist_min and "
         "cross_above(ema_fast, ema_slow) and (rsi < $oversold ? adx_val > 20 : adx_val > 30)";
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast_pipe;
     cxpr_expr_ast* ast_nested;
-    cxpr_program* prog_pipe;
-    cxpr_program* prog_nested;
+    cxpr_expr_compiled* prog_pipe;
+    cxpr_expr_compiled* prog_nested;
     cxpr_value ast_pipe_v;
     cxpr_value ast_nested_v;
     cxpr_value prog_pipe_v;
@@ -101,10 +101,10 @@ static void test_complex_macd_strategy_pipe_matches_nested(void) {
     assert(ast_nested != NULL);
     assert(err.code == CXPR_OK);
 
-    prog_pipe = cxpr_compile(ast_pipe, reg, &err);
+    prog_pipe = cxpr_expr_compile(ast_pipe, reg, &err);
     assert(prog_pipe != NULL);
     assert(err.code == CXPR_OK);
-    prog_nested = cxpr_compile(ast_nested, reg, &err);
+    prog_nested = cxpr_expr_compile(ast_nested, reg, &err);
     assert(prog_nested != NULL);
     assert(err.code == CXPR_OK);
 
@@ -137,18 +137,18 @@ static void test_complex_macd_strategy_pipe_matches_nested(void) {
     assert(cxpr_test_eval_program(prog_pipe, ctx, reg, &err).b == true);
     assert(err.code == CXPR_OK);
 
-    cxpr_program_free(prog_pipe);
-    cxpr_program_free(prog_nested);
+    cxpr_expr_compiled_free(prog_pipe);
+    cxpr_expr_compiled_free(prog_nested);
     cxpr_expr_ast_free(ast_pipe);
     cxpr_expr_ast_free(ast_nested);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_complex_macd_strategy_pipe_matches_nested\n");
 }
 
 static void test_strategy_pipe_rhs_must_be_callable(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         p,
@@ -158,12 +158,12 @@ static void test_strategy_pipe_rhs_must_be_callable(void) {
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
     assert(strstr(err.message, "Expected callable after '|>'") != NULL);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_strategy_pipe_rhs_must_be_callable\n");
 }
 
 static void test_pipe_gt_edgecases(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "(x |> abs) > y and (y |> abs) >= 0", &err);
     assert(ast != NULL);
@@ -176,7 +176,7 @@ static void test_pipe_gt_edgecases(void) {
     assert(err.message != NULL);
     assert(strstr(err.message, "Expected callable after '|>'") != NULL);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_gt_edgecases\n");
 }
 
@@ -188,7 +188,7 @@ static void test_pipe_rhs_error_variants(void) {
         "x |> abs and y",
         "x|>abs>=y",
     };
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
 
     for (size_t i = 0; i < sizeof(bad_exprs) / sizeof(bad_exprs[0]); ++i) {
@@ -199,17 +199,17 @@ static void test_pipe_rhs_error_variants(void) {
         assert(strstr(err.message, "Expected callable after '|>'") != NULL);
     }
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_rhs_error_variants\n");
 }
 
 static void test_pipe_stage_allows_ternary_argument(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
 
     cxpr_register_defaults(reg);
     cxpr_context_set(ctx, "x", -4.0);
@@ -220,7 +220,7 @@ static void test_pipe_stage_allows_ternary_argument(void) {
     assert(ast != NULL);
     assert(err.code == CXPR_OK);
 
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
     assert(cxpr_test_eval_ast(ast, ctx, reg, &err).b == true);
@@ -234,16 +234,16 @@ static void test_pipe_stage_allows_ternary_argument(void) {
     assert(cxpr_test_eval_program(prog, ctx, reg, &err).b == true);
     assert(err.code == CXPR_OK);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_stage_allows_ternary_argument\n");
 }
 
 static void test_pipe_in_logical_composition(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -271,12 +271,12 @@ static void test_pipe_in_logical_composition(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_in_logical_composition\n");
 }
 
 static void test_named_in_square_brackets(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -322,7 +322,7 @@ static void test_named_in_square_brackets(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_named_in_square_brackets\n");
 }
 

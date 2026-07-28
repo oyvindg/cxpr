@@ -374,20 +374,20 @@ static cxpr_expr_ast* cxpr_document_ast_parse_expr(const char* text,
                                               size_t line,
                                               size_t column,
                                               cxpr_error* err) {
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_expr_ast* ast;
     cxpr_error inner = {0};
     if (!text || *text == '\0') {
         cxpr_document_ast_set_error(err, CXPR_ERR_SYNTAX, "Expected expression", line, column);
         return NULL;
     }
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         cxpr_document_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line, column);
         return NULL;
     }
     ast = cxpr_expr_ast_parse(parser, text, &inner);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     if (!ast && err) {
         *err = inner;
         err->line = line + (inner.line > 0u ? inner.line - 1u : 0u);

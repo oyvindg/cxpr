@@ -6,6 +6,7 @@
 #include <cxpr/codegen.h>
 #include <stddef.h>
 
+/** @brief Growable output buffer used by model C source generation. */
 typedef struct {
     char* data;
     size_t len;

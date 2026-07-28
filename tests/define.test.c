@@ -28,31 +28,31 @@
 
 static double eval_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
                         cxpr_error* out_err) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
-    if (!ast) { if (out_err) *out_err = err; cxpr_parser_free(p); return NAN; }
+    if (!ast) { if (out_err) *out_err = err; cxpr_expr_parser_free(p); return NAN; }
     double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static bool eval_bool_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
                            cxpr_error* out_err) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
         if (out_err) *out_err = err;
-        cxpr_parser_free(p);
+        cxpr_expr_parser_free(p);
         return false;
     }
     bool result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 

@@ -155,7 +155,7 @@ static size_t trace_variable_contexts_recursive(
 }
 
 static void test_reference_extractors_cover_split_reference_logic(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
     const char* refs[8];
@@ -186,11 +186,11 @@ static void test_reference_extractors_cover_split_reference_logic(void) {
     assert(contains_name(vars, var_count, "base.period"));
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_producer_field_extractors_collect_unique_pairs(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
     cxpr_expr_ast_producer_field_ref refs[8];
@@ -212,11 +212,11 @@ static void test_producer_field_extractors_collect_unique_pairs(void) {
     assert(contains_producer_field(refs, ref_count, "adx", "adx"));
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_call_arg_contexts_trace_references_and_params(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
     const char* contexts[8];
@@ -245,11 +245,11 @@ static void test_call_arg_contexts_trace_references_and_params(void) {
     assert(contains_name(contexts, context_count, "ema"));
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_call_arg_contexts_report_multiple_consumers(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
     const char* contexts[8];
@@ -269,11 +269,11 @@ static void test_call_arg_contexts_report_multiple_consumers(void) {
     assert(contains_name(contexts, context_count, "macd"));
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_call_arg_contexts_support_indirect_alias_trace(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_test_expr_def defs[] = {
         {"base", "ema(atr_pct, $atr_baseline)", NULL},
@@ -308,7 +308,7 @@ static void test_call_arg_contexts_support_indirect_alias_trace(void) {
     for (i = 0u; i < sizeof(defs) / sizeof(defs[0]); ++i) {
         cxpr_expr_ast_free(defs[i].ast);
     }
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

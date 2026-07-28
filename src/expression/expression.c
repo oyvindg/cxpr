@@ -83,7 +83,7 @@ static size_t cxpr_expression_instruction_count_at(
     const cxpr_evaluator* evaluator,
     size_t idx) {
     if (!evaluator || idx >= evaluator->count) return 0u;
-    return cxpr_ir_view_count(evaluator->expressions[idx].program);
+    return cxpr_expr_compiled_ir_count(evaluator->expressions[idx].program);
 }
 
 static size_t cxpr_expression_dependency_instruction_count_at(
@@ -271,7 +271,7 @@ static void cxpr_expression_entry_reset(cxpr_expression_entry* entry) {
     free(entry->name);
     free(entry->expression);
     cxpr_expr_ast_free(entry->ast);
-    cxpr_program_free(entry->program);
+    cxpr_expr_compiled_free(entry->program);
     memset(entry, 0, sizeof(*entry));
 }
 
@@ -453,7 +453,7 @@ bool cxpr_expression_get_bool(const cxpr_evaluator* evaluator, const char* name,
     return value.b;
 }
 
-const cxpr_program* cxpr_expression_program(const cxpr_evaluator* evaluator,
+const cxpr_expr_compiled* cxpr_expression_program(const cxpr_evaluator* evaluator,
                                             const char* name,
                                             bool* found) {
     size_t idx;

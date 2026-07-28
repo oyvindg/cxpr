@@ -172,7 +172,7 @@ typedef struct {
     size_t fields_per_arg;
     size_t struct_argc;
     cxpr_expr_ast* defined_body;
-    cxpr_program* defined_program;
+    cxpr_expr_compiled* defined_program;
     bool defined_program_failed;
     char** defined_param_names;
     size_t defined_param_count;
@@ -195,7 +195,7 @@ typedef struct {
     char* name;
     char* expression;
     cxpr_expr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
     cxpr_value result;
     bool evaluated;
 } cxpr_expression_entry;
@@ -208,7 +208,7 @@ struct cxpr_evaluator {
     size_t eval_order_count;
     bool compiled;
     const cxpr_registry* registry;
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
 };
 
 static inline cxpr_value cxpr_test_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
@@ -234,30 +234,30 @@ static inline bool cxpr_test_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_
     return out;
 }
 
-static inline cxpr_value cxpr_test_eval_program(const cxpr_program* prog, const cxpr_context* ctx,
+static inline cxpr_value cxpr_test_eval_program(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
                                                 const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value out = {0};
-    if (!cxpr_eval_program(prog, ctx, reg, &out, err)) {
+    if (!cxpr_expr_compiled_eval(prog, ctx, reg, &out, err)) {
         return cxpr_num(NAN);
     }
     return out;
 }
 
-static inline double cxpr_test_eval_program_number(const cxpr_program* prog,
+static inline double cxpr_test_eval_program_number(const cxpr_expr_compiled* prog,
                                                    const cxpr_context* ctx,
                                                    const cxpr_registry* reg,
                                                    cxpr_error* err) {
     double out = NAN;
-    (void)cxpr_eval_program_number(prog, ctx, reg, &out, err);
+    (void)cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, err);
     return out;
 }
 
-static inline bool cxpr_test_eval_program_bool(const cxpr_program* prog,
+static inline bool cxpr_test_eval_program_bool(const cxpr_expr_compiled* prog,
                                                const cxpr_context* ctx,
                                                const cxpr_registry* reg,
                                                cxpr_error* err) {
     bool out = false;
-    (void)cxpr_eval_program_bool(prog, ctx, reg, &out, err);
+    (void)cxpr_expr_compiled_eval_bool(prog, ctx, reg, &out, err);
     return out;
 }
 

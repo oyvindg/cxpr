@@ -170,6 +170,7 @@ typedef enum {
     CXPR_NODE_TERNARY
 } cxpr_expr_ast_kind;
 
+/** @brief Source location associated with one expression AST node. */
 typedef struct {
     const char* producer_name;           /**< Producer/function name, e.g. `ichimoku`. */
     const char* field_name;              /**< Selected field name, e.g. `senkouA`. */

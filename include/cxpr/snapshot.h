@@ -23,6 +23,7 @@ typedef enum {
     CXPR_SNAPSHOT_STATE_ERROR
 } cxpr_snapshot_state;
 
+/** @brief One evaluated AST node captured in a diagnostic snapshot. */
 typedef struct {
     size_t id;
     size_t parent_id;
@@ -40,6 +41,7 @@ typedef struct {
     cxpr_snapshot_state state;
 } cxpr_snapshot_node;
 
+/** @brief Complete diagnostic snapshot for one evaluated expression. */
 typedef struct {
     char* expression;
     char* resolved;
@@ -51,6 +53,7 @@ typedef struct {
     size_t node_capacity;
 } cxpr_eval_snapshot;
 
+/** @brief One expression-level node in an evaluator flow snapshot. */
 typedef struct {
     char* name;
     char* kind;
@@ -62,6 +65,7 @@ typedef struct {
     cxpr_eval_snapshot ast;
 } cxpr_eval_snapshot_flow_node;
 
+/** @brief Directed dependency edge between two flow snapshot nodes. */
 typedef struct {
     size_t source_index;
     size_t target_index;
@@ -69,6 +73,7 @@ typedef struct {
     char* target_name;
 } cxpr_eval_snapshot_flow_edge;
 
+/** @brief Complete evaluator flow graph with owned nodes and edges. */
 typedef struct {
     cxpr_eval_snapshot_flow_node* nodes;
     size_t node_count;
@@ -90,6 +95,7 @@ typedef bool (*cxpr_snapshot_ast_node_host_json_fn)(
     size_t node_index,
     void* userdata);
 
+/** @brief Optional host-specific JSON extensions for snapshot serialization. */
 typedef struct {
     const char* host_name;
     const char* host_schema;

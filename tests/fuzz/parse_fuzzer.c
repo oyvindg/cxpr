@@ -23,7 +23,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     char* source;
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
 
@@ -40,7 +40,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     memcpy(source, data, size);
     source[size] = '\0';
 
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         free(source);
         return 0;
@@ -52,25 +52,25 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         if (reg) {
             cxpr_register_defaults(reg);
 
-            cxpr_program* program = cxpr_compile(ast, reg, &err);
+            cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
             if (program) {
                 cxpr_context* ctx = cxpr_context_new();
                 if (ctx) {
                     double num = 0.0;
                     bool flag = false;
                     /* Exercise both typed exit points of the executor. */
-                    (void)cxpr_eval_program_number(program, ctx, reg, &num, &err);
-                    (void)cxpr_eval_program_bool(program, ctx, reg, &flag, &err);
+                    (void)cxpr_expr_compiled_eval_number(program, ctx, reg, &num, &err);
+                    (void)cxpr_expr_compiled_eval_bool(program, ctx, reg, &flag, &err);
                     cxpr_context_free(ctx);
                 }
-                cxpr_program_free(program);
+                cxpr_expr_compiled_free(program);
             }
             cxpr_registry_free(reg);
         }
         cxpr_expr_ast_free(ast);
     }
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     free(source);
     return 0;
 }

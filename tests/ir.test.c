@@ -63,7 +63,7 @@ static void producer_shift_x(const double* args, size_t argc, cxpr_value* out,
 }
 
 static void test_ir_eval_modulo_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -87,12 +87,12 @@ static void test_ir_eval_modulo_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_modulo_matches_ast\n");
 }
 
 static void test_ir_eval_modulo_by_zero(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -112,12 +112,12 @@ static void test_ir_eval_modulo_by_zero(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_modulo_by_zero\n");
 }
 
 static void test_ir_compile_number_literal(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "42", &err);
     assert(ast);
@@ -132,12 +132,12 @@ static void test_ir_compile_number_literal(void) {
 
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_number_literal\n");
 }
 
 static void test_ir_eval_number_literal_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -160,12 +160,12 @@ static void test_ir_eval_number_literal_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_number_literal_matches_ast\n");
 }
 
 static void test_ir_compile_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "price", &err);
     assert(ast);
@@ -180,12 +180,12 @@ static void test_ir_compile_identifier(void) {
 
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_identifier\n");
 }
 
 static void test_ir_eval_identifier_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -209,12 +209,12 @@ static void test_ir_eval_identifier_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_identifier_matches_ast\n");
 }
 
 static void test_ir_eval_unknown_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "missing_value", &err);
@@ -232,12 +232,12 @@ static void test_ir_eval_unknown_identifier(void) {
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_unknown_identifier\n");
 }
 
 static void test_ir_compile_parameter(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "$threshold", &err);
     assert(ast);
@@ -252,12 +252,12 @@ static void test_ir_compile_parameter(void) {
 
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_parameter\n");
 }
 
 static void test_ir_eval_parameter_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -281,12 +281,12 @@ static void test_ir_eval_parameter_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_parameter_matches_ast\n");
 }
 
 static void test_ir_eval_unknown_parameter(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "$missing_threshold", &err);
@@ -304,12 +304,12 @@ static void test_ir_eval_unknown_parameter(void) {
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_unknown_parameter\n");
 }
 
 static void test_ir_eval_addition_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -332,12 +332,12 @@ static void test_ir_eval_addition_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_addition_matches_ast\n");
 }
 
 static void test_ir_eval_nested_add_sub_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -363,12 +363,12 @@ static void test_ir_eval_nested_add_sub_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_nested_add_sub_matches_ast\n");
 }
 
 static void test_ir_eval_unary_minus_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -392,12 +392,12 @@ static void test_ir_eval_unary_minus_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_unary_minus_matches_ast\n");
 }
 
 static void test_ir_eval_multiplication_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -420,12 +420,12 @@ static void test_ir_eval_multiplication_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_multiplication_matches_ast\n");
 }
 
 static void test_ir_eval_division_and_precedence_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -452,12 +452,12 @@ static void test_ir_eval_division_and_precedence_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_division_and_precedence_matches_ast\n");
 }
 
 static void test_ir_eval_division_by_zero(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "10 / denominator", &err);
@@ -476,12 +476,12 @@ static void test_ir_eval_division_by_zero(void) {
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_division_by_zero\n");
 }
 
 static void test_ir_eval_field_access_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -507,12 +507,12 @@ static void test_ir_eval_field_access_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_field_access_matches_ast\n");
 }
 
 static void test_ir_eval_grouped_expression_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -533,12 +533,12 @@ static void test_ir_eval_grouped_expression_field_access(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_grouped_expression_field_access\n");
 }
 
 static void test_ir_eval_unknown_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "body.vy", &err);
@@ -556,7 +556,7 @@ static void test_ir_eval_unknown_field_access(void) {
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_unknown_field_access\n");
 }
 
@@ -571,7 +571,7 @@ static void test_ir_eval_comparisons_match_ast(void) {
     };
 
     for (size_t i = 0; i < sizeof(exprs) / sizeof(exprs[0]); i++) {
-        cxpr_parser* p = cxpr_parser_new();
+        cxpr_expr_parser* p = cxpr_expr_parser_new();
         cxpr_context* ctx = cxpr_context_new();
         cxpr_registry* reg = cxpr_registry_new();
         cxpr_error err = {0};
@@ -581,10 +581,10 @@ static void test_ir_eval_comparisons_match_ast(void) {
         cxpr_context_set(ctx, "b", 7.0);
 
         cxpr_ir_program program = {0};
-        cxpr_program* compiled = NULL;
+        cxpr_expr_compiled* compiled = NULL;
         assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
         assert(err.code == CXPR_OK);
-        compiled = cxpr_compile(ast, reg, &err);
+        compiled = cxpr_expr_compile(ast, reg, &err);
         assert(compiled);
         assert(err.code == CXPR_OK);
 
@@ -595,19 +595,19 @@ static void test_ir_eval_comparisons_match_ast(void) {
 
         assert(ast_result == ir_result);
 
-        cxpr_program_free(compiled);
+        cxpr_expr_compiled_free(compiled);
         cxpr_ir_program_reset(&program);
         cxpr_expr_ast_free(ast);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(p);
+        cxpr_expr_parser_free(p);
     }
 
     printf("  ✓ test_ir_eval_comparisons_match_ast\n");
 }
 
 static void test_ir_eval_not_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -616,10 +616,10 @@ static void test_ir_eval_not_matches_ast(void) {
     cxpr_context_set(ctx, "price", 1.0);
 
     cxpr_ir_program program = {0};
-    cxpr_program* compiled = NULL;
+    cxpr_expr_compiled* compiled = NULL;
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
-    compiled = cxpr_compile(ast, reg, &err);
+    compiled = cxpr_expr_compile(ast, reg, &err);
     assert(compiled);
     assert(err.code == CXPR_OK);
 
@@ -630,17 +630,17 @@ static void test_ir_eval_not_matches_ast(void) {
 
     assert(ast_result == ir_result);
 
-    cxpr_program_free(compiled);
+    cxpr_expr_compiled_free(compiled);
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_not_matches_ast\n");
 }
 
 static void test_ir_eval_and_short_circuit_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -649,10 +649,10 @@ static void test_ir_eval_and_short_circuit_matches_ast(void) {
     cxpr_context_set(ctx, "a", 0.0);
 
     cxpr_ir_program program = {0};
-    cxpr_program* compiled = NULL;
+    cxpr_expr_compiled* compiled = NULL;
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
-    compiled = cxpr_compile(ast, reg, &err);
+    compiled = cxpr_expr_compile(ast, reg, &err);
     assert(compiled);
     assert(err.code == CXPR_OK);
 
@@ -664,17 +664,17 @@ static void test_ir_eval_and_short_circuit_matches_ast(void) {
     assert(ast_result == ir_result);
     assert(ir_result == false);
 
-    cxpr_program_free(compiled);
+    cxpr_expr_compiled_free(compiled);
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_and_short_circuit_matches_ast\n");
 }
 
 static void test_ir_eval_or_short_circuit_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -683,10 +683,10 @@ static void test_ir_eval_or_short_circuit_matches_ast(void) {
     cxpr_context_set(ctx, "a", 5.0);
 
     cxpr_ir_program program = {0};
-    cxpr_program* compiled = NULL;
+    cxpr_expr_compiled* compiled = NULL;
     assert(cxpr_ir_compile(ast, reg, &program, &err) == true);
     assert(err.code == CXPR_OK);
-    compiled = cxpr_compile(ast, reg, &err);
+    compiled = cxpr_expr_compile(ast, reg, &err);
     assert(compiled);
     assert(err.code == CXPR_OK);
 
@@ -698,17 +698,17 @@ static void test_ir_eval_or_short_circuit_matches_ast(void) {
     assert(ast_result == ir_result);
     assert(ir_result == true);
 
-    cxpr_program_free(compiled);
+    cxpr_expr_compiled_free(compiled);
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_or_short_circuit_matches_ast\n");
 }
 
 static void test_ir_eval_ternary_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -732,12 +732,12 @@ static void test_ir_eval_ternary_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_ternary_matches_ast\n");
 }
 
 static void test_ir_eval_nested_ternary_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -763,12 +763,12 @@ static void test_ir_eval_nested_ternary_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_nested_ternary_matches_ast\n");
 }
 
 static void test_ir_eval_builtin_function_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -792,12 +792,12 @@ static void test_ir_eval_builtin_function_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_builtin_function_matches_ast\n");
 }
 
 static void test_ir_eval_intrinsics_match_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -823,12 +823,12 @@ static void test_ir_eval_intrinsics_match_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_intrinsics_match_ast\n");
 }
 
 static void test_ir_eval_struct_function_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -873,12 +873,12 @@ static void test_ir_eval_struct_function_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_struct_function_matches_ast\n");
 }
 
 static void test_ir_eval_defined_function_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -906,12 +906,12 @@ static void test_ir_eval_defined_function_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_defined_function_matches_ast\n");
 }
 
 static void test_ir_eval_defined_bool_function_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -923,29 +923,29 @@ static void test_ir_eval_defined_bool_function_matches_ast(void) {
     cxpr_context_set(ctx, "x", 6.0);
     cxpr_context_set(ctx, "y", 4.0);
 
-    cxpr_program* program = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
     assert(program != NULL);
     assert(err.code == CXPR_OK);
 
     bool ast_result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     bool ir_result = false;
-    assert(cxpr_eval_program_bool(program, ctx, reg, &ir_result, &err));
+    assert(cxpr_expr_compiled_eval_bool(program, ctx, reg, &ir_result, &err));
     assert(err.code == CXPR_OK);
 
     assert(ast_result == true);
     assert(ir_result == ast_result);
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_defined_bool_function_matches_ast\n");
 }
 
 static void test_ir_compile_unknown_function_fails(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "missing_fn(1)", &err);
@@ -960,12 +960,12 @@ static void test_ir_compile_unknown_function_fails(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_unknown_function_fails\n");
 }
 
 static void test_ir_compile_unknown_producer_fails(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "missing_prod(12, 26).line", &err);
@@ -980,12 +980,12 @@ static void test_ir_compile_unknown_producer_fails(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_unknown_producer_fails\n");
 }
 
 static void test_ir_eval_nested_defined_function_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1015,12 +1015,12 @@ static void test_ir_eval_nested_defined_function_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_nested_defined_function_matches_ast\n");
 }
 
 static void test_ir_eval_struct_param_defined_function_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1054,12 +1054,12 @@ static void test_ir_eval_struct_param_defined_function_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_struct_param_defined_function_matches_ast\n");
 }
 
 static void test_ir_eval_struct_param_field_substitution(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1089,12 +1089,12 @@ static void test_ir_eval_struct_param_field_substitution(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_struct_param_field_substitution\n");
 }
 
 static void test_ir_eval_struct_param_defined_function_nested_with_inline_limit(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1144,12 +1144,12 @@ static void test_ir_eval_struct_param_defined_function_nested_with_inline_limit(
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_struct_param_defined_function_nested_with_inline_limit\n");
 }
 
 static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1181,12 +1181,12 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_reset_struct_defined_function_repeatedly\n");
 }
 
 static void test_ir_fast_result_kind_scalar_defined_function(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1210,12 +1210,12 @@ static void test_ir_fast_result_kind_scalar_defined_function(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_fast_result_kind_scalar_defined_function\n");
 }
 
 static void test_ir_fast_result_kind_struct_defined_function_stays_unknown(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1246,12 +1246,12 @@ static void test_ir_fast_result_kind_struct_defined_function_stays_unknown(void)
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_fast_result_kind_struct_defined_function_stays_unknown\n");
 }
 
 static void test_ir_fast_result_kind_producer_field_access_stays_unknown(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1275,12 +1275,12 @@ static void test_ir_fast_result_kind_producer_field_access_stays_unknown(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_fast_result_kind_producer_field_access_stays_unknown\n");
 }
 
 static void test_ir_eval_native_function_fast_path_matches_ast(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1310,12 +1310,12 @@ static void test_ir_eval_native_function_fast_path_matches_ast(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_native_function_fast_path_matches_ast\n");
 }
 
 static void test_ir_compile_native_function_uses_specialized_call_ops(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1357,12 +1357,12 @@ static void test_ir_compile_native_function_uses_specialized_call_ops(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_native_function_uses_specialized_call_ops\n");
 }
 
 static void test_ir_compile_repeated_multiplication_to_square(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1392,12 +1392,12 @@ static void test_ir_compile_repeated_multiplication_to_square(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_repeated_multiplication_to_square\n");
 }
 
 static void test_ir_eval_reuses_lookup_cache_across_value_updates(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1427,12 +1427,12 @@ static void test_ir_eval_reuses_lookup_cache_across_value_updates(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_reuses_lookup_cache_across_value_updates\n");
 }
 
 static void test_ir_eval_root_lookup_preserves_bool_priority(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1455,12 +1455,12 @@ static void test_ir_eval_root_lookup_preserves_bool_priority(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_root_lookup_preserves_bool_priority\n");
 }
 
 static void test_ir_eval_invalidates_parent_lookup_when_child_shadows(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* parent = cxpr_context_new();
     cxpr_context* child = cxpr_context_overlay_new(parent);
     cxpr_registry* reg = cxpr_registry_new();
@@ -1489,12 +1489,12 @@ static void test_ir_eval_invalidates_parent_lookup_when_child_shadows(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(child);
     cxpr_context_free(parent);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_invalidates_parent_lookup_when_child_shadows\n");
 }
 
 static void test_ir_eval_invalidates_parent_lookup_when_owner_map_grows(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* parent = cxpr_context_new();
     cxpr_context* child = cxpr_context_overlay_new(parent);
     cxpr_registry* reg = cxpr_registry_new();
@@ -1529,12 +1529,12 @@ static void test_ir_eval_invalidates_parent_lookup_when_owner_map_grows(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(child);
     cxpr_context_free(parent);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_eval_invalidates_parent_lookup_when_owner_map_grows\n");
 }
 
 static void test_ir_constant_folding_reduces_program(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1559,12 +1559,12 @@ static void test_ir_constant_folding_reduces_program(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_reduces_program\n");
 }
 
 static void test_ir_constant_folding_lookback_constant_target(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1588,12 +1588,12 @@ static void test_ir_constant_folding_lookback_constant_target(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_lookback_constant_target\n");
 }
 
 static void test_ir_constant_folding_comparison_logic_and_not(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1609,31 +1609,31 @@ static void test_ir_constant_folding_comparison_logic_and_not(void) {
     assert(program.code[1].op == CXPR_OP_RETURN);
 
     bool ast_result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
-    cxpr_program* compiled = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* compiled = cxpr_expr_compile(ast, reg, &err);
     cxpr_value value = {0};
     bool ir_result = false;
     assert(err.code == CXPR_OK);
     assert(compiled);
-    assert(cxpr_eval_program(compiled, ctx, reg, &value, &err));
+    assert(cxpr_expr_compiled_eval(compiled, ctx, reg, &value, &err));
     assert(err.code == CXPR_OK);
     assert(value.type == CXPR_VALUE_BOOL);
     assert(value.b == false);
-    assert(cxpr_eval_program_bool(compiled, ctx, reg, &ir_result, &err));
+    assert(cxpr_expr_compiled_eval_bool(compiled, ctx, reg, &ir_result, &err));
     assert(err.code == CXPR_OK);
     assert(ast_result == ir_result);
     assert(ir_result == false);
 
-    cxpr_program_free(compiled);
+    cxpr_expr_compiled_free(compiled);
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_comparison_logic_and_not\n");
 }
 
 static void test_ir_constant_folding_pure_function_call(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1659,12 +1659,12 @@ static void test_ir_constant_folding_pure_function_call(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_pure_function_call\n");
 }
 
 static void test_ir_constant_folding_keeps_variable_function_runtime(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1687,12 +1687,12 @@ static void test_ir_constant_folding_keeps_variable_function_runtime(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_keeps_variable_function_runtime\n");
 }
 
 static void test_ir_constant_folding_short_circuit_left_constant(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1707,14 +1707,14 @@ static void test_ir_constant_folding_short_circuit_left_constant(void) {
     ASSERT_DOUBLE_EQ(program.code[0].value, 0.0);
     assert(program.code[1].op == CXPR_OP_RETURN);
 
-    cxpr_program* compiled = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* compiled = cxpr_expr_compile(ast, reg, &err);
     bool ir_result = true;
     assert(compiled);
-    assert(cxpr_eval_program_bool(compiled, ctx, reg, &ir_result, &err));
+    assert(cxpr_expr_compiled_eval_bool(compiled, ctx, reg, &ir_result, &err));
     assert(err.code == CXPR_OK);
     assert(ir_result == false);
 
-    cxpr_program_free(compiled);
+    cxpr_expr_compiled_free(compiled);
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     ast = cxpr_expr_ast_parse(p, "true or missing_rhs", &err);
@@ -1727,23 +1727,23 @@ static void test_ir_constant_folding_short_circuit_left_constant(void) {
     ASSERT_DOUBLE_EQ(program.code[0].value, 1.0);
     assert(program.code[1].op == CXPR_OP_RETURN);
 
-    compiled = cxpr_compile(ast, reg, &err);
+    compiled = cxpr_expr_compile(ast, reg, &err);
     assert(compiled);
-    assert(cxpr_eval_program_bool(compiled, ctx, reg, &ir_result, &err));
+    assert(cxpr_expr_compiled_eval_bool(compiled, ctx, reg, &ir_result, &err));
     assert(err.code == CXPR_OK);
     assert(ir_result == true);
 
-    cxpr_program_free(compiled);
+    cxpr_expr_compiled_free(compiled);
     cxpr_ir_program_reset(&program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_short_circuit_left_constant\n");
 }
 
 static void test_ir_constant_folding_keeps_div_zero_runtime_error(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1764,12 +1764,12 @@ static void test_ir_constant_folding_keeps_div_zero_runtime_error(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_constant_folding_keeps_div_zero_runtime_error\n");
 }
 
 static void test_ir_exec_rejects_bool_result(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -1789,7 +1789,7 @@ static void test_ir_exec_rejects_bool_result(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_exec_rejects_bool_result\n");
 }
 

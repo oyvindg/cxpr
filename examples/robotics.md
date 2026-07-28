@@ -9,7 +9,7 @@ This example shows threshold-based control logic and struct-aware helper functio
 #include <stdio.h>
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -36,7 +36,7 @@ int main(void) {
     cxpr_expr_ast_free(stop_expr);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return 0;
 }
 ```
@@ -71,7 +71,7 @@ static double fn_spatial_waypoint_range(const double* args, size_t argc, void* u
 }
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -108,7 +108,7 @@ int main(void) {
     cxpr_expr_ast_free(ast2);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return 0;
 }
 ```

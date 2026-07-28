@@ -37,7 +37,7 @@ static void cxpr_registry_free_param_names(cxpr_func_entry* entry) {
 }
 
 static void cxpr_registry_free_defined_fn(cxpr_func_entry* entry) {
-    cxpr_program_free(entry->defined_program);
+    cxpr_expr_compiled_free(entry->defined_program);
     entry->defined_program = NULL;
     entry->defined_program_failed = false;
     if (entry->defined_body) {

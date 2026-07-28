@@ -58,9 +58,9 @@ static cxpr_struct_value* make_role_binding(const double* values, size_t value_c
 }
 
 static cxpr_expr_ast* parse_expr(const char* expr, cxpr_error* err) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, err);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return ast;
 }
 

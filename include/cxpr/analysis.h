@@ -19,6 +19,7 @@ typedef enum {
     CXPR_EXPR_STRUCT
 } cxpr_expr_type;
 
+/** @brief Static type-analysis result for one expression. */
 typedef struct {
     cxpr_expr_type result_type;          /**< Best-effort root result type of the expression. */
     bool is_constant;                    /**< True if the expression depends on no runtime inputs or parameters. */

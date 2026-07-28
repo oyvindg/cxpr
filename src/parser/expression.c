@@ -7,26 +7,26 @@
 #include <stdlib.h>
 #include <string.h>
 
-static cxpr_expr_ast* cxpr_parse_pipe(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_ternary(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_or(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_and(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_not(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_equality(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_relational(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_arithmetic(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_term(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_unary(cxpr_parser* p);
-static cxpr_expr_ast* cxpr_parse_power(cxpr_parser* p);
+static cxpr_expr_ast* cxpr_parse_pipe(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_ternary(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_or(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_and(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_not(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_equality(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_relational(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_arithmetic(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_term(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_unary(cxpr_expr_parser* p);
+static cxpr_expr_ast* cxpr_parse_power(cxpr_expr_parser* p);
 
-static cxpr_expr_ast* cxpr_parse_set_membership(cxpr_parser* p, cxpr_expr_ast* left, bool negated);
+static cxpr_expr_ast* cxpr_parse_set_membership(cxpr_expr_parser* p, cxpr_expr_ast* left, bool negated);
 
-static bool cxpr_parser_is_relational_token(cxpr_token_type type) {
+static bool cxpr_expr_parser_is_relational_token(cxpr_token_type type) {
     return type == CXPR_TOK_LT || type == CXPR_TOK_GT ||
            type == CXPR_TOK_LTE || type == CXPR_TOK_GTE;
 }
 
-static bool cxpr_parser_is_subject_node(const cxpr_expr_ast* ast) {
+static bool cxpr_expr_parser_is_subject_node(const cxpr_expr_ast* ast) {
     if (!ast) return false;
     switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_IDENTIFIER:
@@ -41,7 +41,7 @@ static bool cxpr_parser_is_subject_node(const cxpr_expr_ast* ast) {
     }
 }
 
-static bool cxpr_parser_is_threshold_node(const cxpr_expr_ast* ast) {
+static bool cxpr_expr_parser_is_threshold_node(const cxpr_expr_ast* ast) {
     if (!ast) return false;
     switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_NUMBER:
@@ -52,40 +52,40 @@ static bool cxpr_parser_is_threshold_node(const cxpr_expr_ast* ast) {
     }
 }
 
-static bool cxpr_parser_relational_ops_cross_bounds(int first_op, int next_op) {
+static bool cxpr_expr_parser_relational_ops_cross_bounds(int first_op, int next_op) {
     return ((first_op == CXPR_TOK_GT || first_op == CXPR_TOK_GTE) &&
             (next_op == CXPR_TOK_LT || next_op == CXPR_TOK_LTE)) ||
            ((first_op == CXPR_TOK_LT || first_op == CXPR_TOK_LTE) &&
             (next_op == CXPR_TOK_GT || next_op == CXPR_TOK_GTE));
 }
 
-cxpr_expr_ast* cxpr_parse_expression(cxpr_parser* p) { return cxpr_parse_pipe(p); }
+cxpr_expr_ast* cxpr_parse_expression(cxpr_expr_parser* p) { return cxpr_parse_pipe(p); }
 
-static cxpr_expr_ast* cxpr_parse_pipe(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_pipe(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_ternary(p);
     if (!left || p->had_error) return left;
-    while (cxpr_parser_check(p, CXPR_TOK_PIPE)) {
+    while (cxpr_expr_parser_check(p, CXPR_TOK_PIPE)) {
         cxpr_expr_ast* stage = NULL;
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         stage = cxpr_parse_ternary(p);
         if (!stage || p->had_error) {
             cxpr_expr_ast_free(left);
             cxpr_expr_ast_free(stage);
             return NULL;
         }
-        left = cxpr_parser_pipe_inject_argument(p, stage, left);
+        left = cxpr_expr_parser_pipe_inject_argument(p, stage, left);
         if (!left || p->had_error) return NULL;
     }
     return left;
 }
 
-static cxpr_expr_ast* cxpr_parse_ternary(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_ternary(cxpr_expr_parser* p) {
     cxpr_expr_ast* condition = cxpr_parse_or(p);
     if (!condition || p->had_error) return condition;
-    if (cxpr_parser_match(p, CXPR_TOK_QUESTION)) {
+    if (cxpr_expr_parser_match(p, CXPR_TOK_QUESTION)) {
         cxpr_expr_ast* true_branch = cxpr_parse_expression(p);
         if (!true_branch || p->had_error) { cxpr_expr_ast_free(condition); cxpr_expr_ast_free(true_branch); return NULL; }
-        if (!cxpr_parser_expect(p, CXPR_TOK_COLON, "Expected ':' in ternary expression")) {
+        if (!cxpr_expr_parser_expect(p, CXPR_TOK_COLON, "Expected ':' in ternary expression")) {
             cxpr_expr_ast_free(condition);
             cxpr_expr_ast_free(true_branch);
             return NULL;
@@ -102,11 +102,11 @@ static cxpr_expr_ast* cxpr_parse_ternary(cxpr_parser* p) {
     return condition;
 }
 
-static cxpr_expr_ast* cxpr_parse_or(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_or(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_and(p);
     if (!left || p->had_error) return left;
-    while (cxpr_parser_check(p, CXPR_TOK_OR)) {
-        cxpr_parser_advance(p);
+    while (cxpr_expr_parser_check(p, CXPR_TOK_OR)) {
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_and(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
         left = cxpr_expr_ast_binary_new(CXPR_TOK_OR, left, right);
@@ -114,11 +114,11 @@ static cxpr_expr_ast* cxpr_parse_or(cxpr_parser* p) {
     return left;
 }
 
-static cxpr_expr_ast* cxpr_parse_and(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_and(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_not(p);
     if (!left || p->had_error) return left;
-    while (cxpr_parser_check(p, CXPR_TOK_AND)) {
-        cxpr_parser_advance(p);
+    while (cxpr_expr_parser_check(p, CXPR_TOK_AND)) {
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_not(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
         left = cxpr_expr_ast_binary_new(CXPR_TOK_AND, left, right);
@@ -126,9 +126,9 @@ static cxpr_expr_ast* cxpr_parse_and(cxpr_parser* p) {
     return left;
 }
 
-static cxpr_expr_ast* cxpr_parse_not(cxpr_parser* p) {
-    if (cxpr_parser_check(p, CXPR_TOK_NOT)) {
-        cxpr_parser_advance(p);
+static cxpr_expr_ast* cxpr_parse_not(cxpr_expr_parser* p) {
+    if (cxpr_expr_parser_check(p, CXPR_TOK_NOT)) {
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* operand = cxpr_parse_not(p);
         if (!operand || p->had_error) { cxpr_expr_ast_free(operand); return NULL; }
         return cxpr_expr_ast_unary_new(CXPR_TOK_NOT, operand);
@@ -136,12 +136,12 @@ static cxpr_expr_ast* cxpr_parse_not(cxpr_parser* p) {
     return cxpr_parse_equality(p);
 }
 
-static cxpr_expr_ast* cxpr_parse_equality(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_equality(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_relational(p);
     if (!left || p->had_error) return left;
-    if (cxpr_parser_check(p, CXPR_TOK_EQ) || cxpr_parser_check(p, CXPR_TOK_NEQ)) {
+    if (cxpr_expr_parser_check(p, CXPR_TOK_EQ) || cxpr_expr_parser_check(p, CXPR_TOK_NEQ)) {
         int op = p->current.type;
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_relational(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
         return cxpr_expr_ast_binary_new(op, left, right);
@@ -149,20 +149,20 @@ static cxpr_expr_ast* cxpr_parse_equality(cxpr_parser* p) {
     return left;
 }
 
-static cxpr_expr_ast* cxpr_parse_relational(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_relational(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_arithmetic(p);
     if (!left || p->had_error) return left;
-    if (cxpr_parser_is_relational_token(p->current.type)) {
+    if (cxpr_expr_parser_is_relational_token(p->current.type)) {
         cxpr_expr_ast* cmp;
         cxpr_expr_ast* chain_subject = NULL;
         int op = p->current.type;
         int first_op = op;
-        bool first_left_is_subject = cxpr_parser_is_subject_node(left);
-        cxpr_parser_advance(p);
+        bool first_left_is_subject = cxpr_expr_parser_is_subject_node(left);
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_arithmetic(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
-        if (first_left_is_subject && cxpr_parser_is_threshold_node(right)) {
-            chain_subject = cxpr_parser_clone_ast(left);
+        if (first_left_is_subject && cxpr_expr_parser_is_threshold_node(right)) {
+            chain_subject = cxpr_expr_parser_clone_ast(left);
             if (!chain_subject) {
                 p->had_error = true;
                 p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
@@ -183,11 +183,11 @@ static cxpr_expr_ast* cxpr_parse_relational(cxpr_parser* p) {
             return NULL;
         }
         left = cmp;
-        while (cxpr_parser_is_relational_token(p->current.type)) {
+        while (cxpr_expr_parser_is_relational_token(p->current.type)) {
             int next_op = p->current.type;
             bool compare_subject = chain_subject &&
-                                   cxpr_parser_relational_ops_cross_bounds(first_op, next_op);
-            cxpr_expr_ast* next_left = cxpr_parser_clone_ast(compare_subject ? chain_subject : right);
+                                   cxpr_expr_parser_relational_ops_cross_bounds(first_op, next_op);
+            cxpr_expr_ast* next_left = cxpr_expr_parser_clone_ast(compare_subject ? chain_subject : right);
             cxpr_expr_ast* next_right;
             cxpr_expr_ast* next_cmp;
             cxpr_expr_ast* joined;
@@ -203,7 +203,7 @@ static cxpr_expr_ast* cxpr_parse_relational(cxpr_parser* p) {
                 return NULL;
             }
             op = next_op;
-            cxpr_parser_advance(p);
+            cxpr_expr_parser_advance(p);
             next_right = cxpr_parse_arithmetic(p);
             if (!next_right || p->had_error) {
                 cxpr_expr_ast_free(left);
@@ -233,15 +233,15 @@ static cxpr_expr_ast* cxpr_parse_relational(cxpr_parser* p) {
         cxpr_expr_ast_free(chain_subject);
         return left;
     }
-    if ((cxpr_parser_check(p, CXPR_TOK_NOT) &&
-         cxpr_parser_peek_next(p).type == CXPR_TOK_IN) ||
-        cxpr_parser_check(p, CXPR_TOK_IN)) {
+    if ((cxpr_expr_parser_check(p, CXPR_TOK_NOT) &&
+         cxpr_expr_parser_peek_next(p).type == CXPR_TOK_IN) ||
+        cxpr_expr_parser_check(p, CXPR_TOK_IN)) {
         bool negated = false;
-        if (cxpr_parser_check(p, CXPR_TOK_NOT)) {
+        if (cxpr_expr_parser_check(p, CXPR_TOK_NOT)) {
             negated = true;
-            cxpr_parser_advance(p);
+            cxpr_expr_parser_advance(p);
         }
-        cxpr_parser_advance(p); /* consume 'in' */
+        cxpr_expr_parser_advance(p); /* consume 'in' */
         return cxpr_parse_set_membership(p, left, negated);
     }
     return left;
@@ -250,18 +250,18 @@ static cxpr_expr_ast* cxpr_parse_relational(cxpr_parser* p) {
 /* `x in [a, b, c]` -> `contains(x, [a, b, c])` (set membership).
  * `x not in [...]` negates the contains call. Requires at least one element.
  * `left` is consumed. */
-static cxpr_expr_ast* cxpr_parse_set_membership(cxpr_parser* p, cxpr_expr_ast* left, bool negated) {
+static cxpr_expr_ast* cxpr_parse_set_membership(cxpr_expr_parser* p, cxpr_expr_ast* left, bool negated) {
     cxpr_expr_ast* array = NULL;
     cxpr_expr_ast** args = NULL;
     cxpr_expr_ast* call = NULL;
 
-    if (!cxpr_parser_check(p, CXPR_TOK_LBRACKET)) {
-        cxpr_parser_set_error(p, "Expected '[' to start set after 'in'");
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_LBRACKET)) {
+        cxpr_expr_parser_set_error(p, "Expected '[' to start set after 'in'");
         cxpr_expr_ast_free(left);
         return NULL;
     }
-    if (cxpr_parser_peek_next(p).type == CXPR_TOK_RBRACKET) {
-        cxpr_parser_set_error(p, "Set membership requires at least one element");
+    if (cxpr_expr_parser_peek_next(p).type == CXPR_TOK_RBRACKET) {
+        cxpr_expr_parser_set_error(p, "Set membership requires at least one element");
         cxpr_expr_ast_free(left);
         return NULL;
     }
@@ -310,12 +310,12 @@ fail:
     return NULL;
 }
 
-static cxpr_expr_ast* cxpr_parse_arithmetic(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_arithmetic(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_term(p);
     if (!left || p->had_error) return left;
-    while (cxpr_parser_check(p, CXPR_TOK_PLUS) || cxpr_parser_check(p, CXPR_TOK_MINUS)) {
+    while (cxpr_expr_parser_check(p, CXPR_TOK_PLUS) || cxpr_expr_parser_check(p, CXPR_TOK_MINUS)) {
         int op = p->current.type;
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_term(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
         left = cxpr_expr_ast_binary_new(op, left, right);
@@ -323,13 +323,13 @@ static cxpr_expr_ast* cxpr_parse_arithmetic(cxpr_parser* p) {
     return left;
 }
 
-static cxpr_expr_ast* cxpr_parse_term(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_term(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_unary(p);
     if (!left || p->had_error) return left;
-    while (cxpr_parser_check(p, CXPR_TOK_STAR) || cxpr_parser_check(p, CXPR_TOK_SLASH) ||
-           cxpr_parser_check(p, CXPR_TOK_PERCENT)) {
+    while (cxpr_expr_parser_check(p, CXPR_TOK_STAR) || cxpr_expr_parser_check(p, CXPR_TOK_SLASH) ||
+           cxpr_expr_parser_check(p, CXPR_TOK_PERCENT)) {
         int op = p->current.type;
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_unary(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
         left = cxpr_expr_ast_binary_new(op, left, right);
@@ -337,25 +337,25 @@ static cxpr_expr_ast* cxpr_parse_term(cxpr_parser* p) {
     return left;
 }
 
-static cxpr_expr_ast* cxpr_parse_unary(cxpr_parser* p) {
-    if (cxpr_parser_check(p, CXPR_TOK_MINUS)) {
-        cxpr_parser_advance(p);
+static cxpr_expr_ast* cxpr_parse_unary(cxpr_expr_parser* p) {
+    if (cxpr_expr_parser_check(p, CXPR_TOK_MINUS)) {
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* operand = cxpr_parse_unary(p);
         if (!operand || p->had_error) { cxpr_expr_ast_free(operand); return NULL; }
         return cxpr_expr_ast_unary_new(CXPR_TOK_MINUS, operand);
     }
-    if (cxpr_parser_check(p, CXPR_TOK_PLUS)) {
-        cxpr_parser_advance(p);
+    if (cxpr_expr_parser_check(p, CXPR_TOK_PLUS)) {
+        cxpr_expr_parser_advance(p);
         return cxpr_parse_unary(p);
     }
     return cxpr_parse_power(p);
 }
 
-static cxpr_expr_ast* cxpr_parse_power(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_power(cxpr_expr_parser* p) {
     cxpr_expr_ast* left = cxpr_parse_primary(p);
     if (!left || p->had_error) return left;
-    if (cxpr_parser_check(p, CXPR_TOK_POWER)) {
-        cxpr_parser_advance(p);
+    if (cxpr_expr_parser_check(p, CXPR_TOK_POWER)) {
+        cxpr_expr_parser_advance(p);
         cxpr_expr_ast* right = cxpr_parse_unary(p);
         if (!right || p->had_error) { cxpr_expr_ast_free(left); cxpr_expr_ast_free(right); return NULL; }
         return cxpr_expr_ast_binary_new(CXPR_TOK_POWER, left, right);

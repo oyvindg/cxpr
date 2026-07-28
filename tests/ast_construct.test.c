@@ -13,7 +13,7 @@ static char* test_strdup(const char* text) {
 }
 
 static void test_public_constructors_cover_split_ast_nodes(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast** args = (cxpr_expr_ast**)calloc(2, sizeof(*args));
     cxpr_expr_ast* fn;
@@ -124,7 +124,7 @@ static void test_public_constructors_cover_split_ast_nodes(void) {
     cxpr_expr_ast_free(chain);
     cxpr_expr_ast_free(variable);
     cxpr_expr_ast_free(fn);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

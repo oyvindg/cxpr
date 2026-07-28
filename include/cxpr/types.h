@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 /** @brief Opaque parser handle. */
-typedef struct cxpr_parser cxpr_parser;
+typedef struct cxpr_expr_parser cxpr_expr_parser;
 /** @brief Opaque AST handle. */
 typedef struct cxpr_expr_ast cxpr_expr_ast;
 /** @brief Opaque evaluation context handle. */
@@ -26,7 +26,7 @@ typedef struct cxpr_context cxpr_context;
 /** @brief Opaque function registry handle. */
 typedef struct cxpr_registry cxpr_registry;
 /** @brief Opaque compiled program handle. */
-typedef struct cxpr_program cxpr_program;
+typedef struct cxpr_expr_compiled cxpr_expr_compiled;
 /** @brief Opaque parsed .cxpr model handle. */
 typedef struct cxpr_model cxpr_model;
 /** @brief Opaque compiled .cxpr model program handle. */

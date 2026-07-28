@@ -21,7 +21,7 @@ extern "C" {
  *
  * These values intentionally do not expose cxpr's internal IR structs. The
  * opcode sequence is a borrowed read-only view valid for the lifetime of the
- * `cxpr_program` it came from. Opcode values are an inspection API, not a
+ * `cxpr_expr_compiled` it came from. Opcode values are an inspection API, not a
  * serialized bytecode format; persist source or generated C instead.
  */
 typedef enum {
@@ -80,14 +80,14 @@ typedef enum {
     CXPR_IR_VIEW_OP_LOOKBACK_RESOLVE,
     CXPR_IR_VIEW_OP_STORE_LOCAL,
     CXPR_IR_VIEW_OP_RETURN
-} cxpr_ir_view_opcode;
+} cxpr_ir_opcode;
 
 /** @brief Best-effort scalar result kind inferred for fast execution. */
 typedef enum {
     CXPR_IR_VIEW_RESULT_UNKNOWN = 0,
     CXPR_IR_VIEW_RESULT_NUMBER = 1,
     CXPR_IR_VIEW_RESULT_BOOL = 2
-} cxpr_ir_view_result_kind;
+} cxpr_ir_result_kind;
 
 /**
  * @brief Read-only public instruction view.
@@ -97,7 +97,7 @@ typedef enum {
  * `has_*` flag is true or the pointer is non-NULL.
  */
 typedef struct {
-    cxpr_ir_view_opcode op;
+    cxpr_ir_opcode op;
     const char* name;       /**< Opcode-specific symbol, field, or cache key. */
     const char* aux_name;   /**< Secondary symbol, typically a selected field. */
     const char* func_name;  /**< Registered function/producer name for call ops. */
@@ -112,14 +112,14 @@ typedef struct {
     bool has_arg_count;
     bool has_hash;
     bool has_number_args;
-} cxpr_ir_view_instr;
+} cxpr_ir_instruction;
 
 /**
  * @brief Return the number of IR instructions in a compiled program.
  * @param program Program to inspect.
  * @return Instruction count, or 0 for NULL.
  */
-size_t cxpr_ir_view_count(const cxpr_program* program);
+size_t cxpr_expr_compiled_ir_count(const cxpr_expr_compiled* program);
 
 /**
  * @brief Copy one instruction into a public read-only view struct.
@@ -128,23 +128,23 @@ size_t cxpr_ir_view_count(const cxpr_program* program);
  * @param out Output instruction view.
  * @return True when `out` was populated, false for NULL/out-of-range input.
  */
-bool cxpr_ir_view_instr_at(const cxpr_program* program,
+bool cxpr_expr_compiled_ir_instruction(const cxpr_expr_compiled* program,
                            size_t index,
-                           cxpr_ir_view_instr* out);
+                           cxpr_ir_instruction* out);
 
 /**
  * @brief Return the inferred fast-result kind for a compiled program.
  * @param program Program to inspect.
  * @return Result kind, or UNKNOWN for NULL.
  */
-cxpr_ir_view_result_kind cxpr_ir_view_program_result_kind(const cxpr_program* program);
+cxpr_ir_result_kind cxpr_expr_compiled_ir_result_kind(const cxpr_expr_compiled* program);
 
 /**
  * @brief Return a static readable name for a public IR opcode.
  * @param op Opcode to describe.
  * @return Static opcode name.
  */
-const char* cxpr_ir_view_opcode_name(cxpr_ir_view_opcode op);
+const char* cxpr_ir_opcode_name(cxpr_ir_opcode op);
 
 #ifdef __cplusplus
 }

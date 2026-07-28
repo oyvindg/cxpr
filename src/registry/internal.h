@@ -53,7 +53,7 @@ typedef struct cxpr_func_entry {
     size_t struct_argc;       /**< Number of struct arguments accepted */
     /* Defined function (expression-based, via cxpr_registry_define_fn) */
     cxpr_expr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
-    cxpr_program* defined_program;         /**< Lazily compiled body program; NULL until needed */
+    cxpr_expr_compiled* defined_program;         /**< Lazily compiled body program; NULL until needed */
     bool       defined_program_failed;     /**< Sticky flag when program compilation is unsupported */
     char**     defined_param_names;        /**< Parameter name array, owned */
     size_t     defined_param_count;        /**< Number of parameters */
@@ -78,6 +78,7 @@ struct cxpr_registry {
     cxpr_userdata_free_fn free_lookback_userdata;
 };
 
+/** @brief Userdata wrapper for native unary scalar adapters. */
 typedef struct {
     double (*fn)(double);
 } cxpr_unary_userdata;

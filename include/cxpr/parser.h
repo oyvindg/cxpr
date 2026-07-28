@@ -16,12 +16,12 @@ extern "C" {
  * @brief Create a parser instance.
  * @return Newly allocated parser, or NULL on allocation failure.
  */
-cxpr_parser* cxpr_parser_new(void);
+cxpr_expr_parser* cxpr_expr_parser_new(void);
 /**
  * @brief Free a parser instance.
  * @param p Parser to free. May be NULL.
  */
-void cxpr_parser_free(cxpr_parser* p);
+void cxpr_expr_parser_free(cxpr_expr_parser* p);
 /**
  * @brief Parse an expression string into an AST.
  * @param p Parser instance to use.
@@ -29,7 +29,7 @@ void cxpr_parser_free(cxpr_parser* p);
  * @param err Optional error output.
  * @return Newly allocated AST on success, or NULL on parse failure.
  */
-cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_parser* p, const char* expression, cxpr_error* err);
+cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_expr_parser* p, const char* expression, cxpr_error* err);
 
 #ifdef __cplusplus
 }

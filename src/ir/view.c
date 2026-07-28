@@ -7,7 +7,7 @@
 
 #include "internal.h"
 
-static cxpr_ir_view_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
+static cxpr_ir_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return CXPR_IR_VIEW_OP_PUSH_CONST;
     case CXPR_OP_PUSH_BOOL: return CXPR_IR_VIEW_OP_PUSH_BOOL;
@@ -117,14 +117,14 @@ static bool cxpr_ir_view_opcode_has_arg_count(cxpr_opcode op) {
     }
 }
 
-size_t cxpr_ir_view_count(const cxpr_program* program) {
+size_t cxpr_expr_compiled_ir_count(const cxpr_expr_compiled* program) {
     return program ? program->ir.count : 0;
 }
 
-bool cxpr_ir_view_instr_at(const cxpr_program* program,
+bool cxpr_expr_compiled_ir_instruction(const cxpr_expr_compiled* program,
                            size_t index,
-                           cxpr_ir_view_instr* out) {
-    if (out) *out = (cxpr_ir_view_instr){ .op = CXPR_IR_VIEW_OP_UNKNOWN };
+                           cxpr_ir_instruction* out) {
+    if (out) *out = (cxpr_ir_instruction){ .op = CXPR_IR_VIEW_OP_UNKNOWN };
     if (!program || !out || index >= program->ir.count) return false;
 
     const cxpr_ir_instr* instr = &program->ir.code[index];
@@ -162,7 +162,7 @@ bool cxpr_ir_view_instr_at(const cxpr_program* program,
     return true;
 }
 
-cxpr_ir_view_result_kind cxpr_ir_view_program_result_kind(const cxpr_program* program) {
+cxpr_ir_result_kind cxpr_expr_compiled_ir_result_kind(const cxpr_expr_compiled* program) {
     if (!program) return CXPR_IR_VIEW_RESULT_UNKNOWN;
     switch (program->ir.fast_result_kind) {
     case CXPR_IR_RESULT_DOUBLE: return CXPR_IR_VIEW_RESULT_NUMBER;
@@ -171,7 +171,7 @@ cxpr_ir_view_result_kind cxpr_ir_view_program_result_kind(const cxpr_program* pr
     }
 }
 
-const char* cxpr_ir_view_opcode_name(cxpr_ir_view_opcode op) {
+const char* cxpr_ir_opcode_name(cxpr_ir_opcode op) {
     switch (op) {
     case CXPR_IR_VIEW_OP_PUSH_CONST: return "PUSH_CONST";
     case CXPR_IR_VIEW_OP_PUSH_BOOL: return "PUSH_BOOL";

@@ -12,11 +12,11 @@
 #include <stdio.h>
 
 static bool eval_bool_both(const char* expr, cxpr_context* ctx) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     bool tree_r = false;
     bool prog_r = false;
 
@@ -26,21 +26,21 @@ static bool eval_bool_both(const char* expr, cxpr_context* ctx) {
 
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &tree_r, &err) && err.code == CXPR_OK);
 
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog && err.code == CXPR_OK);
-    assert(cxpr_eval_program_bool(prog, ctx, reg, &prog_r, &err) && err.code == CXPR_OK);
+    assert(cxpr_expr_compiled_eval_bool(prog, ctx, reg, &prog_r, &err) && err.code == CXPR_OK);
     if (tree_r != prog_r) {
         fprintf(stderr, "membership mismatch for `%s`: tree=%d compiled=%d\n",
                 expr, (int)tree_r, (int)prog_r);
-        fprintf(stderr, "result kind=%d\n", (int)cxpr_ir_view_program_result_kind(prog));
-        cxpr_program_dump(prog, stderr);
+        fprintf(stderr, "result kind=%d\n", (int)cxpr_expr_compiled_ir_result_kind(prog));
+        cxpr_expr_compiled_dump(prog, stderr);
         assert(tree_r == prog_r); /* engines must agree */
     }
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return tree_r;
 }
 
@@ -125,7 +125,7 @@ static void test_contains_array_membership(void) {
 }
 
 static void test_errors(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
 
@@ -144,7 +144,7 @@ static void test_errors(void) {
     ast = cxpr_expr_ast_parse(p, "x within [1, 2]", &err);
     assert(ast == NULL && err.code == CXPR_ERR_SYNTAX);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  membership errors OK\n");
 }
 

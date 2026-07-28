@@ -453,21 +453,21 @@ bool cxpr_expr_ast_uses_basket_aggregates(const cxpr_expr_ast* ast) {
 }
 
 bool cxpr_expression_uses_basket_aggregates(const char* source) {
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     bool uses;
 
     if (!source) return false;
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) return false;
     ast = cxpr_expr_ast_parse(parser, source, &err);
     if (!ast) {
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return false;
     }
     uses = cxpr_expr_ast_uses_basket_aggregates(ast);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return uses;
 }

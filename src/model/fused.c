@@ -186,7 +186,7 @@ static bool cxpr_model_fused_ir_scalar_supported(const cxpr_ir_program* ir,
     if (!ir || !ir->code) return false;
     for (size_t i = 0; i < ir->count; ++i) {
         if (!cxpr_model_fused_scalar_opcode_supported(ir->code[i].op)) {
-            if (disabled_opcode) *disabled_opcode = cxpr_ir_opcode_name(ir->code[i].op);
+            if (disabled_opcode) *disabled_opcode = cxpr_ir_internal_opcode_name(ir->code[i].op);
             return false;
         }
     }

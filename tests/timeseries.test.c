@@ -14,7 +14,7 @@ typedef struct {
     size_t current_index;
 } test_series_env;
 
-static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* expr) {
+static cxpr_expr_ast* parse_or_die(cxpr_expr_parser* parser, const char* expr) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, expr, &err);
     if (!ast) {
@@ -159,7 +159,7 @@ static void test_eval_ast_at_offset_reuses_lookback_resolver(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -185,7 +185,7 @@ static void test_eval_ast_at_offset_reuses_lookback_resolver(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_eval_ast_at_offset_reuses_lookback_resolver\n");
 }
 
@@ -203,7 +203,7 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -220,14 +220,14 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     assert(out);
     {
         cxpr_ir_program ir = {0};
-        cxpr_program* prog;
+        cxpr_expr_compiled* prog;
         assert(cxpr_ir_compile(ast, reg, &ir, &err));
-        prog = cxpr_compile(ast, reg, &err);
+        prog = cxpr_expr_compile(ast, reg, &err);
         assert(prog != NULL);
-        assert(cxpr_eval_program_bool(prog, ctx, reg, &out, &err));
+        assert(cxpr_expr_compiled_eval_bool(prog, ctx, reg, &out, &err));
         assert(err.code == CXPR_OK);
         assert(out);
-        cxpr_program_free(prog);
+        cxpr_expr_compiled_free(prog);
         cxpr_ir_program_reset(&ir);
     }
     cxpr_expr_ast_free(ast);
@@ -274,7 +274,7 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_rising_and_falling_use_native_timeseries_eval\n");
 }
 
@@ -288,7 +288,7 @@ static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
         .current_index = 3,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -316,7 +316,7 @@ static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_repeat_accepts_condition_and_bars_named_args\n");
 }
 
@@ -329,7 +329,7 @@ static void test_timeseries_builtin_reports_bad_arity(void) {
         .length = 3,
         .current_index = 2,
     };
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -350,7 +350,7 @@ static void test_timeseries_builtin_reports_bad_arity(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_timeseries_builtin_reports_bad_arity\n");
 }
 
@@ -383,7 +383,7 @@ static void test_registered_timeseries_function_uses_same_api(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -405,7 +405,7 @@ static void test_registered_timeseries_function_uses_same_api(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_registered_timeseries_function_uses_same_api\n");
 }
 
@@ -421,7 +421,7 @@ static void test_builtin_cross_above_and_below_use_lookback(void) {
         .current_index = 3,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -457,7 +457,7 @@ static void test_builtin_cross_above_and_below_use_lookback(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_cross_above_and_below_use_lookback\n");
 }
 
@@ -471,7 +471,7 @@ static void test_builtin_delta_and_roc_use_lookback(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -502,7 +502,7 @@ static void test_builtin_delta_and_roc_use_lookback(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_delta_and_roc_use_lookback\n");
 }
 
@@ -516,7 +516,7 @@ static void test_builtin_highest_and_lowest_use_window(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -532,12 +532,12 @@ static void test_builtin_highest_and_lowest_use_window(void) {
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, 15.0);
     {
-        cxpr_program* prog = cxpr_compile(ast, reg, &err);
+        cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
         assert(prog != NULL);
-        assert(cxpr_eval_program_number(prog, ctx, reg, &out, &err));
+        assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, &err));
         assert(err.code == CXPR_OK);
         ASSERT_DOUBLE_EQ(out, 15.0);
-        cxpr_program_free(prog);
+        cxpr_expr_compiled_free(prog);
     }
     cxpr_expr_ast_free(ast);
 
@@ -555,7 +555,7 @@ static void test_builtin_highest_and_lowest_use_window(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_highest_and_lowest_use_window\n");
 }
 
@@ -569,7 +569,7 @@ static void test_builtin_bars_since_extreme_uses_window(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -593,7 +593,7 @@ static void test_builtin_bars_since_extreme_uses_window(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_bars_since_extreme_uses_window\n");
 }
 
@@ -607,7 +607,7 @@ static void test_builtin_window_mean_absdev_uses_center(void) {
         .current_index = 4,
     };
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -625,7 +625,7 @@ static void test_builtin_window_mean_absdev_uses_center(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     printf("  \xE2\x9C\x93 test_builtin_window_mean_absdev_uses_center\n");
 }
 

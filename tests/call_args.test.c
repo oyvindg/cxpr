@@ -9,7 +9,7 @@ bool cxpr_call_bind_args(const cxpr_expr_ast* ast, const cxpr_func_entry* entry,
                          const char** out_message);
 
 static void test_call_arg_binding_reorders_named_arguments(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
@@ -35,11 +35,11 @@ static void test_call_arg_binding_reorders_named_arguments(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_call_arg_binding_reports_named_arg_error(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
@@ -63,11 +63,11 @@ static void test_call_arg_binding_reports_named_arg_error(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_call_arg_binding_accepts_bars_alias_for_samples(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
@@ -89,11 +89,11 @@ static void test_call_arg_binding_accepts_bars_alias_for_samples(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_call_arg_binding_accepts_condition_alias_for_value(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
@@ -115,7 +115,7 @@ static void test_call_arg_binding_accepts_condition_alias_for_value(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

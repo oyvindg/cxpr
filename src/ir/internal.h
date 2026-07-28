@@ -126,7 +126,7 @@ typedef struct {
 /**
  * @brief Internal compiled program representation.
  *
- * This stays internal until a public cxpr_program API is introduced.
+ * This stays internal until a public cxpr_expr_compiled API is introduced.
  */
 typedef struct {
     cxpr_ir_instr* code;        /**< Owned instruction array */
@@ -137,7 +137,7 @@ typedef struct {
     unsigned char fast_result_kind; /**< 0=unknown, 1=double, 2=bool for scalar fast-path */
 } cxpr_ir_program;
 
-struct cxpr_program {
+struct cxpr_expr_compiled {
     cxpr_ir_program ir;
     const cxpr_expr_ast* ast;
     cxpr_expr_ast* owned_ast;
@@ -313,10 +313,10 @@ cxpr_value cxpr_ir_exec_value_with_locals(const cxpr_ir_program* program,
                                           size_t local_count,
                                           cxpr_error* err);
 /** @brief Return a stable printable opcode name. */
-const char* cxpr_ir_opcode_name(cxpr_opcode op);
+const char* cxpr_ir_internal_opcode_name(cxpr_opcode op);
 /** @brief Release one public compiled-program wrapper and all owned internal IR state.
  * @param prog Program wrapper to free. May be NULL.
  */
-void cxpr_program_free(cxpr_program* prog);
+void cxpr_expr_compiled_free(cxpr_expr_compiled* prog);
 
 #endif /* CXPR_IR_INTERNAL_H */

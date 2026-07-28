@@ -137,7 +137,7 @@ cxpr_evaluator* cxpr_evaluator_new(const cxpr_registry* reg) {
         return NULL;
     }
     evaluator->registry = reg;
-    evaluator->parser = cxpr_parser_new();
+    evaluator->parser = cxpr_expr_parser_new();
     if (!evaluator->parser) {
         free(evaluator->expressions);
         free(evaluator);
@@ -153,11 +153,11 @@ void cxpr_evaluator_free(cxpr_evaluator* evaluator) {
         free(evaluator->expressions[i].name);
         free(evaluator->expressions[i].expression);
         cxpr_expr_ast_free(evaluator->expressions[i].ast);
-        cxpr_program_free(evaluator->expressions[i].program);
+        cxpr_expr_compiled_free(evaluator->expressions[i].program);
     }
     free(evaluator->expressions);
     free(evaluator->eval_order);
-    cxpr_parser_free(evaluator->parser);
+    cxpr_expr_parser_free(evaluator->parser);
     free(evaluator);
 }
 
@@ -175,14 +175,14 @@ bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {
     for (size_t i = 0; i < evaluator->count; i++) {
         cxpr_expression_entry* entry = &evaluator->expressions[i];
         cxpr_analysis analysis = {0};
-        cxpr_program_free(entry->program);
+        cxpr_expr_compiled_free(entry->program);
         entry->program = NULL;
         if (!cxpr_analyze(entry->ast, evaluator->registry, &analysis, err)) {
             cxpr_expression_wrap_compile_error(entry, err);
             evaluator->compiled = false;
             return false;
         }
-        entry->program = cxpr_compile(entry->ast, evaluator->registry, err);
+        entry->program = cxpr_expr_compile(entry->ast, evaluator->registry, err);
         if (!entry->program) {
             cxpr_expression_wrap_compile_error(entry, err);
             evaluator->compiled = false;
@@ -248,12 +248,12 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
                 return;
             }
             if (struct_alias == 0 && entry->program) {
-                (void)cxpr_eval_program(entry->program, ctx, evaluator->registry, &value, &eval_err);
+                (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
             } else if (struct_alias == 0) {
                 (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
             }
         } else if (entry->program) {
-            (void)cxpr_eval_program(entry->program, ctx, evaluator->registry, &value, &eval_err);
+            (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
         } else {
             (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
         }

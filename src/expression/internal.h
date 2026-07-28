@@ -15,7 +15,7 @@ typedef struct {
     char* name;               /**< Expression name, owned */
     char* expression;         /**< Original expression string, owned */
     cxpr_expr_ast* ast;            /**< Parsed AST (NULL until compiled) */
-    cxpr_program* program;    /**< Compiled program cache (NULL until compiled) */
+    cxpr_expr_compiled* program;    /**< Compiled program cache (NULL until compiled) */
     cxpr_value result;        /**< Evaluation result */
     bool evaluated;
     bool used_as_struct_prefix; /**< Cached compile-time struct alias dependency flag */
@@ -33,7 +33,7 @@ struct cxpr_evaluator {
     size_t eval_order_count;
     bool compiled;
     const cxpr_registry* registry; /**< Borrowed reference */
-    cxpr_parser* parser;           /**< Internal parser for expression expressions */
+    cxpr_expr_parser* parser;           /**< Internal parser for expression expressions */
 };
 
 /** @brief Check whether one runtime reference resolves to the given expression name. */

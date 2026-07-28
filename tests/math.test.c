@@ -21,7 +21,7 @@
 #define ASSERT_APPROX(a, b, eps) assert(fabs((a) - (b)) < (eps))
 
 static double eval_expr(const char* expr) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -35,7 +35,7 @@ static double eval_expr(const char* expr) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
@@ -176,7 +176,7 @@ static void test_builtin_constants(void) {
 
 static void test_builtin_nan_inf(void) {
     /* nan() doesn't trigger an error — just returns NaN */
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -196,7 +196,7 @@ static void test_builtin_nan_inf(void) {
     assert(isinf(result));
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_builtin_nan_inf\n");
@@ -207,7 +207,7 @@ static void test_builtin_nan_inf(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_builtin_if(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -232,7 +232,7 @@ static void test_builtin_if(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_builtin_if\n");
 }
 
@@ -249,7 +249,7 @@ static void test_builtin_mean(void) {
 
 static void test_complex_math(void) {
     /* sqrt(x^2 + y^2) with x=3, y=4 → 5 */
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -263,7 +263,7 @@ static void test_complex_math(void) {
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 5.0);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_complex_math\n");
@@ -314,7 +314,7 @@ static double fn_divergence(const double* a, size_t n, void* u) {
 }
 
 static void test_custom_functions(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -344,7 +344,7 @@ static void test_custom_functions(void) {
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 0.75);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_custom_functions\n");
@@ -355,7 +355,7 @@ static void test_custom_functions(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_extreme_nested_expressions(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -505,7 +505,7 @@ static void test_extreme_nested_expressions(void) {
     assert(cxpr_test_eval_ast_bool(ast, ctx, reg, &err) == true);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_extreme_nested_expressions\n");

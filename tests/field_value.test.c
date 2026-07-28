@@ -19,44 +19,44 @@
 
 static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_context *ctx, cxpr_registry *reg,
                                          cxpr_error_code expected) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static cxpr_value ir_eval_typed(const char *expr,
                                       cxpr_context *ctx, cxpr_registry *reg) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    cxpr_program *prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled *prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_program(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_expr_ast_free(ast);
-    cxpr_program_free(prog);
-    cxpr_parser_free(p);
+    cxpr_expr_compiled_free(prog);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
@@ -341,7 +341,7 @@ static void test_eval_double_wrapper(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     /* cxpr_expr_ast_eval_double on a bool expression → NAN + TYPE_MISMATCH */
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "1.0 < 2.0", &err);
     assert(ast != NULL);
@@ -349,10 +349,10 @@ static void test_eval_double_wrapper(void) {
     assert(isnan(d));
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 
     /* cxpr_expr_ast_eval_double on a double expression → value, no error */
-    p = cxpr_parser_new();
+    p = cxpr_expr_parser_new();
     err = (cxpr_error){0};
     ast = cxpr_expr_ast_parse(p, "2.0 + 3.0", &err);
     assert(ast != NULL);
@@ -360,7 +360,7 @@ static void test_eval_double_wrapper(void) {
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(d, 5.0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -373,7 +373,7 @@ static void test_eval_bool_wrapper(void) {
     cxpr_context *ctx = cxpr_context_new();
 
     /* cxpr_expr_ast_eval_bool on a double expression → false + TYPE_MISMATCH */
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "1.0 + 2.0", &err);
     assert(ast != NULL);
@@ -381,10 +381,10 @@ static void test_eval_bool_wrapper(void) {
     assert(b == false);
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 
     /* cxpr_expr_ast_eval_bool on a bool expression → value, no error */
-    p = cxpr_parser_new();
+    p = cxpr_expr_parser_new();
     err = (cxpr_error){0};
     ast = cxpr_expr_ast_parse(p, "1.0 < 2.0", &err);
     assert(ast != NULL);
@@ -392,7 +392,7 @@ static void test_eval_bool_wrapper(void) {
     assert(b == true);
     assert(err.code == CXPR_OK);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);

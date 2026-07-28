@@ -51,7 +51,7 @@ static void pair_producer(const double* args, size_t argc,
 }
 
 static void test_eval_call_paths(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -79,16 +79,16 @@ static void test_eval_call_paths(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_named_param_producer_cache_paths(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     cxpr_value result;
     const char* fields[] = {"line", "histogram"};
     const char* params[] = {"period", "signal"};
@@ -120,7 +120,7 @@ static void test_named_param_producer_cache_paths(void) {
                      "macd(period=$period, signal=$signal).histogram",
                      &err);
     assert(ast);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL && err.code == CXPR_OK);
     {
         const cxpr_ir_program* ir = (const cxpr_ir_program*)prog;
@@ -136,21 +136,21 @@ static void test_named_param_producer_cache_paths(void) {
         assert(call_ast_count == 0u);
         assert(call_producer_count >= 2u);
     }
-    assert(cxpr_eval_program(prog, ctx, reg, &result, &err));
+    assert(cxpr_expr_compiled_eval(prog, ctx, reg, &result, &err));
     assert(err.code == CXPR_OK);
     assert(result.type == CXPR_VALUE_NUMBER);
     assert(fabs(result.d - 2.9) < 1e-12);
     assert(g_struct_call_count == 1);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_prepare_const_key_with_param_args(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -207,11 +207,11 @@ static void test_prepare_const_key_with_param_args(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_defined_overlay_copies_prefixed_scalars(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_context* dst = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -245,11 +245,11 @@ static void test_defined_overlay_copies_prefixed_scalars(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(dst);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_defined_function_accepts_record_literal_struct_arg(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -268,11 +268,11 @@ static void test_defined_function_accepts_record_literal_struct_arg(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_defined_function_accepts_flat_prefixed_struct_arg(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -293,7 +293,7 @@ static void test_defined_function_accepts_flat_prefixed_struct_arg(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 int main(void) {

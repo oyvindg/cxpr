@@ -14,7 +14,7 @@
 #define APPROX(a, b) (fabs((a) - (b)) < 1e-9)
 
 static void test_compiled_program_power(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -33,21 +33,21 @@ static void test_compiled_program_power(void) {
         double tree = 0.0;
         assert(cxpr_eval_ast_number(ast, ctx, reg, &tree, &err) && err.code == CXPR_OK);
 
-        cxpr_program* prog = cxpr_compile(ast, reg, &err);
+        cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
         assert(prog && err.code == CXPR_OK); /* used to fail: rejected POWER */
         double compiled = 0.0;
-        assert(cxpr_eval_program_number(prog, ctx, reg, &compiled, &err) && err.code == CXPR_OK);
+        assert(cxpr_expr_compiled_eval_number(prog, ctx, reg, &compiled, &err) && err.code == CXPR_OK);
 
         assert(APPROX(tree, want[i]));
         assert(APPROX(compiled, want[i]));
 
-        cxpr_program_free(prog);
+        cxpr_expr_compiled_free(prog);
         cxpr_expr_ast_free(ast);
     }
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  compiled-program power OK\n");
 }
 

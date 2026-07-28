@@ -70,7 +70,7 @@ bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr, cxpr_error* err
     return true;
 }
 
-const char* cxpr_ir_opcode_name(cxpr_opcode op) {
+const char* cxpr_ir_internal_opcode_name(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
     case CXPR_OP_PUSH_BOOL: return "PUSH_BOOL";
@@ -647,7 +647,7 @@ bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
     return true;
 }
 
-cxpr_program* cxpr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
+cxpr_expr_compiled* cxpr_expr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                            cxpr_error* err) {
     cxpr_expr_ast* owned_ast = NULL;
     cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
@@ -673,7 +673,7 @@ cxpr_program* cxpr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
         return NULL;
     }
 
-    cxpr_program* prog = (cxpr_program*)calloc(1, sizeof(cxpr_program));
+    cxpr_expr_compiled* prog = (cxpr_expr_compiled*)calloc(1, sizeof(cxpr_expr_compiled));
     if (!prog) {
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
@@ -703,14 +703,14 @@ cxpr_program* cxpr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
     return prog;
 }
 
-void cxpr_program_free(cxpr_program* prog) {
+void cxpr_expr_compiled_free(cxpr_expr_compiled* prog) {
     if (!prog) return;
     cxpr_ir_program_reset(&prog->ir);
     cxpr_expr_ast_free(prog->owned_ast);
     free(prog);
 }
 
-void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
+void cxpr_expr_compiled_dump(const cxpr_expr_compiled* prog, FILE* out) {
     size_t i;
     FILE* stream = out ? out : stdout;
 
@@ -721,7 +721,7 @@ void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
 
     for (i = 0; i < prog->ir.count; ++i) {
         const cxpr_ir_instr* instr = &prog->ir.code[i];
-        fprintf(stream, "%zu: %s", i, cxpr_ir_opcode_name(instr->op));
+        fprintf(stream, "%zu: %s", i, cxpr_ir_internal_opcode_name(instr->op));
         if (instr->name) fprintf(stream, " name=%s", instr->name);
         if (instr->aux_name) fprintf(stream, " aux=%s", instr->aux_name);
         if (instr->func) fprintf(stream, " argc=%zu func=%s", instr->index, instr->func->name);

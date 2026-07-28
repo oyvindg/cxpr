@@ -12,6 +12,7 @@
 extern "C" {
 #endif
 
+/** @brief Opaque bundle containing a resolved model import graph. */
 typedef struct cxpr_model_import_bundle cxpr_model_import_bundle;
 
 /**

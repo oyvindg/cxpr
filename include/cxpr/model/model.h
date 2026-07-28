@@ -45,17 +45,20 @@ typedef enum {
     CXPR_MODEL_BACKEND_C = 2,
 } cxpr_model_backend_kind;
 
+/** @brief Options controlling model compilation and backend selection. */
 typedef struct {
     cxpr_model_backend_kind backend;
     bool fuse;
     bool enable_trace;
 } cxpr_model_compile_options;
 
+/** @brief One precompiled model supplied as a direct import. */
 typedef struct {
     const char* name;
     const cxpr_model_program* program;
 } cxpr_model_import;
 
+/** @brief Result of resolving one model `use` declaration. */
 typedef struct cxpr_model_use_resolution {
     const char* namespace_name;
     int handled;
@@ -69,6 +72,7 @@ typedef int (*cxpr_model_resolve_use_fn)(const cxpr_model* model,
                                          void* userdata,
                                          cxpr_error* err);
 
+/** @brief Callback bundle used to resolve model `use` declarations. */
 typedef struct cxpr_model_use_resolver {
     cxpr_model_resolve_use_fn resolve;
     void* userdata;

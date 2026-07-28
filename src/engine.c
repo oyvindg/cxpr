@@ -1354,14 +1354,14 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
 
     for (i = 0; i < prog->watch_count; ++i) {
         const cxpr_expression_def* def = engine_find_expr_def(prog, prog->watches[i].expr_name);
-        cxpr_parser* parser;
+        cxpr_expr_parser* parser;
         cxpr_expr_ast* ast;
 
         if (!def) continue;
-        parser = cxpr_parser_new();
+        parser = cxpr_expr_parser_new();
         if (!parser) goto oom;
         ast = cxpr_expr_ast_parse(parser, def->expression, err);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         if (!ast) {
             engine_program_free_internals(prog);
             free(prog);
@@ -1378,7 +1378,7 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
 
     /* Discover referenced sources + per-source lookback depth (D5/D16). */
     {
-        cxpr_parser* parser = cxpr_parser_new();
+        cxpr_expr_parser* parser = cxpr_expr_parser_new();
         if (parser) {
             for (i = 0; i < prog->expr_count; ++i) {
                 cxpr_error perr = {0};
@@ -1395,14 +1395,14 @@ cxpr_engine_program* cxpr_engine_program_new(const cxpr_engine_config* config,
                          ++pi) {
                         if (!engine_track_external_param(prog, params[pi])) {
                             cxpr_expr_ast_free(ast);
-                            cxpr_parser_free(parser);
+                            cxpr_expr_parser_free(parser);
                             goto oom;
                         }
                     }
                     cxpr_expr_ast_free(ast);
                 }
             }
-            cxpr_parser_free(parser);
+            cxpr_expr_parser_free(parser);
         }
     }
 

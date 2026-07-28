@@ -19,28 +19,28 @@
 
 static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_context *ctx, cxpr_registry *reg,
                                          cxpr_error_code expected) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 

@@ -29,7 +29,7 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static double eval_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
@@ -42,12 +42,12 @@ static double eval_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
         assert(0);
     }
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static bool eval_bool_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast);
@@ -57,23 +57,23 @@ static bool eval_bool_ok(const char* expr, cxpr_context* ctx, cxpr_registry* reg
         assert(0);
     }
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static cxpr_error_code eval_error(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
-    if (!ast) { cxpr_parser_free(p); return err.code; }
+    if (!ast) { cxpr_expr_parser_free(p); return err.code; }
     cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return err.code;
 }
 
 static void test_eval_bool_out_api(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -90,12 +90,12 @@ static void test_eval_bool_out_api(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_bool_out_api\n");
 }
 
 static void test_eval_number_out_api_type_mismatch(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -109,7 +109,7 @@ static void test_eval_number_out_api_type_mismatch(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_number_out_api_type_mismatch\n");
 }
 
@@ -446,12 +446,12 @@ static void test_named_args_for_producer_field_access_allow_omitted_leading_defa
 }
 
 static void test_named_args_support_ir_fallback(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     const char* params[] = {"slow", "fast", "period"};
 
     cxpr_register_defaults(reg);
@@ -460,27 +460,27 @@ static void test_named_args_support_ir_fallback(void) {
 
     ast = cxpr_expr_ast_parse(p, "macd_signal(fast=9, slow=21, period=3)", &err);
     assert(ast != NULL);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_program_number(prog, ctx, reg, &err), 15.0);
     assert(err.code == CXPR_OK);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_named_args_support_ir_fallback\n");
 }
 
 static void test_named_args_expression_values_with_ir_and_varying_context(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     const char* params[] = {"slow", "fast", "period"};
     const char* expr = "macd_signal(fast=ema_len + 1, slow=$slow, period=if($use_short, 3, 9))";
     double ast_result;
@@ -492,7 +492,7 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
 
     ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
 
@@ -516,11 +516,11 @@ static void test_named_args_expression_values_with_ir_and_varying_context(void) 
     ASSERT_DOUBLE_EQ(ast_result, 22.0);
     ASSERT_DOUBLE_EQ(prog_result, 22.0);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_named_args_expression_values_with_ir_and_varying_context\n");
 }
 
@@ -643,12 +643,12 @@ static void test_macd_producer(const double* args, size_t argc,
 }
 
 static void test_typed_function_bool_argument(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     const char* field_names[] = {"active", "score"};
     const cxpr_value_type sig[] = {CXPR_VALUE_BOOL, CXPR_VALUE_NUMBER};
     cxpr_value sensor_values[] = {cxpr_bool(true), cxpr_num(3.5)};
@@ -662,7 +662,7 @@ static void test_typed_function_bool_argument(void) {
 
     ast = cxpr_expr_ast_parse(p, "is_valid(sensor.active, sensor.score)", &err);
     assert(ast != NULL);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
 
@@ -682,11 +682,11 @@ static void test_typed_function_bool_argument(void) {
 
     assert(eval_error("is_valid(1.0, 3.5)", ctx, reg) == CXPR_ERR_TYPE_MISMATCH);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_typed_function_bool_argument\n");
 }
 
@@ -714,12 +714,12 @@ static void test_full_expression(void) {
 }
 
 static void test_typed_function_struct_argument(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     const char* field_names[] = {"line", "signal", "histogram"};
     const cxpr_value_type sig[] = {CXPR_VALUE_STRUCT, CXPR_VALUE_NUMBER};
     cxpr_value macd_values[] = {
@@ -745,7 +745,7 @@ static void test_typed_function_struct_argument(void) {
         "macd_signal_ok(macd_ctx, 0.5) and macd_signal_ok(macd(2.5), 0.4)",
         &err);
     assert(ast != NULL);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
 
@@ -758,11 +758,11 @@ static void test_typed_function_struct_argument(void) {
 
     assert(eval_error("macd_signal_ok(1.0, 0.5)", ctx, reg) == CXPR_ERR_TYPE_MISMATCH);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_typed_function_struct_argument\n");
 }
 
@@ -802,7 +802,7 @@ static double test_scale3(const double* args, size_t argc, void* ud) {
 }
 
 static void test_ast_function_cache_invalidates_on_registry_change(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -823,20 +823,20 @@ static void test_ast_function_cache_invalidates_on_registry_change(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ast_function_cache_invalidates_on_registry_change\n");
 }
 
 static void test_typed_if(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_register_defaults(reg);
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "if(true, false, true)", &err);
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     assert(ast != NULL);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL);
     assert(err.code == CXPR_OK);
     assert(cxpr_test_eval_ast(ast, ctx, reg, &err).type == CXPR_VALUE_BOOL);
@@ -845,11 +845,11 @@ static void test_typed_if(void) {
     assert(cxpr_test_eval_program(prog, ctx, reg, &err).type == CXPR_VALUE_BOOL);
     assert(err.code == CXPR_OK);
     assert(cxpr_test_eval_program(prog, ctx, reg, &err).b == false);
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_typed_if\n");
 }
 

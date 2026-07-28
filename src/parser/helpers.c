@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-char* cxpr_parser_token_to_string(const cxpr_token* tok) {
+char* cxpr_expr_parser_token_to_string(const cxpr_token* tok) {
     char* s = (char*)malloc(tok->length + 1);
     if (!s) return NULL;
     memcpy(s, tok->start, tok->length);
@@ -16,12 +16,12 @@ char* cxpr_parser_token_to_string(const cxpr_token* tok) {
     return s;
 }
 
-cxpr_token cxpr_parser_peek_next(const cxpr_parser* p) {
+cxpr_token cxpr_expr_parser_peek_next(const cxpr_expr_parser* p) {
     cxpr_lexer saved = p->lexer;
     return cxpr_lexer_peek(&saved);
 }
 
-cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
+cxpr_expr_ast* cxpr_expr_parser_clone_ast(const cxpr_expr_ast* ast) {
     if (!ast) return NULL;
 
     switch (ast->type) {
@@ -35,7 +35,7 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
             elements = (cxpr_expr_ast**)calloc(ast->data.array.count, sizeof(cxpr_expr_ast*));
             if (!elements) return NULL;
             for (size_t i = 0; i < ast->data.array.count; ++i) {
-                elements[i] = cxpr_parser_clone_ast(ast->data.array.elements[i]);
+                elements[i] = cxpr_expr_parser_clone_ast(ast->data.array.elements[i]);
                 if (!elements[i]) {
                     for (size_t j = 0; j < i; ++j) cxpr_expr_ast_free(elements[j]);
                     free(elements);
@@ -52,7 +52,7 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
                 ast->data.record.field_count, sizeof(*values));
             if (!values) return NULL;
             for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
-                values[i] = cxpr_parser_clone_ast(ast->data.record.field_values[i]);
+                values[i] = cxpr_expr_parser_clone_ast(ast->data.record.field_values[i]);
                 if (!values[i]) {
                     for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(values[j]);
                     free(values);
@@ -73,7 +73,7 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
         return cxpr_expr_ast_param_new(ast->data.variable.name);
     case CXPR_NODE_FIELD_ACCESS:
         if (ast->data.field_access.base) {
-            cxpr_expr_ast* base = cxpr_parser_clone_ast(ast->data.field_access.base);
+            cxpr_expr_ast* base = cxpr_expr_parser_clone_ast(ast->data.field_access.base);
             if (!base) return NULL;
             return cxpr_expr_ast_field_expr_new(base, ast->data.field_access.field);
         }
@@ -82,13 +82,13 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
         return cxpr_expr_ast_new_chain_access((const char* const*)ast->data.chain_access.path,
                                          ast->data.chain_access.depth);
     case CXPR_NODE_UNARY_OP: {
-        cxpr_expr_ast* operand = cxpr_parser_clone_ast(ast->data.unary_op.operand);
+        cxpr_expr_ast* operand = cxpr_expr_parser_clone_ast(ast->data.unary_op.operand);
         if (!operand) return NULL;
         return cxpr_expr_ast_unary_new(ast->data.unary_op.op, operand);
     }
     case CXPR_NODE_BINARY_OP: {
-        cxpr_expr_ast* left = cxpr_parser_clone_ast(ast->data.binary_op.left);
-        cxpr_expr_ast* right = cxpr_parser_clone_ast(ast->data.binary_op.right);
+        cxpr_expr_ast* left = cxpr_expr_parser_clone_ast(ast->data.binary_op.left);
+        cxpr_expr_ast* right = cxpr_expr_parser_clone_ast(ast->data.binary_op.right);
         if (!left || !right) {
             cxpr_expr_ast_free(left);
             cxpr_expr_ast_free(right);
@@ -108,7 +108,7 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
                 return NULL;
             }
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
-                args[i] = cxpr_parser_clone_ast(ast->data.function_call.args[i]);
+                args[i] = cxpr_expr_parser_clone_ast(ast->data.function_call.args[i]);
                 if (!args[i]) {
                     for (size_t j = 0; j < i; ++j) cxpr_expr_ast_free(args[j]);
                     for (size_t j = 0; j < i; ++j) free(arg_names[j]);
@@ -144,7 +144,7 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
                 return NULL;
             }
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                args[i] = cxpr_parser_clone_ast(ast->data.producer_access.args[i]);
+                args[i] = cxpr_expr_parser_clone_ast(ast->data.producer_access.args[i]);
                 if (!args[i]) {
                     for (size_t j = 0; j < i; ++j) cxpr_expr_ast_free(args[j]);
                     for (size_t j = 0; j < i; ++j) free(arg_names[j]);
@@ -170,8 +170,8 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
                                                   ast->data.producer_access.field);
     }
     case CXPR_NODE_LOOKBACK: {
-        cxpr_expr_ast* target = cxpr_parser_clone_ast(ast->data.lookback.target);
-        cxpr_expr_ast* index = cxpr_parser_clone_ast(ast->data.lookback.index);
+        cxpr_expr_ast* target = cxpr_expr_parser_clone_ast(ast->data.lookback.target);
+        cxpr_expr_ast* index = cxpr_expr_parser_clone_ast(ast->data.lookback.index);
         if (!target || !index) {
             cxpr_expr_ast_free(target);
             cxpr_expr_ast_free(index);
@@ -180,9 +180,9 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
         return cxpr_expr_ast_lookback_new(target, index);
     }
     case CXPR_NODE_TERNARY: {
-        cxpr_expr_ast* condition = cxpr_parser_clone_ast(ast->data.ternary.condition);
-        cxpr_expr_ast* yes = cxpr_parser_clone_ast(ast->data.ternary.true_branch);
-        cxpr_expr_ast* no = cxpr_parser_clone_ast(ast->data.ternary.false_branch);
+        cxpr_expr_ast* condition = cxpr_expr_parser_clone_ast(ast->data.ternary.condition);
+        cxpr_expr_ast* yes = cxpr_expr_parser_clone_ast(ast->data.ternary.true_branch);
+        cxpr_expr_ast* no = cxpr_expr_parser_clone_ast(ast->data.ternary.false_branch);
         if (!condition || !yes || !no) {
             cxpr_expr_ast_free(condition);
             cxpr_expr_ast_free(yes);
@@ -196,7 +196,7 @@ cxpr_expr_ast* cxpr_parser_clone_ast(const cxpr_expr_ast* ast) {
     return NULL;
 }
 
-void cxpr_parser_set_error(cxpr_parser* p, const char* message) {
+void cxpr_expr_parser_set_error(cxpr_expr_parser* p, const char* message) {
     p->had_error = true;
     p->last_error.code = CXPR_ERR_SYNTAX;
     p->last_error.message = message;
@@ -205,7 +205,7 @@ void cxpr_parser_set_error(cxpr_parser* p, const char* message) {
     p->last_error.column = p->current.column;
 }
 
-cxpr_expr_ast* cxpr_parser_pipe_inject_argument(cxpr_parser* p, cxpr_expr_ast* stage, cxpr_expr_ast* piped) {
+cxpr_expr_ast* cxpr_expr_parser_pipe_inject_argument(cxpr_expr_parser* p, cxpr_expr_ast* stage, cxpr_expr_ast* piped) {
     cxpr_expr_ast* node = NULL;
     if (!stage || !piped) {
         cxpr_expr_ast_free(stage);

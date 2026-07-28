@@ -61,7 +61,7 @@ static cxpr_value fn_cross_below(const cxpr_value* args, size_t argc, void* user
 }
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -92,7 +92,7 @@ int main(void) {
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return 0;
 }
 ```

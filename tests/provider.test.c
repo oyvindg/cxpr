@@ -197,11 +197,11 @@ static void test_provider_signatures_register_record_output_struct_producer(void
         &vtable,
     };
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     cxpr_value value = {0};
 
     assert(reg != NULL);
@@ -217,15 +217,15 @@ static void test_provider_signatures_register_record_output_struct_producer(void
 
     ast = cxpr_expr_ast_parse(parser, "record_fn(3, 5).signal", &err);
     if (ast == NULL) abort();
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     if (prog == NULL) abort();
-    if (!cxpr_eval_program(prog, ctx, reg, &value, &err)) abort();
+    if (!cxpr_expr_compiled_eval(prog, ctx, reg, &value, &err)) abort();
     if (err.code != CXPR_OK || value.type != CXPR_VALUE_NUMBER || value.d != 25.0) abort();
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_registry_free(reg);
 }
 
@@ -366,7 +366,7 @@ static double host_provider_scalar(const char* name,
 static void test_provider_host_runtime_supplies_expression_data(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_host_config host = {
         .runtime_required_scalar = host_provider_scalar,
         .userdata = NULL,
@@ -384,7 +384,7 @@ static void test_provider_host_runtime_supplies_expression_data(void) {
     assert(fabs(out - 125.0) < 1e-12);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
 }
@@ -415,7 +415,7 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(max_args == 3u);
 
     {
-        cxpr_parser* parser = cxpr_parser_new();
+        cxpr_expr_parser* parser = cxpr_expr_parser_new();
         cxpr_context* ctx = cxpr_context_new();
         cxpr_error err = {0};
         cxpr_expr_ast* ast;
@@ -438,14 +438,14 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
         cxpr_expr_ast_free(bool_ast);
 
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
     }
 
     cxpr_registry_free(reg);
 }
 
 static void test_runtime_call_helpers_are_directly_covered(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -490,11 +490,11 @@ static void test_runtime_call_helpers_are_directly_covered(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_resolve_expression_scope(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_resolved_scope scope;
@@ -526,11 +526,11 @@ static void test_resolve_expression_scope(void) {
     if (cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_binary_op(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -558,11 +558,11 @@ static void test_source_plan_expression_binary_op(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_via_smoothing(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -584,11 +584,11 @@ static void test_source_plan_expression_via_smoothing(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_with_lookback(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -612,11 +612,11 @@ static void test_source_plan_expression_with_lookback(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_simple_binary(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -638,11 +638,11 @@ static void test_source_plan_expression_simple_binary(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_field_with_selector_and_lookback(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -670,11 +670,11 @@ static void test_source_plan_field_with_selector_and_lookback(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_smoothing_with_selector_and_lookback(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -708,11 +708,11 @@ static void test_source_plan_smoothing_with_selector_and_lookback(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_smoothing_with_named_source_arg(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
@@ -731,7 +731,7 @@ static void test_source_plan_smoothing_with_named_source_arg(void) {
 
     cxpr_free_source_plan_ast(&plan);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

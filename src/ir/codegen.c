@@ -261,7 +261,7 @@ static bool cxpr_ir_c_emit_args(cxpr_ir_c_buf* b,
     return true;
 }
 
-char* cxpr_program_to_c_function(const cxpr_program* prog,
+char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
                                  const char* qualifiers,
                                  const char* return_type,
                                  const char* function_name,

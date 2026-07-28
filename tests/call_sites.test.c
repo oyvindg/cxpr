@@ -30,7 +30,7 @@ static int visit_arg(
 }
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     visit_state state = {0};
@@ -48,7 +48,7 @@ int main(void) {
     assert(state.found_nested_scope);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     puts("call-site metadata tests passed");
     return 0;
 }

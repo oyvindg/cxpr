@@ -15,6 +15,7 @@ typedef cxpr_window_op cxpr_model_window_plan_op;
 #define CXPR_MODEL_WINDOW_PLAN_OP_HIGHEST CXPR_WINDOW_OP_HIGHEST
 #define CXPR_MODEL_WINDOW_PLAN_OP_LOWEST CXPR_WINDOW_OP_LOWEST
 
+/** @brief One planned window expression and its generated-state layout. */
 typedef struct {
     const cxpr_expr_ast* ast;
     cxpr_model_window_plan_op op;
@@ -27,6 +28,7 @@ typedef struct {
     bool has_child;
 } cxpr_model_window_plan_node;
 
+/** @brief Complete window execution plan for a compiled model. */
 typedef struct {
     cxpr_model_window_plan_node* nodes;
     size_t node_count;

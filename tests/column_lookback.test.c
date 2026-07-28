@@ -26,7 +26,7 @@ static void expect_double_eq(double got, double want, const char* label) {
     }
 }
 
-static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* source) {
+static cxpr_expr_ast* parse_or_die(cxpr_expr_parser* parser, const char* source) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, source, &err);
     if (!ast) {
@@ -53,19 +53,19 @@ static double eval_number_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_reg
 
 static double eval_program_number_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
-    cxpr_program* program = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
     double out = NAN;
     if (!program || err.code != CXPR_OK) {
         fprintf(stderr, "IR lookback compile failed: %s\n",
                 err.message ? err.message : "(no message)");
         assert(0);
     }
-    if (!cxpr_eval_program_number(program, ctx, reg, &out, &err) || err.code != CXPR_OK) {
+    if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &out, &err) || err.code != CXPR_OK) {
         fprintf(stderr, "IR lookback eval failed: %s\n",
                 err.message ? err.message : "(no message)");
         assert(0);
     }
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     return out;
 }
 
@@ -82,19 +82,19 @@ static bool eval_bool_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registr
 
 static bool eval_program_bool_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
-    cxpr_program* program = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
     bool out = false;
     if (!program || err.code != CXPR_OK) {
         fprintf(stderr, "IR bool lookback compile failed: %s\n",
                 err.message ? err.message : "(no message)");
         assert(0);
     }
-    if (!cxpr_eval_program_bool(program, ctx, reg, &out, &err) || err.code != CXPR_OK) {
+    if (!cxpr_expr_compiled_eval_bool(program, ctx, reg, &out, &err) || err.code != CXPR_OK) {
         fprintf(stderr, "IR bool lookback eval failed: %s\n",
                 err.message ? err.message : "(no message)");
         assert(0);
     }
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     return out;
 }
 
@@ -155,7 +155,7 @@ static void test_column_lookback_resolves_bound_columns(void) {
         {"high", &bars[0].high, sizeof(bars[0]), 4},
         {"signal", &bars[0].signal, sizeof(bars[0]), 4},
     };
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
@@ -189,7 +189,7 @@ static void test_column_lookback_resolves_bound_columns(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_column_lookback_returns_nan_for_warmup_or_out_of_range(void) {
@@ -201,7 +201,7 @@ static void test_column_lookback_returns_nan_for_warmup_or_out_of_range(void) {
     cxpr_lookback_column columns[] = {
         {"close", &bars[0].close, sizeof(bars[0]), 2},
     };
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
@@ -229,7 +229,7 @@ static void test_column_lookback_returns_nan_for_warmup_or_out_of_range(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_expression_lookback_matches_ast_and_ir(void) {
@@ -241,7 +241,7 @@ static void test_expression_lookback_matches_ast_and_ir(void) {
     };
     int64_t cursor = 3;
     expression_lookback_env env = {bars, 4u, &cursor};
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
@@ -280,7 +280,7 @@ static void test_expression_lookback_matches_ast_and_ir(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(void) {
@@ -292,7 +292,7 @@ static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(vo
     cxpr_lookback_column columns[] = {
         {"close", &bars[0].close, sizeof(bars[0]), 2},
     };
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -319,7 +319,7 @@ static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(vo
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_defined_function_struct_arg_preserves_series_lookback(void) {
@@ -337,7 +337,7 @@ static void test_defined_function_struct_arg_preserves_series_lookback(void) {
     const char* session_fields[] = {"bar_index"};
     cxpr_value session_values[] = {cxpr_num(1.0)};
     cxpr_struct_value* session = cxpr_struct_value_new(session_fields, session_values, 1u);
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
@@ -375,7 +375,7 @@ static void test_defined_function_struct_arg_preserves_series_lookback(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_column_lookback_rejects_invalid_registration(void) {

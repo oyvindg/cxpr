@@ -722,7 +722,7 @@ static double time_ast(const cxpr_expr_ast* ast, cxpr_context* ctx, const cxpr_r
     return total;
 }
 
-static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr_registry* reg,
+static double time_ir(const cxpr_expr_compiled* program, cxpr_context* ctx, const cxpr_registry* reg,
                       size_t iterations, int mutate_context) {
     size_t i;
     double total = 0.0;
@@ -732,7 +732,7 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
         if (mutate_context) mutate_values_prehashed(ctx, &hashes, i);
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
@@ -1291,7 +1291,7 @@ static double time_ast_typed(const cxpr_expr_ast* ast, cxpr_context* ctx, const 
     return total;
 }
 
-static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, const cxpr_registry* reg,
+static double time_ir_typed(const cxpr_expr_compiled* program, cxpr_context* ctx, const cxpr_registry* reg,
                             size_t iterations, const char* field, int free_result) {
     size_t i;
     double total = 0.0;
@@ -1299,7 +1299,7 @@ static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, cons
 
     for (i = 0; i < iterations; ++i) {
         cxpr_value value = {0};
-        if (!cxpr_eval_program(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Typed IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
@@ -1310,7 +1310,7 @@ static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, cons
     return total;
 }
 
-static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_program* program,
+static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_expr_compiled* program,
                                cxpr_context* ctx, const cxpr_registry* reg,
                                const bench_case* c) {
     size_t i;
@@ -1330,7 +1330,7 @@ static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_program* pro
         if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) {
             ast_value = NAN;
         }
-        if (!cxpr_eval_program_number(program, ctx, reg, &ir_value, &ir_err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &ir_value, &ir_err)) {
             ir_value = NAN;
         }
 
@@ -1357,20 +1357,20 @@ static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_program* pro
     }
 }
 
-static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                       const bench_case* c) {
     long long ast_start, ast_end, ir_start, ir_end;
     double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, c->expr, &err);
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
 
     if (!ast) {
         fprintf(stderr, "Parse failed for '%s': %s\n", c->name, err.message);
         exit(1);
     }
 
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
         cxpr_expr_ast_free(ast);
@@ -1422,24 +1422,24 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
                ir_ns / c_ns);
     }
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
 }
 
-static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+static void bench_one_typed(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                             const typed_bench_case* c) {
     long long ast_start, ast_end, ir_start, ir_end;
     double ast_total, ir_total, c_total = 0.0, ast_ns, ir_ns, c_ns = NAN;
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, c->expr, &err);
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
 
     if (!ast) {
         fprintf(stderr, "Parse failed for '%s': %s\n", c->name, err.message);
         exit(1);
     }
 
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
         cxpr_expr_ast_free(ast);
@@ -1495,7 +1495,7 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
                "-");
     }
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
 }
 
@@ -1519,7 +1519,7 @@ static double time_ast_lookback(const cxpr_expr_ast* ast, cxpr_context* ctx,
     return total;
 }
 
-static double time_ir_lookback(const cxpr_program* program, cxpr_context* ctx,
+static double time_ir_lookback(const cxpr_expr_compiled* program, cxpr_context* ctx,
                                const cxpr_registry* reg, size_t iterations) {
     size_t i;
     double total = 0.0;
@@ -1528,7 +1528,7 @@ static double time_ir_lookback(const cxpr_program* program, cxpr_context* ctx,
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
         set_lookback_bar(ctx, i);
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "IR lookback benchmark eval failed at iter %zu: %s\n",
                     i, err.message ? err.message : "(null)");
             exit(1);
@@ -1539,7 +1539,7 @@ static double time_ir_lookback(const cxpr_program* program, cxpr_context* ctx,
     return total;
 }
 
-static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_program* program,
+static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_expr_compiled* program,
                                         cxpr_context* ctx, const cxpr_registry* reg,
                                         const lookback_bench_case* c) {
     cxpr_error ast_err = {0};
@@ -1550,7 +1550,7 @@ static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_pro
         double ir_value = NAN;
         set_lookback_bar(ctx, i);
         if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) ast_value = NAN;
-        if (!cxpr_eval_program_number(program, ctx, reg, &ir_value, &ir_err)) ir_value = NAN;
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &ir_value, &ir_err)) ir_value = NAN;
         if (ast_err.code != ir_err.code) {
             fprintf(stderr,
                     "Lookback AST/IR error-code mismatch for '%s' at bar %zu: ast=%d ir=%d\n",
@@ -1576,19 +1576,19 @@ static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_pro
     }
 }
 
-static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                                const lookback_bench_case* c) {
     long long ast_start, ast_end, ir_start, ir_end;
     double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, c->expr, &err);
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
 
     if (!ast) {
         fprintf(stderr, "Parse failed for lookback '%s': %s\n", c->name, err.message);
         exit(1);
     }
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for lookback '%s': %s\n", c->name, err.message);
         cxpr_expr_ast_free(ast);
@@ -1638,11 +1638,11 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
                ir_ns / c_ns);
     }
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
 }
 
-static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
+static void bench_slot_churn(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
     const char* expr = "a + b * c - d / e + x * y - z";
     const size_t iterations = 200000;
     long long churn_start, churn_end;
@@ -1651,10 +1651,10 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     size_t i;
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, expr, &err);
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
 
     if (!ast) { fprintf(stderr, "Parse failed: %s\n", err.message); exit(1); }
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) { fprintf(stderr, "Compile failed: %s\n", err.message); exit(1); }
 
     set_base_values(ctx);
@@ -1674,7 +1674,7 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
         mutate_values_slots(&s, i);
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Slot benchmark eval failed: %s\n", err.message); exit(1);
         }
         churn_total += value;
@@ -1687,7 +1687,7 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     printf("%-24s  %10zu  %12s  %12.2f  %14s  %8s  %8s\n",
            "context_slot", iterations, "-", churn_ns, "-", "-", "-");
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
 }
 
@@ -1789,7 +1789,7 @@ static double time_context_overlay_alloc_free(const cxpr_context* parent,
     return (double)(end - start) / (double)iterations;
 }
 
-static double time_expression_number(const cxpr_program* program, cxpr_context* ctx,
+static double time_expression_number(const cxpr_expr_compiled* program, cxpr_context* ctx,
                                      const cxpr_registry* reg, size_t iterations,
                                      double* out_total) {
     size_t i;
@@ -1800,7 +1800,7 @@ static double time_expression_number(const cxpr_program* program, cxpr_context* 
     start = now_ns();
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Overlay expression benchmark failed at iter %zu: %s\n",
                     i, err.message);
             exit(1);
@@ -1812,13 +1812,13 @@ static double time_expression_number(const cxpr_program* program, cxpr_context* 
     return (double)(end - start) / (double)iterations;
 }
 
-static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg) {
+static void bench_defined_overlay_prefix(cxpr_expr_parser* parser, cxpr_registry* reg) {
     const char* expr = "pickx(src)";
     const size_t iterations = 200000;
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
     double total = 0.0;
     double ns;
 
@@ -1833,7 +1833,7 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
         fprintf(stderr, "Parse failed for defined_overlay_prefix: %s\n", err.message);
         exit(1);
     }
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for defined_overlay_prefix: %s\n", err.message);
         exit(1);
@@ -1849,7 +1849,7 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
     printf("%-24s  %10zu  %14.2f  %12.6f\n",
            "defined_prefix", iterations, ns, total / (double)iterations);
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
 }
@@ -1974,7 +1974,7 @@ int main(int argc, char** argv) {
     const size_t lookback_case_count = sizeof(lookback_cases) / sizeof(lookback_cases[0]);
     size_t i;
     cxpr_error err = {0};
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_context* ctx;
     cxpr_registry* reg;
 
@@ -1991,7 +1991,7 @@ int main(int argc, char** argv) {
                                  lookback_cases, lookback_case_count, argc == 3 ? argv[2] : NULL);
     }
 
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     ctx = cxpr_context_new();
     reg = cxpr_registry_new();
 
@@ -2020,7 +2020,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Failed to register lookback columns\n");
             cxpr_registry_free(reg);
             cxpr_context_free(ctx);
-            cxpr_parser_free(parser);
+            cxpr_expr_parser_free(parser);
             return 1;
         }
     }
@@ -2030,7 +2030,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define sq: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2039,7 +2039,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define hyp2: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2048,7 +2048,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define f3: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2057,7 +2057,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define f5: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2066,7 +2066,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define add: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2075,7 +2075,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define div: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2084,7 +2084,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define clamp: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2093,7 +2093,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to define pickx: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -2131,6 +2131,6 @@ int main(int argc, char** argv) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return 0;
 }

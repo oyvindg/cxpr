@@ -163,10 +163,10 @@ static void test_context_overlay_parse_compile_eval_flow(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* parent = cxpr_context_new();
     cxpr_context* overlay;
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
     double out = 0.0;
     bool found = false;
 
@@ -185,16 +185,16 @@ static void test_context_overlay_parse_compile_eval_flow(void) {
 
     ast = cxpr_expr_ast_parse(parser, "close + high - fee", &err);
     assert(ast != NULL);
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     assert(program != NULL);
-    assert(cxpr_eval_program_number(program, overlay, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(program, overlay, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out == 214.0);
     assert(cxpr_context_get(parent, "close", &found) == 100.0 && found);
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(overlay);
     cxpr_context_free(parent);
     cxpr_registry_free(reg);
@@ -204,10 +204,10 @@ static void test_defined_function_overlay_flow(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* parent = cxpr_context_new();
     cxpr_context* overlay;
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
     bool out = false;
 
     assert(reg != NULL);
@@ -224,15 +224,15 @@ static void test_defined_function_overlay_flow(void) {
 
     ast = cxpr_expr_ast_parse(parser, "net(close) == 98", &err);
     assert(ast != NULL);
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     assert(program != NULL);
-    assert(cxpr_eval_program_bool(program, overlay, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_bool(program, overlay, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out);
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(overlay);
     cxpr_context_free(parent);
     cxpr_registry_free(reg);
@@ -243,10 +243,10 @@ static void test_defined_function_struct_field_flow(void) {
     static const double values[] = {12.0, 4.0};
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
     double out = 0.0;
 
     assert(reg != NULL);
@@ -258,15 +258,15 @@ static void test_defined_function_struct_field_flow(void) {
 
     ast = cxpr_expr_ast_parse(parser, "pick_x(pose) + pose.y", &err);
     assert(ast != NULL);
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     assert(program != NULL);
-    assert(cxpr_eval_program_number(program, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out == 16.0);
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
 }
@@ -300,10 +300,10 @@ static cxpr_value timeframe_scale_handler(const cxpr_expr_ast* call_ast,
 static void test_ast_handler_parse_compile_eval_flow(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_compiled* program;
     double out = 0.0;
 
     assert(reg != NULL);
@@ -321,15 +321,15 @@ static void test_ast_handler_parse_compile_eval_flow(void) {
     assert(err.code == CXPR_OK);
     assert(out == 1013.0);
 
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     assert(program != NULL);
-    assert(cxpr_eval_program_number(program, ctx, reg, &out, &err));
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out == 1013.0);
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
 }

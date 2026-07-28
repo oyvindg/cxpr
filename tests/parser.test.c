@@ -27,7 +27,7 @@
  * Helpers
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-static cxpr_expr_ast* parse_ok(cxpr_parser* p, const char* expr) {
+static cxpr_expr_ast* parse_ok(cxpr_expr_parser* p, const char* expr) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
@@ -39,7 +39,7 @@ static cxpr_expr_ast* parse_ok(cxpr_parser* p, const char* expr) {
     return ast;
 }
 
-static void parse_fail(cxpr_parser* p, const char* expr) {
+static void parse_fail(cxpr_expr_parser* p, const char* expr) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast == NULL);
@@ -47,7 +47,7 @@ static void parse_fail(cxpr_parser* p, const char* expr) {
     cxpr_expr_ast_free(ast);
 }
 
-static void parse_fail_message(cxpr_parser* p, const char* expr, const char* message) {
+static void parse_fail_message(cxpr_expr_parser* p, const char* expr, const char* message) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast == NULL);
@@ -62,17 +62,17 @@ static void parse_fail_message(cxpr_parser* p, const char* expr, const char* mes
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_number(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "42");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_NUMBER);
     assert(fabs(cxpr_expr_ast_number_value(ast) - 42.0) < 1e-10);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_number\n");
 }
 
 static void test_bool(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "true");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BOOL);
     assert(cxpr_expr_ast_bool_value(ast) == true);
@@ -82,27 +82,27 @@ static void test_bool(void) {
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BOOL);
     assert(cxpr_expr_ast_bool_value(ast) == false);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_bool\n");
 }
 
 static void test_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "rsi");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_IDENTIFIER);
     assert(strcmp(cxpr_expr_ast_identifier_name(ast), "rsi") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_identifier\n");
 }
 
 static void test_variable(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "$oversold");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_VARIABLE);
     assert(strcmp(cxpr_expr_ast_param_name(ast), "oversold") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_variable\n");
 }
 
@@ -111,7 +111,7 @@ static void test_variable(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_addition(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "a + b");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_left(ast)) == CXPR_NODE_IDENTIFIER);
@@ -119,27 +119,27 @@ static void test_addition(void) {
     assert(strcmp(cxpr_expr_ast_identifier_name(cxpr_expr_ast_binary_left(ast)), "a") == 0);
     assert(strcmp(cxpr_expr_ast_identifier_name(cxpr_expr_ast_binary_right(ast)), "b") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_addition\n");
 }
 
 static void test_comparison(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "rsi < 30");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_left(ast)) == CXPR_NODE_IDENTIFIER);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_right(ast)) == CXPR_NODE_NUMBER);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_comparison\n");
 }
 
 static void test_logical_and(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "a and b");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_logical_and\n");
 }
 
@@ -148,7 +148,7 @@ static void test_logical_and(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_precedence_mul_before_add(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     /* 2 + 3 * 4 should parse as 2 + (3 * 4), not (2 + 3) * 4 */
     cxpr_expr_ast* ast = parse_ok(p, "2 + 3 * 4");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
@@ -161,12 +161,12 @@ static void test_precedence_mul_before_add(void) {
     assert(fabs(cxpr_expr_ast_number_value(cxpr_expr_ast_binary_left(right)) - 3.0) < 1e-10);
     assert(fabs(cxpr_expr_ast_number_value(cxpr_expr_ast_binary_right(right)) - 4.0) < 1e-10);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_precedence_mul_before_add\n");
 }
 
 static void test_precedence_and_before_or(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     /* a or b and c should parse as a or (b and c) */
     cxpr_expr_ast* ast = parse_ok(p, "a or b and c");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
@@ -175,7 +175,7 @@ static void test_precedence_and_before_or(void) {
     /* Right is AND */
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_right(ast)) == CXPR_NODE_BINARY_OP);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_precedence_and_before_or\n");
 }
 
@@ -184,14 +184,14 @@ static void test_precedence_and_before_or(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parentheses(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     /* (2 + 3) * 4: root should be MUL */
     cxpr_expr_ast* ast = parse_ok(p, "(2 + 3) * 4");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
     /* Left should be the (2 + 3) */
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_left(ast)) == CXPR_NODE_BINARY_OP);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parentheses\n");
 }
 
@@ -200,17 +200,17 @@ static void test_parentheses(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_unary_minus(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "-x");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_UNARY_OP);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_unary_operand(ast)) == CXPR_NODE_IDENTIFIER);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_unary_minus\n");
 }
 
 static void test_not(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "not x");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_UNARY_OP);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_unary_operand(ast)) == CXPR_NODE_IDENTIFIER);
@@ -226,7 +226,7 @@ static void test_not(void) {
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_unary_operand(ast)) == CXPR_NODE_BINARY_OP);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_not\n");
 }
 
@@ -235,24 +235,24 @@ static void test_not(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "macd.histogram");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS);
     assert(strcmp(cxpr_expr_ast_field_object(ast), "macd") == 0);
     assert(strcmp(cxpr_expr_ast_field_name(ast), "histogram") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_field_access\n");
 }
 
 static void test_field_access_in_expression(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "macd.histogram > 0");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_left(ast)) == CXPR_NODE_FIELD_ACCESS);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_binary_right(ast)) == CXPR_NODE_NUMBER);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_field_access_in_expression\n");
 }
 
@@ -261,30 +261,30 @@ static void test_field_access_in_expression(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_function_no_args(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "pi()");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_expr_ast_call_name(ast), "pi") == 0);
     assert(cxpr_expr_ast_call_arg_count(ast) == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_function_no_args\n");
 }
 
 static void test_function_one_arg(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "sqrt(x)");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_expr_ast_call_name(ast), "sqrt") == 0);
     assert(cxpr_expr_ast_call_arg_count(ast) == 1);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0)) == CXPR_NODE_IDENTIFIER);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_function_one_arg\n");
 }
 
 static void test_function_two_args(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "cross_above(ema_fast, ema_slow)");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_expr_ast_call_name(ast), "cross_above") == 0);
@@ -292,23 +292,23 @@ static void test_function_two_args(void) {
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0)) == CXPR_NODE_IDENTIFIER);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 1)) == CXPR_NODE_IDENTIFIER);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_function_two_args\n");
 }
 
 static void test_function_nested(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "max(0, min(x, 100))");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(cxpr_expr_ast_call_arg_count(ast) == 2);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 1)) == CXPR_NODE_FUNCTION_CALL);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_function_nested\n");
 }
 
 static void test_function_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "macd(12, 26, 9).signal");
     cxpr_expr_ast_producer_field_ref refs[4] = {0};
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS);
@@ -316,12 +316,12 @@ static void test_function_field_access(void) {
     assert(strcmp(refs[0].producer_name, "macd") == 0);
     assert(strcmp(refs[0].field_name, "signal") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_function_field_access\n");
 }
 
 static void test_dotted_function_call(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "ema.ema_step(signal, source, $period)");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_expr_ast_call_name(ast), "ema.ema_step") == 0);
@@ -334,7 +334,7 @@ static void test_dotted_function_call(void) {
     assert(strcmp(cxpr_expr_ast_producer_field(ast), "x") == 0);
     assert(cxpr_expr_ast_producer_arg_count(ast) == 1);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_dotted_function_call\n");
 }
 
@@ -343,7 +343,7 @@ static void test_dotted_function_call(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_grouped_function_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
 
     ast = parse_ok(p, "(macd(12, 26, 9)).signal");
@@ -359,12 +359,12 @@ static void test_grouped_function_field_access(void) {
     assert(strcmp(cxpr_expr_ast_field_name(ast), "adx") == 0);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_grouped_function_field_access\n");
 }
 
 static void test_grouped_function_field_access_in_expr(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
 
     /* (adx(14)).adx > 25 — used in a larger expression */
@@ -381,12 +381,12 @@ static void test_grouped_function_field_access_in_expr(void) {
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0)) == CXPR_NODE_FIELD_ACCESS);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_grouped_function_field_access_in_expr\n");
 }
 
 static void test_grouped_expression_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast;
 
     ast = parse_ok(p, "({fast: 12, slow: 26}).fast");
@@ -401,12 +401,12 @@ static void test_grouped_expression_field_access(void) {
     assert(strcmp(cxpr_expr_ast_field_name(ast), "risk") == 0);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_grouped_expression_field_access\n");
 }
 
 static void test_function_named_args(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "macd(fast=9, slow=21, period=3)");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     assert(cxpr_expr_ast_call_arg_count(ast) == 3);
@@ -418,12 +418,12 @@ static void test_function_named_args(void) {
     assert(fabs(cxpr_expr_ast_number_value(cxpr_expr_ast_call_arg(ast, 1)) - 21.0) < 1e-10);
     assert(fabs(cxpr_expr_ast_number_value(cxpr_expr_ast_call_arg(ast, 2)) - 3.0) < 1e-10);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_function_named_args\n");
 }
 
 static void test_producer_named_args(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "macd(fast=9, slow=21, period=3).signal");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS);
     assert(cxpr_expr_ast_producer_arg_count(ast) == 3);
@@ -432,7 +432,7 @@ static void test_producer_named_args(void) {
     assert(strcmp(cxpr_expr_ast_producer_arg_name(ast, 1), "slow") == 0);
     assert(strcmp(cxpr_expr_ast_producer_arg_name(ast, 2), "period") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_producer_named_args\n");
 }
 
@@ -441,14 +441,14 @@ static void test_producer_named_args(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_ternary(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "x > 0 ? x : 0");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_TERNARY);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_ternary_condition(ast)) == CXPR_NODE_BINARY_OP);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_ternary_true(ast)) == CXPR_NODE_IDENTIFIER);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_ternary_false(ast)) == CXPR_NODE_NUMBER);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ternary\n");
 }
 
@@ -457,7 +457,7 @@ static void test_ternary(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_complex_entry_expression(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "rsi < $oversold and cross_above(ema_fast, ema_slow)");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP); /* AND */
     /* Left: rsi < $oversold */
@@ -471,7 +471,7 @@ static void test_complex_entry_expression(void) {
     assert(strcmp(cxpr_expr_ast_call_name(right), "cross_above") == 0);
     assert(cxpr_expr_ast_call_arg_count(right) == 2);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_complex_entry_expression\n");
 }
 
@@ -480,7 +480,7 @@ static void test_complex_entry_expression(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_reference_extraction(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "rsi < $oversold and cross_above(ema_fast, ema_slow)");
 
     /* References: identifiers used (not function names, not $vars) */
@@ -509,12 +509,12 @@ static void test_reference_extraction(void) {
     assert(strcmp(vars[0], "oversold") == 0);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_reference_extraction\n");
 }
 
 static void test_reference_extraction_field_access(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "macd.histogram > 0 and adx.adx > 25");
 
     const char* refs[64];
@@ -528,12 +528,12 @@ static void test_reference_extraction_field_access(void) {
     assert(found_macd && found_adx);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_reference_extraction_field_access\n");
 }
 
 static void test_reference_deduplication(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     /* rsi appears twice */
     cxpr_expr_ast* ast = parse_ok(p, "rsi < 30 or rsi > 70");
     const char* refs[64];
@@ -541,7 +541,7 @@ static void test_reference_deduplication(void) {
     assert(nrefs == 1); /* deduplicated */
     assert(strcmp(refs[0], "rsi") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_reference_deduplication\n");
 }
 
@@ -553,7 +553,7 @@ static double stub_cross(const double* args, size_t argc, void* userdata) {
 }
 
 static void test_analysis_metadata(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_analysis info;
     cxpr_error err = {0};
@@ -583,12 +583,12 @@ static void test_analysis_metadata(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_analysis_metadata\n");
 }
 
 static void test_analysis_field_paths(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_analysis info;
     cxpr_error err = {0};
     cxpr_expr_ast* ast = parse_ok(p, "macd.histogram > 0 and adx.adx > 25");
@@ -600,12 +600,12 @@ static void test_analysis_field_paths(void) {
     assert(info.result_type == CXPR_EXPR_BOOL);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_analysis_field_paths\n");
 }
 
 static void test_analysis_unknown_function(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_analysis info;
     cxpr_error err = {0};
@@ -620,12 +620,12 @@ static void test_analysis_unknown_function(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_analysis_unknown_function\n");
 }
 
 static void test_analysis_wrong_arity(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_analysis info;
     cxpr_error err = {0};
@@ -638,12 +638,12 @@ static void test_analysis_wrong_arity(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_analysis_wrong_arity\n");
 }
 
 static void test_analysis_named_args_reorders_by_signature(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_analysis info;
     cxpr_error err = {0};
@@ -658,7 +658,7 @@ static void test_analysis_named_args_reorders_by_signature(void) {
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_analysis_named_args_reorders_by_signature\n");
 }
 
@@ -684,7 +684,7 @@ static void test_analyze_expr_convenience_api(void) {
 }
 
 static void test_pipe_desugars_to_nested_calls(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_expr_ast* ast = parse_ok(p, "angle_deg |> deg2rad |> clamp(0.0, 1.57) |> within_limit(limit)");
 
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
@@ -708,24 +708,24 @@ static void test_pipe_desugars_to_nested_calls(void) {
     assert(strcmp(cxpr_expr_ast_identifier_name(cxpr_expr_ast_call_arg(deg_call, 0)), "angle_deg") == 0);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_desugars_to_nested_calls\n");
 }
 
 static void test_pipe_requires_callable_rhs(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "x |> f + g", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
     assert(strstr(err.message, "Expected callable after '|>'") != NULL);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_requires_callable_rhs\n");
 }
 
 static void test_pipe_gt_edgecases(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "(x |> abs) > y and (y |> abs) >= 0", &err);
     assert(ast != NULL);
@@ -738,7 +738,7 @@ static void test_pipe_gt_edgecases(void) {
     assert(err.message != NULL);
     assert(strstr(err.message, "Expected callable after '|>'") != NULL);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_pipe_gt_edgecases\n");
 }
 
@@ -747,7 +747,7 @@ static void test_pipe_gt_edgecases(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_syntax_errors(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     const char fuzz_leak_case[] = { '[', 'v', (char)0x83, '\0' };
 
     parse_fail(p, "");       /* empty expression */
@@ -759,19 +759,19 @@ static void test_syntax_errors(void) {
     parse_fail(p, "f(1).");  /* missing field after function call */
     parse_fail(p, fuzz_leak_case); /* fuzz regression: error after array element */
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_syntax_errors\n");
 }
 
 static void test_implicit_multiplication_error(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     const char* message = "Implicit multiplication is not supported; use '*' explicitly";
 
     parse_fail_message(p, "8/2(2*2)", message);
     parse_fail_message(p, "2x", message);
     parse_fail_message(p, "(a + b)c", message);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_implicit_multiplication_error\n");
 }
 
@@ -780,7 +780,7 @@ static void test_implicit_multiplication_error(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_power_right_associative(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     /* 2^3^2 should parse as 2^(3^2), not (2^3)^2 */
     cxpr_expr_ast* ast = parse_ok(p, "2 ^ 3 ^ 2");
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
@@ -793,7 +793,7 @@ static void test_power_right_associative(void) {
     assert(fabs(cxpr_expr_ast_number_value(cxpr_expr_ast_binary_left(right)) - 3.0) < 1e-10);
     assert(fabs(cxpr_expr_ast_number_value(cxpr_expr_ast_binary_right(right)) - 2.0) < 1e-10);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_power_right_associative\n");
 }
 

@@ -81,7 +81,7 @@ The main types are:
 | `cxpr_document_ast` | Source-oriented tree for a complete `.cxpr` document |
 | `cxpr_document` | Parsed document containing host blocks and optionally a model |
 | `cxpr_model` | Validated semantic representation of model declarations |
-| `cxpr_program` | Compiled typed IR for one expression |
+| `cxpr_expr_compiled` | Compiled typed IR for one expression |
 | `cxpr_model_program` | Immutable compiled plan for a complete model |
 | `cxpr_context` | Runtime variables, parameters, structs, slots, and overlays |
 | `cxpr_registry` | Built-in, expression-defined, and host-defined functions |
@@ -299,7 +299,7 @@ formula rather than a complete model.
 
 int main(void) {
     cxpr_error err = {0};
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(
@@ -311,25 +311,25 @@ int main(void) {
     cxpr_context_set(ctx, "vy", 4.0);
     cxpr_context_set_param(ctx, "max_speed", 4.5);
 
-    cxpr_program* program = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
     bool exceeded = false;
     if (program) {
-        exceeded = cxpr_eval_program_bool(program, ctx, reg, &err);
+        exceeded = cxpr_expr_compiled_eval_bool(program, ctx, reg, &err);
     }
 
     printf("speed exceeded: %s\n", exceeded ? "yes" : "no");
 
-    cxpr_program_free(program);
+    cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return err.code == CXPR_OK ? 0 : 1;
 }
 ```
 
 The tree evaluator is useful for diagnostics and fallback paths. Compile to a
-`cxpr_program` when an expression is evaluated repeatedly.
+`cxpr_expr_compiled` when an expression is evaluated repeatedly.
 
 ## The `.cxpr` document and model language
 
@@ -592,17 +592,17 @@ lookback depth. The shared type checker enforces the same boolean/numeric rules
 for tree evaluation, typed IR, model compilation, engine watches, baskets, and
 C code generation.
 
-`cxpr_compile` lowers a supported expression AST into typed stack IR. The
+`cxpr_expr_compile` lowers a supported expression AST into typed stack IR. The
 executor includes optimized paths for common scalar operations and falls back
 to registered AST-level behavior where required.
 
 The public `<cxpr/ir.h>` API exposes a versioned, read-only instruction view:
 
 ```c
-for (size_t i = 0; i < cxpr_ir_view_count(program); ++i) {
-    cxpr_ir_view_instr instruction;
-    if (cxpr_ir_view_instr_at(program, i, &instruction)) {
-        printf("%s\n", cxpr_ir_view_opcode_name(instruction.op));
+for (size_t i = 0; i < cxpr_expr_compiled_ir_count(program); ++i) {
+    cxpr_ir_instruction instruction;
+    if (cxpr_expr_compiled_ir_instruction(program, i, &instruction)) {
+        printf("%s\n", cxpr_ir_opcode_name(instruction.op));
     }
 }
 ```

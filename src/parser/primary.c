@@ -7,18 +7,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool cxpr_parse_call_argument(cxpr_parser* p, cxpr_expr_ast** out_arg, char** out_name) {
+static bool cxpr_parse_call_argument(cxpr_expr_parser* p, cxpr_expr_ast** out_arg, char** out_name) {
     cxpr_expr_ast* arg = NULL;
     char* name = NULL;
     if (!out_arg || !out_name) return false;
     *out_arg = NULL;
     *out_name = NULL;
-    if (cxpr_parser_check(p, CXPR_TOK_IDENTIFIER) &&
-        cxpr_parser_peek_next(p).type == CXPR_TOK_ASSIGN) {
-        name = cxpr_parser_token_to_string(&p->current);
+    if (cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER) &&
+        cxpr_expr_parser_peek_next(p).type == CXPR_TOK_ASSIGN) {
+        name = cxpr_expr_parser_token_to_string(&p->current);
         if (!name) return false;
-        cxpr_parser_advance(p);
-        if (!cxpr_parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' after named argument")) {
+        cxpr_expr_parser_advance(p);
+        if (!cxpr_expr_parser_expect(p, CXPR_TOK_ASSIGN, "Expected '=' after named argument")) {
             free(name);
             return false;
         }
@@ -34,17 +34,17 @@ static bool cxpr_parse_call_argument(cxpr_parser* p, cxpr_expr_ast** out_arg, ch
     return true;
 }
 
-static cxpr_expr_ast* cxpr_parse_array_literal(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_array_literal(cxpr_expr_parser* p) {
     size_t count = 0;
     size_t capacity = 4;
     cxpr_expr_ast** elements;
 
-    if (!cxpr_parser_expect(p, CXPR_TOK_LBRACKET, "Expected '['")) return NULL;
+    if (!cxpr_expr_parser_expect(p, CXPR_TOK_LBRACKET, "Expected '['")) return NULL;
 
     elements = (cxpr_expr_ast**)calloc(capacity, sizeof(cxpr_expr_ast*));
     if (!elements) return NULL;
 
-    if (!cxpr_parser_check(p, CXPR_TOK_RBRACKET)) {
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_RBRACKET)) {
         do {
             if (count >= capacity) {
                 cxpr_expr_ast** grown;
@@ -60,10 +60,10 @@ static cxpr_expr_ast* cxpr_parse_array_literal(cxpr_parser* p) {
                 goto fail;
             }
             count++;
-        } while (cxpr_parser_match(p, CXPR_TOK_COMMA));
+        } while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA));
     }
 
-    if (!cxpr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected ']' to close array")) goto fail;
+    if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected ']' to close array")) goto fail;
     return cxpr_expr_ast_array_new(elements, count);
 
 fail:
@@ -72,13 +72,13 @@ fail:
     return NULL;
 }
 
-static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
+static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
     size_t count = 0;
     size_t capacity = 4;
     char** names;
     cxpr_expr_ast** values;
 
-    if (!cxpr_parser_expect(p, CXPR_TOK_LBRACE, "Expected '{'")) return NULL;
+    if (!cxpr_expr_parser_expect(p, CXPR_TOK_LBRACE, "Expected '{'")) return NULL;
 
     names = (char**)calloc(capacity, sizeof(char*));
     values = (cxpr_expr_ast**)calloc(capacity, sizeof(cxpr_expr_ast*));
@@ -88,7 +88,7 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
         return NULL;
     }
 
-    if (!cxpr_parser_check(p, CXPR_TOK_RBRACE)) {
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_RBRACE)) {
         do {
             if (count >= capacity) {
                 size_t old_capacity = capacity;
@@ -107,7 +107,7 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
                 memset(names + old_capacity, 0, (capacity - old_capacity) * sizeof(char*));
                 memset(values + old_capacity, 0, (capacity - old_capacity) * sizeof(cxpr_expr_ast*));
             }
-            if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+            if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
                 p->had_error = true;
                 p->last_error.code = CXPR_ERR_SYNTAX;
                 p->last_error.message = "Expected record field name";
@@ -116,11 +116,11 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
                 p->last_error.column = p->current.column;
                 goto fail;
             }
-            names[count] = cxpr_parser_token_to_string(&p->current);
+            names[count] = cxpr_expr_parser_token_to_string(&p->current);
             if (!names[count]) goto fail;
-            cxpr_parser_advance(p);
-            if (cxpr_parser_match(p, CXPR_TOK_ASSIGN) ||
-                cxpr_parser_match(p, CXPR_TOK_COLON)) {
+            cxpr_expr_parser_advance(p);
+            if (cxpr_expr_parser_match(p, CXPR_TOK_ASSIGN) ||
+                cxpr_expr_parser_match(p, CXPR_TOK_COLON)) {
                 values[count] = cxpr_parse_expression(p);
             } else {
                 values[count] = cxpr_expr_ast_identifier_new(names[count]);
@@ -133,10 +133,10 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_parser* p) {
             }
             if (!values[count] || p->had_error) goto fail;
             count++;
-        } while (cxpr_parser_match(p, CXPR_TOK_COMMA));
+        } while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA));
     }
 
-    if (!cxpr_parser_expect(p, CXPR_TOK_RBRACE, "Expected '}' to close record")) goto fail;
+    if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACE, "Expected '}' to close record")) goto fail;
     {
         cxpr_expr_ast* record = cxpr_expr_ast_record_new((const char* const*)names, values, count);
         for (size_t i = 0u; i < count; ++i) free(names[i]);
@@ -158,7 +158,7 @@ fail:
     return NULL;
 }
 
-static char* cxpr_parser_join_segments(char** segments, size_t depth) {
+static char* cxpr_expr_parser_join_segments(char** segments, size_t depth) {
     size_t len = 1u;
     char* out;
     char* cursor;
@@ -177,13 +177,13 @@ static char* cxpr_parser_join_segments(char** segments, size_t depth) {
     return out;
 }
 
-static void cxpr_parser_free_segments(char** segments, size_t depth) {
+static void cxpr_expr_parser_free_segments(char** segments, size_t depth) {
     if (!segments) return;
     for (size_t i = 0u; i < depth; ++i) free(segments[i]);
     free(segments);
 }
 
-static bool cxpr_parser_parse_arg_list(cxpr_parser* p,
+static bool cxpr_expr_parser_parse_arg_list(cxpr_expr_parser* p,
                                        cxpr_expr_ast*** out_args,
                                        char*** out_arg_names,
                                        size_t* out_argc) {
@@ -200,11 +200,11 @@ static bool cxpr_parser_parse_arg_list(cxpr_parser* p,
         free(args);
         return false;
     }
-    cxpr_parser_advance(p);
-    if (!cxpr_parser_check(p, CXPR_TOK_RPAREN)) {
+    cxpr_expr_parser_advance(p);
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_RPAREN)) {
         if (!cxpr_parse_call_argument(p, &args[argc], &arg_names[argc])) goto fail;
         argc++;
-        while (cxpr_parser_match(p, CXPR_TOK_COMMA)) {
+        while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA)) {
             if (argc >= args_capacity) {
                 size_t old_capacity = args_capacity;
                 cxpr_expr_ast** new_args;
@@ -223,7 +223,7 @@ static bool cxpr_parser_parse_arg_list(cxpr_parser* p,
             argc++;
         }
     }
-    if (!cxpr_parser_expect(p, CXPR_TOK_RPAREN, "Expected ')' after function arguments")) goto fail;
+    if (!cxpr_expr_parser_expect(p, CXPR_TOK_RPAREN, "Expected ')' after function arguments")) goto fail;
     *out_args = args;
     *out_arg_names = arg_names;
     *out_argc = argc;
@@ -237,30 +237,30 @@ fail:
     return false;
 }
 
-cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
+cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
     cxpr_expr_ast* node = NULL;
-    if (cxpr_parser_check(p, CXPR_TOK_NUMBER)) {
+    if (cxpr_expr_parser_check(p, CXPR_TOK_NUMBER)) {
         const double val = p->current.number_value;
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         node = cxpr_expr_ast_number_new(val);
-    } else if (cxpr_parser_check(p, CXPR_TOK_TRUE) || cxpr_parser_check(p, CXPR_TOK_FALSE)) {
+    } else if (cxpr_expr_parser_check(p, CXPR_TOK_TRUE) || cxpr_expr_parser_check(p, CXPR_TOK_FALSE)) {
         const bool value = (p->current.type == CXPR_TOK_TRUE);
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         node = cxpr_expr_ast_bool_new(value);
-    } else if (cxpr_parser_check(p, CXPR_TOK_STRING)) {
+    } else if (cxpr_expr_parser_check(p, CXPR_TOK_STRING)) {
         const size_t len = p->current.length;
         char* value = (char*)malloc(len + 1);
         if (!value) return NULL;
         memcpy(value, p->current.start, len);
         value[len] = '\0';
-        cxpr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
         node = cxpr_expr_ast_new_string(value);
         free(value);
-    } else if (cxpr_parser_check(p, CXPR_TOK_VARIABLE)) {
-        char* name = cxpr_parser_token_to_string(&p->current);
-        cxpr_parser_advance(p);
+    } else if (cxpr_expr_parser_check(p, CXPR_TOK_VARIABLE)) {
+        char* name = cxpr_expr_parser_token_to_string(&p->current);
+        cxpr_expr_parser_advance(p);
         if (!name) return NULL;
-        if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+        if (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
             char** segments = NULL;
             size_t depth = 0u;
             size_t capacity = 4u;
@@ -272,10 +272,10 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
             }
             segments[depth++] = name;
             name = NULL;
-            while (cxpr_parser_check(p, CXPR_TOK_DOT)) {
-                cxpr_parser_advance(p);
-                if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
-                    cxpr_parser_free_segments(segments, depth);
+            while (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
+                cxpr_expr_parser_advance(p);
+                if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+                    cxpr_expr_parser_free_segments(segments, depth);
                     p->had_error = true;
                     p->last_error.code = CXPR_ERR_SYNTAX;
                     p->last_error.message = "Expected parameter segment after '.'";
@@ -289,43 +289,43 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
                     capacity *= 2u;
                     grown = (char**)realloc(segments, capacity * sizeof(char*));
                     if (!grown) {
-                        cxpr_parser_free_segments(segments, depth);
+                        cxpr_expr_parser_free_segments(segments, depth);
                         return NULL;
                     }
                     segments = grown;
                 }
-                segments[depth] = cxpr_parser_token_to_string(&p->current);
+                segments[depth] = cxpr_expr_parser_token_to_string(&p->current);
                 if (!segments[depth]) {
-                    cxpr_parser_free_segments(segments, depth);
+                    cxpr_expr_parser_free_segments(segments, depth);
                     return NULL;
                 }
                 depth++;
-                cxpr_parser_advance(p);
+                cxpr_expr_parser_advance(p);
             }
-            name = cxpr_parser_join_segments(segments, depth);
-            cxpr_parser_free_segments(segments, depth);
+            name = cxpr_expr_parser_join_segments(segments, depth);
+            cxpr_expr_parser_free_segments(segments, depth);
             if (!name) return NULL;
         }
         node = cxpr_expr_ast_param_new(name);
         free(name);
-    } else if (cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
-        char* name = cxpr_parser_token_to_string(&p->current);
-        cxpr_parser_advance(p);
+    } else if (cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+        char* name = cxpr_expr_parser_token_to_string(&p->current);
+        cxpr_expr_parser_advance(p);
         if (!name) return NULL;
-        if (cxpr_parser_check(p, CXPR_TOK_LPAREN)) {
+        if (cxpr_expr_parser_check(p, CXPR_TOK_LPAREN)) {
             size_t argc = 0;
             cxpr_expr_ast** args = NULL;
             char** arg_names = NULL;
-            if (!cxpr_parser_parse_arg_list(p, &args, &arg_names, &argc)) {
+            if (!cxpr_expr_parser_parse_arg_list(p, &args, &arg_names, &argc)) {
                 free(name);
                 return NULL;
             }
-            if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+            if (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
                 char* field = NULL;
-                cxpr_parser_advance(p);
-                if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) goto fail_field;
-                field = cxpr_parser_token_to_string(&p->current);
-                cxpr_parser_advance(p);
+                cxpr_expr_parser_advance(p);
+                if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) goto fail_field;
+                field = cxpr_expr_parser_token_to_string(&p->current);
+                cxpr_expr_parser_advance(p);
                 if (!field) goto fail_field;
                 node = cxpr_expr_ast_producer_field_named_new(name, args, arg_names, argc, field);
                 free(name);
@@ -349,7 +349,7 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
             p->last_error.line = p->current.line;
             p->last_error.column = p->current.column;
             return NULL;
-        } else if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+        } else if (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
             char** segments = NULL;
             size_t depth = 0;
             size_t capacity = 4;
@@ -359,9 +359,9 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
                 return NULL;
             }
             segments[depth++] = name;
-            while (cxpr_parser_check(p, CXPR_TOK_DOT)) {
-                cxpr_parser_advance(p);
-                if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+            while (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
+                cxpr_expr_parser_advance(p);
+                if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
                     for (size_t i = 0; i < depth; ++i) free(segments[i]);
                     free(segments);
                     p->had_error = true;
@@ -382,39 +382,39 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
                     capacity *= 2;
                     segments = new_segments;
                 }
-                segments[depth] = cxpr_parser_token_to_string(&p->current);
+                segments[depth] = cxpr_expr_parser_token_to_string(&p->current);
                 if (!segments[depth]) {
                     for (size_t i = 0; i < depth; ++i) free(segments[i]);
                     free(segments);
                     return NULL;
                 }
                 depth++;
-                cxpr_parser_advance(p);
+                cxpr_expr_parser_advance(p);
             }
-            if (cxpr_parser_check(p, CXPR_TOK_LPAREN)) {
-                char* fn_name = cxpr_parser_join_segments(segments, depth);
+            if (cxpr_expr_parser_check(p, CXPR_TOK_LPAREN)) {
+                char* fn_name = cxpr_expr_parser_join_segments(segments, depth);
                 size_t argc = 0;
                 cxpr_expr_ast** args = NULL;
                 char** arg_names = NULL;
                 if (!fn_name) {
-                    cxpr_parser_free_segments(segments, depth);
+                    cxpr_expr_parser_free_segments(segments, depth);
                     return NULL;
                 }
-                if (!cxpr_parser_parse_arg_list(p, &args, &arg_names, &argc)) {
+                if (!cxpr_expr_parser_parse_arg_list(p, &args, &arg_names, &argc)) {
                     free(fn_name);
-                    cxpr_parser_free_segments(segments, depth);
+                    cxpr_expr_parser_free_segments(segments, depth);
                     return NULL;
                 }
-                if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+                if (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
                     char* field = NULL;
-                    cxpr_parser_advance(p);
-                    if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+                    cxpr_expr_parser_advance(p);
+                    if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
                         free(fn_name);
                         for (size_t i = 0u; i < argc; ++i) cxpr_expr_ast_free(args[i]);
                         for (size_t i = 0u; i < argc; ++i) free(arg_names[i]);
                         free(arg_names);
                         free(args);
-                        cxpr_parser_free_segments(segments, depth);
+                        cxpr_expr_parser_free_segments(segments, depth);
                         p->had_error = true;
                         p->last_error.code = CXPR_ERR_SYNTAX;
                         p->last_error.message = "Expected field name after '.'";
@@ -423,8 +423,8 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
                         p->last_error.column = p->current.column;
                         return NULL;
                     }
-                    field = cxpr_parser_token_to_string(&p->current);
-                    cxpr_parser_advance(p);
+                    field = cxpr_expr_parser_token_to_string(&p->current);
+                    cxpr_expr_parser_advance(p);
                     node = cxpr_expr_ast_producer_field_named_new(fn_name, args, arg_names, argc, field);
                     free(field);
                 } else {
@@ -435,22 +435,22 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
                 node = depth == 2 ? cxpr_expr_ast_field_new(segments[0], segments[1])
                                   : cxpr_expr_ast_new_chain_access((const char* const*)segments, depth);
             }
-            cxpr_parser_free_segments(segments, depth);
+            cxpr_expr_parser_free_segments(segments, depth);
         } else {
             node = cxpr_expr_ast_identifier_new(name);
             free(name);
         }
-    } else if (cxpr_parser_match(p, CXPR_TOK_LPAREN)) {
+    } else if (cxpr_expr_parser_match(p, CXPR_TOK_LPAREN)) {
         node = cxpr_parse_expression(p);
         if (!node || p->had_error) { cxpr_expr_ast_free(node); return NULL; }
-        if (!cxpr_parser_expect(p, CXPR_TOK_RPAREN, "Expected closing ')'")) {
+        if (!cxpr_expr_parser_expect(p, CXPR_TOK_RPAREN, "Expected closing ')'")) {
             cxpr_expr_ast_free(node);
             return NULL;
         }
-        if (cxpr_parser_check(p, CXPR_TOK_DOT)) {
+        if (cxpr_expr_parser_check(p, CXPR_TOK_DOT)) {
             char* field;
-            cxpr_parser_advance(p);
-            if (!cxpr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+            cxpr_expr_parser_advance(p);
+            if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
                 p->had_error = true;
                 p->last_error.code = CXPR_ERR_SYNTAX;
                 p->last_error.message = "Expected field name after '.'";
@@ -460,8 +460,8 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
                 cxpr_expr_ast_free(node);
                 return NULL;
             }
-            field = cxpr_parser_token_to_string(&p->current);
-            cxpr_parser_advance(p);
+            field = cxpr_expr_parser_token_to_string(&p->current);
+            cxpr_expr_parser_advance(p);
             if (!field) {
                 cxpr_expr_ast_free(node);
                 return NULL;
@@ -470,9 +470,9 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
             free(field);
             if (!node) return NULL;
         }
-    } else if (cxpr_parser_check(p, CXPR_TOK_LBRACKET)) {
+    } else if (cxpr_expr_parser_check(p, CXPR_TOK_LBRACKET)) {
         node = cxpr_parse_array_literal(p);
-    } else if (cxpr_parser_check(p, CXPR_TOK_LBRACE)) {
+    } else if (cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) {
         node = cxpr_parse_record_literal(p);
     } else {
         p->had_error = true;
@@ -484,14 +484,14 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_parser* p) {
         return NULL;
     }
 primary_done:
-    while (node && cxpr_parser_match(p, CXPR_TOK_LBRACKET)) {
+    while (node && cxpr_expr_parser_match(p, CXPR_TOK_LBRACKET)) {
         cxpr_expr_ast* index_expr = cxpr_parse_expression(p);
         if (!index_expr || p->had_error) {
             cxpr_expr_ast_free(node);
             cxpr_expr_ast_free(index_expr);
             return NULL;
         }
-        if (!cxpr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after lookback expression")) {
+        if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after lookback expression")) {
             cxpr_expr_ast_free(node);
             cxpr_expr_ast_free(index_expr);
             return NULL;

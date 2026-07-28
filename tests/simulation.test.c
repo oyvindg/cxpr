@@ -211,7 +211,7 @@ static void test_sma_crossover(void) {
     s_rng_state = 42; /* deterministic seed */
     generate_bars(bars, NUM_BARS);
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -275,7 +275,7 @@ static void test_sma_crossover(void) {
 
     cxpr_expr_ast_free(entry_ast);
     cxpr_expr_ast_free(exit_ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_sma_crossover (%d entries, %d exits over %d bars)\n",
@@ -291,7 +291,7 @@ static void test_ema_convergence(void) {
     s_rng_state = 123; /* different seed */
     generate_bars(bars, NUM_BARS);
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -330,7 +330,7 @@ static void test_ema_convergence(void) {
     assert(pct_diff < 15.0 && "EMA should track price within 15%");
 
     cxpr_expr_ast_free(ema_expr);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_ema_convergence (EMA20 final=%.4f, close=%.4f, diff=%.2f%%)\n",
@@ -346,7 +346,7 @@ static void test_rsi_signals(void) {
     s_rng_state = 777;
     generate_bars(bars, NUM_BARS);
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -405,7 +405,7 @@ static void test_rsi_signals(void) {
     cxpr_expr_ast_free(oversold_ast);
     cxpr_expr_ast_free(overbought_ast);
     cxpr_expr_ast_free(buy_signal_ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_rsi_signals (oversold=%d, overbought=%d, buy=%d over %d bars)\n",
@@ -421,7 +421,7 @@ static void test_bollinger_bands(void) {
     s_rng_state = 999;
     generate_bars(bars, NUM_BARS);
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -488,7 +488,7 @@ static void test_bollinger_bands(void) {
     cxpr_expr_ast_free(squeeze_ast);
     cxpr_expr_ast_free(near_lower_ast);
     cxpr_expr_ast_free(mean_reversion_ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_bollinger_bands (squeeze=%d, near_lower=%d, mean_rev=%d)\n",
@@ -504,7 +504,7 @@ static void test_full_strategy_simulation(void) {
     s_rng_state = 31337;
     generate_bars(bars, NUM_BARS);
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -641,7 +641,7 @@ static void test_full_strategy_simulation(void) {
     cxpr_expr_ast_free(exit_ast);
     cxpr_expr_ast_free(size_ast);
     cxpr_expr_ast_free(stoploss_ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_full_strategy_simulation (%d trades, PnL=%.4f)\n",
@@ -757,7 +757,7 @@ static void test_stress_multi_expression(void) {
     s_rng_state = 2025;
     generate_bars(bars, NUM_BARS);
 
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -832,7 +832,7 @@ static void test_stress_multi_expression(void) {
         cxpr_expr_ast_free(asts[i]);
     }
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_stress_multi_expression (%d evaluations across %d expressions × %d bars)\n",

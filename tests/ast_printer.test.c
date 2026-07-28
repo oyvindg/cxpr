@@ -7,7 +7,7 @@
 #include <string.h> // IWYU pragma: keep
 
 static char* render_expr(const char* expr) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
     char* text;
@@ -18,7 +18,7 @@ static char* render_expr(const char* expr) {
     text = cxpr_expr_ast_to_string(ast);
     assert(text);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return text;
 }
 
@@ -110,7 +110,7 @@ static void test_deep_nesting_round_trip(void) {
 }
 
 static void test_ast_dump_accepts_ast(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
 
@@ -119,7 +119,7 @@ static void test_ast_dump_accepts_ast(void) {
     assert(ast);
     cxpr_expr_ast_dump(ast, stdout);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

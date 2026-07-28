@@ -76,7 +76,7 @@ static bool cxpr_model_c_stack_effect(const cxpr_ir_instr* instr,
         {
             static CXPR_THREAD_LOCAL char msg[128];
             snprintf(msg, sizeof(msg), "Unsupported opcode in model C backend: %s",
-                     cxpr_ir_opcode_name(instr->op));
+                     cxpr_ir_internal_opcode_name(instr->op));
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, msg, 0, 0);
         }
         return false;
@@ -478,7 +478,7 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
             {
                 static CXPR_THREAD_LOCAL char msg[128];
                 snprintf(msg, sizeof(msg), "Unsupported opcode in model C backend: %s",
-                         cxpr_ir_opcode_name(instr->op));
+                         cxpr_ir_internal_opcode_name(instr->op));
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX, msg, 0, 0);
             }
             goto fail;

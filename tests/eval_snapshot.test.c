@@ -6,14 +6,14 @@
 #include <string.h>
 
 static cxpr_expr_ast* parse_required(const char* expression) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
 
     assert(parser);
     ast = cxpr_expr_ast_parse(parser, expression, &err);
     assert(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return ast;
 }
 

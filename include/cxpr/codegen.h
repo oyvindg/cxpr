@@ -85,14 +85,14 @@ typedef struct cxpr_c_target {
     cxpr_c_emit_lookback_at_offset_fn emit_lookback_at_offset;
 } cxpr_c_target;
 
-/** @brief Source category for one generated cxpr_program C function argument. */
+/** @brief Source category for one generated cxpr_expr_compiled C function argument. */
 typedef enum {
     CXPR_C_PROGRAM_ARG_VAR = 0,   /**< Binds IR LOAD_VAR by name. */
     CXPR_C_PROGRAM_ARG_PARAM = 1, /**< Binds IR LOAD_PARAM by name. */
     CXPR_C_PROGRAM_ARG_LOCAL = 2  /**< Binds IR LOAD_LOCAL by zero-based local_index. */
 } cxpr_c_program_arg_kind;
 
-/** @brief One explicit argument binding for `cxpr_program_to_c_function`. */
+/** @brief One explicit argument binding for `cxpr_expr_compiled_to_c_function`. */
 typedef struct cxpr_c_program_arg {
     cxpr_c_program_arg_kind kind;
     const char* name;      /**< cxpr symbol/param name; optional for LOCAL. */
@@ -120,7 +120,7 @@ typedef struct cxpr_c_program_arg {
 char* cxpr_expr_ast_to_c(const cxpr_expr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
 
 /**
- * @brief Emit a scalar `cxpr_program` IR as a standalone C function.
+ * @brief Emit a scalar `cxpr_expr_compiled` IR as a standalone C function.
  *
  * This is an optimization/codegen backend, not a replacement for IR execution.
  * It supports deterministic scalar IR opcodes such as constants, explicit
@@ -137,7 +137,7 @@ char* cxpr_expr_ast_to_c(const cxpr_expr_ast* ast, const cxpr_c_target* target, 
  * @param err Optional error output.
  * @return Newly allocated C function source (free with `free`), or NULL on unsupported IR.
  */
-char* cxpr_program_to_c_function(const cxpr_program* prog,
+char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
                                  const char* qualifiers,
                                  const char* return_type,
                                  const char* function_name,

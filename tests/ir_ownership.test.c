@@ -10,7 +10,7 @@
 #define EPSILON 1e-10
 
 static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -48,7 +48,7 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_ir_compile_reset_struct_defined_function_repeatedly\n");
 }
 

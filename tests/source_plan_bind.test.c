@@ -231,7 +231,7 @@ static int bar_series_resolve(
     return 0;
 }
 
-static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* text) {
+static cxpr_expr_ast* parse_or_die(cxpr_expr_parser* parser, const char* text) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, text, &err);
     if (!ast) {
@@ -242,7 +242,7 @@ static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* text) {
 }
 
 static void test_plan_bind_sources_uses_callback_for_source_plan_leaves(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_expr_ast* ast;
@@ -321,14 +321,14 @@ static void test_plan_bind_sources_uses_callback_for_source_plan_leaves(void) {
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_plan_bound_sources_resolve_against_bars(void) {
     const double close_1h[] = {9.0, 10.2, 10.1, 12.0};
     const double close_1d[] = {9.5, 10.0, 10.5, 11.0};
     const bool expected_signal[] = {false, true, false, true};
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_expr_ast* plan_ast;
@@ -387,11 +387,11 @@ static void test_plan_bound_sources_resolve_against_bars(void) {
     cxpr_expr_ast_free(plan_ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_plan_bind_sources_from_table_maps_name_and_scope(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_expr_ast* ast;
@@ -431,7 +431,7 @@ static void test_plan_bind_sources_from_table_maps_name_and_scope(void) {
     cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

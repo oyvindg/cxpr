@@ -93,18 +93,18 @@ static bool cxpr_eval_ast_auto_compile_safe(const cxpr_expr_ast* ast, const cxpr
     }
 }
 
-static cxpr_program* cxpr_eval_ast_cached_program(const cxpr_expr_ast* ast,
+static cxpr_expr_compiled* cxpr_eval_ast_cached_program(const cxpr_expr_ast* ast,
                                                   const cxpr_registry* reg) {
     cxpr_expr_ast* mutable_ast;
     const unsigned long version = reg ? reg->version : 0u;
     cxpr_error compile_err = {0};
-    cxpr_program* compiled;
+    cxpr_expr_compiled* compiled;
 
     if (!ast) return NULL;
     mutable_ast = (cxpr_expr_ast*)ast;
     if (mutable_ast->compiled_registry != reg ||
         mutable_ast->compiled_registry_version != version) {
-        cxpr_program_free(mutable_ast->compiled_cache);
+        cxpr_expr_compiled_free(mutable_ast->compiled_cache);
         mutable_ast->compiled_cache = NULL;
         mutable_ast->compiled_registry = reg;
         mutable_ast->compiled_registry_version = version;
@@ -115,7 +115,7 @@ static cxpr_program* cxpr_eval_ast_cached_program(const cxpr_expr_ast* ast,
     if (mutable_ast->compiled_cache_failed) return NULL;
     if (!cxpr_eval_ast_auto_compile_safe(ast, reg)) return NULL;
 
-    compiled = cxpr_compile(ast, reg, &compile_err);
+    compiled = cxpr_expr_compile(ast, reg, &compile_err);
     if (!compiled) {
         mutable_ast->compiled_cache_failed = true;
         return NULL;
@@ -581,7 +581,7 @@ bool cxpr_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
 bool cxpr_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, double* out_value, cxpr_error* err) {
     cxpr_value value;
-    cxpr_program* cached;
+    cxpr_expr_compiled* cached;
     double fast_value;
 
     if (!out_value) {
@@ -595,7 +595,7 @@ bool cxpr_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
 
     if (err) *err = (cxpr_error){0};
     cached = cxpr_eval_ast_cached_program(ast, reg);
-    if (cached && cxpr_eval_program_number(cached, ctx, reg, out_value, err)) return true;
+    if (cached && cxpr_expr_compiled_eval_number(cached, ctx, reg, out_value, err)) return true;
     if (err && err->code != CXPR_OK) *err = (cxpr_error){0};
 
     cxpr_eval_memo_enter((cxpr_context*)ctx);

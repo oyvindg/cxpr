@@ -128,7 +128,7 @@ bool cxpr_expression_get_bool(const cxpr_evaluator* evaluator, const char* name,
  * @param found Optional flag set when the expression exists.
  * @return Borrowed compiled program, or NULL when absent or not compiled.
  */
-const cxpr_program* cxpr_expression_program(const cxpr_evaluator* evaluator,
+const cxpr_expr_compiled* cxpr_expression_program(const cxpr_evaluator* evaluator,
                                             const char* name,
                                             bool* found);
 /**

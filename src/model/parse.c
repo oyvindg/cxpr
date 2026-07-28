@@ -743,19 +743,19 @@ static bool cxpr_model_has_function_def(const cxpr_model* model, const char* nam
 
 static cxpr_expr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t column,
                                        cxpr_error* err) {
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_expr_ast* ast;
     if (!expr || expr[0] == '\0') {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Expected expression", line, column);
         return NULL;
     }
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) {
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line, column);
         return NULL;
     }
     ast = cxpr_expr_ast_parse(parser, expr, err);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return ast;
 }
 

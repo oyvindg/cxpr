@@ -5,7 +5,7 @@
 #include <string.h>
 
 static void test_parser_expression_forms(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast* ast;
 
@@ -81,7 +81,7 @@ static void test_parser_expression_forms(void) {
     assert(strcmp(cxpr_expr_ast_identifier_name(cxpr_expr_ast_record_field_value(ast, 2)), "z") == 0);
     cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 int main(void) {

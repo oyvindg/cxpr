@@ -20,28 +20,28 @@
 
 static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_context *ctx, cxpr_registry *reg,
                                          cxpr_error_code expected) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
@@ -78,20 +78,20 @@ static cxpr_context *make_nested_ctx(void) {
 /* ── two-segment access still emits FIELD_ACCESS (regression) ─────────── */
 
 static void test_two_segment_is_field_access(void) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "a.b", &err);
     assert(ast != NULL && err.code == CXPR_OK);
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  \u2713 test_two_segment_is_field_access\n");
 }
 
 /* ── three-segment emits CHAIN_ACCESS ────────────────────────────────── */
 
 static void test_three_segment_is_chain_access(void) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "outer.inner.value", &err);
     assert(ast != NULL && err.code == CXPR_OK);
@@ -101,7 +101,7 @@ static void test_three_segment_is_chain_access(void) {
     assert(strcmp(cxpr_expr_ast_chain_segment(ast, 1), "inner") == 0);
     assert(strcmp(cxpr_expr_ast_chain_segment(ast, 2), "value") == 0);
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  \u2713 test_three_segment_is_chain_access\n");
 }
 
@@ -185,7 +185,7 @@ static void test_unknown_intermediate(void) {
 /* ── cxpr_expr_ast_references returns full dotted path ────────────────────── */
 
 static void test_chain_ast_references(void) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
     cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "outer.inner.value", &err);
     assert(ast != NULL && err.code == CXPR_OK);
@@ -196,7 +196,7 @@ static void test_chain_ast_references(void) {
     assert(strcmp(refs[0], "outer.inner.value") == 0);
 
     cxpr_expr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  \u2713 test_chain_ast_references\n");
 }
 

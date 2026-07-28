@@ -272,14 +272,14 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         return err;
     }
 
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     if (!parser) {
         err.code = CXPR_ERR_OUT_OF_MEMORY;
         err.message = "Out of memory";
         return err;
     }
     cxpr_expr_ast* body_ast = cxpr_expr_ast_parse(parser, p, &err);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     if (!body_ast) return err;
 
     const char* pnames[CXPR_DEF_MAX_PARAMS];
@@ -399,7 +399,7 @@ char* cxpr_registry_defined_fn_to_c_function(const cxpr_registry* reg,
                                              const char* function_name,
                                              cxpr_error* err) {
     cxpr_func_entry* entry;
-    cxpr_program program = {0};
+    cxpr_expr_compiled program = {0};
     cxpr_c_program_arg args[CXPR_DEF_MAX_PARAMS];
     char* code;
 
@@ -445,7 +445,7 @@ char* cxpr_registry_defined_fn_to_c_function(const cxpr_registry* reg,
         return NULL;
     }
     program.ast = entry->defined_body;
-    code = cxpr_program_to_c_function(&program,
+    code = cxpr_expr_compiled_to_c_function(&program,
                                       qualifiers,
                                       return_type,
                                       function_name,

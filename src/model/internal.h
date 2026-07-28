@@ -12,6 +12,7 @@
 #define CXPR_MODEL_MAYBE_UNUSED
 #endif
 
+/** @brief Parsed model constant or parameter declaration. */
 typedef struct {
     char* name;
     char* source;
@@ -21,6 +22,7 @@ typedef struct {
     bool is_call_param;
 } cxpr_model_constant;
 
+/** @brief Parsed model binding with source and span metadata. */
 typedef struct {
     cxpr_model_binding_kind kind;
     char* name;
@@ -30,17 +32,20 @@ typedef struct {
     bool has_span;
 } cxpr_model_binding;
 
+/** @brief Anonymous model output expression awaiting a generated name. */
 typedef struct {
     char* source;
     cxpr_expr_ast* expr;
 } cxpr_model_anonymous_output;
 
+/** @brief One named field in a record-returning model function. */
 typedef struct {
     char* name;
     char* source;
     cxpr_expr_ast* expr;
 } cxpr_model_record_field;
 
+/** @brief Parsed model function returning a record of named fields. */
 typedef struct {
     char* name;
     char** params;
@@ -49,6 +54,7 @@ typedef struct {
     size_t field_count;
 } cxpr_model_record_function;
 
+/** @brief Parsed metadata block associated with a model construct. */
 typedef struct {
     char* name;
     char* body;
@@ -58,6 +64,7 @@ typedef struct {
     bool has_span;
 } cxpr_model_metadata;
 
+/** @brief Compiled model binding and its inferred execution metadata. */
 typedef struct {
     char* key;
     char* value;
@@ -108,6 +115,7 @@ struct cxpr_model {
     size_t host_block_count;
 };
 
+/** @brief Local name-to-expression binding used during model inlining. */
 typedef struct {
     cxpr_model_binding_kind kind;
     char* name;
@@ -122,11 +130,13 @@ typedef struct {
     bool is_call_param;
 } cxpr_model_compiled_binding;
 
+/** @brief Current and previous values tracked for one model output. */
 typedef struct {
     char* name;
     cxpr_expr_ast* expr;
 } cxpr_model_local_binding;
 
+/** @brief Required history depth for one model expression target. */
 typedef struct {
     char* name;
     double number_current;
@@ -139,12 +149,14 @@ typedef struct {
     bool has_current;
 } cxpr_model_output_state;
 
+/** @brief Reference from a compiled model value to a fused slot. */
 typedef struct {
     char* name;
     cxpr_expr_ast* target;
     size_t depth;
 } cxpr_model_history_spec;
 
+/** @brief Atomic mapping from a pending update slot to a state slot. */
 typedef struct {
     char* name;
     unsigned long hash;
@@ -152,11 +164,13 @@ typedef struct {
     cxpr_model_result_kind result_kind;
 } cxpr_model_slot_ref;
 
+/** @brief Runtime history ring owned by a model session. */
 typedef struct {
     size_t state_slot;
     size_t update_slot;
 } cxpr_model_state_commit;
 
+/** @brief Cached child-model instance for one producer call signature. */
 typedef struct {
     char* name;
     cxpr_value* values;

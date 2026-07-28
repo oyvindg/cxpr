@@ -544,7 +544,7 @@ static void test_engine_shared_registry_non_engine_lookback_uses_prior_resolver(
     };
     cxpr_registry* registry = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_engine_config cfg = {0};
     cxpr_error err = {0};
     cxpr_engine_session* session;
@@ -574,7 +574,7 @@ static void test_engine_shared_registry_non_engine_lookback_uses_prior_resolver(
 
     cxpr_expr_ast_free(ast);
     cxpr_engine_session_free(session);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(registry);
 }

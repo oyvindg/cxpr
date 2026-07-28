@@ -3,6 +3,7 @@
 
 #include <cxpr/ast/document.h>
 
+/** @brief Growable child list owned by an internal document AST node. */
 typedef struct {
     cxpr_document_ast_node** items;
     size_t count;

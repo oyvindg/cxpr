@@ -4,8 +4,8 @@
  *        math builtins added alongside them.
  *
  * Each temporal case is checked through BOTH evaluation engines: the tree-walk
- * evaluator (`cxpr_eval_ast`) and the compiled program (`cxpr_compile` +
- * `cxpr_eval_program`), so the two implementations can never silently diverge.
+ * evaluator (`cxpr_eval_ast`) and the compiled program (`cxpr_expr_compile` +
+ * `cxpr_expr_compiled_eval`), so the two implementations can never silently diverge.
  */
 
 #include <cxpr/cxpr.h>
@@ -45,13 +45,13 @@ static void register_helpers(cxpr_registry* reg) {
 
 /* Evaluate through both engines; assert they agree, return the typed value. */
 static cxpr_value eval_typed(const char* expr) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_value tree_val = {0};
     cxpr_value prog_val = {0};
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     cxpr_expr_ast* ast;
 
     register_helpers(reg);
@@ -60,30 +60,30 @@ static cxpr_value eval_typed(const char* expr) {
 
     assert(cxpr_eval_ast(ast, ctx, reg, &tree_val, &err) && err.code == CXPR_OK);
 
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog && err.code == CXPR_OK);
-    assert(cxpr_eval_program(prog, ctx, reg, &prog_val, &err) && err.code == CXPR_OK);
+    assert(cxpr_expr_compiled_eval(prog, ctx, reg, &prog_val, &err) && err.code == CXPR_OK);
 
     /* Both engines must produce the same typed result. */
     assert(tree_val.type == prog_val.type);
     assert(tree_val.i64 == prog_val.i64); /* covers number bits, bool, and i64 */
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     return tree_val;
 }
 
 /* Assert that an expression fails the same way in both engines. */
 static void assert_eval_error(const char* expr) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
     cxpr_value v = {0};
-    cxpr_program* prog;
+    cxpr_expr_compiled* prog;
     cxpr_expr_ast* ast;
 
     register_helpers(reg);
@@ -93,16 +93,16 @@ static void assert_eval_error(const char* expr) {
     err = (cxpr_error){0};
     assert(!cxpr_eval_ast(ast, ctx, reg, &v, &err) || err.code != CXPR_OK);
 
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog);
     err = (cxpr_error){0};
-    assert(!cxpr_eval_program(prog, ctx, reg, &v, &err) || err.code != CXPR_OK);
+    assert(!cxpr_expr_compiled_eval(prog, ctx, reg, &v, &err) || err.code != CXPR_OK);
 
-    cxpr_program_free(prog);
+    cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_temporal_arithmetic(void) {
@@ -177,7 +177,7 @@ static void test_temporal_errors(void) {
 static void test_temporal_struct_fields(void) {
     /* timestamp/duration values arriving through struct fields exercise the
      * IR field-load path rather than the function-call path. */
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
@@ -203,7 +203,7 @@ static void test_temporal_struct_fields(void) {
     cxpr_struct_value_free(entry);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  temporal struct fields OK\n");
 }
 
