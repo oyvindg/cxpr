@@ -90,11 +90,11 @@ char* cxpr_c_plugin_source_from_program(
 }
 
 int cxpr_c_plugin_emit_source(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_c_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err) {
-    cxpr_plugin_artifact_event artifact = {
+    cxpr_model_plugin_artifact_event artifact = {
         "cxpr_c_source",
         "cxpr.c.source.v1",
         NULL
@@ -125,9 +125,9 @@ void cxpr_c_plugin_source_free(char* source) {
 }
 
 static int cxpr_c_plugin_generate_bridge(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const void* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err) {
     return cxpr_c_plugin_emit_source(
         event,
@@ -136,8 +136,8 @@ static int cxpr_c_plugin_generate_bridge(
         err);
 }
 
-const cxpr_plugin_backend* cxpr_c_plugin_backend(void) {
-    static const cxpr_plugin_backend backend = {
+const cxpr_model_plugin_backend* cxpr_c_plugin_backend(void) {
+    static const cxpr_model_plugin_backend backend = {
         "cxpr.c.source",
         cxpr_c_plugin_generate_bridge
     };

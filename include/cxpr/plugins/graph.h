@@ -6,7 +6,7 @@
 #ifndef CXPR_PLUGINS_GRAPH_H
 #define CXPR_PLUGINS_GRAPH_H
 
-#include <cxpr/plugin.h>
+#include <cxpr/model/plugin.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,9 +37,9 @@ typedef struct cxpr_graph_plugin_options {
  * @return Non-zero on success, zero on invalid input, allocation failure, or host callback failure.
  */
 int cxpr_graph_plugin_emit_graph(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_graph_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 /**

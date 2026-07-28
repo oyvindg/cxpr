@@ -3,8 +3,8 @@
  * @brief Internal helpers shared by parser modules.
  */
 
-#ifndef CXPR_PARSER_INTERNAL_H
-#define CXPR_PARSER_INTERNAL_H
+#ifndef CXPR_EXPR_PARSER_INTERNAL_H
+#define CXPR_EXPR_PARSER_INTERNAL_H
 
 #include "lexer/internal.h"
 #include "ast/internal.h" // IWYU pragma: keep
@@ -41,4 +41,4 @@ cxpr_expr_ast* cxpr_parse_expression(cxpr_expr_parser* p);
 /** @brief Parse one primary expression node. */
 cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p);
 
-#endif /* CXPR_PARSER_INTERNAL_H */
+#endif /* CXPR_EXPR_PARSER_INTERNAL_H */

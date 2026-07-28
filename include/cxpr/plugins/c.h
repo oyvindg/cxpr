@@ -6,7 +6,7 @@
 #ifndef CXPR_PLUGINS_C_H
 #define CXPR_PLUGINS_C_H
 
-#include <cxpr/plugin.h>
+#include <cxpr/model/plugin.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,9 +28,9 @@ typedef struct cxpr_c_plugin_options {
  * @return Non-zero on success, otherwise zero with @p err populated.
  */
 int cxpr_c_plugin_emit_source(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_c_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 /**
@@ -46,7 +46,7 @@ char* cxpr_c_plugin_source_from_program(
 void cxpr_c_plugin_source_free(char* source);
 
 /** @brief Return the static C source plugin backend descriptor. */
-const cxpr_plugin_backend* cxpr_c_plugin_backend(void);
+const cxpr_model_plugin_backend* cxpr_c_plugin_backend(void);
 
 #ifdef __cplusplus
 }

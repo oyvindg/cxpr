@@ -11,7 +11,7 @@ typedef struct test_artifact_sink {
     const char* kind;
 } test_artifact_sink;
 
-static int test_begin_artifact(void* user, const cxpr_plugin_artifact_event* event, cxpr_error* err) {
+static int test_begin_artifact(void* user, const cxpr_model_plugin_artifact_event* event, cxpr_error* err) {
     test_artifact_sink* sink = (test_artifact_sink*)user;
     (void)err;
     sink->kind = event->kind;
@@ -61,9 +61,9 @@ int main(void) {
         "}\n";
     cxpr_error err = {0};
     cxpr_model* model = cxpr_parse_model_source(source, &err);
-    cxpr_plugin_model_event event;
+    cxpr_model_plugin_event event;
     test_artifact_sink sink = {0};
-    cxpr_plugin_host host = {
+    cxpr_model_plugin_host host = {
         &sink,
         test_begin_artifact,
         test_write_artifact,

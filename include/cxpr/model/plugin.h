@@ -14,8 +14,8 @@
  * generic metadata such as `kind`, `name`, and `path_hint`.
  */
 
-#ifndef CXPR_PLUGIN_H
-#define CXPR_PLUGIN_H
+#ifndef CXPR_MODEL_PLUGIN_H
+#define CXPR_MODEL_PLUGIN_H
 
 #include <cxpr/types.h>
 
@@ -32,14 +32,14 @@ extern "C" {
  * duration of the plugin call. Plugins must not store them unless the host
  * explicitly provides a longer-lived ownership contract outside this API.
  */
-typedef struct cxpr_plugin_model_event {
+typedef struct cxpr_model_plugin_event {
     /** Optional source path for diagnostics and artifact naming. */
     const char* model_path;
     /** Borrowed parsed model. */
     const cxpr_model* model;
     /** Borrowed compiled model program. */
     const cxpr_model_program* program;
-} cxpr_plugin_model_event;
+} cxpr_model_plugin_event;
 
 /**
  * @brief Metadata for one artifact emitted by a plugin.
@@ -47,23 +47,23 @@ typedef struct cxpr_plugin_model_event {
  * These fields are descriptive only. The host decides how to interpret them
  * and where the artifact is stored.
  */
-typedef struct cxpr_plugin_artifact_event {
+typedef struct cxpr_model_plugin_artifact_event {
     /** Stable artifact name, for example `macd.cuda.source`. */
     const char* name;
     /** Stable kind identifier, for example `cxpr.cuda.source.v1`. */
     const char* kind;
     /** Optional host-facing filename/path suggestion. */
     const char* path_hint;
-} cxpr_plugin_artifact_event;
+} cxpr_model_plugin_artifact_event;
 
 /**
  * @brief Start writing one artifact.
  *
  * @return Non-zero on success, zero on failure with @p err optionally filled.
  */
-typedef int (*cxpr_plugin_begin_artifact_fn)(
+typedef int (*cxpr_model_plugin_begin_artifact_fn)(
     void* user,
-    const cxpr_plugin_artifact_event* artifact,
+    const cxpr_model_plugin_artifact_event* artifact,
     cxpr_error* err);
 
 /**
@@ -75,7 +75,7 @@ typedef int (*cxpr_plugin_begin_artifact_fn)(
  *
  * @return Non-zero on success, zero on failure with @p err optionally filled.
  */
-typedef int (*cxpr_plugin_write_artifact_fn)(
+typedef int (*cxpr_model_plugin_write_artifact_fn)(
     void* user,
     const void* data,
     size_t size,
@@ -86,7 +86,7 @@ typedef int (*cxpr_plugin_write_artifact_fn)(
  *
  * @return Non-zero on success, zero on failure with @p err optionally filled.
  */
-typedef int (*cxpr_plugin_end_artifact_fn)(
+typedef int (*cxpr_model_plugin_end_artifact_fn)(
     void* user,
     cxpr_error* err);
 
@@ -95,16 +95,16 @@ typedef int (*cxpr_plugin_end_artifact_fn)(
  *
  * `user` is passed unchanged to every callback and is owned by the host.
  */
-typedef struct cxpr_plugin_host {
+typedef struct cxpr_model_plugin_host {
     /** Host-owned callback context. */
     void* user;
     /** Called once before writing an artifact. */
-    cxpr_plugin_begin_artifact_fn begin_artifact;
+    cxpr_model_plugin_begin_artifact_fn begin_artifact;
     /** Called one or more times with artifact bytes. */
-    cxpr_plugin_write_artifact_fn write_artifact;
+    cxpr_model_plugin_write_artifact_fn write_artifact;
     /** Called once after all bytes for an artifact have been written. */
-    cxpr_plugin_end_artifact_fn end_artifact;
-} cxpr_plugin_host;
+    cxpr_model_plugin_end_artifact_fn end_artifact;
+} cxpr_model_plugin_host;
 
 /**
  * @brief Generic plugin entry point signature.
@@ -112,9 +112,9 @@ typedef struct cxpr_plugin_host {
  * Plugins should return non-zero on success. On failure they may populate
  * @p err with a diagnostic suitable for build-tool or host logs.
  */
-typedef int (*cxpr_plugin_generate_fn)(
-    const cxpr_plugin_model_event* event,
-    const cxpr_plugin_host* host,
+typedef int (*cxpr_model_plugin_generate_fn)(
+    const cxpr_model_plugin_event* event,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 /**
@@ -124,10 +124,10 @@ typedef int (*cxpr_plugin_generate_fn)(
  * concrete options struct it accepts, while generic hosts can still pass the
  * pointer through without linking to accelerator or domain concepts.
  */
-typedef int (*cxpr_plugin_generate_with_options_fn)(
-    const cxpr_plugin_model_event* event,
+typedef int (*cxpr_model_plugin_generate_with_options_fn)(
+    const cxpr_model_plugin_event* event,
     const void* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 /**
@@ -136,12 +136,12 @@ typedef int (*cxpr_plugin_generate_with_options_fn)(
  * Core and hosts can pass this descriptor around without knowing whether the
  * backend emits C, CUDA, metadata, graph JSON, or another artifact kind.
  */
-typedef struct cxpr_plugin_backend {
+typedef struct cxpr_model_plugin_backend {
     /** Stable backend id, e.g. `cxpr.c.source` or `cxpr.cuda.source`. */
     const char* id;
     /** Backend-specific artifact emitter. */
-    cxpr_plugin_generate_with_options_fn generate;
-} cxpr_plugin_backend;
+    cxpr_model_plugin_generate_with_options_fn generate;
+} cxpr_model_plugin_backend;
 
 /**
  * @brief Run one backend for a compiled model event.
@@ -149,15 +149,15 @@ typedef struct cxpr_plugin_backend {
  * This is a tiny dispatch helper; it does not interpret @p options or artifact
  * content. Those remain owned by the plugin and host.
  */
-int cxpr_plugin_run_model_backend(
-    const cxpr_plugin_model_event* event,
-    const cxpr_plugin_backend* backend,
+int cxpr_model_plugin_run(
+    const cxpr_model_plugin_event* event,
+    const cxpr_model_plugin_backend* backend,
     const void* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* CXPR_PLUGIN_H */
+#endif /* CXPR_MODEL_PLUGIN_H */

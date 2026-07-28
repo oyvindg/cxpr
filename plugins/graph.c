@@ -537,11 +537,11 @@ char* cxpr_graph_plugin_graph_from_model(
 }
 
 int cxpr_graph_plugin_emit_graph(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_graph_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err) {
-    cxpr_plugin_artifact_event artifact = {
+    cxpr_model_plugin_artifact_event artifact = {
         "cxpr_graph",
         "cxpr.graph.v1",
         NULL

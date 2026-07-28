@@ -712,7 +712,7 @@ callbacks, dynamic sources, or other runtime-only behavior require lowering
 hooks, generated inputs, or a CPU fallback.
 
 The plugin contract is accelerator-neutral. A HIP, OpenCL, Metal, SYCL, WGSL,
-or other backend can implement `cxpr_plugin_backend` and emit its own artifact.
+or other backend can implement `cxpr_model_plugin_backend` and emit its own artifact.
 The existing `cxpr_c_target` hooks also support adapting individual expression
 emission to C-like targets. Those backends are extension points; only the C and
 CUDA source plugins are included today.
@@ -722,11 +722,11 @@ CUDA source plugins are included today.
 A plugin consumes a borrowed model event:
 
 ```c
-typedef struct cxpr_plugin_model_event {
+typedef struct cxpr_model_plugin_event {
     const char* model_path;
     const cxpr_model* model;
     const cxpr_model_program* program;
-} cxpr_plugin_model_event;
+} cxpr_model_plugin_event;
 ```
 
 It emits one or more artifacts through three host callbacks:
@@ -753,13 +753,13 @@ Included plugins:
 Run a backend generically:
 
 ```c
-cxpr_plugin_model_event event = {
+cxpr_model_plugin_event event = {
     .model_path = "controller.cxpr",
     .model = model,
     .program = program,
 };
 
-cxpr_plugin_run_model_backend(
+cxpr_model_plugin_run(
     &event,
     cxpr_c_plugin_backend(),
     &options,

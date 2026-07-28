@@ -1,10 +1,10 @@
-#include <cxpr/plugin.h>
+#include <cxpr/model/plugin.h>
 
-int cxpr_plugin_run_model_backend(
-    const cxpr_plugin_model_event* event,
-    const cxpr_plugin_backend* backend,
+int cxpr_model_plugin_run(
+    const cxpr_model_plugin_event* event,
+    const cxpr_model_plugin_backend* backend,
     const void* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err) {
     if (err) *err = (cxpr_error){0};
     if (!backend || !backend->generate) {

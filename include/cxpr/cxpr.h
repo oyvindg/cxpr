@@ -32,7 +32,7 @@
 #include <cxpr/evaluator.h>
 #include <cxpr/expression.h>
 #include <cxpr/provider.h>
-#include <cxpr/plugin.h>
+#include <cxpr/model/plugin.h>
 #include <cxpr/plugins/c.h>
 #include <cxpr/plugins/cuda.h>
 #include <cxpr/plugins/graph.h>

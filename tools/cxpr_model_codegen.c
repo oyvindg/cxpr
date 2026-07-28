@@ -561,7 +561,7 @@ static bool model_codegen_load_import(
     return true;
 }
 
-static int artifact_file_begin(void* user, const cxpr_plugin_artifact_event* artifact, cxpr_error* err) {
+static int artifact_file_begin(void* user, const cxpr_model_plugin_artifact_event* artifact, cxpr_error* err) {
     artifact_file_sink* sink = (artifact_file_sink*)user;
     (void)artifact;
     (void)err;
@@ -738,8 +738,8 @@ static int emit_model_c(const char* model_path,
                 descriptor_param_count, CXPR_GENERATED_MODEL_MAX_PARAMS);
             goto cleanup;
         }
-        cxpr_plugin_host host;
-        cxpr_plugin_model_event event = {0};
+        cxpr_model_plugin_host host;
+        cxpr_model_plugin_event event = {0};
         cxpr_c_plugin_options c_options = {0};
 
         artifact_file_sink c_sink = {0};
@@ -764,7 +764,7 @@ static int emit_model_c(const char* model_path,
         c_options.output_indices = output_indices;
         c_options.output_count = output_count;
         c_options.include_headers = 1;
-        if (!cxpr_plugin_run_model_backend(
+        if (!cxpr_model_plugin_run(
                 &event, cxpr_c_plugin_backend(), &c_options, &host, &err)) {
             print_model_backend_error("C emit", model_path, model, program, &compile_options, &err);
             if (c_sink.file) {
@@ -849,8 +849,8 @@ static int emit_model_c(const char* model_path,
     }
 
     if (meta_output_path) {
-        cxpr_plugin_host host;
-        cxpr_plugin_model_event event = {0};
+        cxpr_model_plugin_host host;
+        cxpr_model_plugin_event event = {0};
 
         meta_sink.path = meta_output_path;
         host.user = &meta_sink;
@@ -868,8 +868,8 @@ static int emit_model_c(const char* model_path,
     }
 
     if (graph_output_path) {
-        cxpr_plugin_host host;
-        cxpr_plugin_model_event event = {0};
+        cxpr_model_plugin_host host;
+        cxpr_model_plugin_event event = {0};
 
         graph_sink.path = graph_output_path;
         host.user = &graph_sink;

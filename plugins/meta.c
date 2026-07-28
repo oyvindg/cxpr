@@ -305,11 +305,11 @@ char* cxpr_meta_plugin_manifest_from_model(
 }
 
 int cxpr_meta_plugin_emit_manifest(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_meta_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err) {
-    cxpr_plugin_artifact_event artifact = {
+    cxpr_model_plugin_artifact_event artifact = {
         "cxpr_meta_manifest",
         "cxpr.meta.manifest.v1",
         NULL

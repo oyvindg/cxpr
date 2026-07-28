@@ -3,8 +3,8 @@
  * @brief Public parser API for cxpr expressions.
  */
 
-#ifndef CXPR_PARSER_H
-#define CXPR_PARSER_H
+#ifndef CXPR_EXPR_PARSER_H
+#define CXPR_EXPR_PARSER_H
 
 #include <cxpr/types.h>
 
@@ -35,4 +35,4 @@ cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_expr_parser* p, const char* expression, 
 }
 #endif
 
-#endif /* CXPR_PARSER_H */
+#endif /* CXPR_EXPR_PARSER_H */

@@ -6,7 +6,7 @@
 #ifndef CXPR_PLUGINS_CUDA_H
 #define CXPR_PLUGINS_CUDA_H
 
-#include <cxpr/plugin.h>
+#include <cxpr/model/plugin.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,9 +23,9 @@ typedef struct cxpr_cuda_plugin_options {
  * @return Non-zero on success, otherwise zero with @p err populated.
  */
 int cxpr_cuda_plugin_emit_source(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_cuda_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 /**
@@ -41,7 +41,7 @@ char* cxpr_cuda_plugin_source_from_program(
 void cxpr_cuda_plugin_source_free(char* source);
 
 /** @brief Return the static CUDA source plugin backend descriptor. */
-const cxpr_plugin_backend* cxpr_cuda_plugin_backend(void);
+const cxpr_model_plugin_backend* cxpr_cuda_plugin_backend(void);
 
 #ifdef __cplusplus
 }

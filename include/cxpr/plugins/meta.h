@@ -6,7 +6,7 @@
 #ifndef CXPR_PLUGINS_META_H
 #define CXPR_PLUGINS_META_H
 
-#include <cxpr/plugin.h>
+#include <cxpr/model/plugin.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,9 +38,9 @@ typedef struct cxpr_meta_plugin_options {
  * @return Non-zero on success, zero on invalid input, allocation failure, or host callback failure.
  */
 int cxpr_meta_plugin_emit_manifest(
-    const cxpr_plugin_model_event* event,
+    const cxpr_model_plugin_event* event,
     const cxpr_meta_plugin_options* options,
-    const cxpr_plugin_host* host,
+    const cxpr_model_plugin_host* host,
     cxpr_error* err);
 
 /**
