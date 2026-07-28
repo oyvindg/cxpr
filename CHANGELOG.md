@@ -295,8 +295,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Defined an explicit concurrency contract (see the README "Concurrency"
-  section): immutable-after-build handles (`cxpr_registry`, `cxpr_ast`,
-  `cxpr_program`) may be shared read-only across threads, while mutable handles
+  section): immutable-after-build handles (`cxpr_registry`, `cxpr_expr_ast`,
+  `cxpr_expr_compiled`) may be shared read-only across threads, while mutable handles
   (`cxpr_context`, `cxpr_evaluator`) must be per-thread.
 - The internal empty-overlay reuse cache and the error-message scratch buffers
   are now thread-local, so concurrent evaluation on separate contexts no longer
