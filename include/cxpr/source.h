@@ -72,7 +72,7 @@ typedef struct cxpr_source_plan_node {
     size_t* arg_slots;          /**< Slots into @ref cxpr_source_plan_ast::bound_arg_asts. */
     size_t lookback_slot;       /**< Bound lookback slot, or `SIZE_MAX` when absent. */
     struct cxpr_source_plan_node* source; /**< Child source for smoothing/source-input nodes. */
-    const cxpr_ast* expression_ast; /**< Borrowed AST for EXPRESSION nodes. */
+    const cxpr_expr_ast* expression_ast; /**< Borrowed AST for EXPRESSION nodes. */
 } cxpr_source_plan_node;
 
 /**
@@ -80,7 +80,7 @@ typedef struct cxpr_source_plan_node {
  */
 typedef struct {
     cxpr_source_plan_node root;      /**< Root source-plan node. */
-    const cxpr_ast** bound_arg_asts; /**< Borrowed ASTs for runtime numeric arguments. */
+    const cxpr_expr_ast** bound_arg_asts; /**< Borrowed ASTs for runtime numeric arguments. */
     size_t arg_count;                /**< Number of entries in @ref bound_arg_asts. */
     char* canonical;                 /**< Owned canonical rendering of the plan. */
 } cxpr_source_plan_ast;
@@ -177,7 +177,7 @@ typedef struct {
  */
 int cxpr_parse_provider_source_plan_ast(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_source_plan_ast* out);
 
 /**
@@ -222,7 +222,7 @@ int cxpr_eval_source_plan_bound_args(
  */
 int cxpr_plan_bind_sources(
     const cxpr_provider* provider,
-    const cxpr_ast* expr,
+    const cxpr_expr_ast* expr,
     const cxpr_context* ctx,
     cxpr_registry* reg,
     const cxpr_plan_config* config,
@@ -239,7 +239,7 @@ int cxpr_plan_bind_sources(
  */
 int cxpr_plan_bind_sources_from_table(
     const cxpr_provider* provider,
-    const cxpr_ast* expr,
+    const cxpr_expr_ast* expr,
     const cxpr_context* ctx,
     cxpr_registry* reg,
     const cxpr_source_handle_entry* table,

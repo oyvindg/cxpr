@@ -23,7 +23,7 @@ static size_t cxpr_add_unique_name(const char** names, size_t count, size_t max_
     return count + 1;
 }
 
-static bool cxpr_producer_field_in_array(const cxpr_producer_field_ref* refs,
+static bool cxpr_producer_field_in_array(const cxpr_expr_ast_producer_field_ref* refs,
                                          size_t count,
                                          const char* producer_name,
                                          const char* field_name) {
@@ -38,7 +38,7 @@ static bool cxpr_producer_field_in_array(const cxpr_producer_field_ref* refs,
     return false;
 }
 
-static size_t cxpr_add_unique_producer_field(cxpr_producer_field_ref* refs,
+static size_t cxpr_add_unique_producer_field(cxpr_expr_ast_producer_field_ref* refs,
                                              size_t count,
                                              size_t max_refs,
                                              const char* producer_name,
@@ -54,13 +54,13 @@ static size_t cxpr_add_unique_producer_field(cxpr_producer_field_ref* refs,
     return count + 1;
 }
 
-static size_t cxpr_collect_references(const cxpr_ast* ast, const char** names,
+static size_t cxpr_collect_references(const cxpr_expr_ast* ast, const char** names,
                                       size_t count, size_t max_names) {
     const char* full_ref;
 
     if (!ast) return count;
 
-    full_ref = cxpr_ast_full_reference(ast);
+    full_ref = cxpr_expr_ast_full_reference(ast);
     if (full_ref) return cxpr_add_unique_name(names, count, max_names, full_ref);
 
     switch (ast->type) {
@@ -103,7 +103,7 @@ static size_t cxpr_collect_references(const cxpr_ast* ast, const char** names,
     }
 }
 
-static size_t cxpr_collect_functions(const cxpr_ast* ast, const char** names,
+static size_t cxpr_collect_functions(const cxpr_expr_ast* ast, const char** names,
                                      size_t count, size_t max_names) {
     if (!ast) return count;
 
@@ -147,7 +147,7 @@ static size_t cxpr_collect_functions(const cxpr_ast* ast, const char** names,
     }
 }
 
-static size_t cxpr_collect_variables(const cxpr_ast* ast, const char** names,
+static size_t cxpr_collect_variables(const cxpr_expr_ast* ast, const char** names,
                                      size_t count, size_t max_names) {
     if (!ast) return count;
 
@@ -191,8 +191,8 @@ static size_t cxpr_collect_variables(const cxpr_ast* ast, const char** names,
     }
 }
 
-static size_t cxpr_collect_producer_fields(const cxpr_ast* ast,
-                                           cxpr_producer_field_ref* refs,
+static size_t cxpr_collect_producer_fields(const cxpr_expr_ast* ast,
+                                           cxpr_expr_ast_producer_field_ref* refs,
                                            size_t count,
                                            size_t max_refs) {
     if (!ast) return count;
@@ -257,11 +257,11 @@ static size_t cxpr_collect_producer_fields(const cxpr_ast* ast,
     }
 }
 
-static bool cxpr_ast_contains_reference_impl(const cxpr_ast* ast, const char* name) {
+static bool cxpr_expr_ast_contains_reference_impl(const cxpr_expr_ast* ast, const char* name) {
     const char* full_ref;
 
     if (!ast || !name || name[0] == '\0') return false;
-    full_ref = cxpr_ast_full_reference(ast);
+    full_ref = cxpr_expr_ast_full_reference(ast);
     if (full_ref) return strcmp(full_ref, name) == 0;
 
     switch (ast->type) {
@@ -269,50 +269,50 @@ static bool cxpr_ast_contains_reference_impl(const cxpr_ast* ast, const char* na
             return strcmp(ast->data.identifier.name, name) == 0;
         case CXPR_NODE_ARRAY:
             for (size_t i = 0; i < ast->data.array.count; ++i) {
-                if (cxpr_ast_contains_reference_impl(ast->data.array.elements[i], name)) {
+                if (cxpr_expr_ast_contains_reference_impl(ast->data.array.elements[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_RECORD:
             for (size_t i = 0; i < ast->data.record.field_count; ++i) {
-                if (cxpr_ast_contains_reference_impl(ast->data.record.field_values[i], name)) {
+                if (cxpr_expr_ast_contains_reference_impl(ast->data.record.field_values[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_BINARY_OP:
-            return cxpr_ast_contains_reference_impl(ast->data.binary_op.left, name) ||
-                   cxpr_ast_contains_reference_impl(ast->data.binary_op.right, name);
+            return cxpr_expr_ast_contains_reference_impl(ast->data.binary_op.left, name) ||
+                   cxpr_expr_ast_contains_reference_impl(ast->data.binary_op.right, name);
         case CXPR_NODE_UNARY_OP:
-            return cxpr_ast_contains_reference_impl(ast->data.unary_op.operand, name);
+            return cxpr_expr_ast_contains_reference_impl(ast->data.unary_op.operand, name);
         case CXPR_NODE_FUNCTION_CALL:
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
-                if (cxpr_ast_contains_reference_impl(ast->data.function_call.args[i], name)) {
+                if (cxpr_expr_ast_contains_reference_impl(ast->data.function_call.args[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_PRODUCER_ACCESS:
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                if (cxpr_ast_contains_reference_impl(ast->data.producer_access.args[i], name)) {
+                if (cxpr_expr_ast_contains_reference_impl(ast->data.producer_access.args[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_LOOKBACK:
-            return cxpr_ast_contains_reference_impl(ast->data.lookback.target, name) ||
-                   cxpr_ast_contains_reference_impl(ast->data.lookback.index, name);
+            return cxpr_expr_ast_contains_reference_impl(ast->data.lookback.target, name) ||
+                   cxpr_expr_ast_contains_reference_impl(ast->data.lookback.index, name);
         case CXPR_NODE_TERNARY:
-            return cxpr_ast_contains_reference_impl(ast->data.ternary.condition, name) ||
-                   cxpr_ast_contains_reference_impl(ast->data.ternary.true_branch, name) ||
-                   cxpr_ast_contains_reference_impl(ast->data.ternary.false_branch, name);
+            return cxpr_expr_ast_contains_reference_impl(ast->data.ternary.condition, name) ||
+                   cxpr_expr_ast_contains_reference_impl(ast->data.ternary.true_branch, name) ||
+                   cxpr_expr_ast_contains_reference_impl(ast->data.ternary.false_branch, name);
         default:
             return false;
     }
 }
 
-static bool cxpr_ast_contains_variable_impl(const cxpr_ast* ast, const char* name) {
+static bool cxpr_expr_ast_contains_variable_impl(const cxpr_expr_ast* ast, const char* name) {
     if (!ast || !name || name[0] == '\0') return false;
 
     switch (ast->type) {
@@ -320,51 +320,51 @@ static bool cxpr_ast_contains_variable_impl(const cxpr_ast* ast, const char* nam
             return strcmp(ast->data.variable.name, name) == 0;
         case CXPR_NODE_ARRAY:
             for (size_t i = 0; i < ast->data.array.count; ++i) {
-                if (cxpr_ast_contains_variable_impl(ast->data.array.elements[i], name)) {
+                if (cxpr_expr_ast_contains_variable_impl(ast->data.array.elements[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_RECORD:
             for (size_t i = 0; i < ast->data.record.field_count; ++i) {
-                if (cxpr_ast_contains_variable_impl(ast->data.record.field_values[i], name)) {
+                if (cxpr_expr_ast_contains_variable_impl(ast->data.record.field_values[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_BINARY_OP:
-            return cxpr_ast_contains_variable_impl(ast->data.binary_op.left, name) ||
-                   cxpr_ast_contains_variable_impl(ast->data.binary_op.right, name);
+            return cxpr_expr_ast_contains_variable_impl(ast->data.binary_op.left, name) ||
+                   cxpr_expr_ast_contains_variable_impl(ast->data.binary_op.right, name);
         case CXPR_NODE_UNARY_OP:
-            return cxpr_ast_contains_variable_impl(ast->data.unary_op.operand, name);
+            return cxpr_expr_ast_contains_variable_impl(ast->data.unary_op.operand, name);
         case CXPR_NODE_FUNCTION_CALL:
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
-                if (cxpr_ast_contains_variable_impl(ast->data.function_call.args[i], name)) {
+                if (cxpr_expr_ast_contains_variable_impl(ast->data.function_call.args[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_PRODUCER_ACCESS:
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                if (cxpr_ast_contains_variable_impl(ast->data.producer_access.args[i], name)) {
+                if (cxpr_expr_ast_contains_variable_impl(ast->data.producer_access.args[i], name)) {
                     return true;
                 }
             }
             return false;
         case CXPR_NODE_LOOKBACK:
-            return cxpr_ast_contains_variable_impl(ast->data.lookback.target, name) ||
-                   cxpr_ast_contains_variable_impl(ast->data.lookback.index, name);
+            return cxpr_expr_ast_contains_variable_impl(ast->data.lookback.target, name) ||
+                   cxpr_expr_ast_contains_variable_impl(ast->data.lookback.index, name);
         case CXPR_NODE_TERNARY:
-            return cxpr_ast_contains_variable_impl(ast->data.ternary.condition, name) ||
-                   cxpr_ast_contains_variable_impl(ast->data.ternary.true_branch, name) ||
-                   cxpr_ast_contains_variable_impl(ast->data.ternary.false_branch, name);
+            return cxpr_expr_ast_contains_variable_impl(ast->data.ternary.condition, name) ||
+                   cxpr_expr_ast_contains_variable_impl(ast->data.ternary.true_branch, name) ||
+                   cxpr_expr_ast_contains_variable_impl(ast->data.ternary.false_branch, name);
         default:
             return false;
     }
 }
 
 static size_t cxpr_collect_call_arg_contexts(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     const char* name,
     bool variable,
     const char** names,
@@ -387,10 +387,10 @@ static size_t cxpr_collect_call_arg_contexts(
             return count;
         case CXPR_NODE_FUNCTION_CALL:
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
-                const cxpr_ast* arg = ast->data.function_call.args[i];
+                const cxpr_expr_ast* arg = ast->data.function_call.args[i];
                 if (variable
-                        ? cxpr_ast_contains_variable_impl(arg, name)
-                        : cxpr_ast_contains_reference_impl(arg, name)) {
+                        ? cxpr_expr_ast_contains_variable_impl(arg, name)
+                        : cxpr_expr_ast_contains_reference_impl(arg, name)) {
                     count = cxpr_add_unique_name(
                         names, count, max_names, ast->data.function_call.name);
                 }
@@ -400,10 +400,10 @@ static size_t cxpr_collect_call_arg_contexts(
             return count;
         case CXPR_NODE_PRODUCER_ACCESS:
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
-                const cxpr_ast* arg = ast->data.producer_access.args[i];
+                const cxpr_expr_ast* arg = ast->data.producer_access.args[i];
                 if (variable
-                        ? cxpr_ast_contains_variable_impl(arg, name)
-                        : cxpr_ast_contains_reference_impl(arg, name)) {
+                        ? cxpr_expr_ast_contains_variable_impl(arg, name)
+                        : cxpr_expr_ast_contains_reference_impl(arg, name)) {
                     count = cxpr_add_unique_name(
                         names, count, max_names, ast->data.producer_access.name);
                 }
@@ -436,40 +436,40 @@ static size_t cxpr_collect_call_arg_contexts(
     }
 }
 
-size_t cxpr_ast_references(const cxpr_ast* ast, const char** names, size_t max_names) {
+size_t cxpr_expr_ast_references(const cxpr_expr_ast* ast, const char** names, size_t max_names) {
     return cxpr_collect_references(ast, names, 0, max_names);
 }
 
-size_t cxpr_ast_functions_used(const cxpr_ast* ast, const char** names, size_t max_names) {
+size_t cxpr_expr_ast_functions_used(const cxpr_expr_ast* ast, const char** names, size_t max_names) {
     return cxpr_collect_functions(ast, names, 0, max_names);
 }
 
-size_t cxpr_ast_producer_fields_used(const cxpr_ast* ast,
-                                     cxpr_producer_field_ref* refs,
+size_t cxpr_expr_ast_producer_fields_used(const cxpr_expr_ast* ast,
+                                     cxpr_expr_ast_producer_field_ref* refs,
                                      size_t max_refs) {
     return cxpr_collect_producer_fields(ast, refs, 0, max_refs);
 }
 
-size_t cxpr_ast_variables_used(const cxpr_ast* ast, const char** names, size_t max_names) {
+size_t cxpr_expr_ast_variables_used(const cxpr_expr_ast* ast, const char** names, size_t max_names) {
     return cxpr_collect_variables(ast, names, 0, max_names);
 }
 
-bool cxpr_ast_contains_reference(const cxpr_ast* ast, const char* name) {
-    return cxpr_ast_contains_reference_impl(ast, name);
+bool cxpr_expr_ast_contains_reference(const cxpr_expr_ast* ast, const char* name) {
+    return cxpr_expr_ast_contains_reference_impl(ast, name);
 }
 
-bool cxpr_ast_contains_variable(const cxpr_ast* ast, const char* name) {
-    return cxpr_ast_contains_variable_impl(ast, name);
+bool cxpr_expr_ast_contains_variable(const cxpr_expr_ast* ast, const char* name) {
+    return cxpr_expr_ast_contains_variable_impl(ast, name);
 }
 
-size_t cxpr_ast_call_arg_contexts_for_reference(const cxpr_ast* ast,
+size_t cxpr_expr_ast_call_arg_contexts_for_reference(const cxpr_expr_ast* ast,
                                                 const char* reference,
                                                 const char** names,
                                                 size_t max_names) {
     return cxpr_collect_call_arg_contexts(ast, reference, false, names, 0, max_names);
 }
 
-size_t cxpr_ast_call_arg_contexts_for_variable(const cxpr_ast* ast,
+size_t cxpr_expr_ast_call_arg_contexts_for_variable(const cxpr_expr_ast* ast,
                                                const char* variable,
                                                const char** names,
                                                size_t max_names) {

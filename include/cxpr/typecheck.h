@@ -20,7 +20,7 @@ extern "C" {
  * @param err Optional error output.
  * @return True on success, false on a known type mismatch.
  */
-bool cxpr_typecheck(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_typecheck(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                     cxpr_value_type* out_type, cxpr_error* err);
 
 /**
@@ -30,7 +30,7 @@ bool cxpr_typecheck(const cxpr_ast* ast, const cxpr_registry* reg,
  * @param err Optional error output.
  * @return True when the expression can be used in a boolean position.
  */
-bool cxpr_typecheck_bool_root(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_typecheck_bool_root(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                               cxpr_error* err);
 
 #ifdef __cplusplus

@@ -13,7 +13,7 @@ extern "C" {
 /**
  * @brief Token/operator tags used by the parser and stored on operator AST nodes.
  *
- * These values are part of the public AST surface because `cxpr_ast_operator()`
+ * These values are part of the public AST surface because `cxpr_expr_ast_operator()`
  * returns them for unary and binary operator nodes.
  */
 typedef enum {

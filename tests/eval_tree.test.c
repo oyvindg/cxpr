@@ -7,7 +7,7 @@ static void test_eval_tree_access_paths(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double out = 0.0;
     bool bout = false;
     const char* fields[] = {"x", "y"};
@@ -19,23 +19,23 @@ static void test_eval_tree_access_paths(void) {
     cxpr_context_set_param(ctx, "base.period", 8.0);
     cxpr_context_set_param(ctx, "period", 5.0);
 
-    ast = cxpr_parse(p, "pose.x + pose.y", &err);
+    ast = cxpr_expr_ast_parse(p, "pose.x + pose.y", &err);
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(out == 7.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(p, "legacy.value == 7", &err);
+    ast = cxpr_expr_ast_parse(p, "legacy.value == 7", &err);
     assert(ast);
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &bout, &err));
     assert(bout);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(p, "$base.period + $period", &err);
+    ast = cxpr_expr_ast_parse(p, "$base.period + $period", &err);
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(out == 13.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);

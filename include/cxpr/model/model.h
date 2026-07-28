@@ -603,7 +603,7 @@ bool cxpr_model_input_source_span(const cxpr_model* model,
 
 size_t cxpr_model_constant_count(const cxpr_model* model);
 const char* cxpr_model_constant_name(const cxpr_model* model, size_t index);
-const cxpr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index);
+const cxpr_expr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index);
 /** @brief Return whether a model parameter is explicitly exported in its `in` signature. */
 bool cxpr_model_constant_is_call_param(const cxpr_model* model, size_t index);
 /** @brief Return the number of explicitly exported call parameters. */
@@ -615,7 +615,7 @@ bool cxpr_model_constant_source_span(const cxpr_model* model,
 size_t cxpr_model_binding_count(const cxpr_model* model);
 cxpr_model_binding_kind cxpr_model_binding_kind_at(const cxpr_model* model, size_t index);
 const char* cxpr_model_binding_name(const cxpr_model* model, size_t index);
-const cxpr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index);
+const cxpr_expr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index);
 bool cxpr_model_binding_source_span(const cxpr_model* model,
                                     size_t index,
                                     cxpr_source_span* out_span);

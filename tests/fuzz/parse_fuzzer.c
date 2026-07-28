@@ -24,7 +24,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     char* source;
     cxpr_parser* parser;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_error err = {0};
 
     /* cxpr consumes NUL-terminated C strings; reject embedded NULs and bound
@@ -46,7 +46,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         return 0;
     }
 
-    ast = cxpr_parse(parser, source, &err);
+    ast = cxpr_expr_ast_parse(parser, source, &err);
     if (ast) {
         cxpr_registry* reg = cxpr_registry_new();
         if (reg) {
@@ -67,7 +67,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             }
             cxpr_registry_free(reg);
         }
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
     }
 
     cxpr_parser_free(parser);

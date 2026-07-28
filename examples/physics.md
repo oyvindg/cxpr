@@ -31,15 +31,15 @@ int main(void) {
     double vals[] = {1.2, -0.5, 0.8, 1.1};
     cxpr_context_set_fields(ctx, "body", fields, vals, 4);
 
-    cxpr_ast* ast = cxpr_parse(
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         parser,
         "abs(acceleration) > $max_acceleration or temperature >= $meltdown_limit",
         &err
     );
 
-    printf("alarm=%d\n", cxpr_ast_eval_bool(ast, ctx, reg, &err));
+    printf("alarm=%d\n", cxpr_expr_ast_eval_bool(ast, ctx, reg, &err));
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);

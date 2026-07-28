@@ -486,7 +486,7 @@ static bool cxpr_document_model_append_constant(cxpr_model* model,
     cxpr_model_constant* grown;
     const char* name = cxpr_document_ast_node_name(node);
     const char* text = cxpr_document_ast_node_text(node);
-    const cxpr_ast* expr = cxpr_document_ast_node_expression(node);
+    const cxpr_expr_ast* expr = cxpr_document_ast_node_expression(node);
     if (!model || !name || !text || !expr) return false;
     grown = (cxpr_model_constant*)realloc(
         model->constants, (model->constant_count + 1u) * sizeof(*model->constants));
@@ -495,7 +495,7 @@ static bool cxpr_document_model_append_constant(cxpr_model* model,
     model->constants[model->constant_count] = (cxpr_model_constant){0};
     model->constants[model->constant_count].name = cxpr_strdup(name);
     model->constants[model->constant_count].source = cxpr_strdup(text);
-    model->constants[model->constant_count].expr = cxpr_ast_clone(expr);
+    model->constants[model->constant_count].expr = cxpr_expr_ast_clone(expr);
     model->constants[model->constant_count].span = cxpr_document_ast_node_span(node);
     model->constants[model->constant_count].has_span = true;
     model->constants[model->constant_count].is_call_param = is_call_param;
@@ -514,7 +514,7 @@ static bool cxpr_document_model_append_binding(cxpr_model* model,
     cxpr_model_binding* grown;
     const char* name = cxpr_document_ast_node_name(node);
     const char* text = cxpr_document_ast_node_text(node);
-    const cxpr_ast* expr = cxpr_document_ast_node_expression(node);
+    const cxpr_expr_ast* expr = cxpr_document_ast_node_expression(node);
     if (!model || !name || !text || !expr) return false;
     grown = (cxpr_model_binding*)realloc(
         model->bindings, (model->binding_count + 1u) * sizeof(*model->bindings));
@@ -524,7 +524,7 @@ static bool cxpr_document_model_append_binding(cxpr_model* model,
     model->bindings[model->binding_count].kind = kind;
     model->bindings[model->binding_count].name = cxpr_strdup(name);
     model->bindings[model->binding_count].source = cxpr_strdup(text);
-    model->bindings[model->binding_count].expr = cxpr_ast_clone(expr);
+    model->bindings[model->binding_count].expr = cxpr_expr_ast_clone(expr);
     model->bindings[model->binding_count].span = cxpr_document_ast_node_span(node);
     model->bindings[model->binding_count].has_span = true;
     if (!model->bindings[model->binding_count].name ||
@@ -541,7 +541,7 @@ static bool cxpr_document_model_append_anonymous_output(
     const cxpr_document_ast_node* node) {
     cxpr_model_anonymous_output* grown;
     const char* text = cxpr_document_ast_node_text(node);
-    const cxpr_ast* expr = cxpr_document_ast_node_expression(node);
+    const cxpr_expr_ast* expr = cxpr_document_ast_node_expression(node);
     if (!model || !text || !expr) return false;
     grown = (cxpr_model_anonymous_output*)realloc(
         model->anonymous_outputs,
@@ -551,7 +551,7 @@ static bool cxpr_document_model_append_anonymous_output(
     model->anonymous_outputs[model->anonymous_output_count] =
         (cxpr_model_anonymous_output){0};
     model->anonymous_outputs[model->anonymous_output_count].source = cxpr_strdup(text);
-    model->anonymous_outputs[model->anonymous_output_count].expr = cxpr_ast_clone(expr);
+    model->anonymous_outputs[model->anonymous_output_count].expr = cxpr_expr_ast_clone(expr);
     if (!model->anonymous_outputs[model->anonymous_output_count].source ||
         !model->anonymous_outputs[model->anonymous_output_count].expr) {
         return false;
@@ -599,9 +599,9 @@ static bool cxpr_document_model_append_function(cxpr_model* model,
     return true;
 }
 
-static cxpr_ast* cxpr_document_lower_parse_expr(const char* text, cxpr_error* err) {
+static cxpr_expr_ast* cxpr_document_lower_parse_expr(const char* text, cxpr_error* err) {
     cxpr_parser* parser;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     if (!text || *text == '\0') {
         cxpr_document_set_error(err, CXPR_ERR_SYNTAX, "Expected expression");
         return NULL;
@@ -611,7 +611,7 @@ static cxpr_ast* cxpr_document_lower_parse_expr(const char* text, cxpr_error* er
         cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         return NULL;
     }
-    ast = cxpr_parse(parser, text, err);
+    ast = cxpr_expr_ast_parse(parser, text, err);
     cxpr_parser_free(parser);
     return ast;
 }
@@ -708,7 +708,7 @@ static bool cxpr_document_model_record_fields_append(cxpr_model_record_field** f
                                                      size_t* count,
                                                      const char* name,
                                                      const char* source,
-                                                     cxpr_ast* expr) {
+                                                     cxpr_expr_ast* expr) {
     cxpr_model_record_field* grown;
     grown = (cxpr_model_record_field*)realloc(
         *fields, (*count + 1u) * sizeof(**fields));
@@ -756,7 +756,7 @@ static bool cxpr_document_lower_parse_record_return_fields(
         char* eq;
         char* field_name;
         char* expr_text;
-        cxpr_ast* field_ast;
+        cxpr_expr_ast* field_ast;
         item = cxpr_document_lower_trim_in_place(item);
         if (*item == '\0') continue;
         eq = strchr(item, '=');
@@ -790,7 +790,7 @@ static bool cxpr_document_lower_parse_record_return_fields(
         }
         if (!cxpr_document_model_record_fields_append(
                 &fields, &field_count, field_name, expr_text, field_ast)) {
-            cxpr_ast_free(field_ast);
+            cxpr_expr_ast_free(field_ast);
             cxpr_model_record_fields_free(fields, field_count);
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
             return false;

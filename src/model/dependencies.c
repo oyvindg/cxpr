@@ -24,53 +24,53 @@ static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* pr
                                                     cxpr_error* err);
 
 static bool cxpr_model_program_mark_required_ast(const cxpr_model_program* program,
-                                                 const cxpr_ast* ast,
+                                                 const cxpr_expr_ast* ast,
                                                  bool* out_required,
                                                  cxpr_error* err) {
     if (!ast) return true;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_IDENTIFIER:
         return cxpr_model_program_mark_required_symbol(
-            program, cxpr_ast_identifier_name(ast), out_required, err);
+            program, cxpr_expr_ast_identifier_name(ast), out_required, err);
     case CXPR_NODE_FIELD_ACCESS:
         return cxpr_model_program_mark_required_symbol(
-            program, cxpr_ast_field_object(ast), out_required, err);
+            program, cxpr_expr_ast_field_object(ast), out_required, err);
     case CXPR_NODE_CHAIN_ACCESS:
         return cxpr_model_program_mark_required_symbol(
-            program, cxpr_ast_chain_segment(ast, 0u), out_required, err);
+            program, cxpr_expr_ast_chain_segment(ast, 0u), out_required, err);
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_program_mark_required_ast(program, cxpr_ast_left(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(program, cxpr_ast_right(ast), out_required, err);
+        return cxpr_model_program_mark_required_ast(program, cxpr_expr_ast_binary_left(ast), out_required, err) &&
+               cxpr_model_program_mark_required_ast(program, cxpr_expr_ast_binary_right(ast), out_required, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_model_program_mark_required_ast(program, cxpr_ast_operand(ast), out_required, err);
+        return cxpr_model_program_mark_required_ast(program, cxpr_expr_ast_unary_operand(ast), out_required, err);
     case CXPR_NODE_FUNCTION_CALL:
-        for (size_t i = 0u; i < cxpr_ast_function_argc(ast); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
             if (!cxpr_model_program_mark_required_ast(
-                    program, cxpr_ast_function_arg(ast, i), out_required, err)) {
+                    program, cxpr_expr_ast_call_arg(ast, i), out_required, err)) {
                 return false;
             }
         }
         return true;
     case CXPR_NODE_PRODUCER_ACCESS:
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
             if (!cxpr_model_program_mark_required_ast(
-                    program, cxpr_ast_producer_arg(ast, i), out_required, err)) {
+                    program, cxpr_expr_ast_producer_arg(ast, i), out_required, err)) {
                 return false;
             }
         }
         return true;
     case CXPR_NODE_LOOKBACK:
         return cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_lookback_target(ast), out_required, err) &&
+                   program, cxpr_expr_ast_lookback_target(ast), out_required, err) &&
                cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_lookback_index(ast), out_required, err);
+                   program, cxpr_expr_ast_lookback_index(ast), out_required, err);
     case CXPR_NODE_TERNARY:
         return cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_ternary_condition(ast), out_required, err) &&
+                   program, cxpr_expr_ast_ternary_condition(ast), out_required, err) &&
                cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_ternary_true_branch(ast), out_required, err) &&
+                   program, cxpr_expr_ast_ternary_true(ast), out_required, err) &&
                cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_ternary_false_branch(ast), out_required, err);
+                   program, cxpr_expr_ast_ternary_false(ast), out_required, err);
     default:
         return true;
     }

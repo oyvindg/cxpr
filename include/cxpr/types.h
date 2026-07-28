@@ -20,7 +20,7 @@ extern "C" {
 /** @brief Opaque parser handle. */
 typedef struct cxpr_parser cxpr_parser;
 /** @brief Opaque AST handle. */
-typedef struct cxpr_ast cxpr_ast;
+typedef struct cxpr_expr_ast cxpr_expr_ast;
 /** @brief Opaque evaluation context handle. */
 typedef struct cxpr_context cxpr_context;
 /** @brief Opaque function registry handle. */

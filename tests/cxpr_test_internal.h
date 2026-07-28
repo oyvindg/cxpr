@@ -110,7 +110,7 @@ typedef struct {
         double value;
         unsigned long hash;
         size_t index;
-        const cxpr_ast* ast;
+        const cxpr_expr_ast* ast;
     };
 } cxpr_ir_instr;
 
@@ -126,7 +126,7 @@ typedef struct {
     cxpr_ir_instr* code;
     size_t count;
     size_t capacity;
-    const cxpr_ast* ast;
+    const cxpr_expr_ast* ast;
     cxpr_ir_lookup_cache* lookup_cache;
     unsigned char fast_result_kind;
 } cxpr_ir_program;
@@ -138,11 +138,11 @@ typedef struct {
     cxpr_func_ptr sync_func;
     cxpr_value_func_ptr value_func;
     cxpr_typed_func_ptr typed_func;
-    cxpr_ast_func_ptr ast_func;
+    cxpr_expr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
-    cxpr_ast_func_ptr model_producer;
+    cxpr_expr_ast_func_ptr model_producer;
     void* model_producer_userdata;
-    cxpr_ast_func_ptr ast_func_handler;
+    cxpr_expr_ast_func_ptr ast_func_handler;
     void* ast_func_handler_userdata;
     cxpr_userdata_free_fn ast_func_handler_userdata_free;
     enum {
@@ -171,7 +171,7 @@ typedef struct {
     char** struct_fields;
     size_t fields_per_arg;
     size_t struct_argc;
-    cxpr_ast* defined_body;
+    cxpr_expr_ast* defined_body;
     cxpr_program* defined_program;
     bool defined_program_failed;
     char** defined_param_names;
@@ -179,13 +179,13 @@ typedef struct {
     char*** defined_param_fields;
     size_t* defined_param_field_counts;
     char** defined_return_field_names;
-    cxpr_ast** defined_return_field_bodies;
+    cxpr_expr_ast** defined_return_field_bodies;
     size_t defined_return_field_count;
 } cxpr_func_entry;
 
 cxpr_func_entry* cxpr_registry_find(const cxpr_registry* reg, const char* name);
 
-bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err);
@@ -194,7 +194,7 @@ void cxpr_ir_program_reset(cxpr_ir_program* program);
 typedef struct {
     char* name;
     char* expression;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     cxpr_value result;
     bool evaluated;
@@ -211,7 +211,7 @@ struct cxpr_evaluator {
     cxpr_parser* parser;
 };
 
-static inline cxpr_value cxpr_test_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
+static inline cxpr_value cxpr_test_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                             const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value out = {0};
     if (!cxpr_eval_ast(ast, ctx, reg, &out, err)) {
@@ -220,14 +220,14 @@ static inline cxpr_value cxpr_test_eval_ast(const cxpr_ast* ast, const cxpr_cont
     return out;
 }
 
-static inline double cxpr_test_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
+static inline double cxpr_test_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                                const cxpr_registry* reg, cxpr_error* err) {
     double out = NAN;
     (void)cxpr_eval_ast_number(ast, ctx, reg, &out, err);
     return out;
 }
 
-static inline bool cxpr_test_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+static inline bool cxpr_test_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                            const cxpr_registry* reg, cxpr_error* err) {
     bool out = false;
     (void)cxpr_eval_ast_bool(ast, ctx, reg, &out, err);

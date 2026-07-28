@@ -71,7 +71,7 @@ static bool cxpr_expression_depends_on(const cxpr_evaluator* evaluator, size_t e
 
     const char* dep_name = evaluator->expressions[dep_idx].name;
     const char* refs[256];
-    size_t nrefs = cxpr_ast_references(expression->ast, refs, 256);
+    size_t nrefs = cxpr_expr_ast_references(expression->ast, refs, 256);
 
     for (size_t i = 0; i < nrefs && i < 256; i++) {
         if (cxpr_expression_reference_matches_name(refs[i], dep_name)) return true;
@@ -270,7 +270,7 @@ static void cxpr_expression_entry_reset(cxpr_expression_entry* entry) {
     cxpr_expression_result_dispose(&entry->result);
     free(entry->name);
     free(entry->expression);
-    cxpr_ast_free(entry->ast);
+    cxpr_expr_ast_free(entry->ast);
     cxpr_program_free(entry->program);
     memset(entry, 0, sizeof(*entry));
 }
@@ -301,7 +301,7 @@ bool cxpr_expression_add(cxpr_evaluator* evaluator, const char* name,
 
     /* Parse the expression */
     cxpr_error parse_err = {0};
-    cxpr_ast* ast = cxpr_parse(evaluator->parser, expression, &parse_err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(evaluator->parser, expression, &parse_err);
     if (!ast) {
         if (err) *err = parse_err;
         return false;
@@ -309,7 +309,7 @@ bool cxpr_expression_add(cxpr_evaluator* evaluator, const char* name,
 
     /* Grow if needed */
     if (!cxpr_evaluator_reserve_for_entry(evaluator)) {
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
         if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
         return false;
     }
@@ -398,7 +398,7 @@ bool cxpr_analyze_expressions(const cxpr_expression_def* defs, size_t count,
             return false;
         }
 
-        nrefs = cxpr_ast_references(evaluator->expressions[i].ast, refs, 256);
+        nrefs = cxpr_expr_ast_references(evaluator->expressions[i].ast, refs, 256);
         for (size_t r = 0; r < nrefs && r < 256; r++) {
             for (size_t d = 0; d < count; d++) {
                 if (d == i) continue;

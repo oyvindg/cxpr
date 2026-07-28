@@ -36,7 +36,7 @@ void cxpr_source_plan_node_clear(cxpr_source_plan_node* node);
  *
  * The caller owns `*out_text` on success and must free it with `free()`.
  */
-int cxpr_source_plan_render_ast_canonical(const cxpr_ast* ast, char** out_text);
+int cxpr_source_plan_render_ast_canonical(const cxpr_expr_ast* ast, char** out_text);
 
 /**
  * @brief Rebuild canonical metadata for one source-plan node.

@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static cxpr_ast* parse_expr(const char* expr) {
+static cxpr_expr_ast* parse_expr(const char* expr) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, expr, &err);
     cxpr_parser_free(parser);
     assert(ast);
     return ast;
@@ -21,33 +21,33 @@ static cxpr_value atr_func(const cxpr_value* args, size_t argc, void* userdata) 
 
 static void expect_reject(cxpr_registry* reg, const char* expr) {
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr);
+    cxpr_expr_ast* ast = parse_expr(expr);
     assert(!cxpr_typecheck(ast, reg, NULL, &err));
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
     assert(err.message && strstr(err.message, "type error"));
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void expect_bool_root_reject(cxpr_registry* reg, const char* expr) {
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr);
+    cxpr_expr_ast* ast = parse_expr(expr);
     assert(!cxpr_typecheck_bool_root(ast, reg, &err));
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void expect_accept(cxpr_registry* reg, const char* expr) {
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr);
+    cxpr_expr_ast* ast = parse_expr(expr);
     assert(cxpr_typecheck(ast, reg, NULL, &err));
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void expect_backend_rejects(cxpr_registry* reg, const char* expr) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr);
+    cxpr_expr_ast* ast = parse_expr(expr);
     cxpr_value value = {0};
     cxpr_program* program = NULL;
     char* generated = NULL;
@@ -64,12 +64,12 @@ static void expect_backend_rejects(cxpr_registry* reg, const char* expr) {
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
     err = (cxpr_error){0};
-    generated = cxpr_ast_to_c(ast, NULL, &err);
+    generated = cxpr_expr_ast_to_c(ast, NULL, &err);
     assert(!generated);
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
     free(generated);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
 }
 

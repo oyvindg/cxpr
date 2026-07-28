@@ -42,7 +42,7 @@ const char* cxpr_document_ast_node_text(const cxpr_document_ast_node* node) {
     return node ? node->text : NULL;
 }
 
-const cxpr_ast* cxpr_document_ast_node_expression(const cxpr_document_ast_node* node) {
+const cxpr_expr_ast* cxpr_document_ast_node_expression(const cxpr_document_ast_node* node) {
     return node ? node->expression : NULL;
 }
 

@@ -12,16 +12,16 @@ static cxpr_value eval_ast_value(const char* expr,
                                  cxpr_registry* reg,
                                  cxpr_error* err) {
     cxpr_parser* parser = cxpr_parser_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_value out;
 
     *err = (cxpr_error){0};
-    ast = cxpr_parse(parser, expr, err);
+    ast = cxpr_expr_ast_parse(parser, expr, err);
     assert(ast != NULL);
     assert(err->code == CXPR_OK);
     out = cxpr_test_eval_ast(ast, ctx, reg, err);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     return out;
 }
@@ -31,12 +31,12 @@ static cxpr_value eval_program_value(const char* expr,
                                      cxpr_registry* reg,
                                      cxpr_error* err) {
     cxpr_parser* parser = cxpr_parser_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     cxpr_value out = cxpr_num(NAN);
 
     *err = (cxpr_error){0};
-    ast = cxpr_parse(parser, expr, err);
+    ast = cxpr_expr_ast_parse(parser, expr, err);
     assert(ast != NULL);
     assert(err->code == CXPR_OK);
     program = cxpr_compile(ast, reg, err);
@@ -45,7 +45,7 @@ static cxpr_value eval_program_value(const char* expr,
     assert(cxpr_eval_program(program, ctx, reg, &out, err));
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     return out;
 }
@@ -141,7 +141,7 @@ static void test_record_literal_field_mismatch_fails_compile(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, "{ x = 1, y = 2 } + { x = 1, z = 2 }", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "{ x = 1, y = 2 } + { x = 1, z = 2 }", &err);
     cxpr_program* program;
 
     assert(ast != NULL);
@@ -151,7 +151,7 @@ static void test_record_literal_field_mismatch_fails_compile(void) {
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
     assert(strstr(err.message, "matching struct fields") != NULL);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_registry_free(reg);
     printf("  ✓ test_record_literal_field_mismatch_fails_compile\n");

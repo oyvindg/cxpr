@@ -105,7 +105,7 @@ typedef struct {
  * evaluation, each active node's value when available, and skipped branches for
  * short-circuit boolean operators and ternaries.
  */
-bool cxpr_eval_snapshot_build(const cxpr_ast* ast,
+bool cxpr_eval_snapshot_build(const cxpr_expr_ast* ast,
                               const cxpr_context* ctx,
                               const cxpr_registry* reg,
                               cxpr_eval_snapshot* out_snapshot,

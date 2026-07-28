@@ -77,7 +77,7 @@ The main types are:
 
 | Type | Purpose |
 | --- | --- |
-| `cxpr_ast` | Parsed expression tree |
+| `cxpr_expr_ast` | Parsed expression tree |
 | `cxpr_document_ast` | Source-oriented tree for a complete `.cxpr` document |
 | `cxpr_document` | Parsed document containing host blocks and optionally a model |
 | `cxpr_model` | Validated semantic representation of model declarations |
@@ -302,7 +302,7 @@ int main(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_ast* ast = cxpr_parse(
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         parser,
         "sqrt(vx^2 + vy^2) > $max_speed",
         &err);
@@ -320,7 +320,7 @@ int main(void) {
     printf("speed exceeded: %s\n", exceeded ? "yes" : "no");
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
@@ -551,7 +551,7 @@ There are two public syntax-tree views:
 
 - The expression AST represents operators, calls, values, fields, and lookback
   within one expression. It can be parsed, deep-cloned, or constructed
-  programmatically through the public `cxpr_ast_new_*` functions.
+  programmatically through the public `cxpr_expr_ast_new_*` functions.
 - The document AST preserves the complete `.cxpr` file structure, statement
   order, nested blocks, expression subtrees, text, and source spans.
 
@@ -559,13 +559,13 @@ Expression-AST accessors return borrowed children and values, but the public
 constructors create owned trees:
 
 ```c
-cxpr_ast* condition = cxpr_ast_new_binary_op(
+cxpr_expr_ast* condition = cxpr_expr_ast_binary_new(
     CXPR_TOK_GT,
-    cxpr_ast_new_identifier("temperature"),
-    cxpr_ast_new_variable("limit"));
+    cxpr_expr_ast_identifier_new("temperature"),
+    cxpr_expr_ast_param_new("limit"));
 
 /* Compile, analyze, evaluate, or emit C from condition. */
-cxpr_ast_free(condition);
+cxpr_expr_ast_free(condition);
 ```
 
 Constructors that accept child nodes take ownership as documented in
@@ -622,7 +622,7 @@ For individual expressions, `<cxpr/codegen.h>` emits a C-like expression or a
 function from an expression set:
 
 ```c
-char* code = cxpr_ast_to_c(ast, NULL, &err);
+char* code = cxpr_expr_ast_to_c(ast, NULL, &err);
 /* Example: ((2 * (G * M)) / pow(c, 2)) */
 free(code);
 ```

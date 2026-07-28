@@ -220,12 +220,12 @@ static void test_sma_crossover(void) {
     register_trading_functions(reg);
 
     /* Pre-parse expressions (like codegen would) */
-    cxpr_ast* entry_ast = cxpr_parse(p,
+    cxpr_expr_ast* entry_ast = cxpr_expr_ast_parse(p,
         "cross_above(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) and close > sma_slow",
         &err);
     assert(entry_ast);
 
-    cxpr_ast* exit_ast = cxpr_parse(p,
+    cxpr_expr_ast* exit_ast = cxpr_expr_ast_parse(p,
         "cross_below(sma_fast, sma_slow, prev_sma_fast, prev_sma_slow) or close < sma_slow * 0.98",
         &err);
     assert(exit_ast);
@@ -273,8 +273,8 @@ static void test_sma_crossover(void) {
     assert(entry_signals < NUM_BARS / 2 && "Entry signals should be sparse");
     assert(exit_signals < NUM_BARS / 2 && "Exit signals should be sparse");
 
-    cxpr_ast_free(entry_ast);
-    cxpr_ast_free(exit_ast);
+    cxpr_expr_ast_free(entry_ast);
+    cxpr_expr_ast_free(exit_ast);
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -299,7 +299,7 @@ static void test_ema_convergence(void) {
 
     register_trading_functions(reg);
 
-    cxpr_ast* ema_expr = cxpr_parse(p, "ema_step(prev_ema, close, $period)", &err);
+    cxpr_expr_ast* ema_expr = cxpr_expr_ast_parse(p, "ema_step(prev_ema, close, $period)", &err);
     assert(ema_expr);
 
     int period = 20;
@@ -329,7 +329,7 @@ static void test_ema_convergence(void) {
     double pct_diff = fabs(expr_ema - final_close) / final_close * 100.0;
     assert(pct_diff < 15.0 && "EMA should track price within 15%");
 
-    cxpr_ast_free(ema_expr);
+    cxpr_expr_ast_free(ema_expr);
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -358,14 +358,14 @@ static void test_rsi_signals(void) {
     cxpr_context_set_param(ctx, "oversold", 30.0);
     cxpr_context_set_param(ctx, "overbought", 70.0);
 
-    cxpr_ast* oversold_ast = cxpr_parse(p, "rsi < $oversold", &err);
+    cxpr_expr_ast* oversold_ast = cxpr_expr_ast_parse(p, "rsi < $oversold", &err);
     assert(oversold_ast);
 
-    cxpr_ast* overbought_ast = cxpr_parse(p, "rsi > $overbought", &err);
+    cxpr_expr_ast* overbought_ast = cxpr_expr_ast_parse(p, "rsi > $overbought", &err);
     assert(overbought_ast);
 
     /* Complex signal with RSI + price confirmation */
-    cxpr_ast* buy_signal_ast = cxpr_parse(p,
+    cxpr_expr_ast* buy_signal_ast = cxpr_expr_ast_parse(p,
         "rsi < $oversold and close > low and pct_change(close, prev_close) > 0",
         &err);
     assert(buy_signal_ast);
@@ -402,9 +402,9 @@ static void test_rsi_signals(void) {
     assert(oversold_count + overbought_count > 0 &&
            "RSI should reach extremes with 200 bars");
 
-    cxpr_ast_free(oversold_ast);
-    cxpr_ast_free(overbought_ast);
-    cxpr_ast_free(buy_signal_ast);
+    cxpr_expr_ast_free(oversold_ast);
+    cxpr_expr_ast_free(overbought_ast);
+    cxpr_expr_ast_free(buy_signal_ast);
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -434,18 +434,18 @@ static void test_bollinger_bands(void) {
     cxpr_context_set_param(ctx, "bb_mult", bb_mult);
 
     /* Bollinger squeeze: bandwidth < threshold */
-    cxpr_ast* squeeze_ast = cxpr_parse(p,
+    cxpr_expr_ast* squeeze_ast = cxpr_expr_ast_parse(p,
         "(bb_upper - bb_lower) / bb_middle < $squeeze_thresh", &err);
     assert(squeeze_ast);
     cxpr_context_set_param(ctx, "squeeze_thresh", 0.06);
 
     /* Price near lower band: potential buy */
-    cxpr_ast* near_lower_ast = cxpr_parse(p,
+    cxpr_expr_ast* near_lower_ast = cxpr_expr_ast_parse(p,
         "close < bb_lower + (bb_middle - bb_lower) * 0.2", &err);
     assert(near_lower_ast);
 
     /* Mean reversion: price crosses above middle band */
-    cxpr_ast* mean_reversion_ast = cxpr_parse(p,
+    cxpr_expr_ast* mean_reversion_ast = cxpr_expr_ast_parse(p,
         "close > bb_middle and prev_close <= bb_middle and rsi < 60", &err);
     assert(mean_reversion_ast);
 
@@ -485,9 +485,9 @@ static void test_bollinger_bands(void) {
         }
     }
 
-    cxpr_ast_free(squeeze_ast);
-    cxpr_ast_free(near_lower_ast);
-    cxpr_ast_free(mean_reversion_ast);
+    cxpr_expr_ast_free(squeeze_ast);
+    cxpr_expr_ast_free(near_lower_ast);
+    cxpr_expr_ast_free(mean_reversion_ast);
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -520,25 +520,25 @@ static void test_full_strategy_simulation(void) {
     cxpr_context_set_param(ctx, "vol_max", 5.0);
 
     /* Complex entry: EMA bullish + RSI not overbought + volatility ok + near lower BB */
-    cxpr_ast* entry_ast = cxpr_parse(p,
+    cxpr_expr_ast* entry_ast = cxpr_expr_ast_parse(p,
         "ema_fast > ema_slow and rsi > $rsi_oversold and rsi < $rsi_overbought and vol_ratio(atr, close) < $vol_max and close > bb_lower",
         &err);
     assert(entry_ast);
 
     /* Complex exit: EMA bearish OR RSI extreme OR volatility spike */
-    cxpr_ast* exit_ast = cxpr_parse(p,
+    cxpr_expr_ast* exit_ast = cxpr_expr_ast_parse(p,
         "ema_fast < ema_slow or rsi > $rsi_overbought or vol_ratio(atr, close) > $vol_max * 2",
         &err);
     assert(exit_ast);
 
     /* Position sizing expression: normalize risk based on ATR */
-    cxpr_ast* size_ast = cxpr_parse(p,
+    cxpr_expr_ast* size_ast = cxpr_expr_ast_parse(p,
         "clamp(floor(10000 / (atr * 2)), 1, 100)",
         &err);
     assert(size_ast);
 
     /* Stop loss expression */
-    cxpr_ast* stoploss_ast = cxpr_parse(p,
+    cxpr_expr_ast* stoploss_ast = cxpr_expr_ast_parse(p,
         "close - atr * 1.5",
         &err);
     assert(stoploss_ast);
@@ -637,10 +637,10 @@ static void test_full_strategy_simulation(void) {
     assert(entries > 0 && "Strategy should generate at least one trade");
     assert(entries == exits && "Every entry should have an exit");
 
-    cxpr_ast_free(entry_ast);
-    cxpr_ast_free(exit_ast);
-    cxpr_ast_free(size_ast);
-    cxpr_ast_free(stoploss_ast);
+    cxpr_expr_ast_free(entry_ast);
+    cxpr_expr_ast_free(exit_ast);
+    cxpr_expr_ast_free(size_ast);
+    cxpr_expr_ast_free(stoploss_ast);
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -786,9 +786,9 @@ static void test_stress_multi_expression(void) {
     };
     int n_expr = 8;
 
-    cxpr_ast* asts[8];
+    cxpr_expr_ast* asts[8];
     for (int i = 0; i < n_expr; i++) {
-        asts[i] = cxpr_parse(p, expressions[i], &err);
+        asts[i] = cxpr_expr_ast_parse(p, expressions[i], &err);
         assert(asts[i] && "All expressions must parse");
     }
 
@@ -829,7 +829,7 @@ static void test_stress_multi_expression(void) {
     }
 
     for (int i = 0; i < n_expr; i++) {
-        cxpr_ast_free(asts[i]);
+        cxpr_expr_ast_free(asts[i]);
     }
 
     cxpr_parser_free(p);

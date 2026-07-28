@@ -22,7 +22,7 @@ size_t cxpr_ir_local_index(const char* name, const char* const* local_names,
  * @param owner Optional output receiving the frame that owned the substitution.
  * @return Borrowed AST argument mapped to `name`, or NULL when no substitution exists.
  */
-const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const char* name,
+const cxpr_expr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const char* name,
                                      const cxpr_ir_subst_frame** owner);
 /** @brief Emit the most direct load opcode for a leaf expression when possible.
  * @param ast Leaf AST node to lower.
@@ -34,7 +34,7 @@ const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const cha
  * @param err Optional error output.
  * @return True on success, false when the node is not a supported direct-load leaf.
  */
-bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
+bool cxpr_ir_emit_leaf_load(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                             const char* const* local_names, size_t local_count,
                             const cxpr_ir_subst_frame* subst, bool square,
                             cxpr_error* err);
@@ -42,24 +42,24 @@ bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
  * @param ast AST subtree to inspect.
  * @return True when any reachable node is a string literal.
  */
-bool cxpr_ir_ast_contains_string_literal(const cxpr_ast* ast);
+bool cxpr_ir_ast_contains_string_literal(const cxpr_expr_ast* ast);
 /** @brief Check whether one AST argument must stay on AST-catchor evaluation.
  * @param ast AST subtree to inspect.
  * @return True when runtime handler passthrough is required.
  */
-bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_ast* ast);
+bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_expr_ast* ast);
 /** @brief Check whether a runtime call must fall back to AST handler execution.
  * @param ast Function-call or producer-call AST node.
  * @return True when any argument shape requires handler passthrough.
  */
-bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_ast* ast);
+bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_expr_ast* ast);
 /** @brief Infer the scalar fast-path result kind for one AST subtree.
  * @param ast AST subtree to inspect.
  * @param reg Registry used to resolve function metadata.
  * @param depth Current recursion depth.
  * @return One of the `CXPR_IR_RESULT_*` constants.
  */
-unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
+unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                              size_t depth);
 /** @brief Lower one AST subtree into IR instructions.
  * @param ast AST subtree to compile.
@@ -72,7 +72,7 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_reg
  * @param err Optional error output.
  * @return True on success, false on compilation failure.
  */
-bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
+bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                           const cxpr_registry* reg,
                           const char* const* local_names, size_t local_count,
                           const cxpr_ir_subst_frame* subst,

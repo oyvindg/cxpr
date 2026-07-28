@@ -52,10 +52,10 @@ static cxpr_value eval_typed(const char* expr) {
     cxpr_value tree_val = {0};
     cxpr_value prog_val = {0};
     cxpr_program* prog;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     register_helpers(reg);
-    ast = cxpr_parse(p, expr, &err);
+    ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast && "parse failed");
 
     assert(cxpr_eval_ast(ast, ctx, reg, &tree_val, &err) && err.code == CXPR_OK);
@@ -69,7 +69,7 @@ static cxpr_value eval_typed(const char* expr) {
     assert(tree_val.i64 == prog_val.i64); /* covers number bits, bool, and i64 */
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -84,10 +84,10 @@ static void assert_eval_error(const char* expr) {
     cxpr_error err = {0};
     cxpr_value v = {0};
     cxpr_program* prog;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     register_helpers(reg);
-    ast = cxpr_parse(p, expr, &err);
+    ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast && "parse failed");
 
     err = (cxpr_error){0};
@@ -99,7 +99,7 @@ static void assert_eval_error(const char* expr) {
     assert(!cxpr_eval_program(prog, ctx, reg, &v, &err) || err.code != CXPR_OK);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -193,12 +193,12 @@ static void test_temporal_struct_fields(void) {
     cxpr_context_set_struct(ctx, "bar", bar);
     cxpr_context_set_struct(ctx, "entry", entry);
 
-    cxpr_ast* ast = cxpr_parse(p, "bar.time - entry.time", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "bar.time - entry.time", &err);
     assert(ast && err.code == CXPR_OK);
     assert(cxpr_eval_ast(ast, ctx, reg, &v, &err) && err.code == CXPR_OK);
     assert(v.type == CXPR_VALUE_DURATION && v.i64 == 4000);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_struct_value_free(bar);
     cxpr_struct_value_free(entry);
     cxpr_registry_free(reg);

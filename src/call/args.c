@@ -26,17 +26,17 @@ static bool cxpr_call_param_name_matches(const char* param_name, const char* arg
 }
 
 static bool cxpr_call_bind_named_window(const char* const* arg_names,
-                                        const cxpr_ast* const* args,
+                                        const cxpr_expr_ast* const* args,
                                         size_t argc,
                                         const char* const* param_names,
                                         size_t param_count,
-                                        const cxpr_ast** out_args) {
+                                        const cxpr_expr_ast** out_args) {
     for (size_t window_start = 0; window_start + argc <= param_count; ++window_start) {
         bool candidate_seen_named = false;
         bool candidate_used[CXPR_MAX_PARAM_NAMES] = {0};
         size_t candidate_positional = 0;
         bool candidate_ok = true;
-        const cxpr_ast* candidate_args[CXPR_MAX_CALL_ARGS] = {0};
+        const cxpr_expr_ast* candidate_args[CXPR_MAX_CALL_ARGS] = {0};
 
         for (size_t i = 0; i < argc; ++i) {
             const char* arg_name = arg_names ? arg_names[i] : NULL;
@@ -87,12 +87,12 @@ static bool cxpr_call_bind_named_window(const char* const* arg_names,
     return false;
 }
 
-bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
-                         const cxpr_ast** out_args,
+bool cxpr_call_bind_args(const cxpr_expr_ast* ast, const cxpr_func_entry* entry,
+                         const cxpr_expr_ast** out_args,
                          cxpr_error_code* out_code,
                          const char** out_message) {
     const char* const* param_names;
-    const cxpr_ast* const* args;
+    const cxpr_expr_ast* const* args;
     char* const* arg_names;
     bool used[CXPR_MAX_PARAM_NAMES] = {0};
     bool seen_named = false;
@@ -104,11 +104,11 @@ bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
 
     if (ast->type == CXPR_NODE_FUNCTION_CALL) {
         argc = ast->data.function_call.argc;
-        args = (const cxpr_ast* const*)ast->data.function_call.args;
+        args = (const cxpr_expr_ast* const*)ast->data.function_call.args;
         arg_names = ast->data.function_call.arg_names;
     } else if (ast->type == CXPR_NODE_PRODUCER_ACCESS) {
         argc = ast->data.producer_access.argc;
-        args = (const cxpr_ast* const*)ast->data.producer_access.args;
+        args = (const cxpr_expr_ast* const*)ast->data.producer_access.args;
         arg_names = ast->data.producer_access.arg_names;
     } else {
         return false;
@@ -120,7 +120,7 @@ bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
         return false;
     }
 
-    if (!cxpr_ast_call_uses_named_args(ast)) {
+    if (!cxpr_expr_ast_call_uses_named_args(ast)) {
         if (out_args) {
             for (size_t i = 0; i < argc; ++i) out_args[i] = args[i];
         }

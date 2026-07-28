@@ -5,13 +5,13 @@
 #include <stdio.h>
 #include <string.h>
 
-static cxpr_ast* parse_required(const char* expression) {
+static cxpr_expr_ast* parse_required(const char* expression) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(parser);
-    ast = cxpr_parse(parser, expression, &err);
+    ast = cxpr_expr_ast_parse(parser, expression, &err);
     assert(ast);
     cxpr_parser_free(parser);
     return ast;
@@ -45,7 +45,7 @@ static bool test_write_ast_node_host_json(FILE* out,
 }
 
 static void test_snapshot_marks_short_circuit_branch_skipped(void) {
-    cxpr_ast* ast = parse_required("rsi < 30 and ema_fast > ema_slow");
+    cxpr_expr_ast* ast = parse_required("rsi < 30 and ema_fast > ema_slow");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -88,11 +88,11 @@ static void test_snapshot_marks_short_circuit_branch_skipped(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_writes_host_metadata(void) {
-    cxpr_ast* ast = parse_required("ema_fast > ema_slow");
+    cxpr_expr_ast* ast = parse_required("ema_fast > ema_slow");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -132,11 +132,11 @@ static void test_snapshot_writes_host_metadata(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_does_not_prefix_unary_operand_label(void) {
-    cxpr_ast* ast = parse_required("not scram_required");
+    cxpr_expr_ast* ast = parse_required("not scram_required");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -170,11 +170,11 @@ static void test_snapshot_does_not_prefix_unary_operand_label(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_labels_lookback_index_role(void) {
-    cxpr_ast* ast = parse_required("close[3]");
+    cxpr_expr_ast* ast = parse_required("close[3]");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -215,11 +215,11 @@ static void test_snapshot_labels_lookback_index_role(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_labels_rsi_positional_arg0(void) {
-    cxpr_ast* ast = parse_required("rsi(14)");
+    cxpr_expr_ast* ast = parse_required("rsi(14)");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -249,12 +249,12 @@ static void test_snapshot_labels_rsi_positional_arg0(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_labels_registered_function_arg_name(void) {
     static const char* const rsi_params[] = { "period" };
-    cxpr_ast* ast = parse_required("rsi(14)");
+    cxpr_expr_ast* ast = parse_required("rsi(14)");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -295,11 +295,11 @@ static void test_snapshot_labels_registered_function_arg_name(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_display_includes_resolved_and_final_value(void) {
-    cxpr_ast* ast = parse_required("liquidity > 0");
+    cxpr_expr_ast* ast = parse_required("liquidity > 0");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -319,11 +319,11 @@ static void test_snapshot_display_includes_resolved_and_final_value(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
-    cxpr_ast* ast = parse_required("falling(close, 2)");
+    cxpr_expr_ast* ast = parse_required("falling(close, 2)");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -380,11 +380,11 @@ static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_positional_identifier_arg_displays_source(void) {
-    cxpr_ast* ast = parse_required("max(close, close[1], close[3])");
+    cxpr_expr_ast* ast = parse_required("max(close, close[1], close[3])");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -412,11 +412,11 @@ static void test_snapshot_positional_identifier_arg_displays_source(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_named_function_args_attach_to_function_node(void) {
-    cxpr_ast* ast = parse_required("within(close, 100, 110)");
+    cxpr_expr_ast* ast = parse_required("within(close, 100, 110)");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -467,12 +467,12 @@ static void test_snapshot_named_function_args_attach_to_function_node(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_nested_function_args_attach_to_function_node(void) {
     static const char* const rsi_params[] = { "period" };
-    cxpr_ast* ast = parse_required("close < close[1] or rsi(14) > 70");
+    cxpr_expr_ast* ast = parse_required("close < close[1] or rsi(14) > 70");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -520,11 +520,11 @@ static void test_snapshot_nested_function_args_attach_to_function_node(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_contains_args_attach_to_function_node(void) {
-    cxpr_ast* ast = parse_required("contains(citizenship_code, [100, 101])");
+    cxpr_expr_ast* ast = parse_required("contains(citizenship_code, [100, 101])");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -568,11 +568,11 @@ static void test_snapshot_contains_args_attach_to_function_node(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_producer_args_attach_to_function_node(void) {
-    cxpr_ast* ast = parse_required("macd(fast=12, slow=26, signal=9).line");
+    cxpr_expr_ast* ast = parse_required("macd(fast=12, slow=26, signal=9).line");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -628,11 +628,11 @@ static void test_snapshot_producer_args_attach_to_function_node(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_field_access_has_object_and_field_children(void) {
-    cxpr_ast* ast = parse_required("account.balance");
+    cxpr_expr_ast* ast = parse_required("account.balance");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -665,11 +665,11 @@ static void test_snapshot_field_access_has_object_and_field_children(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_chain_access_has_segment_children(void) {
-    cxpr_ast* ast = parse_required("risk.model.score");
+    cxpr_expr_ast* ast = parse_required("risk.model.score");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -708,11 +708,11 @@ static void test_snapshot_chain_access_has_segment_children(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_array_literal_has_item_children(void) {
-    cxpr_ast* ast = parse_required("[1, 2, 3]");
+    cxpr_expr_ast* ast = parse_required("[1, 2, 3]");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -750,11 +750,11 @@ static void test_snapshot_array_literal_has_item_children(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_snapshot_complex_lookback_preserves_target_structure(void) {
-    cxpr_ast* ast = parse_required("account.balance[1]");
+    cxpr_expr_ast* ast = parse_required("account.balance[1]");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
@@ -799,7 +799,7 @@ static void test_snapshot_complex_lookback_preserves_target_structure(void) {
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void test_flow_snapshot_links_named_expressions(void) {

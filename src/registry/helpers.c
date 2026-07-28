@@ -41,7 +41,7 @@ static void cxpr_registry_free_defined_fn(cxpr_func_entry* entry) {
     entry->defined_program = NULL;
     entry->defined_program_failed = false;
     if (entry->defined_body) {
-        cxpr_ast_free(entry->defined_body);
+        cxpr_expr_ast_free(entry->defined_body);
         entry->defined_body = NULL;
     }
     if (entry->defined_return_field_names) {
@@ -53,7 +53,7 @@ static void cxpr_registry_free_defined_fn(cxpr_func_entry* entry) {
     }
     if (entry->defined_return_field_bodies) {
         for (size_t i = 0; i < entry->defined_return_field_count; i++) {
-            cxpr_ast_free(entry->defined_return_field_bodies[i]);
+            cxpr_expr_ast_free(entry->defined_return_field_bodies[i]);
         }
         free(entry->defined_return_field_bodies);
         entry->defined_return_field_bodies = NULL;

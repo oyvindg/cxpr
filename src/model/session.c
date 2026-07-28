@@ -13,32 +13,32 @@ static CXPR_THREAD_LOCAL cxpr_model_session* g_model_active_session = NULL;
 cxpr_model_session* cxpr_model_active_session(void) {
     return g_model_active_session;
 }
-static char* cxpr_model_child_cache_key(const cxpr_ast* ast) {
+static char* cxpr_model_child_cache_key(const cxpr_expr_ast* ast) {
     size_t len;
     char* out;
     size_t pos;
     const char* name;
     size_t argc;
     if (!ast) return NULL;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) {
-        name = cxpr_ast_producer_name(ast);
-        argc = cxpr_ast_producer_argc(ast);
-    } else if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
-        name = cxpr_ast_function_name(ast);
-        argc = cxpr_ast_function_argc(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) {
+        name = cxpr_expr_ast_producer_name(ast);
+        argc = cxpr_expr_ast_producer_arg_count(ast);
+    } else if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
+        name = cxpr_expr_ast_call_name(ast);
+        argc = cxpr_expr_ast_call_arg_count(ast);
     } else {
         return NULL;
     }
     if (!name) return NULL;
     len = strlen(name) + 3u;
     for (size_t i = 0u; i < argc; ++i) {
-        const cxpr_ast* arg_ast = cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                      ? cxpr_ast_producer_arg(ast, i)
-                                      : cxpr_ast_function_arg(ast, i);
-        const char* arg_name = cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                   ? cxpr_ast_producer_arg_name(ast, i)
-                                   : cxpr_ast_function_arg_name(ast, i);
-        char* arg = cxpr_ast_to_string(arg_ast);
+        const cxpr_expr_ast* arg_ast = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+                                      ? cxpr_expr_ast_producer_arg(ast, i)
+                                      : cxpr_expr_ast_call_arg(ast, i);
+        const char* arg_name = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+                                   ? cxpr_expr_ast_producer_arg_name(ast, i)
+                                   : cxpr_expr_ast_call_arg_name(ast, i);
+        char* arg = cxpr_expr_ast_to_string(arg_ast);
         len += arg_name ? strlen(arg_name) + 1u : 0u;
         len += arg ? strlen(arg) : 0u;
         len += 2u;
@@ -48,13 +48,13 @@ static char* cxpr_model_child_cache_key(const cxpr_ast* ast) {
     if (!out) return NULL;
     pos = (size_t)snprintf(out, len + 1u, "%s(", name);
     for (size_t i = 0u; i < argc; ++i) {
-        const cxpr_ast* arg_ast = cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                      ? cxpr_ast_producer_arg(ast, i)
-                                      : cxpr_ast_function_arg(ast, i);
-        const char* arg_name = cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                   ? cxpr_ast_producer_arg_name(ast, i)
-                                   : cxpr_ast_function_arg_name(ast, i);
-        char* arg = cxpr_ast_to_string(arg_ast);
+        const cxpr_expr_ast* arg_ast = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+                                      ? cxpr_expr_ast_producer_arg(ast, i)
+                                      : cxpr_expr_ast_call_arg(ast, i);
+        const char* arg_name = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+                                   ? cxpr_expr_ast_producer_arg_name(ast, i)
+                                   : cxpr_expr_ast_call_arg_name(ast, i);
+        char* arg = cxpr_expr_ast_to_string(arg_ast);
         if (i > 0u && pos < len) out[pos++] = ',';
         if (arg_name) {
             size_t n = strlen(arg_name);
@@ -74,28 +74,28 @@ static char* cxpr_model_child_cache_key(const cxpr_ast* ast) {
     return out;
 }
 
-static size_t cxpr_model_child_call_argc(const cxpr_ast* ast) {
+static size_t cxpr_model_child_call_argc(const cxpr_expr_ast* ast) {
     if (!ast) return 0u;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_ast_producer_argc(ast);
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_ast_function_argc(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_expr_ast_producer_arg_count(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_expr_ast_call_arg_count(ast);
     return 0u;
 }
 
-static const cxpr_ast* cxpr_model_child_call_arg(const cxpr_ast* ast, size_t index) {
+static const cxpr_expr_ast* cxpr_model_child_call_arg(const cxpr_expr_ast* ast, size_t index) {
     if (!ast) return NULL;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_ast_producer_arg(ast, index);
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_ast_function_arg(ast, index);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_expr_ast_producer_arg(ast, index);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_expr_ast_call_arg(ast, index);
     return NULL;
 }
 
-static const char* cxpr_model_child_call_arg_name(const cxpr_ast* ast, size_t index) {
+static const char* cxpr_model_child_call_arg_name(const cxpr_expr_ast* ast, size_t index) {
     if (!ast) return NULL;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_ast_producer_arg_name(ast, index);
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_ast_function_arg_name(ast, index);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_expr_ast_producer_arg_name(ast, index);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_expr_ast_call_arg_name(ast, index);
     return NULL;
 }
 
-static const cxpr_ast* cxpr_model_child_call_named_arg(const cxpr_ast* ast,
+static const cxpr_expr_ast* cxpr_model_child_call_named_arg(const cxpr_expr_ast* ast,
                                                        const char* name) {
     if (!ast || !name) return NULL;
     for (size_t i = 0u; i < cxpr_model_child_call_argc(ast); ++i) {
@@ -107,14 +107,14 @@ static const cxpr_ast* cxpr_model_child_call_named_arg(const cxpr_ast* ast,
     return NULL;
 }
 
-static bool cxpr_model_child_call_has_named_args(const cxpr_ast* ast) {
+static bool cxpr_model_child_call_has_named_args(const cxpr_expr_ast* ast) {
     if (!ast) return false;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_ast_producer_has_named_args(ast);
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_ast_function_has_named_args(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) return cxpr_expr_ast_producer_has_named_args(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) return cxpr_expr_ast_call_has_named_args(ast);
     return false;
 }
 
-static bool cxpr_model_eval_ast_bool_result(const cxpr_ast* ast,
+static bool cxpr_model_eval_ast_bool_result(const cxpr_expr_ast* ast,
                                             const cxpr_context* ctx,
                                             const cxpr_registry* reg,
                                             bool* out_value,
@@ -233,8 +233,8 @@ static void cxpr_model_output_state_set_number(cxpr_model_output_state* state,
 static void cxpr_model_output_state_set_bool(cxpr_model_output_state* state,
                                              bool value);
 
-bool cxpr_model_lookback_resolver(const cxpr_ast* target,
-                                  const cxpr_ast* index,
+bool cxpr_model_lookback_resolver(const cxpr_expr_ast* target,
+                                  const cxpr_expr_ast* index,
                                   const cxpr_context* ctx,
                                   const cxpr_registry* reg,
                                   void* userdata,
@@ -702,9 +702,9 @@ static void cxpr_model_session_commit_pending(const cxpr_model_program* program,
     cxpr_model_session_clear_pending(session);
 }
 
-static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
+static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
                                                         const cxpr_model_program* child,
-                                                        const cxpr_ast* ast) {
+                                                        const cxpr_expr_ast* ast) {
     size_t call_param_count = 0u;
     if (!child_ref || !child || !ast ||
         child_ref->source_input_index == (size_t)-1 ||
@@ -729,9 +729,9 @@ static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_p
                : NULL;
 }
 
-static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
+static const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
                                                        const cxpr_model_program* child,
-                                                       const cxpr_ast* ast,
+                                                       const cxpr_expr_ast* ast,
                                                        size_t param_index) {
     size_t explicit_count = 0u;
     size_t exposed_index = 0u;
@@ -766,7 +766,7 @@ static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_pr
     }
 }
 
-cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
+cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           void* userdata,
@@ -795,7 +795,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
         const cxpr_struct_value* cached = cache_key
             ? cxpr_context_get_cached_struct(ctx, cache_key)
             : NULL;
-        if (cached && cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
+        if (cached && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
             cxpr_struct_value* copy = cxpr_struct_value_new(
                 (const char* const*)cached->field_names,
                 cached->field_values,
@@ -805,7 +805,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
             return cxpr_struct(copy);
         }
         if (cached) {
-            result = cxpr_struct_get_field(cached, cxpr_ast_producer_field(ast), &found);
+            result = cxpr_struct_get_field(cached, cxpr_expr_ast_producer_field(ast), &found);
             free(cache_key);
             if (found) return cxpr_value_clone(&result);
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown child model field");
@@ -832,8 +832,8 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
     for (size_t i = 0u; i < child->input_count; ++i) {
         bool input_found = false;
         bool owns_value = false;
-        const cxpr_ast* named_input_arg = cxpr_model_child_call_named_arg(ast, child->inputs[i]);
-        const cxpr_ast* source_arg =
+        const cxpr_expr_ast* named_input_arg = cxpr_model_child_call_named_arg(ast, child->inputs[i]);
+        const cxpr_expr_ast* source_arg =
             (!named_input_arg && i == child_ref->source_input_index)
                 ? cxpr_model_child_call_source_arg(child_ref, child, ast)
                 : NULL;
@@ -865,7 +865,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
         if (owns_value) cxpr_value_free(&value);
     }
     for (size_t i = 0u; i < child->constant_count; ++i) {
-        const cxpr_ast* arg = cxpr_model_child_call_param_arg(child_ref, child, ast, i);
+        const cxpr_expr_ast* arg = cxpr_model_child_call_param_arg(child_ref, child, ast, i);
         cxpr_value value;
         if (!arg) {
             continue;
@@ -919,12 +919,12 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
     }
     cxpr_context_set_cached_struct((cxpr_context*)ctx, cache_key, record);
     free(cache_key);
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
         result = cxpr_struct(record);
         record = NULL;
         found = true;
     } else {
-        result = cxpr_struct_get_field(record, cxpr_ast_producer_field(ast), &found);
+        result = cxpr_struct_get_field(record, cxpr_expr_ast_producer_field(ast), &found);
         if (found) result = cxpr_value_clone(&result);
     }
     cxpr_struct_value_free(record);

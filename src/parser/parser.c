@@ -66,7 +66,7 @@ void cxpr_parser_free(cxpr_parser* p) {
     free(p);
 }
 
-cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err) {
+cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_parser* p, const char* expression, cxpr_error* err) {
     if (!p || !expression) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -85,10 +85,10 @@ cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err) {
         return NULL;
     }
 
-    cxpr_ast* ast = cxpr_parse_expression(p);
+    cxpr_expr_ast* ast = cxpr_parse_expression(p);
 
     if (p->had_error) {
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
         if (err) *err = p->last_error;
         return NULL;
     }
@@ -102,7 +102,7 @@ cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err) {
         p->last_error.position = p->current.position;
         p->last_error.line = p->current.line;
         p->last_error.column = p->current.column;
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
         if (err) *err = p->last_error;
         return NULL;
     }

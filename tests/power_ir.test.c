@@ -27,7 +27,7 @@ static void test_compiled_program_power(void) {
     const double want[] = { 9.0, 16.0, 81.0, 17.0 };
 
     for (size_t i = 0; i < 4; ++i) {
-        cxpr_ast* ast = cxpr_parse(p, exprs[i], &err);
+        cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, exprs[i], &err);
         assert(ast && err.code == CXPR_OK);
 
         double tree = 0.0;
@@ -42,7 +42,7 @@ static void test_compiled_program_power(void) {
         assert(APPROX(compiled, want[i]));
 
         cxpr_program_free(prog);
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
     }
 
     cxpr_context_free(ctx);

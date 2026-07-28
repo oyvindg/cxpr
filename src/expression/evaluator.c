@@ -59,7 +59,7 @@ static bool cxpr_expression_entry_used_as_struct_prefix(
         size_t nrefs;
 
         if (i == entry_index || !evaluator->expressions[i].ast) continue;
-        nrefs = cxpr_ast_references(evaluator->expressions[i].ast, refs, 256);
+        nrefs = cxpr_expr_ast_references(evaluator->expressions[i].ast, refs, 256);
         for (size_t r = 0; r < nrefs && r < 256; ++r) {
             if (refs[r] &&
                 strncmp(refs[r], name, name_len) == 0 &&
@@ -78,11 +78,11 @@ static int cxpr_expression_eval_struct_alias(
     cxpr_value* out,
     cxpr_error* err) {
     cxpr_func_entry* fn;
-    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
     const cxpr_struct_value* produced;
 
     if (!entry || !entry->ast || !ctx || !reg || !out) return 0;
-    if (cxpr_ast_type(entry->ast) != CXPR_NODE_FUNCTION_CALL) return 0;
+    if (cxpr_expr_ast_kind_of(entry->ast) != CXPR_NODE_FUNCTION_CALL) return 0;
 
     fn = cxpr_eval_cached_function_entry(entry->ast, reg);
     if (!fn || !fn->struct_producer) return 0;
@@ -90,9 +90,9 @@ static int cxpr_expression_eval_struct_alias(
 
     produced = cxpr_eval_struct_result(
         fn,
-        cxpr_ast_function_name(entry->ast),
+        cxpr_expr_ast_call_name(entry->ast),
         ordered_args,
-        cxpr_ast_function_argc(entry->ast),
+        cxpr_expr_ast_call_arg_count(entry->ast),
         NULL,
         ctx,
         reg,
@@ -152,7 +152,7 @@ void cxpr_evaluator_free(cxpr_evaluator* evaluator) {
         cxpr_expression_result_dispose(&evaluator->expressions[i].result);
         free(evaluator->expressions[i].name);
         free(evaluator->expressions[i].expression);
-        cxpr_ast_free(evaluator->expressions[i].ast);
+        cxpr_expr_ast_free(evaluator->expressions[i].ast);
         cxpr_program_free(evaluator->expressions[i].program);
     }
     free(evaluator->expressions);

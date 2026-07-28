@@ -17,8 +17,8 @@
  * @param out_message Optional static error-message output on failure.
  * @return True on success, false when binding or validation fails.
  */
-bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
-                         const cxpr_ast** out_args,
+bool cxpr_call_bind_args(const cxpr_expr_ast* ast, const cxpr_func_entry* entry,
+                         const cxpr_expr_ast** out_args,
                          cxpr_error_code* out_code,
                          const char** out_message);
 

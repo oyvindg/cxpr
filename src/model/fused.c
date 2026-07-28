@@ -193,7 +193,7 @@ static bool cxpr_model_fused_ir_scalar_supported(const cxpr_ir_program* ir,
     return true;
 }
 
-static bool cxpr_model_fused_ast_supported(const cxpr_ast* ast,
+static bool cxpr_model_fused_ast_supported(const cxpr_expr_ast* ast,
                                            const cxpr_registry* reg) {
     if (!ast) return true;
     switch (ast->type) {

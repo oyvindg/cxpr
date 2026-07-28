@@ -15,7 +15,7 @@ size_t cxpr_ir_local_index(const char* name, const char* const* local_names,
     return (size_t)-1;
 }
 
-const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const char* name,
+const cxpr_expr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const char* name,
                                      const cxpr_ir_subst_frame** owner) {
     size_t i;
     for (; frame; frame = frame->parent) {
@@ -30,7 +30,7 @@ const cxpr_ast* cxpr_ir_subst_lookup(const cxpr_ir_subst_frame* frame, const cha
     return NULL;
 }
 
-bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
+bool cxpr_ir_emit_leaf_load(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                             const char* const* local_names, size_t local_count,
                             const cxpr_ir_subst_frame* subst, bool square,
                             cxpr_error* err) {
@@ -39,7 +39,7 @@ bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
     switch (ast->type) {
     case CXPR_NODE_IDENTIFIER: {
         const cxpr_ir_subst_frame* owner = NULL;
-        const cxpr_ast* mapped = cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner);
+        const cxpr_expr_ast* mapped = cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner);
         if (mapped) {
             return cxpr_ir_emit_leaf_load(mapped, program, local_names, local_count,
                                           owner ? owner->parent : NULL, square, err);
@@ -89,7 +89,7 @@ bool cxpr_ir_emit_leaf_load(const cxpr_ast* ast, cxpr_ir_program* program,
     }
 }
 
-bool cxpr_ir_ast_contains_string_literal(const cxpr_ast* ast) {
+bool cxpr_ir_ast_contains_string_literal(const cxpr_expr_ast* ast) {
     size_t i;
 
     if (!ast) return false;
@@ -135,7 +135,7 @@ bool cxpr_ir_ast_contains_string_literal(const cxpr_ast* ast) {
     }
 }
 
-bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_ast* ast) {
+bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_expr_ast* ast) {
     if (!ast) return false;
 
     switch (ast->type) {
@@ -160,7 +160,7 @@ bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_ast* ast) {
     }
 }
 
-bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_ast* ast) {
+bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_expr_ast* ast) {
     size_t i;
 
     if (!ast) return false;

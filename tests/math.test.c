@@ -27,12 +27,12 @@ static double eval_expr(const char* expr) {
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast && "Parse failed");
     double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -182,20 +182,20 @@ static void test_builtin_nan_inf(void) {
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, "nan()", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "nan()", &err);
     assert(ast);
     double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     assert(isnan(result));
 
-    cxpr_ast_free(ast);
-    ast = cxpr_parse(p, "inf()", &err);
+    cxpr_expr_ast_free(ast);
+    ast = cxpr_expr_ast_parse(p, "inf()", &err);
     assert(ast);
     result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     assert(isinf(result));
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -211,24 +211,24 @@ static void test_builtin_if(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     cxpr_register_defaults(reg);
     ASSERT_DOUBLE_EQ(eval_expr("if(1, 10, 20)"), 10.0);
     ASSERT_DOUBLE_EQ(eval_expr("if(0, 10, 20)"), 20.0);
     ASSERT_DOUBLE_EQ(eval_expr("if(3 > 2, 100, 200)"), 100.0);
 
-    ast = cxpr_parse(p, "if(true, false, true)", &err);
+    ast = cxpr_expr_ast_parse(p, "if(true, false, true)", &err);
     assert(ast != NULL);
     assert(cxpr_test_eval_ast_bool(ast, ctx, reg, &err) == false);
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(p, "if(false, false, true)", &err);
+    ast = cxpr_expr_ast_parse(p, "if(false, false, true)", &err);
     assert(ast != NULL);
     assert(cxpr_test_eval_ast_bool(ast, ctx, reg, &err) == true);
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -258,10 +258,10 @@ static void test_complex_math(void) {
     cxpr_context_set(ctx, "x", 3.0);
     cxpr_context_set(ctx, "y", 4.0);
 
-    cxpr_ast* ast = cxpr_parse(p, "sqrt(x^2 + y^2)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "sqrt(x^2 + y^2)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 5.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
@@ -327,22 +327,22 @@ static void test_custom_functions(void) {
     cxpr_registry_add(reg, "divergence", fn_divergence, 2, 2, NULL, NULL);
 
     /* wavg(80, 0.5, 90, 0.3, 70, 0.2) = (40+27+14)/1.0 = 81.0 */
-    cxpr_ast* ast = cxpr_parse(p, "wavg(80, 0.5, 90, 0.3, 70, 0.2)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "wavg(80, 0.5, 90, 0.3, 70, 0.2)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 81.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ema_step(100, 105, 0.2) = 0.2*105 + 0.8*100 = 21 + 80 = 101 */
-    ast = cxpr_parse(p, "ema_step(100, 105, 0.2)", &err);
+    ast = cxpr_expr_ast_parse(p, "ema_step(100, 105, 0.2)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 101.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* normalize(75, 0, 100) = 0.75 */
-    ast = cxpr_parse(p, "normalize(75, 0, 100)", &err);
+    ast = cxpr_expr_ast_parse(p, "normalize(75, 0, 100)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 0.75);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_parser_free(p);
     cxpr_context_free(ctx);
@@ -360,7 +360,7 @@ static void test_extreme_nested_expressions(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     cxpr_registry_add_value(reg, "cross_above", fn_cross_above, 2, 2, NULL, NULL);
     cxpr_registry_add(reg, "normalize", fn_normalize, 3, 3, NULL, NULL);
@@ -369,47 +369,47 @@ static void test_extreme_nested_expressions(void) {
 
     /* ── Test 1: nested functions inside functions ── */
     /* clamp(sqrt(abs(-16)) * 2, 0, 10) = clamp(4*2, 0, 10) = clamp(8,0,10) = 8 */
-    ast = cxpr_parse(p, "clamp(sqrt(abs(-16)) * 2, 0, 10)", &err);
+    ast = cxpr_expr_ast_parse(p, "clamp(sqrt(abs(-16)) * 2, 0, 10)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 8.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 2: triple-nested function with arithmetic ── */
     /* max(min(abs(-7) + 3, 20), sqrt(pow(3, 2) + pow(4, 2)))
        = max(min(10, 20), sqrt(9+16)) = max(10, 5) = 10 */
-    ast = cxpr_parse(p, "max(min(abs(-7) + 3, 20), sqrt(pow(3, 2) + pow(4, 2)))", &err);
+    ast = cxpr_expr_ast_parse(p, "max(min(abs(-7) + 3, 20), sqrt(pow(3, 2) + pow(4, 2)))", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 10.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 3: trig identity sin²(x) + cos²(x) = 1 ── */
     cxpr_context_set(ctx, "x", 1.2345);
-    ast = cxpr_parse(p, "sin(x)^2 + cos(x)^2", &err);
+    ast = cxpr_expr_ast_parse(p, "sin(x)^2 + cos(x)^2", &err);
     assert(ast);
     ASSERT_APPROX(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 1.0, 1e-12);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 4: complex ternary chain with comparisons ── */
     /* signal classification: oversold/neutral/overbought */
     cxpr_context_set(ctx, "rsi", 22.0);
     cxpr_context_set_param(ctx, "low", 30.0);
     cxpr_context_set_param(ctx, "high", 70.0);
-    ast = cxpr_parse(p, "rsi < $low ? -1.0 : (rsi > $high ? 1.0 : 0.0)", &err);
+    ast = cxpr_expr_ast_parse(p, "rsi < $low ? -1.0 : (rsi > $high ? 1.0 : 0.0)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), -1.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_context_set(ctx, "rsi", 50.0);
-    ast = cxpr_parse(p, "rsi < $low ? -1.0 : (rsi > $high ? 1.0 : 0.0)", &err);
+    ast = cxpr_expr_ast_parse(p, "rsi < $low ? -1.0 : (rsi > $high ? 1.0 : 0.0)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 0.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_context_set(ctx, "rsi", 85.0);
-    ast = cxpr_parse(p, "rsi < $low ? -1.0 : (rsi > $high ? 1.0 : 0.0)", &err);
+    ast = cxpr_expr_ast_parse(p, "rsi < $low ? -1.0 : (rsi > $high ? 1.0 : 0.0)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 1.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 5: many variables + builtins + custom in one expression ── */
     /* Complex signal scoring example
@@ -420,31 +420,31 @@ static void test_extreme_nested_expressions(void) {
     cxpr_context_set(ctx, "ema_s", 100.2);
     cxpr_context_set(ctx, "macd_h", 0.3);
     cxpr_context_set(ctx, "prev_macd_h", 0.35);
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
         "normalize(rsi, 0, 100) < 0.3 and cross_above(ema_f, ema_s) and divergence(macd_h, prev_macd_h) < 0.5",
         &err);
     assert(ast);
     assert(cxpr_test_eval_ast_bool(ast, ctx, reg, &err) == true);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 6: deeply nested arithmetic + functions (6 levels deep) ── */
     /* floor(sqrt(abs(min(-100, max(3, pow(2, ceil(log2(15)))))))) 
        log2(15) ≈ 3.907 → ceil = 4 → pow(2,4) = 16
        max(3, 16) = 16 → min(-100, 16) = -100
        abs(-100) = 100 → sqrt(100) = 10 → floor(10) = 10 */
-    ast = cxpr_parse(p, "floor(sqrt(abs(min(-100, max(3, pow(2, ceil(log2(15))))))))", &err);
+    ast = cxpr_expr_ast_parse(p, "floor(sqrt(abs(min(-100, max(3, pow(2, ceil(log2(15))))))))", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 10.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 7: chained EMA steps with intermediate math ── */
     /* ema_step(ema_step(100, 110, 0.1), 105, 0.1)
        inner: 0.1*110 + 0.9*100 = 11+90 = 101
        outer: 0.1*105 + 0.9*101 = 10.5+90.9 = 101.4 */
-    ast = cxpr_parse(p, "ema_step(ema_step(100, 110, 0.1), 105, 0.1)", &err);
+    ast = cxpr_expr_ast_parse(p, "ema_step(ema_step(100, 110, 0.1), 105, 0.1)", &err);
     assert(ast);
     ASSERT_APPROX(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 101.4, 1e-10);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 8: boolean logic with nested comparisons ── */
     /* (rsi < 30 or (rsi < 40 and cross_above(ema_f, ema_s)))
@@ -452,7 +452,7 @@ static void test_extreme_nested_expressions(void) {
     cxpr_context_set(ctx, "rsi", 35.0);
     cxpr_context_set(ctx, "macd_h", 0.3);
     cxpr_context_set(ctx, "prev_macd_h", -0.1);
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
         "(rsi < 30 or (rsi < 40 and cross_above(ema_f, ema_s))) and not (macd_h < 0 and prev_macd_h < 0)",
         &err);
     assert(ast);
@@ -460,23 +460,23 @@ static void test_extreme_nested_expressions(void) {
        macd_h=0.3>0: (0.3<0=false and ...)=false → not false=true
        true and true = true */
     assert(cxpr_test_eval_ast_bool(ast, ctx, reg, &err) == true);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 9: compound math expression (quadratic expression) ── */
     /* (-b + sqrt(b^2 - 4*a*c)) / (2*a) with a=1, b=-5, c=6 → x=3 */
     cxpr_context_set(ctx, "a", 1.0);
     cxpr_context_set(ctx, "b", -5.0);
     cxpr_context_set(ctx, "c", 6.0);
-    ast = cxpr_parse(p, "(-b + sqrt(b^2 - 4*a*c)) / (2*a)", &err);
+    ast = cxpr_expr_ast_parse(p, "(-b + sqrt(b^2 - 4*a*c)) / (2*a)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 3.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* and the other root: x=2 */
-    ast = cxpr_parse(p, "(-b - sqrt(b^2 - 4*a*c)) / (2*a)", &err);
+    ast = cxpr_expr_ast_parse(p, "(-b - sqrt(b^2 - 4*a*c)) / (2*a)", &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 2.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 10: ternary inside function inside ternary ── */
     /* if(x > 0, sqrt(x), abs(x)) where x = -9 → abs(-9) = 9
@@ -485,12 +485,12 @@ static void test_extreme_nested_expressions(void) {
              max(9, 3) = 9 */
     cxpr_context_set(ctx, "x", -9.0);
     cxpr_context_set(ctx, "y", -3.0);
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
         "max(if(x > 0, sqrt(x), abs(x)), if(y > 0, y ^ 2, -y))",
         &err);
     assert(ast);
     ASSERT_DOUBLE_EQ(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 9.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* ── Test 11: long chain of and/or with comparison and arithmetic ── */
     cxpr_context_set(ctx, "v1", 10.0);
@@ -498,12 +498,12 @@ static void test_extreme_nested_expressions(void) {
     cxpr_context_set(ctx, "v3", 30.0);
     cxpr_context_set(ctx, "v4", 40.0);
     cxpr_context_set(ctx, "v5", 50.0);
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
         "v1 + v2 > 25 and v3 * 2 == 60 and (v4 - v5 < 0 or v1 ^ 2 == 100) and not (v2 > 100) and min(v1, v5) == 10 and max(v3, v4) == 40",
         &err);
     assert(ast);
     assert(cxpr_test_eval_ast_bool(ast, ctx, reg, &err) == true);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_parser_free(p);
     cxpr_context_free(ctx);

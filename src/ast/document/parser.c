@@ -245,7 +245,7 @@ static void cxpr_document_ast_node_free(cxpr_document_ast_node* node) {
     free(node->name);
     free(node->value);
     free(node->text);
-    cxpr_ast_free(node->expression);
+    cxpr_expr_ast_free(node->expression);
     free(node);
 }
 
@@ -370,12 +370,12 @@ static bool cxpr_document_ast_parse_host_start(const char* line,
     return true;
 }
 
-static cxpr_ast* cxpr_document_ast_parse_expr(const char* text,
+static cxpr_expr_ast* cxpr_document_ast_parse_expr(const char* text,
                                               size_t line,
                                               size_t column,
                                               cxpr_error* err) {
     cxpr_parser* parser;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_error inner = {0};
     if (!text || *text == '\0') {
         cxpr_document_ast_set_error(err, CXPR_ERR_SYNTAX, "Expected expression", line, column);
@@ -386,7 +386,7 @@ static cxpr_ast* cxpr_document_ast_parse_expr(const char* text,
         cxpr_document_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line, column);
         return NULL;
     }
-    ast = cxpr_parse(parser, text, &inner);
+    ast = cxpr_expr_ast_parse(parser, text, &inner);
     cxpr_parser_free(parser);
     if (!ast && err) {
         *err = inner;

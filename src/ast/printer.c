@@ -14,7 +14,7 @@ typedef struct {
     char* buf;
     size_t len;
     size_t cap;
-} cxpr_ast_printer;
+} cxpr_expr_ast_printer;
 
 typedef enum {
     CXPR_ASSOC_NONE = 0,
@@ -22,7 +22,7 @@ typedef enum {
     CXPR_ASSOC_RIGHT
 } cxpr_assoc;
 
-static int cxpr_printer_reserve(cxpr_ast_printer* p, size_t extra) {
+static int cxpr_printer_reserve(cxpr_expr_ast_printer* p, size_t extra) {
     size_t needed;
     size_t cap;
     char* grown;
@@ -46,7 +46,7 @@ static int cxpr_printer_reserve(cxpr_ast_printer* p, size_t extra) {
     return 1;
 }
 
-static int cxpr_printer_append_n(cxpr_ast_printer* p, const char* text, size_t len) {
+static int cxpr_printer_append_n(cxpr_expr_ast_printer* p, const char* text, size_t len) {
     if (!text) return 0;
     if (!cxpr_printer_reserve(p, len)) return 0;
     memcpy(p->buf + p->len, text, len);
@@ -55,11 +55,11 @@ static int cxpr_printer_append_n(cxpr_ast_printer* p, const char* text, size_t l
     return 1;
 }
 
-static int cxpr_printer_append(cxpr_ast_printer* p, const char* text) {
+static int cxpr_printer_append(cxpr_expr_ast_printer* p, const char* text) {
     return cxpr_printer_append_n(p, text, strlen(text));
 }
 
-static int cxpr_printer_append_char(cxpr_ast_printer* p, char ch) {
+static int cxpr_printer_append_char(cxpr_expr_ast_printer* p, char ch) {
     if (!cxpr_printer_reserve(p, 1u)) return 0;
     p->buf[p->len++] = ch;
     p->buf[p->len] = '\0';
@@ -90,7 +90,7 @@ static cxpr_assoc cxpr_op_assoc(int op) {
     return op == CXPR_TOK_POWER ? CXPR_ASSOC_RIGHT : CXPR_ASSOC_LEFT;
 }
 
-static int cxpr_ast_precedence(const cxpr_ast* ast) {
+static int cxpr_expr_ast_precedence(const cxpr_expr_ast* ast) {
     if (!ast) return 0;
     switch (ast->type) {
         case CXPR_NODE_TERNARY: return 1;
@@ -120,16 +120,16 @@ static const char* cxpr_binary_op_text(int op) {
     }
 }
 
-static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_prec);
+static int cxpr_print_node(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, int parent_prec);
 
-static int cxpr_print_with_parens(cxpr_ast_printer* p, const cxpr_ast* ast, int parens) {
+static int cxpr_print_with_parens(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, int parens) {
     if (parens && !cxpr_printer_append_char(p, '(')) return 0;
     if (!cxpr_print_node(p, ast, 0)) return 0;
     if (parens && !cxpr_printer_append_char(p, ')')) return 0;
     return 1;
 }
 
-static int cxpr_binary_child_needs_parens(const cxpr_ast* child,
+static int cxpr_binary_child_needs_parens(const cxpr_expr_ast* child,
                                           int parent_op,
                                           int is_right_child) {
     int parent_prec;
@@ -138,7 +138,7 @@ static int cxpr_binary_child_needs_parens(const cxpr_ast* child,
     if (!child) return 0;
     if (child->type == CXPR_NODE_TERNARY) return 1;
     parent_prec = cxpr_op_precedence(parent_op);
-    child_prec = cxpr_ast_precedence(child);
+    child_prec = cxpr_expr_ast_precedence(child);
     if (child_prec < parent_prec) return 1;
     if (child->type != CXPR_NODE_BINARY_OP || child_prec != parent_prec) return 0;
 
@@ -146,7 +146,7 @@ static int cxpr_binary_child_needs_parens(const cxpr_ast* child,
     return is_right_child;
 }
 
-static int cxpr_print_number(cxpr_ast_printer* p, double value) {
+static int cxpr_print_number(cxpr_expr_ast_printer* p, double value) {
     char buf[64];
     char* end = NULL;
 
@@ -163,7 +163,7 @@ static int cxpr_print_number(cxpr_ast_printer* p, double value) {
     return cxpr_printer_append(p, buf);
 }
 
-static int cxpr_print_string(cxpr_ast_printer* p, const char* value) {
+static int cxpr_print_string(cxpr_expr_ast_printer* p, const char* value) {
     const unsigned char* cursor = (const unsigned char*)(value ? value : "");
     unsigned int backslash_run = 0u;
 
@@ -183,8 +183,8 @@ static int cxpr_print_string(cxpr_ast_printer* p, const char* value) {
     return cxpr_printer_append_char(p, '"');
 }
 
-static int cxpr_print_call_args(cxpr_ast_printer* p,
-                                cxpr_ast* const* args,
+static int cxpr_print_call_args(cxpr_expr_ast_printer* p,
+                                cxpr_expr_ast* const* args,
                                 char* const* arg_names,
                                 size_t argc) {
     for (size_t i = 0u; i < argc; ++i) {
@@ -200,7 +200,7 @@ static int cxpr_print_call_args(cxpr_ast_printer* p,
     return 1;
 }
 
-static int cxpr_print_binary(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_prec) {
+static int cxpr_print_binary(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, int parent_prec) {
     int op = ast->data.binary_op.op;
     int prec = cxpr_op_precedence(op);
     const char* op_text = cxpr_binary_op_text(op);
@@ -224,11 +224,11 @@ static int cxpr_print_binary(cxpr_ast_printer* p, const cxpr_ast* ast, int paren
     return 1;
 }
 
-static int cxpr_print_unary(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_prec) {
-    int prec = cxpr_ast_precedence(ast);
+static int cxpr_print_unary(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, int parent_prec) {
+    int prec = cxpr_expr_ast_precedence(ast);
     int parens = prec < parent_prec;
-    const cxpr_ast* operand = ast->data.unary_op.operand;
-    int operand_parens = operand && cxpr_ast_precedence(operand) < prec;
+    const cxpr_expr_ast* operand = ast->data.unary_op.operand;
+    int operand_parens = operand && cxpr_expr_ast_precedence(operand) < prec;
 
     if (parens && !cxpr_printer_append_char(p, '(')) return 0;
     if (ast->data.unary_op.op == CXPR_TOK_NOT) {
@@ -243,7 +243,7 @@ static int cxpr_print_unary(cxpr_ast_printer* p, const cxpr_ast* ast, int parent
     return 1;
 }
 
-static int cxpr_print_ternary(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_prec) {
+static int cxpr_print_ternary(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, int parent_prec) {
     int parens = 1 < parent_prec;
 
     if (parens && !cxpr_printer_append_char(p, '(')) return 0;
@@ -274,7 +274,7 @@ static int cxpr_print_ternary(cxpr_ast_printer* p, const cxpr_ast* ast, int pare
     return 1;
 }
 
-static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_prec) {
+static int cxpr_print_node(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, int parent_prec) {
     if (!p || !ast) return 0;
 
     switch (ast->type) {
@@ -348,7 +348,7 @@ static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_
                                         ast->data.function_call.argc) &&
                    cxpr_printer_append_char(p, ')');
         case CXPR_NODE_LOOKBACK:
-            return cxpr_print_node(p, ast->data.lookback.target, cxpr_ast_precedence(ast)) &&
+            return cxpr_print_node(p, ast->data.lookback.target, cxpr_expr_ast_precedence(ast)) &&
                    cxpr_printer_append_char(p, '[') &&
                    cxpr_print_node(p, ast->data.lookback.index, 0) &&
                    cxpr_printer_append_char(p, ']');
@@ -359,8 +359,8 @@ static int cxpr_print_node(cxpr_ast_printer* p, const cxpr_ast* ast, int parent_
     }
 }
 
-char* cxpr_ast_to_string(const cxpr_ast* ast) {
-    cxpr_ast_printer p = {0};
+char* cxpr_expr_ast_to_string(const cxpr_expr_ast* ast) {
+    cxpr_expr_ast_printer p = {0};
 
     if (!ast) return NULL;
     if (!cxpr_print_node(&p, ast, 0)) {
@@ -370,11 +370,11 @@ char* cxpr_ast_to_string(const cxpr_ast* ast) {
     return p.buf;
 }
 
-void cxpr_ast_dump(const cxpr_ast* ast, FILE* out) {
+void cxpr_expr_ast_dump(const cxpr_expr_ast* ast, FILE* out) {
     char* text;
 
     if (!out) return;
-    text = cxpr_ast_to_string(ast);
+    text = cxpr_expr_ast_to_string(ast);
     if (!text) return;
     fputs(text, out);
     free(text);

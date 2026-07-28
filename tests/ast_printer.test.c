@@ -9,15 +9,15 @@
 static char* render_expr(const char* expr) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     char* text;
 
     assert(parser);
-    ast = cxpr_parse(parser, expr, &err);
+    ast = cxpr_expr_ast_parse(parser, expr, &err);
     assert(ast);
-    text = cxpr_ast_to_string(ast);
+    text = cxpr_expr_ast_to_string(ast);
     assert(text);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     return text;
 }
@@ -80,9 +80,9 @@ static void test_pipe_round_trip_desugars(void) {
 }
 
 static void test_special_numbers(void) {
-    cxpr_ast* nan_ast = cxpr_ast_new_number(NAN);
-    cxpr_ast* inf_ast = cxpr_ast_new_number(INFINITY);
-    cxpr_ast* neg_inf_ast = cxpr_ast_new_number(-INFINITY);
+    cxpr_expr_ast* nan_ast = cxpr_expr_ast_number_new(NAN);
+    cxpr_expr_ast* inf_ast = cxpr_expr_ast_number_new(INFINITY);
+    cxpr_expr_ast* neg_inf_ast = cxpr_expr_ast_number_new(-INFINITY);
     char* nan_text;
     char* inf_text;
     char* neg_inf_text;
@@ -90,18 +90,18 @@ static void test_special_numbers(void) {
     assert(nan_ast);
     assert(inf_ast);
     assert(neg_inf_ast);
-    nan_text = cxpr_ast_to_string(nan_ast);
-    inf_text = cxpr_ast_to_string(inf_ast);
-    neg_inf_text = cxpr_ast_to_string(neg_inf_ast);
+    nan_text = cxpr_expr_ast_to_string(nan_ast);
+    inf_text = cxpr_expr_ast_to_string(inf_ast);
+    neg_inf_text = cxpr_expr_ast_to_string(neg_inf_ast);
     assert(nan_text && strcmp(nan_text, "nan()") == 0);
     assert(inf_text && strcmp(inf_text, "inf()") == 0);
     assert(neg_inf_text && strcmp(neg_inf_text, "-inf()") == 0);
     free(nan_text);
     free(inf_text);
     free(neg_inf_text);
-    cxpr_ast_free(nan_ast);
-    cxpr_ast_free(inf_ast);
-    cxpr_ast_free(neg_inf_ast);
+    cxpr_expr_ast_free(nan_ast);
+    cxpr_expr_ast_free(inf_ast);
+    cxpr_expr_ast_free(neg_inf_ast);
 }
 
 static void test_deep_nesting_round_trip(void) {
@@ -112,13 +112,13 @@ static void test_deep_nesting_round_trip(void) {
 static void test_ast_dump_accepts_ast(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(parser);
-    ast = cxpr_parse(parser, "x + 1", &err);
+    ast = cxpr_expr_ast_parse(parser, "x + 1", &err);
     assert(ast);
-    cxpr_ast_dump(ast, stdout);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_dump(ast, stdout);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
 }
 

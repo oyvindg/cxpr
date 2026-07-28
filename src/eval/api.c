@@ -25,7 +25,7 @@ static const char* cxpr_eval_unknown_identifier_message(const char* name) {
     return message;
 }
 
-static bool cxpr_eval_simple_lookback_target(const cxpr_ast* ast) {
+static bool cxpr_eval_simple_lookback_target(const cxpr_expr_ast* ast) {
     if (!ast) return false;
     switch (ast->type) {
     case CXPR_NODE_IDENTIFIER:
@@ -38,10 +38,10 @@ static bool cxpr_eval_simple_lookback_target(const cxpr_ast* ast) {
     }
 }
 
-static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
+static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, double* out, cxpr_error* err);
 
-static bool cxpr_eval_ast_auto_compile_safe(const cxpr_ast* ast, const cxpr_registry* reg) {
+static bool cxpr_eval_ast_auto_compile_safe(const cxpr_expr_ast* ast, const cxpr_registry* reg) {
     cxpr_func_entry* entry;
 
     if (!ast) return false;
@@ -64,7 +64,7 @@ static bool cxpr_eval_ast_auto_compile_safe(const cxpr_ast* ast, const cxpr_regi
                cxpr_eval_ast_auto_compile_safe(ast->data.ternary.true_branch, reg) &&
                cxpr_eval_ast_auto_compile_safe(ast->data.ternary.false_branch, reg);
     case CXPR_NODE_FUNCTION_CALL:
-        if (cxpr_ast_call_uses_named_args(ast)) return false;
+        if (cxpr_expr_ast_call_uses_named_args(ast)) return false;
         entry = cxpr_eval_cached_function_entry(ast, reg);
         if (!entry || ast->data.function_call.argc < entry->min_args ||
             ast->data.function_call.argc > entry->max_args) {
@@ -93,15 +93,15 @@ static bool cxpr_eval_ast_auto_compile_safe(const cxpr_ast* ast, const cxpr_regi
     }
 }
 
-static cxpr_program* cxpr_eval_ast_cached_program(const cxpr_ast* ast,
+static cxpr_program* cxpr_eval_ast_cached_program(const cxpr_expr_ast* ast,
                                                   const cxpr_registry* reg) {
-    cxpr_ast* mutable_ast;
+    cxpr_expr_ast* mutable_ast;
     const unsigned long version = reg ? reg->version : 0u;
     cxpr_error compile_err = {0};
     cxpr_program* compiled;
 
     if (!ast) return NULL;
-    mutable_ast = (cxpr_ast*)ast;
+    mutable_ast = (cxpr_expr_ast*)ast;
     if (mutable_ast->compiled_registry != reg ||
         mutable_ast->compiled_registry_version != version) {
         cxpr_program_free(mutable_ast->compiled_cache);
@@ -125,10 +125,10 @@ static cxpr_program* cxpr_eval_ast_cached_program(const cxpr_ast* ast,
     return compiled;
 }
 
-static bool cxpr_eval_function_call_memoable_cached(const cxpr_ast* ast,
+static bool cxpr_eval_function_call_memoable_cached(const cxpr_expr_ast* ast,
                                                     const cxpr_registry* reg,
                                                     const cxpr_func_entry* entry) {
-    cxpr_ast* mutable_ast;
+    cxpr_expr_ast* mutable_ast;
     const unsigned long version = reg ? reg->version : 0u;
 
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return false;
@@ -138,7 +138,7 @@ static bool cxpr_eval_function_call_memoable_cached(const cxpr_ast* ast,
         return ast->data.function_call.cached_memoable;
     }
 
-    mutable_ast = (cxpr_ast*)ast;
+    mutable_ast = (cxpr_expr_ast*)ast;
     mutable_ast->data.function_call.cached_memoable =
         entry && !entry->ast_func_handler && !entry->ast_func &&
         !(entry->struct_producer && !entry->sync_func && !entry->value_func);
@@ -148,13 +148,13 @@ static bool cxpr_eval_function_call_memoable_cached(const cxpr_ast* ast,
     return mutable_ast->data.function_call.cached_memoable;
 }
 
-unsigned long cxpr_eval_function_call_hash_cached(const cxpr_ast* ast) {
-    cxpr_ast* mutable_ast;
+unsigned long cxpr_eval_function_call_hash_cached(const cxpr_expr_ast* ast) {
+    cxpr_expr_ast* mutable_ast;
 
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return 0u;
     if (ast->data.function_call.cached_hash_valid) return ast->data.function_call.cached_hash;
 
-    mutable_ast = (cxpr_ast*)ast;
+    mutable_ast = (cxpr_expr_ast*)ast;
     mutable_ast->data.function_call.cached_hash = cxpr_eval_ast_hash(ast);
     mutable_ast->data.function_call.cached_hash_valid = true;
     return mutable_ast->data.function_call.cached_hash;
@@ -191,7 +191,7 @@ static bool cxpr_eval_root_slot_cached_number(const cxpr_context* ctx,
     return true;
 }
 
-static bool cxpr_eval_bool_fast(const cxpr_ast* ast, const cxpr_context* ctx,
+static bool cxpr_eval_bool_fast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                 const cxpr_registry* reg, bool* out, cxpr_error* err) {
     bool left_bool;
     bool right_bool;
@@ -269,7 +269,7 @@ static bool cxpr_eval_bool_fast(const cxpr_ast* ast, const cxpr_context* ctx,
     }
 }
 
-static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
+static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, double* out, cxpr_error* err) {
     double left;
     double right;
@@ -286,7 +286,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
     case CXPR_NODE_IDENTIFIER:
         found = false;
         if (ctx && !ctx->expression_scope && ctx->bools.count == 0u) {
-            cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+            cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
             found = cxpr_eval_root_slot_cached_number(
                 ctx,
                 &ctx->variables,
@@ -338,7 +338,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
             if (found) return false;
         }
         if (ctx) {
-            cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+            cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
             found = cxpr_eval_root_slot_cached_number(
                 ctx,
                 &ctx->params,
@@ -417,7 +417,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
         if (!producer_entry || !producer_entry->struct_producer || producer_entry->ast_func_handler) {
             return false;
         }
-        if (cxpr_ast_call_uses_named_args(ast)) return false;
+        if (cxpr_expr_ast_call_uses_named_args(ast)) return false;
         {
             cxpr_value result = cxpr_eval_cached_producer_access(ast, ctx, reg, err);
             if (err && err->code != CXPR_OK) {
@@ -439,15 +439,15 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
     case CXPR_NODE_FUNCTION_CALL: {
         const char* name = ast->data.function_call.name;
         const size_t argc = ast->data.function_call.argc;
-        const cxpr_ast* const* ordered_args =
-            (const cxpr_ast* const*)ast->data.function_call.args;
+        const cxpr_expr_ast* const* ordered_args =
+            (const cxpr_expr_ast* const*)ast->data.function_call.args;
         double args[CXPR_MAX_CALL_ARGS];
         cxpr_func_entry* entry;
         bool should_memo;
         unsigned long memo_hash = 0u;
         cxpr_value memo_value;
 
-        if (argc > CXPR_MAX_CALL_ARGS || cxpr_ast_call_uses_named_args(ast)) return false;
+        if (argc > CXPR_MAX_CALL_ARGS || cxpr_expr_ast_call_uses_named_args(ast)) return false;
         entry = cxpr_eval_cached_function_entry(ast, reg);
         if (!entry || entry->ast_func_handler || entry->ast_func || entry->struct_producer ||
             entry->struct_fields || entry->value_func || entry->typed_func) {
@@ -545,7 +545,7 @@ static bool cxpr_eval_number_fast(const cxpr_ast* ast, const cxpr_context* ctx,
     }
 }
 
-cxpr_value cxpr_eval_ast_value(const cxpr_ast* ast, const cxpr_context* ctx,
+cxpr_value cxpr_eval_ast_value(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value value;
 
@@ -557,7 +557,7 @@ cxpr_value cxpr_eval_ast_value(const cxpr_ast* ast, const cxpr_context* ctx,
     return value;
 }
 
-bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
+bool cxpr_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                    const cxpr_registry* reg, cxpr_value* out_value, cxpr_error* err) {
     cxpr_value value;
 
@@ -578,7 +578,7 @@ bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
     return true;
 }
 
-bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
+bool cxpr_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, double* out_value, cxpr_error* err) {
     cxpr_value value;
     cxpr_program* cached;
@@ -620,7 +620,7 @@ bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
     return true;
 }
 
-bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+bool cxpr_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                         const cxpr_registry* reg, bool* out_value, cxpr_error* err) {
     cxpr_value value;
 
@@ -648,14 +648,14 @@ bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
     return true;
 }
 
-bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
-                               const cxpr_ast* index_ast,
+bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
+                               const cxpr_expr_ast* index_ast,
                                const cxpr_context* ctx,
                                const cxpr_registry* reg,
                                cxpr_value* out_value,
                                cxpr_error* err) {
-    cxpr_ast adjusted_index_ast = {0};
-    const cxpr_ast* resolver_index_ast = index_ast;
+    cxpr_expr_ast adjusted_index_ast = {0};
+    const cxpr_expr_ast* resolver_index_ast = index_ast;
     double base_offset = g_eval_lookback_offset;
 
     if (!out_value) {
@@ -734,13 +734,13 @@ bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
     return false;
 }
 
-bool cxpr_eval_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_at_offset(const cxpr_expr_ast* ast,
                          double lookback,
                          const cxpr_context* ctx,
                          const cxpr_registry* reg,
                          cxpr_value* out_value,
                          cxpr_error* err) {
-    cxpr_ast index_ast = {0};
+    cxpr_expr_ast index_ast = {0};
 
     if (!out_value) {
         if (err) {
@@ -764,7 +764,7 @@ bool cxpr_eval_at_offset(const cxpr_ast* ast,
     return cxpr_eval_ast_at_lookback(ast, &index_ast, ctx, reg, out_value, err);
 }
 
-bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_ast_at_offset(const cxpr_expr_ast* ast,
                              double lookback,
                              const cxpr_context* ctx,
                              const cxpr_registry* reg,
@@ -773,7 +773,7 @@ bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
     return cxpr_eval_at_offset(ast, lookback, ctx, reg, out_value, err);
 }
 
-bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_ast_number_at_offset(const cxpr_expr_ast* ast,
                                     double lookback,
                                     const cxpr_context* ctx,
                                     const cxpr_registry* reg,
@@ -802,7 +802,7 @@ bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
     return true;
 }
 
-bool cxpr_eval_ast_bool_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_ast_bool_at_offset(const cxpr_expr_ast* ast,
                                   double lookback,
                                   const cxpr_context* ctx,
                                   const cxpr_registry* reg,

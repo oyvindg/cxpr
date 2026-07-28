@@ -29,7 +29,7 @@ void cxpr_parser_free(cxpr_parser* p);
  * @param err Optional error output.
  * @return Newly allocated AST on success, or NULL on parse failure.
  */
-cxpr_ast* cxpr_parse(cxpr_parser* p, const char* expression, cxpr_error* err);
+cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_parser* p, const char* expression, cxpr_error* err);
 
 #ifdef __cplusplus
 }

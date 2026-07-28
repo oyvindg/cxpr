@@ -187,13 +187,13 @@ static int cxpr_contains_param_index(const char* name) {
     return -1;
 }
 
-static cxpr_value cxpr_fn_contains(const cxpr_ast* call_ast,
+static cxpr_value cxpr_fn_contains(const cxpr_expr_ast* call_ast,
                                    const cxpr_context* ctx,
                                    const cxpr_registry* reg,
                                    void* userdata,
                                    cxpr_error* err) {
-    const size_t argc = cxpr_ast_function_argc(call_ast);
-    const cxpr_ast* ordered[2] = {0};
+    const size_t argc = cxpr_expr_ast_call_arg_count(call_ast);
+    const cxpr_expr_ast* ordered[2] = {0};
     bool used[2] = {false, false};
     bool seen_named = false;
     size_t positional = 0u;
@@ -207,8 +207,8 @@ static cxpr_value cxpr_fn_contains(const cxpr_ast* call_ast,
     }
 
     for (size_t i = 0u; i < argc; ++i) {
-        const cxpr_ast* arg = cxpr_ast_function_arg(call_ast, i);
-        const char* arg_name = cxpr_ast_function_arg_name(call_ast, i);
+        const cxpr_expr_ast* arg = cxpr_expr_ast_call_arg(call_ast, i);
+        const char* arg_name = cxpr_expr_ast_call_arg_name(call_ast, i);
         int index;
 
         if (!arg_name) {
@@ -284,7 +284,7 @@ static int cxpr_within_param_index(const char* name) {
     return -1;
 }
 
-static int cxpr_within_eval_number(const cxpr_ast* ast,
+static int cxpr_within_eval_number(const cxpr_expr_ast* ast,
                                    const cxpr_context* ctx,
                                    const cxpr_registry* reg,
                                    double* out,
@@ -299,7 +299,7 @@ static int cxpr_within_eval_number(const cxpr_ast* ast,
     return 1;
 }
 
-static int cxpr_within_eval_bool(const cxpr_ast* ast,
+static int cxpr_within_eval_bool(const cxpr_expr_ast* ast,
                                  const cxpr_context* ctx,
                                  const cxpr_registry* reg,
                                  bool* out,
@@ -314,13 +314,13 @@ static int cxpr_within_eval_bool(const cxpr_ast* ast,
     return 1;
 }
 
-static cxpr_value cxpr_fn_within(const cxpr_ast* call_ast,
+static cxpr_value cxpr_fn_within(const cxpr_expr_ast* call_ast,
                                  const cxpr_context* ctx,
                                  const cxpr_registry* reg,
                                  void* userdata,
                                  cxpr_error* err) {
-    const size_t argc = cxpr_ast_function_argc(call_ast);
-    const cxpr_ast* ordered[5] = {0};
+    const size_t argc = cxpr_expr_ast_call_arg_count(call_ast);
+    const cxpr_expr_ast* ordered[5] = {0};
     bool used[5] = {false, false, false, false, false};
     bool seen_named = false;
     size_t positional = 0u;
@@ -339,8 +339,8 @@ static cxpr_value cxpr_fn_within(const cxpr_ast* call_ast,
     }
 
     for (size_t i = 0u; i < argc; ++i) {
-        const cxpr_ast* arg = cxpr_ast_function_arg(call_ast, i);
-        const char* arg_name = cxpr_ast_function_arg_name(call_ast, i);
+        const cxpr_expr_ast* arg = cxpr_expr_ast_call_arg(call_ast, i);
+        const char* arg_name = cxpr_expr_ast_call_arg_name(call_ast, i);
         int index;
 
         if (!arg_name) {

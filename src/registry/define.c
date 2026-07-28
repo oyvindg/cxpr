@@ -55,7 +55,7 @@ static bool cxpr_def_field_set_add(cxpr_def_field_set* set, const char* field) {
     return true;
 }
 
-static bool collect_fields_in_ast(const cxpr_ast* node,
+static bool collect_fields_in_ast(const cxpr_expr_ast* node,
                                   const char* const* param_names, size_t param_count,
                                   cxpr_def_field_set* sets) {
     if (!node) return true;
@@ -100,7 +100,7 @@ static bool collect_fields_in_ast(const cxpr_ast* node,
     }
 }
 
-static bool collect_transitive_fields_in_ast(const cxpr_ast* node, const cxpr_registry* reg,
+static bool collect_transitive_fields_in_ast(const cxpr_expr_ast* node, const cxpr_registry* reg,
                                              const char* const* param_names, size_t param_count,
                                              cxpr_def_field_set* sets) {
     if (!node || !reg) return true;
@@ -111,7 +111,7 @@ static bool collect_transitive_fields_in_ast(const cxpr_ast* node, const cxpr_re
         if (entry && entry->defined_param_fields &&
             entry->defined_param_count == node->data.function_call.argc) {
             for (size_t arg_index = 0; arg_index < node->data.function_call.argc; arg_index++) {
-                const cxpr_ast* arg = node->data.function_call.args[arg_index];
+                const cxpr_expr_ast* arg = node->data.function_call.args[arg_index];
 
                 if (arg->type != CXPR_NODE_IDENTIFIER) continue;
 
@@ -278,7 +278,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         err.message = "Out of memory";
         return err;
     }
-    cxpr_ast* body_ast = cxpr_parse(parser, p, &err);
+    cxpr_expr_ast* body_ast = cxpr_expr_ast_parse(parser, p, &err);
     cxpr_parser_free(parser);
     if (!body_ast) return err;
 
@@ -369,7 +369,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
     }
 
 oom:
-    cxpr_ast_free(body_ast);
+    cxpr_expr_ast_free(body_ast);
     if (owned_names) {
         for (size_t i = 0; i < param_count; i++) free(owned_names[i]);
         free(owned_names);
@@ -460,7 +460,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
                                           const char* const* param_names,
                                           size_t param_count,
                                           const char* const* field_names,
-                                          const cxpr_ast* const* field_bodies,
+                                          const cxpr_expr_ast* const* field_bodies,
                                           size_t field_count) {
     cxpr_error err = {0};
     cxpr_def_field_set sets[CXPR_DEF_MAX_PARAMS];
@@ -468,7 +468,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
     char*** owned_fields = NULL;
     size_t* owned_counts = NULL;
     char** owned_return_names = NULL;
-    cxpr_ast** owned_return_bodies = NULL;
+    cxpr_expr_ast** owned_return_bodies = NULL;
 
     memset(sets, 0, sizeof(sets));
     if (!reg || !name || (!param_names && param_count > 0u) ||
@@ -496,7 +496,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
     owned_fields = (char***)calloc(param_count ? param_count : 1u, sizeof(char**));
     owned_counts = (size_t*)calloc(param_count ? param_count : 1u, sizeof(size_t));
     owned_return_names = (char**)calloc(field_count, sizeof(char*));
-    owned_return_bodies = (cxpr_ast**)calloc(field_count, sizeof(cxpr_ast*));
+    owned_return_bodies = (cxpr_expr_ast**)calloc(field_count, sizeof(cxpr_expr_ast*));
     if (!owned_params || !owned_fields || !owned_counts ||
         !owned_return_names || !owned_return_bodies) {
         goto oom;
@@ -518,7 +518,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
 
     for (size_t i = 0; i < field_count; ++i) {
         owned_return_names[i] = cxpr_strdup(field_names[i]);
-        owned_return_bodies[i] = cxpr_ast_clone(field_bodies[i]);
+        owned_return_bodies[i] = cxpr_expr_ast_clone(field_bodies[i]);
         if (!owned_return_names[i] || !owned_return_bodies[i]) goto oom;
     }
 
@@ -585,7 +585,7 @@ oom:
         free(owned_return_names);
     }
     if (owned_return_bodies) {
-        for (size_t i = 0; i < field_count; ++i) cxpr_ast_free(owned_return_bodies[i]);
+        for (size_t i = 0; i < field_count; ++i) cxpr_expr_ast_free(owned_return_bodies[i]);
         free(owned_return_bodies);
     }
     for (size_t i = 0; i < CXPR_DEF_MAX_PARAMS; ++i) {

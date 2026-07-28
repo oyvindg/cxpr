@@ -32,7 +32,7 @@ bool cxpr_model_window_is_function(const char* name);
  * @return true on success; false when validation or allocation fails.
  */
 bool cxpr_model_window_collect_call(const cxpr_model* model,
-                                    const cxpr_ast* call,
+                                    const cxpr_expr_ast* call,
                                     cxpr_model_history_spec** specs,
                                     size_t* count,
                                     cxpr_error* err);

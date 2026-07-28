@@ -59,11 +59,11 @@ static cxpr_value cxpr_eval_struct_field_value(const cxpr_struct_value* record,
                            cxpr_eval_unknown_field_message(field));
 }
 
-cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
+cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, cxpr_error* err) {
     bool found = false;
     if (ast->data.field_access.base) {
-        const cxpr_ast* base_ast = ast->data.field_access.base;
+        const cxpr_expr_ast* base_ast = ast->data.field_access.base;
         if (base_ast->type == CXPR_NODE_FUNCTION_CALL && reg) {
             cxpr_func_entry* entry =
                 cxpr_registry_find(reg, base_ast->data.function_call.name);
@@ -71,7 +71,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
                 (entry->struct_producer ||
                  entry->model_producer ||
                  entry->defined_return_field_count > 0u)) {
-                cxpr_ast producer_ast = {0};
+                cxpr_expr_ast producer_ast = {0};
                 producer_ast.type = CXPR_NODE_PRODUCER_ACCESS;
                 producer_ast.data.producer_access.name = base_ast->data.function_call.name;
                 producer_ast.data.producer_access.args = base_ast->data.function_call.args;
@@ -145,7 +145,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_ast* ast, const cxpr_context* ctx,
     return value;
 }
 
-cxpr_value cxpr_eval_chain_access(const cxpr_ast* ast, const cxpr_context* ctx,
+cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   cxpr_error* err) {
     const cxpr_struct_value* current;
     size_t start_index = 1u;
@@ -236,17 +236,17 @@ walk_fields:
     return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
 }
 
-static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_ast* ast,
+static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_expr_ast* ast,
                                                         char* local_buf,
                                                         size_t local_cap,
                                                         char** heap_buf) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
     double values[CXPR_MAX_CALL_ARGS];
     const char* key;
 
     if (heap_buf) *heap_buf = NULL;
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_call_uses_named_args(ast) ||
+        cxpr_expr_ast_call_uses_named_args(ast) ||
         ast->data.function_call.argc > CXPR_MAX_CALL_ARGS) {
         return NULL;
     }
@@ -401,7 +401,7 @@ static cxpr_value cxpr_eval_binary_values(int op, cxpr_value left, cxpr_value ri
     }
 }
 
-static cxpr_value cxpr_eval_binary_op(const cxpr_ast* ast, const cxpr_context* ctx,
+static cxpr_value cxpr_eval_binary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                       const cxpr_registry* reg, cxpr_error* err) {
     int op = ast->data.binary_op.op;
     cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
@@ -430,7 +430,7 @@ static cxpr_value cxpr_eval_binary_op(const cxpr_ast* ast, const cxpr_context* c
     return cxpr_eval_binary_values(op, left, right, err);
 }
 
-static cxpr_value cxpr_eval_unary_op(const cxpr_ast* ast, const cxpr_context* ctx,
+static cxpr_value cxpr_eval_unary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                      const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value operand = cxpr_eval_node(ast->data.unary_op.operand, ctx, reg, err);
     if (err && err->code != CXPR_OK) return cxpr_num(NAN);
@@ -453,7 +453,7 @@ static cxpr_value cxpr_eval_unary_op(const cxpr_ast* ast, const cxpr_context* ct
     }
 }
 
-static cxpr_value cxpr_eval_ternary_op(const cxpr_ast* ast, const cxpr_context* ctx,
+static cxpr_value cxpr_eval_ternary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                        const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value condition = cxpr_eval_node(ast->data.ternary.condition, ctx, reg, err);
     if (err && err->code != CXPR_OK) return cxpr_num(NAN);
@@ -467,7 +467,7 @@ static cxpr_value cxpr_eval_ternary_op(const cxpr_ast* ast, const cxpr_context* 
                           ctx, reg, err);
 }
 
-static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_context* ctx,
+static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                           const cxpr_registry* reg, cxpr_error* err) {
     if (!ast) return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "NULL AST node");
 
@@ -584,8 +584,8 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     case CXPR_NODE_LOOKBACK: {
         cxpr_value value;
         if (reg && reg->lookback_resolver) {
-            const cxpr_ast* target = ast->data.lookback.target;
-            cxpr_ast index_ast = {0};
+            const cxpr_expr_ast* target = ast->data.lookback.target;
+            cxpr_expr_ast index_ast = {0};
             unsigned offset;
             bool flattened = false;
             value = cxpr_num(NAN);
@@ -641,7 +641,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     case CXPR_NODE_FUNCTION_CALL: {
         const char* name = ast->data.function_call.name;
         size_t argc = ast->data.function_call.argc;
-        const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+        const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
 
         if (!entry) {
@@ -657,7 +657,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
         }
         if (entry->struct_producer && !entry->sync_func && !entry->value_func &&
-            !cxpr_ast_call_uses_named_args(ast)) {
+            !cxpr_expr_ast_call_uses_named_args(ast)) {
             char const_key_local[256];
             char* const_key_heap = NULL;
             const char* const_key = cxpr_eval_prepare_const_key_for_call(
@@ -670,8 +670,8 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
                 }
             }
             {
-                const cxpr_ast* const* direct_args =
-                    (const cxpr_ast* const*)ast->data.function_call.args;
+                const cxpr_expr_ast* const* direct_args =
+                    (const cxpr_expr_ast* const*)ast->data.function_call.args;
                 const cxpr_struct_value* produced =
                     cxpr_eval_struct_result(entry, name, direct_args, argc,
                                             const_key, ctx, reg, err);
@@ -706,7 +706,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
             }
 
             for (size_t i = 0; i < entry->struct_argc && out < 32; i++) {
-                const cxpr_ast* arg = ordered_args[i];
+                const cxpr_expr_ast* arg = ordered_args[i];
                 if (arg->type != CXPR_NODE_IDENTIFIER) {
                     return cxpr_eval_error(err, CXPR_ERR_SYNTAX,
                                            "Struct argument must be an identifier");
@@ -813,7 +813,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_ast* ast, const cxpr_contex
     return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Unknown AST node type");
 }
 
-cxpr_value cxpr_eval_node(const cxpr_ast* ast, const cxpr_context* ctx,
+cxpr_value cxpr_eval_node(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, cxpr_error* err) {
     unsigned long hash;
     cxpr_value cached;

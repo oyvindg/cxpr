@@ -1,6 +1,6 @@
 /**
  * @file codegen.test.c
- * @brief Tests for cxpr_ast_to_c / cxpr_exprset_to_c.
+ * @brief Tests for cxpr_expr_ast_to_c / cxpr_exprset_to_c.
  */
 
 #include <cxpr/cxpr.h>
@@ -20,11 +20,11 @@ static char* dup_text(const char* text) {
 static char* to_c(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast && err.code == CXPR_OK);
-    char* out = cxpr_ast_to_c(ast, NULL, &err);
+    char* out = cxpr_expr_ast_to_c(ast, NULL, &err);
     assert(out && err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     return out;
 }
@@ -34,7 +34,7 @@ static char* program_to_c(const char* expr,
                           size_t arg_count) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_program* program;
     char* out;
@@ -48,24 +48,24 @@ static char* program_to_c(const char* expr,
     assert(out && err.code == CXPR_OK);
     cxpr_program_free(program);
     cxpr_registry_free(reg);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     return out;
 }
 
-static char* test_emit_leaf_at_offset(const cxpr_ast* ast,
+static char* test_emit_leaf_at_offset(const cxpr_expr_ast* ast,
                                       unsigned lookback_offset,
                                       void* userdata,
                                       cxpr_error* err) {
     char buf[128];
     const char* name = NULL;
     (void)userdata;
-    if (cxpr_ast_type(ast) == CXPR_NODE_IDENTIFIER) {
-        name = cxpr_ast_identifier_name(ast);
-    } else if (cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS) {
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_IDENTIFIER) {
+        name = cxpr_expr_ast_identifier_name(ast);
+    } else if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
         snprintf(buf, sizeof(buf), "%s_%s[(i >= %uu ? i - %uu : 0u)]",
-                 cxpr_ast_field_object(ast),
-                 cxpr_ast_field_name(ast),
+                 cxpr_expr_ast_field_object(ast),
+                 cxpr_expr_ast_field_name(ast),
                  lookback_offset,
                  lookback_offset);
         return dup_text(buf);
@@ -91,15 +91,15 @@ static char* test_emit_leaf_at_offset(const cxpr_ast* ast,
 static char* to_c_with_lookback(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     cxpr_c_target target = {
         .api_version = CXPR_C_TARGET_API_VERSION,
         .emit_leaf_at_offset = test_emit_leaf_at_offset,
     };
     assert(ast && err.code == CXPR_OK);
-    char* out = cxpr_ast_to_c(ast, &target, &err);
+    char* out = cxpr_expr_ast_to_c(ast, &target, &err);
     assert(out && err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     return out;
 }
@@ -112,13 +112,13 @@ typedef struct call_hook_ud {
 
 /* Handles `rsi(...)` as an opaque offset-aware leaf (a precomputed state var),
  * `wrap(x)` by recursing into its argument at the current offset (proving
- * cxpr_ast_to_c_at_offset threads the offset), and falls through otherwise. */
-static char* test_emit_call(const cxpr_ast* ast,
+ * cxpr_expr_ast_to_c_at_offset threads the offset), and falls through otherwise. */
+static char* test_emit_call(const cxpr_expr_ast* ast,
                             unsigned lookback_offset,
                             void* userdata,
                             bool* handled,
                             cxpr_error* err) {
-    const char* name = cxpr_ast_function_name(ast);
+    const char* name = cxpr_expr_ast_call_name(ast);
     call_hook_ud* ud = (call_hook_ud*)userdata;
     char buf[256];
 
@@ -134,8 +134,8 @@ static char* test_emit_call(const cxpr_ast* ast,
     }
     if (name && strcmp(name, "wrap") == 0) {
         *handled = true;
-        char* inner = cxpr_ast_to_c_at_offset(
-            cxpr_ast_function_arg(ast, 0u), lookback_offset, ud->self, err);
+        char* inner = cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, 0u), lookback_offset, ud->self, err);
         if (!inner) return NULL;
         snprintf(buf, sizeof(buf), "W(%s)", inner);
         free(inner);
@@ -148,7 +148,7 @@ static char* test_emit_call(const cxpr_ast* ast,
 static char* to_c_with_call(const char* expr) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     call_hook_ud ud = {0};
     cxpr_c_target target = {
         .api_version = CXPR_C_TARGET_API_VERSION,
@@ -158,9 +158,9 @@ static char* to_c_with_call(const char* expr) {
     };
     ud.self = &target;
     assert(ast && err.code == CXPR_OK);
-    char* out = cxpr_ast_to_c(ast, &target, &err);
+    char* out = cxpr_expr_ast_to_c(ast, &target, &err);
     assert(out && err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     return out;
 }
@@ -179,7 +179,7 @@ static void test_emit_call_hook(void) {
     call_eq("rsi(close, 14)", "rsi_val[i]");
     /* lookback applies to the handled call's offset */
     call_eq("rsi(close, 14)[1] > 30", "(rsi_val[(i >= 1u ? i - 1u : 0u)] > 30.0)");
-    /* recursion via cxpr_ast_to_c_at_offset threads the offset into the arg */
+    /* recursion via cxpr_expr_ast_to_c_at_offset threads the offset into the arg */
     call_eq("wrap(close)", "W(close[i])");
     call_eq("wrap(close)[2]", "W(close[(i >= 2u ? i - 2u : 0u)])");
     /* unhandled call falls through to cxpr's own emission (leaf hook on arg) */
@@ -251,20 +251,20 @@ static void test_lookback_codegen_with_leaf_hook(void) {
 static void test_membership_desugar(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "s in [1, 2]", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "s in [1, 2]", &err);
     char* printed;
     char* out;
 
     assert(ast && err.code == CXPR_OK);
-    printed = cxpr_ast_to_string(ast);
+    printed = cxpr_expr_ast_to_string(ast);
     assert(printed && strcmp(printed, "contains(s, [1, 2])") == 0);
     free(printed);
 
     err = (cxpr_error){0};
-    out = cxpr_ast_to_c(ast, NULL, &err);
+    out = cxpr_expr_ast_to_c(ast, NULL, &err);
     assert(out == NULL && err.code != CXPR_OK);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     printf("  membership desugar OK\n");
 }
@@ -274,19 +274,19 @@ static void test_unsupported(void) {
     cxpr_error err = {0};
 
     /* unknown function with no mapping -> error */
-    cxpr_ast* ast = cxpr_parse(p, "mystery(x)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "mystery(x)", &err);
     assert(ast);
     err = (cxpr_error){0};
-    char* out = cxpr_ast_to_c(ast, NULL, &err);
+    char* out = cxpr_expr_ast_to_c(ast, NULL, &err);
     assert(out == NULL && err.code != CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(p, "close[1]", &err);
+    ast = cxpr_expr_ast_parse(p, "close[1]", &err);
     assert(ast);
     err = (cxpr_error){0};
-    out = cxpr_ast_to_c(ast, NULL, &err);
+    out = cxpr_expr_ast_to_c(ast, NULL, &err);
     assert(out == NULL && err.code != CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_parser_free(p);
     printf("  unsupported rejected OK\n");
@@ -295,16 +295,16 @@ static void test_unsupported(void) {
 static void test_typecheck_rejection(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "not 1", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "not 1", &err);
     char* out;
 
     assert(ast && err.code == CXPR_OK);
     err = (cxpr_error){0};
-    out = cxpr_ast_to_c(ast, NULL, &err);
+    out = cxpr_expr_ast_to_c(ast, NULL, &err);
     assert(out == NULL);
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     printf("  typecheck rejection OK\n");
 }
@@ -318,9 +318,9 @@ static void test_exprset_topo(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_c_named_expr defs[3];
-    cxpr_ast* asts[3];
+    cxpr_expr_ast* asts[3];
     for (int i = 0; i < 3; ++i) {
-        asts[i] = cxpr_parse(p, srcs[i], &err);
+        asts[i] = cxpr_expr_ast_parse(p, srcs[i], &err);
         assert(asts[i] && err.code == CXPR_OK);
         defs[i].name = names[i];
         defs[i].ast = asts[i];
@@ -339,7 +339,7 @@ static void test_exprset_topo(void) {
     assert(strstr(block, "pow(c, 2.0)"));
 
     free(block);
-    for (int i = 0; i < 3; ++i) cxpr_ast_free(asts[i]);
+    for (int i = 0; i < 3; ++i) cxpr_expr_ast_free(asts[i]);
     cxpr_parser_free(p);
     printf("  exprset topo-order OK\n");
 }
@@ -350,14 +350,14 @@ static void test_exprset_cycle(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_c_named_expr defs[2];
-    cxpr_ast* asts[2];
-    for (int i = 0; i < 2; ++i) { asts[i] = cxpr_parse(p, srcs[i], &err); assert(asts[i]); defs[i].name = names[i]; defs[i].ast = asts[i]; }
+    cxpr_expr_ast* asts[2];
+    for (int i = 0; i < 2; ++i) { asts[i] = cxpr_expr_ast_parse(p, srcs[i], &err); assert(asts[i]); defs[i].name = names[i]; defs[i].ast = asts[i]; }
 
     err = (cxpr_error){0};
     char* block = cxpr_exprset_to_c(defs, 2, "double", NULL, &err);
     assert(block == NULL && err.code == CXPR_ERR_CIRCULAR_DEPENDENCY);
 
-    for (int i = 0; i < 2; ++i) cxpr_ast_free(asts[i]);
+    for (int i = 0; i < 2; ++i) cxpr_expr_ast_free(asts[i]);
     cxpr_parser_free(p);
     printf("  exprset cycle detected OK\n");
 }
@@ -371,9 +371,9 @@ static void test_exprset_to_c_function(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
     cxpr_c_named_expr defs[3];
-    cxpr_ast* asts[3];
+    cxpr_expr_ast* asts[3];
     for (int i = 0; i < 3; ++i) {
-        asts[i] = cxpr_parse(p, srcs[i], &err);
+        asts[i] = cxpr_expr_ast_parse(p, srcs[i], &err);
         assert(asts[i]);
         defs[i].name = names[i];
         defs[i].ast = asts[i];
@@ -397,7 +397,7 @@ static void test_exprset_to_c_function(void) {
     assert(strstr(code, "_cx_out.dr = dr;") && strstr(code, "return _cx_out;"));
 
     free(code);
-    for (int i = 0; i < 3; ++i) cxpr_ast_free(asts[i]);
+    for (int i = 0; i < 3; ++i) cxpr_expr_ast_free(asts[i]);
     cxpr_parser_free(p);
     printf("  exprset_to_c_function OK\n");
 }
@@ -418,7 +418,7 @@ static void test_program_to_c_function(void) {
 static void test_program_to_c_function_requires_explicit_bindings(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "close + 1", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "close + 1", &err);
     cxpr_program* program;
     char* code;
     assert(ast && err.code == CXPR_OK);
@@ -428,7 +428,7 @@ static void test_program_to_c_function_requires_explicit_bindings(void) {
     assert(!code);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     printf("  program_to_c_function explicit bindings OK\n");
 }

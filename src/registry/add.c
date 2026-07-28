@@ -180,7 +180,7 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
 }
 
 void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
-                           cxpr_ast_func_ptr func, size_t min_args, size_t max_args,
+                           cxpr_expr_ast_func_ptr func, size_t min_args, size_t max_args,
                            cxpr_value_type return_type,
                            void* userdata, cxpr_userdata_free_fn free_userdata) {
     if (!reg || !name || !func) return;
@@ -213,7 +213,7 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
 }
 
 void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
-                                   cxpr_ast_func_ptr func,
+                                   cxpr_expr_ast_func_ptr func,
                                    size_t min_args, size_t max_args,
                                    void* userdata,
                                    cxpr_userdata_free_fn free_userdata) {
@@ -254,7 +254,7 @@ void cxpr_registry_add_timeseries(cxpr_registry* reg, const char* name,
     cxpr_registry_add_ast(
         reg,
         name,
-        (cxpr_ast_func_ptr)func,
+        (cxpr_expr_ast_func_ptr)func,
         min_args,
         max_args,
         return_type,

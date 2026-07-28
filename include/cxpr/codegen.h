@@ -2,7 +2,7 @@
  * @file codegen.h
  * @brief Transpile cxpr ASTs into C (and C-like, e.g. CUDA/WGSL) source.
  *
- * `cxpr_ast_to_c` renders one expression AST as a C expression string;
+ * `cxpr_expr_ast_to_c` renders one expression AST as a C expression string;
  * `cxpr_exprset_to_c` renders a set of interdependent named expressions as a
  * block of C declarations, ordered so every reference follows its definition.
  *
@@ -27,13 +27,13 @@ extern "C" {
 
 #define CXPR_C_TARGET_API_VERSION 1u
 
-typedef char* (*cxpr_c_emit_leaf_at_offset_fn)(const cxpr_ast* ast,
+typedef char* (*cxpr_c_emit_leaf_at_offset_fn)(const cxpr_expr_ast* ast,
                                                unsigned lookback_offset,
                                                void* userdata,
                                                cxpr_error* err);
 
 typedef bool (*cxpr_c_emit_offset_fn)(void* userdata,
-                                      const cxpr_ast* ast,
+                                      const cxpr_expr_ast* ast,
                                       int lookback_offset,
                                       cxpr_error* err);
 
@@ -49,15 +49,15 @@ typedef bool (*cxpr_c_emit_offset_fn)(void* userdata,
  * handled node, set `*handled` true, populate @p err, and return NULL. Set
  * `*handled` false (return value ignored) to fall back to cxpr's default
  * emission. The target may recurse into sub-arguments via
- * `cxpr_ast_to_c_at_offset` to keep nested operator/lookback handling in cxpr.
+ * `cxpr_expr_ast_to_c_at_offset` to keep nested operator/lookback handling in cxpr.
  */
-typedef char* (*cxpr_c_emit_call_at_offset_fn)(const cxpr_ast* ast,
+typedef char* (*cxpr_c_emit_call_at_offset_fn)(const cxpr_expr_ast* ast,
                                                unsigned lookback_offset,
                                                void* userdata,
                                                bool* handled,
                                                cxpr_error* err);
 
-typedef char* (*cxpr_c_emit_lookback_at_offset_fn)(const cxpr_ast* ast,
+typedef char* (*cxpr_c_emit_lookback_at_offset_fn)(const cxpr_expr_ast* ast,
                                                    unsigned lookback_offset,
                                                    void* userdata,
                                                    cxpr_error* err);
@@ -117,7 +117,7 @@ typedef struct cxpr_c_program_arg {
  * @return Newly allocated C expression string (free with `free`), or NULL on
  *         an unsupported node, operator, or function.
  */
-char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
+char* cxpr_expr_ast_to_c(const cxpr_expr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
 
 /**
  * @brief Emit a scalar `cxpr_program` IR as a standalone C function.
@@ -148,7 +148,7 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
 /**
  * @brief Transpile a single AST into a C expression string at a lookback offset.
  *
- * As `cxpr_ast_to_c`, but every leaf/lookback is resolved relative to
+ * As `cxpr_expr_ast_to_c`, but every leaf/lookback is resolved relative to
  * @p lookback_offset (added to any `expr[n]` offsets encountered). Intended for
  * targets whose `emit_call_at_offset` recurses into sub-arguments: pass the
  * offset handed to the hook so nested lookback stays correct.
@@ -159,7 +159,7 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
  * @param err Optional error output, populated on failure.
  * @return Newly allocated C expression string (free with `free`), or NULL on error.
  */
-char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+char* cxpr_expr_ast_to_c_at_offset(const cxpr_expr_ast* ast, unsigned lookback_offset,
                               const cxpr_c_target* target, cxpr_error* err);
 
 /**
@@ -170,7 +170,7 @@ char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
  * to @p current_offset, then delegate emission of the target expression to the
  * host callback. The host owns concrete leaf layout.
  */
-bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
+bool cxpr_codegen_emit_lookback_offset(const cxpr_expr_ast* ast,
                                        int current_offset,
                                        cxpr_c_emit_offset_fn emit,
                                        void* userdata,
@@ -179,7 +179,7 @@ bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
 /** @brief One named expression for set transpilation. */
 typedef struct cxpr_c_named_expr {
     const char* name;       /**< Identifier the expression is bound to. */
-    const cxpr_ast* ast;    /**< Parsed expression. */
+    const cxpr_expr_ast* ast;    /**< Parsed expression. */
 } cxpr_c_named_expr;
 
 /**

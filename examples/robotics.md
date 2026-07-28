@@ -25,15 +25,15 @@ int main(void) {
     cxpr_context_set_param(ctx, "max_slip",      0.10);
     cxpr_context_set_param(ctx, "max_heading_error", 12.0);
 
-    cxpr_ast* stop_expr = cxpr_parse(
+    cxpr_expr_ast* stop_expr = cxpr_expr_ast_parse(
         parser,
         "distance_front < $stop_distance ? 0.0 : (battery > 20 ? max_speed : 0.0)",
         &err
     );
 
-    printf("cmd_vel=%.2f\n", cxpr_ast_eval_double(stop_expr, ctx, reg, &err));
+    printf("cmd_vel=%.2f\n", cxpr_expr_ast_eval_double(stop_expr, ctx, reg, &err));
 
-    cxpr_ast_free(stop_expr);
+    cxpr_expr_ast_free(stop_expr);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
@@ -93,19 +93,19 @@ int main(void) {
     cxpr_context_set_fields(ctx, "pose3", xyz, pose3_xyz, 3);
     cxpr_context_set_param(ctx, "capture_radius", 5.0);
 
-    cxpr_ast* ast2 = cxpr_parse(parser, "planar_goal_range(goal2, pose2) < $capture_radius", &err);
-    cxpr_ast* ast3 = cxpr_parse(
+    cxpr_expr_ast* ast2 = cxpr_expr_ast_parse(parser, "planar_goal_range(goal2, pose2) < $capture_radius", &err);
+    cxpr_expr_ast* ast3 = cxpr_expr_ast_parse(
         parser,
         "spatial_waypoint_range(goal3.x, goal3.y, goal3.z, pose3.x, pose3.y, pose3.z) < $capture_radius",
         &err
     );
 
     printf("near2=%d near3=%d\n",
-           cxpr_ast_eval_bool(ast2, ctx, reg, &err),
-           cxpr_ast_eval_bool(ast3, ctx, reg, &err));
+           cxpr_expr_ast_eval_bool(ast2, ctx, reg, &err),
+           cxpr_expr_ast_eval_bool(ast3, ctx, reg, &err));
 
-    cxpr_ast_free(ast3);
-    cxpr_ast_free(ast2);
+    cxpr_expr_ast_free(ast3);
+    cxpr_expr_ast_free(ast2);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);

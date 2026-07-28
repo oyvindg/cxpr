@@ -14,7 +14,7 @@ cxpr_value cxpr_ir_call_producer_field(cxpr_func_entry* entry, const char* name,
                                        size_t argc, const char* field,
                                        cxpr_error* err);
 cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
-                                       const cxpr_ast* call_ast,
+                                       const cxpr_expr_ast* call_ast,
                                        const cxpr_context* ctx,
                                        const cxpr_registry* reg,
                                        const cxpr_value* args,

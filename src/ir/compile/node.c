@@ -18,10 +18,10 @@ static const char* cxpr_ir_unknown_function_message(const char* name) {
 }
 
 static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
-                                                   const cxpr_ast* call_ast,
+                                                   const cxpr_expr_ast* call_ast,
                                                    cxpr_ir_program* program,
                                                    cxpr_error* err) {
-    const cxpr_ast* body;
+    const cxpr_expr_ast* body;
     const char* body_param;
     const char* body_field;
     char flat_key[256];
@@ -44,7 +44,7 @@ static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
     }
 
     for (size_t i = 0; i < entry->defined_param_count; ++i) {
-        const cxpr_ast* arg;
+        const cxpr_expr_ast* arg;
 
         if (strcmp(entry->defined_param_names[i], body_param) != 0) continue;
         if (i >= call_ast->data.function_call.argc) return false;
@@ -69,7 +69,7 @@ static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
     return false;
 }
 
-static bool cxpr_ir_defined_body_needs_ast_eval(const cxpr_ast* ast,
+static bool cxpr_ir_defined_body_needs_ast_eval(const cxpr_expr_ast* ast,
                                                 const cxpr_registry* reg,
                                                 size_t depth) {
     size_t i;
@@ -134,7 +134,7 @@ static bool cxpr_ir_defined_body_needs_ast_eval(const cxpr_ast* ast,
 }
 
 static bool cxpr_ir_defined_call_can_inline(const cxpr_func_entry* entry,
-                                            const cxpr_ast* call_ast,
+                                            const cxpr_expr_ast* call_ast,
                                             const cxpr_registry* reg) {
     if (!entry || !entry->defined_body || !call_ast ||
         call_ast->type != CXPR_NODE_FUNCTION_CALL ||
@@ -154,7 +154,7 @@ static bool cxpr_ir_defined_call_can_inline(const cxpr_func_entry* entry,
     return true;
 }
 
-bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
+bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                           const cxpr_registry* reg,
                           const char* const* local_names, size_t local_count,
                           const cxpr_ir_subst_frame* subst,
@@ -249,7 +249,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_IDENTIFIER:
         {
             const cxpr_ir_subst_frame* owner = NULL;
-            const cxpr_ast* mapped = cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner);
+            const cxpr_expr_ast* mapped = cxpr_ir_subst_lookup(subst, ast->data.identifier.name, &owner);
             if (mapped) {
                 return cxpr_ir_compile_node(mapped, program, reg,
                                             local_names, local_count,
@@ -287,7 +287,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
 
     case CXPR_NODE_FIELD_ACCESS:
         if (ast->data.field_access.base) {
-            const cxpr_ast* base = ast->data.field_access.base;
+            const cxpr_expr_ast* base = ast->data.field_access.base;
             if (base->type == CXPR_NODE_FUNCTION_CALL && reg) {
                 cxpr_func_entry* entry =
                     cxpr_registry_find(reg, base->data.function_call.name);
@@ -334,7 +334,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.producer_access.name);
         char* const_key = NULL;
         double* const_args = NULL;
-        const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+        const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_error_code bind_code = CXPR_OK;
         const char* bind_message = NULL;
         if (entry && entry->ast_func_handler) {
@@ -453,7 +453,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_LOOKBACK:
     {
         unsigned offset;
-        const cxpr_ast* target = ast->data.lookback.target;
+        const cxpr_expr_ast* target = ast->data.lookback.target;
         if (cxpr_lookback_literal_offset(
                 ast->data.lookback.index, &offset, NULL, NULL)) {
             if (!cxpr_ir_emit(program,
@@ -483,7 +483,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
         const char* fname = ast->data.function_call.name;
-        if (cxpr_ast_call_uses_named_args(ast)) {
+        if (cxpr_expr_ast_call_uses_named_args(ast)) {
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){
                                     .op = CXPR_OP_CALL_AST,
@@ -738,7 +738,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                 }
             }
             const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
-                                                            (const cxpr_ast* const*)ast->data.function_call.args,
+                                                            (const cxpr_expr_ast* const*)ast->data.function_call.args,
                                                             ast->data.function_call.argc,
                                                             reg);
             if (!cxpr_ir_emit(program,
@@ -783,7 +783,7 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             if (inline_depth < CXPR_IR_INLINE_DEPTH_LIMIT) {
                 cxpr_ir_subst_frame frame = {
                     .names = (const char* const*)entry->defined_param_names,
-                    .args = (const cxpr_ast* const*)ast->data.function_call.args,
+                    .args = (const cxpr_expr_ast* const*)ast->data.function_call.args,
                     .count = ast->data.function_call.argc,
                     .parent = subst,
                 };

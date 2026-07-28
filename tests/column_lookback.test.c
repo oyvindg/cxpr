@@ -26,9 +26,9 @@ static void expect_double_eq(double got, double want, const char* label) {
     }
 }
 
-static cxpr_ast* parse_or_die(cxpr_parser* parser, const char* source) {
+static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* source) {
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, source, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, source, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed for '%s': %s\n",
                 source, err.message ? err.message : "(null)");
@@ -37,11 +37,11 @@ static cxpr_ast* parse_or_die(cxpr_parser* parser, const char* source) {
     return ast;
 }
 
-static double eval_number_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
+static double eval_number_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
     double out = NAN;
     if (!cxpr_eval_ast_number(ast, ctx, reg, &out, &err) || err.code != CXPR_OK) {
-        char* expression = cxpr_ast_to_string(ast);
+        char* expression = cxpr_expr_ast_to_string(ast);
         fprintf(stderr, "AST lookback eval failed for '%s': %s\n",
                 expression ? expression : "(null)",
                 err.message ? err.message : "(no message)");
@@ -51,7 +51,7 @@ static double eval_number_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry
     return out;
 }
 
-static double eval_program_number_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
+static double eval_program_number_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
     cxpr_program* program = cxpr_compile(ast, reg, &err);
     double out = NAN;
@@ -69,7 +69,7 @@ static double eval_program_number_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_
     return out;
 }
 
-static bool eval_bool_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
+static bool eval_bool_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
     bool out = false;
     if (!cxpr_eval_ast_bool(ast, ctx, reg, &out, &err) || err.code != CXPR_OK) {
@@ -80,7 +80,7 @@ static bool eval_bool_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry* re
     return out;
 }
 
-static bool eval_program_bool_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
+static bool eval_program_bool_or_die(cxpr_expr_ast* ast, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
     cxpr_program* program = cxpr_compile(ast, reg, &err);
     bool out = false;
@@ -98,8 +98,8 @@ static bool eval_program_bool_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_regi
     return out;
 }
 
-static bool expression_lookback_resolver(const cxpr_ast* target,
-                                         const cxpr_ast* index,
+static bool expression_lookback_resolver(const cxpr_expr_ast* target,
+                                         const cxpr_expr_ast* index,
                                          const cxpr_context* ctx,
                                          const cxpr_registry* reg,
                                          void* userdata,
@@ -113,8 +113,8 @@ static bool expression_lookback_resolver(const cxpr_ast* target,
 
     (void)ctx;
     if (!env || !target || !index || !out || !env->cursor) return false;
-    if (cxpr_ast_type(index) != CXPR_NODE_NUMBER) return false;
-    offset_value = cxpr_ast_number_value(index);
+    if (cxpr_expr_ast_kind_of(index) != CXPR_NODE_NUMBER) return false;
+    offset_value = cxpr_expr_ast_number_value(index);
     if (offset_value < 0.0) return false;
     offset = (int64_t)offset_value;
     shifted_index = *env->cursor - offset;
@@ -158,7 +158,7 @@ static void test_column_lookback_resolves_bound_columns(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(parser);
     assert(ctx);
@@ -168,24 +168,24 @@ static void test_column_lookback_resolves_bound_columns(void) {
     ast = parse_or_die(parser, "close[1] + high[2]");
     expect_double_eq(eval_number_or_die(ast, ctx, reg), 52.0, "AST close[1] + high[2]");
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 52.0, "IR close[1] + high[2]");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cursor = 2;
     ast = parse_or_die(parser, "close[0] + high[1]");
     expect_double_eq(eval_number_or_die(ast, ctx, reg), 52.0, "AST close[0] + high[1]");
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 52.0, "IR close[0] + high[1]");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cursor = 3;
     ast = parse_or_die(parser, "close[1][2]");
     expect_double_eq(eval_number_or_die(ast, ctx, reg), 10.0, "AST close[1][2]");
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 10.0, "IR close[1][2]");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     ast = parse_or_die(parser, "signal[2]");
     expect_double_eq(eval_number_or_die(ast, ctx, reg), 2.0, "AST signal[2]");
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 2.0, "IR signal[2]");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -204,7 +204,7 @@ static void test_column_lookback_returns_nan_for_warmup_or_out_of_range(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double out;
 
     assert(parser);
@@ -217,7 +217,7 @@ static void test_column_lookback_returns_nan_for_warmup_or_out_of_range(void) {
     assert(isnan(out));
     out = eval_program_number_or_die(ast, ctx, reg);
     assert(isnan(out));
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cursor = 4;
     ast = parse_or_die(parser, "close[0]");
@@ -225,7 +225,7 @@ static void test_column_lookback_returns_nan_for_warmup_or_out_of_range(void) {
     assert(isnan(out));
     out = eval_program_number_or_die(ast, ctx, reg);
     assert(isnan(out));
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -244,7 +244,7 @@ static void test_expression_lookback_matches_ast_and_ir(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(parser);
     assert(ctx);
@@ -259,24 +259,24 @@ static void test_expression_lookback_matches_ast_and_ir(void) {
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg),
                      63.0,
                      "IR (close + high)[1]");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     ast = parse_or_die(parser, "(close > high)[1]");
     assert(eval_bool_or_die(ast, ctx, reg) == false);
     assert(eval_program_bool_or_die(ast, ctx, reg) == false);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cursor = 2;
     ast = parse_or_die(parser, "(close > high)[1]");
     assert(eval_bool_or_die(ast, ctx, reg) == true);
     assert(eval_program_bool_or_die(ast, ctx, reg) == true);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cursor = 3;
     ast = parse_or_die(parser, "(close > ema(close, 20))[2]");
     assert(eval_bool_or_die(ast, ctx, reg) == true);
     assert(eval_program_bool_or_die(ast, ctx, reg) == true);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -296,7 +296,7 @@ static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(vo
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double out = NAN;
 
     assert(parser);
@@ -307,7 +307,7 @@ static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(vo
     ast = parse_or_die(parser, "open[0]");
     assert(!cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code != CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     err = (cxpr_error){0};
     out = NAN;
@@ -315,7 +315,7 @@ static void test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved(vo
     ast = parse_or_die(parser, "close[$n]");
     assert(!cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code != CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -340,7 +340,7 @@ static void test_defined_function_struct_arg_preserves_series_lookback(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(parser);
     assert(ctx);
@@ -364,14 +364,14 @@ static void test_defined_function_struct_arg_preserves_series_lookback(void) {
                      "AST defined fn preserves series lookback");
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 53.0,
                      "IR defined fn preserves series lookback");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     ast = parse_or_die(parser, "peak_for_session(high, session, 3)");
     expect_double_eq(eval_number_or_die(ast, ctx, reg), 55.0,
                      "AST defined fn preserves window series arg");
     expect_double_eq(eval_program_number_or_die(ast, ctx, reg), 55.0,
                      "IR defined fn preserves window series arg");
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);

@@ -51,7 +51,7 @@ int main(void) {
     assert(err.code == CXPR_OK);
     assert(cxpr_expression_get_bool(evaluator, "entry", NULL) == false);
 
-    cxpr_ast* ast = cxpr_parse(
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         parser,
         "cross_below(ema_fast, ema_slow, prev_ema_fast, prev_ema_slow) or atr / close > $max_vol_ratio",
         &err
@@ -118,7 +118,7 @@ int main(void) {
         cxpr_evaluator_free(evaluator);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_evaluator_free(evaluator);
     cxpr_parser_free(parser);
     cxpr_context_free(ctx);

@@ -46,7 +46,7 @@ typedef struct {
 typedef struct {
     const char* scope_name;  /**< Provider scope parameter name, such as `timeframe` or `warehouse`. */
     const char* scope_value; /**< Borrowed scope value. */
-    const cxpr_ast* origin;  /**< Borrowed call AST that contributed the scope. */
+    const cxpr_expr_ast* origin;  /**< Borrowed call AST that contributed the scope. */
 } cxpr_resolved_scope;
 
 /**
@@ -59,7 +59,7 @@ typedef struct {
  * `close("1d")` or `macd(12, 26, 9, "1d").signal`.
  */
 int cxpr_parse_runtime_call(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_runtime_call* out);
 
 /**
@@ -75,7 +75,7 @@ int cxpr_parse_runtime_call(
  */
 int cxpr_parse_runtime_call_provider(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_runtime_call* out);
 
 /**
@@ -87,7 +87,7 @@ int cxpr_parse_runtime_call_provider(
  */
 int cxpr_resolve_expression_scope(
     const cxpr_provider* provider,
-    const cxpr_ast* root,
+    const cxpr_expr_ast* root,
     cxpr_resolved_scope* out);
 
 /**
@@ -97,9 +97,9 @@ int cxpr_resolve_expression_scope(
  * @param[in] index Zero-based value argument index, excluding scope args.
  * @return Borrowed argument AST, or NULL when unsupported/out of range.
  */
-const cxpr_ast* cxpr_provider_runtime_call_arg(
+const cxpr_expr_ast* cxpr_provider_runtime_call_arg(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     size_t index);
 
 /**
@@ -116,7 +116,7 @@ const cxpr_ast* cxpr_provider_runtime_call_arg(
  */
 int cxpr_provider_eval_runtime_call_number_args(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     size_t count,
     const cxpr_context* ctx,
     const cxpr_registry* reg,

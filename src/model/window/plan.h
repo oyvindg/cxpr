@@ -16,10 +16,10 @@ typedef cxpr_window_op cxpr_model_window_plan_op;
 #define CXPR_MODEL_WINDOW_PLAN_OP_LOWEST CXPR_WINDOW_OP_LOWEST
 
 typedef struct {
-    const cxpr_ast* ast;
+    const cxpr_expr_ast* ast;
     cxpr_model_window_plan_op op;
-    const cxpr_ast* value_ast;
-    const cxpr_ast* period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* period_ast;
     size_t period_capacity;
     size_t slot_offset;
     size_t slot_count;
@@ -39,7 +39,7 @@ bool cxpr_model_window_plan_build(const cxpr_model_program* program,
 void cxpr_model_window_plan_free(cxpr_model_window_plan* plan);
 const cxpr_model_window_plan_node* cxpr_model_window_plan_find_ast(
     const cxpr_model_window_plan* plan,
-    const cxpr_ast* ast);
+    const cxpr_expr_ast* ast);
 size_t cxpr_model_window_plan_slot_count(const cxpr_model_window_plan* plan);
 
 #endif /* CXPR_MODEL_WINDOW_PLAN_H */

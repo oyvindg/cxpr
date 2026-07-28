@@ -37,7 +37,7 @@ bool cxpr_model_c_emit_defined_functions(const cxpr_model_program* program,
                                          cxpr_error* err);
 bool cxpr_model_c_emit_dynamic_history_value(cxpr_model_c_buf* b,
                                              const char* value_name,
-                                             const cxpr_ast* ast,
+                                             const cxpr_expr_ast* ast,
                                              const char* offset_expr,
                                              const cxpr_c_target* target,
                                              const cxpr_model_program* program,
@@ -56,7 +56,7 @@ bool cxpr_model_c_emit_planned_roc_rolling_update(
 bool cxpr_model_c_emit_planned_roc_aggregate_fallback(
     cxpr_model_c_buf* b,
     const char* name,
-    const cxpr_ast* value_ast,
+    const cxpr_expr_ast* value_ast,
     cxpr_model_window_plan_op op,
     const cxpr_c_target* target,
     const cxpr_model_program* program,

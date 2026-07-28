@@ -165,7 +165,7 @@ static void test_context_overlay_parse_compile_eval_flow(void) {
     cxpr_context* overlay;
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     double out = 0.0;
     bool found = false;
@@ -183,7 +183,7 @@ static void test_context_overlay_parse_compile_eval_flow(void) {
     assert(overlay != NULL);
     cxpr_context_set(overlay, "close", 105.0);
 
-    ast = cxpr_parse(parser, "close + high - fee", &err);
+    ast = cxpr_expr_ast_parse(parser, "close + high - fee", &err);
     assert(ast != NULL);
     program = cxpr_compile(ast, reg, &err);
     assert(program != NULL);
@@ -193,7 +193,7 @@ static void test_context_overlay_parse_compile_eval_flow(void) {
     assert(cxpr_context_get(parent, "close", &found) == 100.0 && found);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_context_free(overlay);
     cxpr_context_free(parent);
@@ -206,7 +206,7 @@ static void test_defined_function_overlay_flow(void) {
     cxpr_context* overlay;
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     bool out = false;
 
@@ -222,7 +222,7 @@ static void test_defined_function_overlay_flow(void) {
     assert(overlay != NULL);
     cxpr_context_set(overlay, "fee", 2.0);
 
-    ast = cxpr_parse(parser, "net(close) == 98", &err);
+    ast = cxpr_expr_ast_parse(parser, "net(close) == 98", &err);
     assert(ast != NULL);
     program = cxpr_compile(ast, reg, &err);
     assert(program != NULL);
@@ -231,7 +231,7 @@ static void test_defined_function_overlay_flow(void) {
     assert(out);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_context_free(overlay);
     cxpr_context_free(parent);
@@ -245,7 +245,7 @@ static void test_defined_function_struct_field_flow(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     double out = 0.0;
 
@@ -256,7 +256,7 @@ static void test_defined_function_struct_field_flow(void) {
     assert(cxpr_registry_define_fn(reg, "pick_x(point) => point.x").code == CXPR_OK);
     cxpr_context_set_fields(ctx, "pose", fields, values, CXPR_ARRAY_COUNT(fields));
 
-    ast = cxpr_parse(parser, "pick_x(pose) + pose.y", &err);
+    ast = cxpr_expr_ast_parse(parser, "pick_x(pose) + pose.y", &err);
     assert(ast != NULL);
     program = cxpr_compile(ast, reg, &err);
     assert(program != NULL);
@@ -265,7 +265,7 @@ static void test_defined_function_struct_field_flow(void) {
     assert(out == 16.0);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
@@ -277,21 +277,21 @@ static double base_scale(const double* args, size_t argc, void* userdata) {
     return args[0] * 2.0;
 }
 
-static cxpr_value timeframe_scale_handler(const cxpr_ast* call_ast,
+static cxpr_value timeframe_scale_handler(const cxpr_expr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           void* userdata,
                                           cxpr_error* err) {
-    const cxpr_ast* value = cxpr_ast_function_arg(call_ast, 0);
-    const cxpr_ast* timeframe = cxpr_ast_function_arg(call_ast, 1);
+    const cxpr_expr_ast* value = cxpr_expr_ast_call_arg(call_ast, 0);
+    const cxpr_expr_ast* timeframe = cxpr_expr_ast_call_arg(call_ast, 1);
     double out = 0.0;
 
     (void)userdata;
     if (!value || !cxpr_eval_ast_number(value, ctx, reg, &out, err)) {
         return cxpr_num(NAN);
     }
-    if (timeframe && cxpr_ast_type(timeframe) == CXPR_NODE_STRING &&
-        strcmp(cxpr_ast_string_value(timeframe), "daily") == 0) {
+    if (timeframe && cxpr_expr_ast_kind_of(timeframe) == CXPR_NODE_STRING &&
+        strcmp(cxpr_expr_ast_string_value(timeframe), "daily") == 0) {
         return cxpr_num(out + 1000.0);
     }
     return cxpr_num(out * 2.0);
@@ -302,7 +302,7 @@ static void test_ast_handler_parse_compile_eval_flow(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     double out = 0.0;
 
@@ -315,7 +315,7 @@ static void test_ast_handler_parse_compile_eval_flow(void) {
         reg, "scaled", timeframe_scale_handler, 1u, 2u, NULL, NULL);
     cxpr_context_set(ctx, "close", 7.0);
 
-    ast = cxpr_parse(parser, "scaled(close, \"daily\") + scaled(3)", &err);
+    ast = cxpr_expr_ast_parse(parser, "scaled(close, \"daily\") + scaled(3)", &err);
     assert(ast != NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
@@ -328,7 +328,7 @@ static void test_ast_handler_parse_compile_eval_flow(void) {
     assert(out == 1013.0);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);

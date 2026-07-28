@@ -231,9 +231,9 @@ static int bar_series_resolve(
     return 0;
 }
 
-static cxpr_ast* parse_or_die(cxpr_parser* parser, const char* text) {
+static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* text) {
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, text, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, text, &err);
     if (!ast) {
         fprintf(stderr, "parse failed: %s\n", err.message ? err.message : "(no message)");
         abort();
@@ -245,7 +245,7 @@ static void test_plan_bind_sources_uses_callback_for_source_plan_leaves(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_bindings bindings = {0};
     bind_capture capture = {0};
     cxpr_plan_config config;
@@ -310,15 +310,15 @@ static void test_plan_bind_sources_uses_callback_for_source_plan_leaves(void) {
         // cxpr_plan_bind_sources auto-registers scoped source functions from
         // provider source metadata. A runtime call with the planned handle
         // should therefore delegate to capture_resolve().
-        cxpr_ast* runtime_ast = parse_or_die(parser, "close(11)");
+        cxpr_expr_ast* runtime_ast = parse_or_die(parser, "close(11)");
         assert(cxpr_eval_ast_number(runtime_ast, ctx, reg, &resolved, &err));
         assert(fabs(resolved - 123.0) < 1e-12);
         assert(capture.resolve_count == 1u);
-        cxpr_ast_free(runtime_ast);
+        cxpr_expr_ast_free(runtime_ast);
     }
 
     cxpr_free_source_plan_bindings(&bindings);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
@@ -331,8 +331,8 @@ static void test_plan_bound_sources_resolve_against_bars(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_ast* plan_ast;
-    cxpr_ast* runtime_ast;
+    cxpr_expr_ast* plan_ast;
+    cxpr_expr_ast* runtime_ast;
     cxpr_source_plan_bindings bindings = {0};
     bar_series_store store = {
         .hourly_close = close_1h,
@@ -382,9 +382,9 @@ static void test_plan_bound_sources_resolve_against_bars(void) {
     }
     assert(store.resolve_count == CXPR_ARRAY_COUNT(expected_signal) * 2u);
 
-    cxpr_ast_free(runtime_ast);
+    cxpr_expr_ast_free(runtime_ast);
     cxpr_free_source_plan_bindings(&bindings);
-    cxpr_ast_free(plan_ast);
+    cxpr_expr_ast_free(plan_ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
@@ -394,7 +394,7 @@ static void test_plan_bind_sources_from_table_maps_name_and_scope(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_bindings bindings = {0};
     cxpr_error err = {0};
 
@@ -428,7 +428,7 @@ static void test_plan_bind_sources_from_table_maps_name_and_scope(void) {
     assert(bindings.handles[1] == 22u);
 
     cxpr_free_source_plan_bindings(&bindings);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);

@@ -110,15 +110,15 @@ static size_t cxpr_snapshot_flow_add_value_node(cxpr_eval_snapshot_flow* flow,
 }
 
 static bool cxpr_snapshot_flow_add_lookback_sources(cxpr_eval_snapshot_flow* flow,
-                                                    const cxpr_ast* ast,
+                                                    const cxpr_expr_ast* ast,
                                                     const cxpr_context* ctx,
                                                     const cxpr_registry* reg,
                                                     size_t target_flow,
                                                     cxpr_error* err) {
     if (!ast) return true;
 
-    if (cxpr_ast_type(ast) == CXPR_NODE_LOOKBACK) {
-        char* name = cxpr_ast_to_string(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK) {
+        char* name = cxpr_expr_ast_to_string(ast);
         char* value_text = NULL;
         cxpr_value value = cxpr_null();
         cxpr_error eval_err = {0};
@@ -157,43 +157,43 @@ static bool cxpr_snapshot_flow_add_lookback_sources(cxpr_eval_snapshot_flow* flo
         free(name);
     }
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_BINARY_OP:
             return cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_left(ast), ctx, reg, target_flow, err) &&
+                       flow, cxpr_expr_ast_binary_left(ast), ctx, reg, target_flow, err) &&
                    cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_right(ast), ctx, reg, target_flow, err);
+                       flow, cxpr_expr_ast_binary_right(ast), ctx, reg, target_flow, err);
         case CXPR_NODE_UNARY_OP:
             return cxpr_snapshot_flow_add_lookback_sources(
-                flow, cxpr_ast_operand(ast), ctx, reg, target_flow, err);
+                flow, cxpr_expr_ast_unary_operand(ast), ctx, reg, target_flow, err);
         case CXPR_NODE_FUNCTION_CALL:
-            for (size_t i = 0; i < cxpr_ast_function_argc(ast); ++i) {
+            for (size_t i = 0; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
                 if (!cxpr_snapshot_flow_add_lookback_sources(
-                        flow, cxpr_ast_function_arg(ast, i), ctx, reg, target_flow, err)) {
+                        flow, cxpr_expr_ast_call_arg(ast, i), ctx, reg, target_flow, err)) {
                     return false;
                 }
             }
             return true;
         case CXPR_NODE_PRODUCER_ACCESS:
-            for (size_t i = 0; i < cxpr_ast_producer_argc(ast); ++i) {
+            for (size_t i = 0; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
                 if (!cxpr_snapshot_flow_add_lookback_sources(
-                        flow, cxpr_ast_producer_arg(ast, i), ctx, reg, target_flow, err)) {
+                        flow, cxpr_expr_ast_producer_arg(ast, i), ctx, reg, target_flow, err)) {
                     return false;
                 }
             }
             return true;
         case CXPR_NODE_LOOKBACK:
             return cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_lookback_target(ast), ctx, reg, target_flow, err) &&
+                       flow, cxpr_expr_ast_lookback_target(ast), ctx, reg, target_flow, err) &&
                    cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_lookback_index(ast), ctx, reg, target_flow, err);
+                       flow, cxpr_expr_ast_lookback_index(ast), ctx, reg, target_flow, err);
         case CXPR_NODE_TERNARY:
             return cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_ternary_condition(ast), ctx, reg, target_flow, err) &&
+                       flow, cxpr_expr_ast_ternary_condition(ast), ctx, reg, target_flow, err) &&
                    cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_ternary_true_branch(ast), ctx, reg, target_flow, err) &&
+                       flow, cxpr_expr_ast_ternary_true(ast), ctx, reg, target_flow, err) &&
                    cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_ast_ternary_false_branch(ast), ctx, reg, target_flow, err);
+                       flow, cxpr_expr_ast_ternary_false(ast), ctx, reg, target_flow, err);
         default:
             return true;
     }
@@ -330,7 +330,7 @@ bool cxpr_eval_snapshot_build_flow(const cxpr_evaluator* evaluator,
         size_t nparams;
 
         if (target_flow == (size_t)-1 || !entry->ast) continue;
-        nrefs = cxpr_ast_references(entry->ast, refs, 256);
+        nrefs = cxpr_expr_ast_references(entry->ast, refs, 256);
         for (size_t dep_i = 0; dep_i < evaluator->count; ++dep_i) {
             size_t source_flow = expr_to_flow[dep_i];
             if (source_flow == (size_t)-1 || source_flow == target_flow) continue;
@@ -389,7 +389,7 @@ bool cxpr_eval_snapshot_build_flow(const cxpr_evaluator* evaluator,
             goto fail;
         }
 
-        nparams = cxpr_ast_variables_used(entry->ast, params, 256);
+        nparams = cxpr_expr_ast_variables_used(entry->ast, params, 256);
         for (size_t p = 0; p < nparams && p < 256u; ++p) {
             bool found = false;
             cxpr_value value;

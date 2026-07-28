@@ -47,7 +47,7 @@ static int cxpr_eval_arg_names_equal(char** lhs, char** rhs, size_t count) {
     return 1;
 }
 
-unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
+unsigned long cxpr_eval_ast_hash(const cxpr_expr_ast* ast) {
     unsigned long hash = 1469598103934665603UL;
     size_t i;
 
@@ -141,7 +141,7 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
     return hash;
 }
 
-bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
+bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
     size_t i;
 
     if (lhs == rhs) return true;
@@ -233,7 +233,7 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
     return false;
 }
 
-bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
+bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg) {
     if (!ast) return false;
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
@@ -263,7 +263,7 @@ bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
 }
 
 bool cxpr_eval_memo_get(const cxpr_context* ctx,
-                        const cxpr_ast* ast,
+                        const cxpr_expr_ast* ast,
                         unsigned long hash,
                         cxpr_value* out_value) {
     size_t i;
@@ -280,7 +280,7 @@ bool cxpr_eval_memo_get(const cxpr_context* ctx,
 }
 
 bool cxpr_eval_memo_set(const cxpr_context* ctx,
-                        const cxpr_ast* ast,
+                        const cxpr_expr_ast* ast,
                         unsigned long hash,
                         cxpr_value value) {
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
@@ -324,7 +324,7 @@ void cxpr_eval_memo_leave(cxpr_context* ctx) {
 
 const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
                                                  const char* name,
-                                                 const cxpr_ast* const* arg_nodes,
+                                                 const cxpr_expr_ast* const* arg_nodes,
                                                  size_t argc,
                                                  const char* cache_key_hint,
                                                  const cxpr_context* ctx,
@@ -406,9 +406,9 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     return existing;
 }
 
-cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_ast* ast,
+cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_expr_ast* ast,
                                                  const cxpr_registry* reg) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
 
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !reg) return NULL;
 
@@ -439,9 +439,9 @@ cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_ast* ast,
     return &((cxpr_registry*)reg)->entries[mutable_ast->data.function_call.cached_entry_index];
 }
 
-cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
+cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_expr_ast* ast,
                                                  const cxpr_registry* reg) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
 
     if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS || !reg) return NULL;
 
@@ -475,7 +475,7 @@ cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
     return &((cxpr_registry*)reg)->entries[mutable_ast->data.producer_access.cached_entry_index];
 }
 
-bool cxpr_eval_ast_contains_string_literal(const cxpr_ast* ast) {
+bool cxpr_eval_ast_contains_string_literal(const cxpr_expr_ast* ast) {
     size_t i;
 
     if (!ast) return false;

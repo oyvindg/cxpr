@@ -21,7 +21,7 @@ extern "C" {
  * @param err Optional error output.
  * @return True on success, false on evaluation failure.
  */
-bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
+bool cxpr_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                    const cxpr_registry* reg, cxpr_value* out_value, cxpr_error* err);
 /**
  * @brief Evaluate an AST and require a numeric result.
@@ -32,7 +32,7 @@ bool cxpr_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure or type mismatch.
  */
-bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
+bool cxpr_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, double* out_value, cxpr_error* err);
 /**
  * @brief Evaluate an AST and require a boolean result.
@@ -43,7 +43,7 @@ bool cxpr_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure or type mismatch.
  */
-bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+bool cxpr_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                         const cxpr_registry* reg, bool* out_value, cxpr_error* err);
 /**
  * @brief Evaluate an AST at a lookback expression (`ast[index_ast]`).
@@ -55,8 +55,8 @@ bool cxpr_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure.
  */
-bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
-                               const cxpr_ast* index_ast,
+bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
+                               const cxpr_expr_ast* index_ast,
                                const cxpr_context* ctx,
                                const cxpr_registry* reg,
                                cxpr_value* out_value,
@@ -71,7 +71,7 @@ bool cxpr_eval_ast_at_lookback(const cxpr_ast* ast,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure.
  */
-bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_ast_at_offset(const cxpr_expr_ast* ast,
                              double lookback,
                              const cxpr_context* ctx,
                              const cxpr_registry* reg,
@@ -88,7 +88,7 @@ bool cxpr_eval_ast_at_offset(const cxpr_ast* ast,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure.
  */
-bool cxpr_eval_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_at_offset(const cxpr_expr_ast* ast,
                          double lookback,
                          const cxpr_context* ctx,
                          const cxpr_registry* reg,
@@ -104,7 +104,7 @@ bool cxpr_eval_at_offset(const cxpr_ast* ast,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure or type mismatch.
  */
-bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_ast_number_at_offset(const cxpr_expr_ast* ast,
                                     double lookback,
                                     const cxpr_context* ctx,
                                     const cxpr_registry* reg,
@@ -120,7 +120,7 @@ bool cxpr_eval_ast_number_at_offset(const cxpr_ast* ast,
  * @param err Optional error output.
  * @return True on success, false on evaluation failure or type mismatch.
  */
-bool cxpr_eval_ast_bool_at_offset(const cxpr_ast* ast,
+bool cxpr_eval_ast_bool_at_offset(const cxpr_expr_ast* ast,
                                   double lookback,
                                   const cxpr_context* ctx,
                                   const cxpr_registry* reg,

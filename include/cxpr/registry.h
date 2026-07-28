@@ -45,7 +45,7 @@ typedef cxpr_value (*cxpr_typed_func_ptr)(const cxpr_value* args, size_t argc, v
  * @param err Optional error output.
  * @return Typed function result.
  */
-typedef cxpr_value (*cxpr_ast_func_ptr)(const cxpr_ast* call_ast,
+typedef cxpr_value (*cxpr_expr_ast_func_ptr)(const cxpr_expr_ast* call_ast,
                                         const cxpr_context* ctx,
                                         const cxpr_registry* reg,
                                         void* userdata,
@@ -57,11 +57,11 @@ typedef cxpr_value (*cxpr_ast_func_ptr)(const cxpr_ast* call_ast,
  * or re-evaluate arguments at historical offsets, for example `rising(x, 3)`
  * or `falling(macd(...).signal, 2)`.
  *
- * This is intentionally the same low-level signature as `cxpr_ast_func_ptr`,
+ * This is intentionally the same low-level signature as `cxpr_expr_ast_func_ptr`,
  * but is exposed as a separate concept so hosts can register time-aware
  * functions explicitly.
  */
-typedef cxpr_value (*cxpr_timeseries_func_ptr)(const cxpr_ast* call_ast,
+typedef cxpr_value (*cxpr_timeseries_func_ptr)(const cxpr_expr_ast* call_ast,
                                                const cxpr_context* ctx,
                                                const cxpr_registry* reg,
                                                void* userdata,
@@ -81,8 +81,8 @@ typedef cxpr_value (*cxpr_timeseries_func_ptr)(const cxpr_ast* call_ast,
  * into `CXPR_NODE_LOOKBACK` AST nodes. Runtime evaluation of those nodes depends on
  * this callback; there is no built-in `lag_*` fallback in the evaluator.
  */
-typedef bool (*cxpr_lookback_resolver_ptr)(const cxpr_ast* target,
-                                           const cxpr_ast* index,
+typedef bool (*cxpr_lookback_resolver_ptr)(const cxpr_expr_ast* target,
+                                           const cxpr_expr_ast* index,
                                            const cxpr_context* ctx,
                                            const cxpr_registry* reg,
                                            void* userdata,
@@ -264,7 +264,7 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
  * @param free_userdata Optional cleanup callback for `userdata`.
  */
 void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
-                           cxpr_ast_func_ptr func, size_t min_args, size_t max_args,
+                           cxpr_expr_ast_func_ptr func, size_t min_args, size_t max_args,
                            cxpr_value_type return_type,
                            void* userdata, cxpr_userdata_free_fn free_userdata);
 /**
@@ -287,7 +287,7 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
  * @param free_userdata  Optional cleanup callback for `userdata`.
  */
 void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
-                                   cxpr_ast_func_ptr func,
+                                   cxpr_expr_ast_func_ptr func,
                                    size_t min_args, size_t max_args,
                                    void* userdata,
                                    cxpr_userdata_free_fn free_userdata);

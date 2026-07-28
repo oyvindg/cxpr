@@ -8,22 +8,22 @@
 #include <cxpr/analysis.h>
 
 static bool cxpr_visit_static_named_string_args_node(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_static_named_string_arg_visitor visitor,
     void* userdata);
 
 static bool cxpr_visit_call_args(
     cxpr_call_site_kind kind,
-    const cxpr_ast* call,
+    const cxpr_expr_ast* call,
     const char* callee,
-    cxpr_ast* const* args,
+    cxpr_expr_ast* const* args,
     char* const* arg_names,
     size_t argc,
     cxpr_static_named_string_arg_visitor visitor,
     void* userdata) {
     size_t i;
     for (i = 0u; i < argc; ++i) {
-        const char* value = cxpr_ast_string_value(args[i]);
+        const char* value = cxpr_expr_ast_string_value(args[i]);
         if (arg_names && arg_names[i] && value) {
             const cxpr_static_named_string_arg found = {
                 kind,
@@ -43,7 +43,7 @@ static bool cxpr_visit_call_args(
 }
 
 static bool cxpr_visit_static_named_string_args_node(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_static_named_string_arg_visitor visitor,
     void* userdata) {
     size_t i;
@@ -114,7 +114,7 @@ static bool cxpr_visit_static_named_string_args_node(
 }
 
 bool cxpr_visit_static_named_string_args(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_static_named_string_arg_visitor visitor,
     void* userdata) {
     if (!ast || !visitor) return false;

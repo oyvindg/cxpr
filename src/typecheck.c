@@ -63,10 +63,10 @@ static bool cxpr_typecheck_error(cxpr_error* err,
                             const char* op,
                             const char* expected,
                             const char* role,
-                            const cxpr_ast* node,
+                            const cxpr_expr_ast* node,
                             cxpr_typecheck_static_type actual) {
     static _Thread_local char message[512];
-    char* expr = cxpr_ast_to_string(node);
+    char* expr = cxpr_expr_ast_to_string(node);
 
     if (err) {
         snprintf(message, sizeof(message),
@@ -98,7 +98,7 @@ static bool cxpr_typecheck_struct_shape_error(cxpr_error* err, const char* op) {
     return false;
 }
 
-static bool cxpr_typecheck_record_has_field(const cxpr_ast* record,
+static bool cxpr_typecheck_record_has_field(const cxpr_expr_ast* record,
                                             const char* field_name) {
     if (!record || record->type != CXPR_NODE_RECORD || !field_name) return false;
     for (size_t i = 0u; i < record->data.record.field_count; ++i) {
@@ -109,8 +109,8 @@ static bool cxpr_typecheck_record_has_field(const cxpr_ast* record,
     return false;
 }
 
-static bool cxpr_typecheck_record_shapes_match(const cxpr_ast* left,
-                                               const cxpr_ast* right) {
+static bool cxpr_typecheck_record_shapes_match(const cxpr_expr_ast* left,
+                                               const cxpr_expr_ast* right) {
     if (!left || !right ||
         left->type != CXPR_NODE_RECORD ||
         right->type != CXPR_NODE_RECORD) {
@@ -141,7 +141,7 @@ static bool cxpr_typecheck_is_bool(cxpr_typecheck_static_type type) {
 
 static cxpr_typecheck_static_type cxpr_typecheck_join(cxpr_typecheck_static_type a,
                                        cxpr_typecheck_static_type b,
-                                       const cxpr_ast* node,
+                                       const cxpr_expr_ast* node,
                                        cxpr_error* err) {
     if (a == CXPR_STATIC_ERROR || b == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
     if (a == b) return a;
@@ -152,16 +152,16 @@ static cxpr_typecheck_static_type cxpr_typecheck_join(cxpr_typecheck_static_type
     return CXPR_STATIC_ERROR;
 }
 
-static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_ast* ast,
+static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
                                         const cxpr_registry* reg,
                                         cxpr_error* err);
 
-static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_ast* ast,
+static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_expr_ast* ast,
                                                const cxpr_registry* reg,
                                                cxpr_error* err) {
     int op = ast->data.binary_op.op;
-    const cxpr_ast* left = ast->data.binary_op.left;
-    const cxpr_ast* right = ast->data.binary_op.right;
+    const cxpr_expr_ast* left = ast->data.binary_op.left;
+    const cxpr_expr_ast* right = ast->data.binary_op.right;
     cxpr_typecheck_static_type lt = cxpr_typecheck_infer(left, reg, err);
     cxpr_typecheck_static_type rt;
 
@@ -239,7 +239,7 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_ast* as
     }
 }
 
-static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_ast* ast,
+static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast* ast,
                                              const cxpr_registry* reg,
                                              cxpr_error* err) {
     cxpr_func_entry* entry;
@@ -280,7 +280,7 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_ast* ast,
     return CXPR_STATIC_UNKNOWN;
 }
 
-static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_ast* ast,
+static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
                                         const cxpr_registry* reg,
                                         cxpr_error* err) {
     cxpr_typecheck_static_type operand_type;
@@ -350,7 +350,7 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_ast* ast,
     return CXPR_STATIC_UNKNOWN;
 }
 
-bool cxpr_typecheck(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_typecheck(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                     cxpr_value_type* out_type, cxpr_error* err) {
     cxpr_typecheck_static_type type;
 
@@ -369,7 +369,7 @@ bool cxpr_typecheck(const cxpr_ast* ast, const cxpr_registry* reg,
     return true;
 }
 
-bool cxpr_typecheck_bool_root(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_typecheck_bool_root(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                               cxpr_error* err) {
     cxpr_typecheck_static_type type;
 

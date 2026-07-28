@@ -20,7 +20,7 @@ extern "C" {
  * @param err Optional error output.
  * @return Newly allocated program on success, or NULL on failure.
  */
-cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_error* err);
+cxpr_program* cxpr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg, cxpr_error* err);
 /**
  * @brief Evaluate a compiled program to a typed runtime value.
  * @param prog Program to evaluate.

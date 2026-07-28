@@ -7,62 +7,62 @@
 
 #include <string.h>
 
-static const cxpr_ast* cxpr_runtime_call_arg_raw(const cxpr_ast* ast,
+static const cxpr_expr_ast* cxpr_runtime_call_arg_raw(const cxpr_expr_ast* ast,
                                                              size_t index) {
     if (!ast) return NULL;
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_FUNCTION_CALL:
-            return cxpr_ast_function_arg(ast, index);
+            return cxpr_expr_ast_call_arg(ast, index);
         case CXPR_NODE_PRODUCER_ACCESS:
-            return cxpr_ast_producer_arg(ast, index);
+            return cxpr_expr_ast_producer_arg(ast, index);
         default:
             return NULL;
     }
 }
 
-static const char* cxpr_runtime_call_arg_name(const cxpr_ast* ast,
+static const char* cxpr_runtime_call_arg_name(const cxpr_expr_ast* ast,
                                                           size_t index) {
     if (!ast) return NULL;
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_FUNCTION_CALL:
-            return cxpr_ast_function_arg_name(ast, index);
+            return cxpr_expr_ast_call_arg_name(ast, index);
         case CXPR_NODE_PRODUCER_ACCESS:
-            return cxpr_ast_producer_arg_name(ast, index);
+            return cxpr_expr_ast_producer_arg_name(ast, index);
         default:
             return NULL;
     }
 }
 
-static size_t cxpr_runtime_call_argc(const cxpr_ast* ast) {
+static size_t cxpr_runtime_call_argc(const cxpr_expr_ast* ast) {
     if (!ast) return 0u;
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_FUNCTION_CALL:
-            return cxpr_ast_function_argc(ast);
+            return cxpr_expr_ast_call_arg_count(ast);
         case CXPR_NODE_PRODUCER_ACCESS:
-            return cxpr_ast_producer_argc(ast);
+            return cxpr_expr_ast_producer_arg_count(ast);
         default:
             return 0u;
     }
 }
 
-static const char* cxpr_runtime_call_name(const cxpr_ast* ast) {
+static const char* cxpr_runtime_call_name(const cxpr_expr_ast* ast) {
     if (!ast) return NULL;
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_FUNCTION_CALL:
-            return cxpr_ast_function_name(ast);
+            return cxpr_expr_ast_call_name(ast);
         case CXPR_NODE_PRODUCER_ACCESS:
-            return cxpr_ast_producer_name(ast);
+            return cxpr_expr_ast_producer_name(ast);
         default:
             return NULL;
     }
 }
 
-static const cxpr_ast* cxpr_runtime_call_find_named_arg_raw(
-    const cxpr_ast* ast,
+static const cxpr_expr_ast* cxpr_runtime_call_find_named_arg_raw(
+    const cxpr_expr_ast* ast,
     const char* name) {
     size_t argc;
     size_t i;
@@ -93,7 +93,7 @@ static int cxpr_runtime_call_spec_index_for_name(
     return 0;
 }
 
-static size_t cxpr_runtime_call_positional_count(const cxpr_ast* ast) {
+static size_t cxpr_runtime_call_positional_count(const cxpr_expr_ast* ast) {
     size_t argc;
     size_t i;
 
@@ -106,7 +106,7 @@ static size_t cxpr_runtime_call_positional_count(const cxpr_ast* ast) {
 }
 
 static size_t cxpr_runtime_call_omitted_leading_sources(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     const cxpr_expr_param_spec* spec,
     size_t positional_count) {
     (void)ast;
@@ -117,7 +117,7 @@ static size_t cxpr_runtime_call_omitted_leading_sources(
 
 static const cxpr_provider_scope_spec* cxpr_runtime_call_scope_spec(
     const cxpr_provider* provider,
-    const cxpr_ast* ast) {
+    const cxpr_expr_ast* ast) {
     const char* name;
     const cxpr_provider_fn_spec* fn_spec;
     const cxpr_provider_source_spec* source_spec;
@@ -143,7 +143,7 @@ static const cxpr_provider_scope_spec* cxpr_runtime_call_scope_spec(
 
 static size_t cxpr_runtime_call_numeric_value_arg_count(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     size_t argc,
     size_t raw_value_arg_count) {
     cxpr_expr_param_spec spec;
@@ -183,8 +183,8 @@ static size_t cxpr_runtime_call_numeric_value_arg_count(
     return count <= raw_value_arg_count ? count : raw_value_arg_count;
 }
 
-const cxpr_ast* cxpr_provider_runtime_call_arg(const cxpr_provider* provider,
-                                               const cxpr_ast* ast,
+const cxpr_expr_ast* cxpr_provider_runtime_call_arg(const cxpr_provider* provider,
+                                               const cxpr_expr_ast* ast,
                                                size_t index) {
     cxpr_expr_param_spec spec;
     size_t argc;
@@ -234,14 +234,14 @@ const cxpr_ast* cxpr_provider_runtime_call_arg(const cxpr_provider* provider,
     return NULL;
 }
 
-int cxpr_parse_runtime_call(const cxpr_ast* ast,
+int cxpr_parse_runtime_call(const cxpr_expr_ast* ast,
                             cxpr_runtime_call* out) {
     return cxpr_parse_runtime_call_provider(NULL, ast, out);
 }
 
 int cxpr_parse_runtime_call_provider(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_runtime_call* out) {
     size_t argc = 0u;
     const char* scope_value = NULL;
@@ -250,17 +250,17 @@ int cxpr_parse_runtime_call_provider(
     if (!ast || !out) return 0;
     memset(out, 0, sizeof(*out));
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_FUNCTION_CALL:
             out->kind = CXPR_RUNTIME_CALL_FUNCTION;
-            out->name = cxpr_ast_function_name(ast);
-            argc = cxpr_ast_function_argc(ast);
+            out->name = cxpr_expr_ast_call_name(ast);
+            argc = cxpr_expr_ast_call_arg_count(ast);
             break;
         case CXPR_NODE_PRODUCER_ACCESS:
             out->kind = CXPR_RUNTIME_CALL_PRODUCER;
-            out->name = cxpr_ast_producer_name(ast);
-            out->field_name = cxpr_ast_producer_field(ast);
-            argc = cxpr_ast_producer_argc(ast);
+            out->name = cxpr_expr_ast_producer_name(ast);
+            out->field_name = cxpr_expr_ast_producer_field(ast);
+            argc = cxpr_expr_ast_producer_arg_count(ast);
             break;
         default:
             return 0;
@@ -272,10 +272,10 @@ int cxpr_parse_runtime_call_provider(
 
     scope_spec = cxpr_runtime_call_scope_spec(provider, ast);
     if (scope_spec && scope_spec->param_name && scope_spec->param_name[0] != '\0') {
-        const cxpr_ast* scope_arg = cxpr_runtime_call_find_named_arg_raw(
+        const cxpr_expr_ast* scope_arg = cxpr_runtime_call_find_named_arg_raw(
             ast,
             scope_spec->param_name);
-        scope_value = cxpr_ast_string_value(scope_arg);
+        scope_value = cxpr_expr_ast_string_value(scope_arg);
         if (scope_value && scope_value[0] != '\0') {
             out->scope_value = scope_value;
             out->timeframe = scope_value;
@@ -290,8 +290,8 @@ int cxpr_parse_runtime_call_provider(
     }
 
     {
-        const cxpr_ast* last = cxpr_runtime_call_arg_raw(ast, argc - 1u);
-        scope_value = cxpr_ast_string_value(last);
+        const cxpr_expr_ast* last = cxpr_runtime_call_arg_raw(ast, argc - 1u);
+        scope_value = cxpr_expr_ast_string_value(last);
         if (scope_value && scope_value[0] != '\0') {
             out->timeframe = scope_value;
             out->scope_value = scope_value;
@@ -308,7 +308,7 @@ int cxpr_parse_runtime_call_provider(
 
 int cxpr_resolve_expression_scope(
     const cxpr_provider* provider,
-    const cxpr_ast* root,
+    const cxpr_expr_ast* root,
     cxpr_resolved_scope* out) {
     cxpr_runtime_call call;
     const cxpr_provider_scope_spec* scope_spec;
@@ -328,12 +328,12 @@ int cxpr_resolve_expression_scope(
         return 1;
     }
 
-    switch (cxpr_ast_type(root)) {
+    switch (cxpr_expr_ast_kind_of(root)) {
         case CXPR_NODE_FUNCTION_CALL:
-            for (i = 0u; i < cxpr_ast_function_argc(root); ++i) {
+            for (i = 0u; i < cxpr_expr_ast_call_arg_count(root); ++i) {
                 if (cxpr_resolve_expression_scope(
                         provider,
-                        cxpr_ast_function_arg(root, i),
+                        cxpr_expr_ast_call_arg(root, i),
                         &nested)) {
                     *out = nested;
                     return 1;
@@ -341,10 +341,10 @@ int cxpr_resolve_expression_scope(
             }
             break;
         case CXPR_NODE_PRODUCER_ACCESS:
-            for (i = 0u; i < cxpr_ast_producer_argc(root); ++i) {
+            for (i = 0u; i < cxpr_expr_ast_producer_arg_count(root); ++i) {
                 if (cxpr_resolve_expression_scope(
                         provider,
-                        cxpr_ast_producer_arg(root, i),
+                        cxpr_expr_ast_producer_arg(root, i),
                         &nested)) {
                     *out = nested;
                     return 1;
@@ -352,17 +352,17 @@ int cxpr_resolve_expression_scope(
             }
             break;
         case CXPR_NODE_BINARY_OP:
-            if (cxpr_resolve_expression_scope(provider, cxpr_ast_left(root), &nested)) {
+            if (cxpr_resolve_expression_scope(provider, cxpr_expr_ast_binary_left(root), &nested)) {
                 *out = nested;
                 return 1;
             }
-            if (cxpr_resolve_expression_scope(provider, cxpr_ast_right(root), &nested)) {
+            if (cxpr_resolve_expression_scope(provider, cxpr_expr_ast_binary_right(root), &nested)) {
                 *out = nested;
                 return 1;
             }
             break;
         case CXPR_NODE_UNARY_OP:
-            if (cxpr_resolve_expression_scope(provider, cxpr_ast_operand(root), &nested)) {
+            if (cxpr_resolve_expression_scope(provider, cxpr_expr_ast_unary_operand(root), &nested)) {
                 *out = nested;
                 return 1;
             }
@@ -370,14 +370,14 @@ int cxpr_resolve_expression_scope(
         case CXPR_NODE_LOOKBACK:
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_ast_lookback_target(root),
+                    cxpr_expr_ast_lookback_target(root),
                     &nested)) {
                 *out = nested;
                 return 1;
             }
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_ast_lookback_index(root),
+                    cxpr_expr_ast_lookback_index(root),
                     &nested)) {
                 *out = nested;
                 return 1;
@@ -386,21 +386,21 @@ int cxpr_resolve_expression_scope(
         case CXPR_NODE_TERNARY:
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_ast_ternary_condition(root),
+                    cxpr_expr_ast_ternary_condition(root),
                     &nested)) {
                 *out = nested;
                 return 1;
             }
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_ast_ternary_true_branch(root),
+                    cxpr_expr_ast_ternary_true(root),
                     &nested)) {
                 *out = nested;
                 return 1;
             }
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_ast_ternary_false_branch(root),
+                    cxpr_expr_ast_ternary_false(root),
                     &nested)) {
                 *out = nested;
                 return 1;
@@ -414,7 +414,7 @@ int cxpr_resolve_expression_scope(
 }
 
 int cxpr_provider_eval_runtime_call_number_args(const cxpr_provider* provider,
-                                                const cxpr_ast* ast,
+                                                const cxpr_expr_ast* ast,
                                                 size_t count,
                                                 const cxpr_context* ctx,
                                                 const cxpr_registry* reg,
@@ -435,7 +435,7 @@ int cxpr_provider_eval_runtime_call_number_args(const cxpr_provider* provider,
             cxpr_runtime_call_name(ast),
             &spec)) {
         for (index = 0u; index < spec.count && out_index < count; ++index) {
-            const cxpr_ast* arg;
+            const cxpr_expr_ast* arg;
             if (spec.kinds && spec.kinds[index] == CXPR_EXPR_ARG_SCALAR_SOURCE) {
                 continue;
             }
@@ -450,7 +450,7 @@ int cxpr_provider_eval_runtime_call_number_args(const cxpr_provider* provider,
     }
 
     for (index = 0u; index < count; ++index) {
-        const cxpr_ast* arg = cxpr_provider_runtime_call_arg(provider, ast, index);
+        const cxpr_expr_ast* arg = cxpr_provider_runtime_call_arg(provider, ast, index);
         if (!arg) return 0;
         if (!cxpr_eval_ast_number(arg, ctx, reg, &out_values[index], err)) {
             return 0;

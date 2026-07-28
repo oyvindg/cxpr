@@ -151,7 +151,7 @@ typedef bool (*cxpr_engine_view_fn)(
  * targets into engine inline evaluation without teaching cxpr any domain names.
  */
 typedef bool (*cxpr_engine_inline_lookback_fn)(
-    const cxpr_ast* target,
+    const cxpr_expr_ast* target,
     void* userdata);
 
 /**

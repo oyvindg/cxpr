@@ -26,7 +26,7 @@ static void test_ir_view_compiled_expression(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* registry = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, "close + $offset > signal", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "close + $offset > signal", &err);
     assert(ast);
 
     cxpr_program* program = cxpr_compile(ast, registry, &err);
@@ -82,7 +82,7 @@ static void test_ir_view_compiled_expression(void) {
     assert(out_of_range.op == CXPR_IR_VIEW_OP_UNKNOWN);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(registry);
     cxpr_parser_free(parser);
 
@@ -93,7 +93,7 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* registry = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, "close[1]", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "close[1]", &err);
     cxpr_program* program;
     cxpr_ir_view_instr instr = {0};
 
@@ -112,9 +112,9 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     assert(instr.op == CXPR_IR_VIEW_OP_LOOKBACK_POP);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(parser, "close[1][2]", &err);
+    ast = cxpr_expr_ast_parse(parser, "close[1][2]", &err);
     assert(ast);
     program = cxpr_compile(ast, registry, &err);
     assert(program);
@@ -128,7 +128,7 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     assert(instr.index == 1u);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(registry);
     cxpr_parser_free(parser);
 
@@ -139,7 +139,7 @@ static void test_ir_view_array_instruction(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* registry = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, "[1, 2, 3]", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "[1, 2, 3]", &err);
     cxpr_program* program = cxpr_compile(ast, registry, &err);
     bool found = false;
 
@@ -157,7 +157,7 @@ static void test_ir_view_array_instruction(void) {
     assert(found);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(registry);
     cxpr_parser_free(parser);
     printf("  ok test_ir_view_array_instruction\n");

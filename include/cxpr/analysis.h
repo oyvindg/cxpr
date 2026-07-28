@@ -55,7 +55,7 @@ typedef enum {
  */
 typedef struct {
     cxpr_call_site_kind call_kind;
-    const cxpr_ast* call;
+    const cxpr_expr_ast* call;
     const char* callee;
     const char* argument;
     const char* value;
@@ -75,7 +75,7 @@ typedef int (*cxpr_static_named_string_arg_visitor)(
  * is required, so imported/custom calls are reported as well as builtins.
  */
 bool cxpr_visit_static_named_string_args(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_static_named_string_arg_visitor visitor,
     void* userdata);
 
@@ -87,7 +87,7 @@ bool cxpr_visit_static_named_string_args(
  * @param err Optional error output.
  * @return True on success, false on semantic-analysis failure.
  */
-bool cxpr_analyze(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_analyze(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                   cxpr_analysis* out_analysis, cxpr_error* err);
 /**
  * @brief Parse and analyze one expression string in a single call.

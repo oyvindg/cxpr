@@ -5,7 +5,7 @@
 
 #include "internal.h"
 
-unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
+unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                              size_t depth) {
     unsigned char left_kind;
     unsigned char right_kind;

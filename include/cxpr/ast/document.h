@@ -27,7 +27,7 @@ typedef struct cxpr_document_ast_node cxpr_document_ast_node;
  * The document AST is source-oriented: it preserves meaningful block shape,
  * statement order and source spans before lowering normalizes the tree into a
  * semantic @ref cxpr_model. Expression-bearing nodes keep expression syntax in
- * the existing @ref cxpr_ast representation.
+ * the existing @ref cxpr_expr_ast representation.
  */
 typedef enum {
     /** @brief Root node for a parsed document. */
@@ -214,7 +214,7 @@ const char* cxpr_document_ast_node_text(const cxpr_document_ast_node* node);
  * The returned expression is owned by the document AST and remains valid until
  * @ref cxpr_document_ast_free is called.
  */
-const cxpr_ast* cxpr_document_ast_node_expression(const cxpr_document_ast_node* node);
+const cxpr_expr_ast* cxpr_document_ast_node_expression(const cxpr_document_ast_node* node);
 
 /** @brief Return the number of child syntax nodes under @p node. */
 size_t cxpr_document_ast_child_count(const cxpr_document_ast_node* node);

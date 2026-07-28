@@ -14,7 +14,7 @@
 typedef struct {
     char* name;               /**< Expression name, owned */
     char* expression;         /**< Original expression string, owned */
-    cxpr_ast* ast;            /**< Parsed AST (NULL until compiled) */
+    cxpr_expr_ast* ast;            /**< Parsed AST (NULL until compiled) */
     cxpr_program* program;    /**< Compiled program cache (NULL until compiled) */
     cxpr_value result;        /**< Evaluation result */
     bool evaluated;

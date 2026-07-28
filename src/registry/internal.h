@@ -16,12 +16,12 @@ typedef struct cxpr_func_entry {
     cxpr_func_ptr sync_func;    /**< Scalar function pointer */
     cxpr_value_func_ptr value_func; /**< Typed-value function pointer */
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
-    cxpr_ast_func_ptr ast_func; /**< AST-aware function pointer */
+    cxpr_expr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
-    cxpr_ast_func_ptr model_producer; /**< AST-aware stateful model producer */
+    cxpr_expr_ast_func_ptr model_producer; /**< AST-aware stateful model producer */
     void* model_producer_userdata;
     /* AST handler: coexists with sync_func/struct_producer for TF string dispatch */
-    cxpr_ast_func_ptr ast_func_handler; /**< AST handler function; takes priority for FUNCTION_CALL */
+    cxpr_expr_ast_func_ptr ast_func_handler; /**< AST handler function; takes priority for FUNCTION_CALL */
     void* ast_func_handler_userdata;
     cxpr_userdata_free_fn ast_func_handler_userdata_free;
     enum {
@@ -52,7 +52,7 @@ typedef struct cxpr_func_entry {
     size_t fields_per_arg;    /**< Number of fields per struct argument */
     size_t struct_argc;       /**< Number of struct arguments accepted */
     /* Defined function (expression-based, via cxpr_registry_define_fn) */
-    cxpr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
+    cxpr_expr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
     cxpr_program* defined_program;         /**< Lazily compiled body program; NULL until needed */
     bool       defined_program_failed;     /**< Sticky flag when program compilation is unsupported */
     char**     defined_param_names;        /**< Parameter name array, owned */
@@ -60,7 +60,7 @@ typedef struct cxpr_func_entry {
     char***    defined_param_fields;       /**< Per-param field lists; NULL entry = scalar */
     size_t*    defined_param_field_counts; /**< Per-param field counts */
     char**     defined_return_field_names; /**< Struct-return field names, owned */
-    cxpr_ast** defined_return_field_bodies; /**< Struct-return field ASTs, owned */
+    cxpr_expr_ast** defined_return_field_bodies; /**< Struct-return field ASTs, owned */
     size_t     defined_return_field_count; /**< Number of struct-return fields */
 } cxpr_func_entry;
 
@@ -134,7 +134,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
                                           const char* const* param_names,
                                           size_t param_count,
                                           const char* const* field_names,
-                                          const cxpr_ast* const* field_bodies,
+                                          const cxpr_expr_ast* const* field_bodies,
                                           size_t field_count);
 
 #endif /* CXPR_REGISTRY_INTERNAL_H */

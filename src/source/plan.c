@@ -39,53 +39,53 @@ static const cxpr_provider_fn_spec* cxpr_source_plan_fn_spec(
     return cxpr_provider_fn_spec_find(provider, name);
 }
 
-static size_t cxpr_source_plan_positional_count(const cxpr_ast* ast) {
+static size_t cxpr_source_plan_positional_count(const cxpr_expr_ast* ast) {
     size_t argc;
     size_t i;
 
-    argc = cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-               ? cxpr_ast_producer_argc(ast)
-               : cxpr_ast_function_argc(ast);
+    argc = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+               ? cxpr_expr_ast_producer_arg_count(ast)
+               : cxpr_expr_ast_call_arg_count(ast);
     for (i = 0u; i < argc; ++i) {
         const char* arg_name =
-            cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-                ? cxpr_ast_producer_arg_name(ast, i)
-                : cxpr_ast_function_arg_name(ast, i);
+            cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+                ? cxpr_expr_ast_producer_arg_name(ast, i)
+                : cxpr_expr_ast_call_arg_name(ast, i);
         if (arg_name) return i;
     }
     return argc;
 }
 
-static const cxpr_ast* cxpr_source_plan_arg_raw(
-    const cxpr_ast* ast,
+static const cxpr_expr_ast* cxpr_source_plan_arg_raw(
+    const cxpr_expr_ast* ast,
     size_t index) {
     if (!ast) return NULL;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) {
-        return cxpr_ast_producer_arg(ast, index);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) {
+        return cxpr_expr_ast_producer_arg(ast, index);
     }
-    return cxpr_ast_function_arg(ast, index);
+    return cxpr_expr_ast_call_arg(ast, index);
 }
 
 static const char* cxpr_source_plan_arg_name(
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     size_t index) {
     if (!ast) return NULL;
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) {
-        return cxpr_ast_producer_arg_name(ast, index);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) {
+        return cxpr_expr_ast_producer_arg_name(ast, index);
     }
-    return cxpr_ast_function_arg_name(ast, index);
+    return cxpr_expr_ast_call_arg_name(ast, index);
 }
 
-static const cxpr_ast* cxpr_source_plan_find_named_arg(
-    const cxpr_ast* ast,
+static const cxpr_expr_ast* cxpr_source_plan_find_named_arg(
+    const cxpr_expr_ast* ast,
     const char* name) {
     size_t argc;
     size_t i;
 
     if (!ast || !name || name[0] == '\0') return NULL;
-    argc = cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS
-               ? cxpr_ast_producer_argc(ast)
-               : cxpr_ast_function_argc(ast);
+    argc = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
+               ? cxpr_expr_ast_producer_arg_count(ast)
+               : cxpr_expr_ast_call_arg_count(ast);
     for (i = 0u; i < argc; ++i) {
         const char* arg_name = cxpr_source_plan_arg_name(ast, i);
         if (!arg_name || strcmp(arg_name, name) != 0) continue;
@@ -113,10 +113,10 @@ static size_t cxpr_source_plan_numeric_param_count(
     return count;
 }
 
-static const cxpr_ast* cxpr_source_plan_numeric_arg(
+static const cxpr_expr_ast* cxpr_source_plan_numeric_arg(
     const cxpr_provider* provider,
     const char* name,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     size_t numeric_index) {
     cxpr_expr_param_spec spec;
     size_t count = 0u;
@@ -150,10 +150,10 @@ void cxpr_free_source_plan_bindings(cxpr_source_plan_bindings* bindings) {
     memset(bindings, 0, sizeof(*bindings));
 }
 
-static int cxpr_source_plan_bound_arg_append(const cxpr_ast* ast,
+static int cxpr_source_plan_bound_arg_append(const cxpr_expr_ast* ast,
                                              cxpr_source_plan_ast* plan,
                                              size_t* out_slot) {
-    const cxpr_ast** grown;
+    const cxpr_expr_ast** grown;
     size_t next_count;
 
     if (!plan || !out_slot) return 0;
@@ -175,7 +175,7 @@ static int cxpr_source_plan_node_set_scope_value(cxpr_source_plan_node* node, co
 }
 
 static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
-                                       const cxpr_ast* ast,
+                                       const cxpr_expr_ast* ast,
                                        cxpr_source_plan_ast* plan,
                                        cxpr_source_plan_node* out);
 
@@ -188,27 +188,27 @@ static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
  * series source plan.
  */
 static int cxpr_source_plan_ast_has_series_reference(const cxpr_provider* provider,
-                                                const cxpr_ast* ast) {
+                                                const cxpr_expr_ast* ast) {
     if (!ast) return 0;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_IDENTIFIER:
-            return cxpr_source_plan_is_direct_source_name(provider, cxpr_ast_identifier_name(ast));
+            return cxpr_source_plan_is_direct_source_name(provider, cxpr_expr_ast_identifier_name(ast));
         case CXPR_NODE_FUNCTION_CALL:
         case CXPR_NODE_PRODUCER_ACCESS:
             return 1;
         case CXPR_NODE_VARIABLE:
             return 0;
         case CXPR_NODE_BINARY_OP:
-            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_left(ast)) ||
-                   cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_right(ast));
+            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_binary_left(ast)) ||
+                   cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_binary_right(ast));
         case CXPR_NODE_UNARY_OP:
-            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_operand(ast));
+            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_unary_operand(ast));
         case CXPR_NODE_LOOKBACK:
-            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_lookback_target(ast));
+            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_lookback_target(ast));
         case CXPR_NODE_TERNARY:
-            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_ternary_condition(ast)) ||
-                   cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_ternary_true_branch(ast)) ||
-                   cxpr_source_plan_ast_has_series_reference(provider, cxpr_ast_ternary_false_branch(ast));
+            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_ternary_condition(ast)) ||
+                   cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_ternary_true(ast)) ||
+                   cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_ternary_false(ast));
         default:
             return 0;
     }
@@ -217,7 +217,7 @@ static int cxpr_source_plan_ast_has_series_reference(const cxpr_provider* provid
 static int cxpr_source_plan_parse_function_source(const char* name,
                                       size_t argc,
                                       const cxpr_provider* provider,
-                                      const cxpr_ast* ast,
+                                      const cxpr_expr_ast* ast,
                                       const char* field_name,
                                       cxpr_source_plan_ast* plan,
                                       cxpr_source_plan_node* out) {
@@ -230,7 +230,7 @@ static int cxpr_source_plan_parse_function_source(const char* name,
     size_t numeric_param_count = 0u;
     size_t index;
     const char* timeframe = NULL;
-    const cxpr_ast* source_ast = NULL;
+    const cxpr_expr_ast* source_ast = NULL;
     cxpr_runtime_call call = {0};
     int explicit_named_source = 0;
     int explicit_positional_source = 0;
@@ -316,7 +316,7 @@ static int cxpr_source_plan_parse_function_source(const char* name,
                 if (!out->arg_slots) return 0;
             }
             for (index = 0u; index < out->arg_count; ++index) {
-                const cxpr_ast* arg_ast = NULL;
+                const cxpr_expr_ast* arg_ast = NULL;
                 if (explicit_positional_source && positional_count == source_arg_count) {
                     arg_ast = cxpr_source_plan_arg_raw(ast, index + 1u);
                 } else {
@@ -365,24 +365,24 @@ static int cxpr_source_plan_parse_function_source(const char* name,
 }
 
 static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
-                                       const cxpr_ast* ast,
+                                       const cxpr_expr_ast* ast,
                                        cxpr_source_plan_ast* plan,
                                        cxpr_source_plan_node* out) {
     const char* name;
 
     if (!ast || !plan || !out) return 0;
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_IDENTIFIER:
-            name = cxpr_ast_identifier_name(ast);
+            name = cxpr_expr_ast_identifier_name(ast);
             if (!cxpr_source_plan_is_direct_source_name(provider, name)) return 0;
             out->kind = CXPR_SOURCE_PLAN_FIELD;
             out->name = cxpr_source_plan_strdup(name);
             if (!out->name) return 0;
             return cxpr_source_plan_finalize_node_canonical(plan, out);
         case CXPR_NODE_LOOKBACK: {
-            const cxpr_ast* target = cxpr_ast_lookback_target(ast);
-            const cxpr_ast* index = cxpr_ast_lookback_index(ast);
+            const cxpr_expr_ast* target = cxpr_expr_ast_lookback_target(ast);
+            const cxpr_expr_ast* index = cxpr_expr_ast_lookback_index(ast);
 
             if (!target || !index) return 0;
             if (!cxpr_source_plan_node_parse(provider, target, plan, out)) return 0;
@@ -391,8 +391,8 @@ static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
         }
         case CXPR_NODE_FUNCTION_CALL: {
             int parsed = cxpr_source_plan_parse_function_source(
-                cxpr_ast_function_name(ast),
-                cxpr_ast_function_argc(ast),
+                cxpr_expr_ast_call_name(ast),
+                cxpr_expr_ast_call_arg_count(ast),
                 provider,
                 ast,
                 NULL,
@@ -403,11 +403,11 @@ static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
         }
         case CXPR_NODE_PRODUCER_ACCESS: {
             int parsed = cxpr_source_plan_parse_function_source(
-                cxpr_ast_producer_name(ast),
-                cxpr_ast_producer_argc(ast),
+                cxpr_expr_ast_producer_name(ast),
+                cxpr_expr_ast_producer_arg_count(ast),
                 provider,
                 ast,
-                cxpr_ast_producer_field(ast),
+                cxpr_expr_ast_producer_field(ast),
                 plan,
                 out);
             if (parsed == 0) return 0;
@@ -426,7 +426,7 @@ static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
 }
 
 int cxpr_parse_provider_source_plan_ast(const cxpr_provider* provider,
-                                        const cxpr_ast* ast,
+                                        const cxpr_expr_ast* ast,
                                         cxpr_source_plan_ast* out) {
     int ok;
 
@@ -589,9 +589,9 @@ static int cxpr_source_plan_bind_parsed_plan(
     return ok;
 }
 
-static int cxpr_source_plan_should_parse_at_node(const cxpr_ast* ast) {
+static int cxpr_source_plan_should_parse_at_node(const cxpr_expr_ast* ast) {
     if (!ast) return 0;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_FUNCTION_CALL:
     case CXPR_NODE_PRODUCER_ACCESS:
@@ -604,7 +604,7 @@ static int cxpr_source_plan_should_parse_at_node(const cxpr_ast* ast) {
 
 static int cxpr_plan_bind_sources_walk(
     const cxpr_provider* provider,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     const cxpr_context* ctx,
     const cxpr_registry* reg,
     cxpr_source_plan_bind_fn bind,
@@ -631,17 +631,17 @@ static int cxpr_plan_bind_sources_walk(
         return ok;
     }
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_BINARY_OP:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_left(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_ast_right(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_binary_left(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_binary_right(ast), ctx, reg, bind, userdata, out, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_operand(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_unary_operand(ast), ctx, reg, bind, userdata, out, err);
     case CXPR_NODE_FUNCTION_CALL:
-        for (i = 0u; i < cxpr_ast_function_argc(ast); ++i) {
+        for (i = 0u; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
             if (!cxpr_plan_bind_sources_walk(
                     provider,
-                    cxpr_ast_function_arg(ast, i),
+                    cxpr_expr_ast_call_arg(ast, i),
                     ctx,
                     reg,
                     bind,
@@ -653,10 +653,10 @@ static int cxpr_plan_bind_sources_walk(
         }
         return 1;
     case CXPR_NODE_PRODUCER_ACCESS:
-        for (i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+        for (i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
             if (!cxpr_plan_bind_sources_walk(
                     provider,
-                    cxpr_ast_producer_arg(ast, i),
+                    cxpr_expr_ast_producer_arg(ast, i),
                     ctx,
                     reg,
                     bind,
@@ -668,12 +668,12 @@ static int cxpr_plan_bind_sources_walk(
         }
         return 1;
     case CXPR_NODE_LOOKBACK:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_lookback_target(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_ast_lookback_index(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_lookback_target(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_lookback_index(ast), ctx, reg, bind, userdata, out, err);
     case CXPR_NODE_TERNARY:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_ast_ternary_condition(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_ast_ternary_true_branch(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_ast_ternary_false_branch(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_condition(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_true(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_false(ast), ctx, reg, bind, userdata, out, err);
     default:
         return 1;
     }
@@ -681,7 +681,7 @@ static int cxpr_plan_bind_sources_walk(
 
 int cxpr_plan_bind_sources(
     const cxpr_provider* provider,
-    const cxpr_ast* expr,
+    const cxpr_expr_ast* expr,
     const cxpr_context* ctx,
     cxpr_registry* reg,
     const cxpr_plan_config* config,
@@ -777,7 +777,7 @@ static int cxpr_source_plan_table_bind(
 
 int cxpr_plan_bind_sources_from_table(
     const cxpr_provider* provider,
-    const cxpr_ast* expr,
+    const cxpr_expr_ast* expr,
     const cxpr_context* ctx,
     cxpr_registry* reg,
     const cxpr_source_handle_entry* table,

@@ -21,7 +21,7 @@ typedef struct {
     const int64_t* cursor;
 } cxpr_column_lookback_state;
 
-static bool cxpr_column_lookback_resolve(const cxpr_ast* target, const cxpr_ast* index,
+static bool cxpr_column_lookback_resolve(const cxpr_expr_ast* target, const cxpr_expr_ast* index,
                                          const cxpr_context* ctx, const cxpr_registry* reg,
                                          void* userdata, cxpr_value* out, cxpr_error* err) {
     const cxpr_column_lookback_state* st = (const cxpr_column_lookback_state*)userdata;
@@ -32,12 +32,12 @@ static bool cxpr_column_lookback_resolve(const cxpr_ast* target, const cxpr_ast*
 
     (void)ctx; (void)reg; (void)err;
     if (!st || !out || !target || !index) return false;
-    if (cxpr_ast_type(index) != CXPR_NODE_NUMBER) return false;     /* literal index only */
-    if (cxpr_ast_type(target) != CXPR_NODE_IDENTIFIER) return false; /* bare source name only */
-    nd = cxpr_ast_number_value(index);
+    if (cxpr_expr_ast_kind_of(index) != CXPR_NODE_NUMBER) return false;     /* literal index only */
+    if (cxpr_expr_ast_kind_of(target) != CXPR_NODE_IDENTIFIER) return false; /* bare source name only */
+    nd = cxpr_expr_ast_number_value(index);
     if (nd < 0.0) return false;
     n = (int64_t)nd;
-    name = cxpr_ast_identifier_name(target);
+    name = cxpr_expr_ast_identifier_name(target);
     if (!name) return false;
 
     for (i = 0; i < st->count; ++i) {

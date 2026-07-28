@@ -239,7 +239,7 @@ static int cxpr_graph_append_binding_node(
     ok = cxpr_graph_append_node_start(out, first, kind, name, index, use_index, kind);
     if (!ok) return 0;
     if (include_expression_source) {
-        expr = cxpr_ast_to_string(cxpr_model_binding_expr(model, index));
+        expr = cxpr_expr_ast_to_string(cxpr_model_binding_expr(model, index));
         if (!expr) return 0;
         ok = cxpr_graph_append(out, ",\"expr\":") &&
              cxpr_graph_append_json_string(out, expr);
@@ -281,7 +281,7 @@ static int cxpr_graph_append_nodes(
             return 0;
         }
         if (options->include_expression_source) {
-            expr = cxpr_ast_to_string(cxpr_model_constant_expr(model, i));
+            expr = cxpr_expr_ast_to_string(cxpr_model_constant_expr(model, i));
             if (!expr) return 0;
             if (!cxpr_graph_append(out, ",\"expr\":") ||
                 !cxpr_graph_append_json_string(out, expr)) {
@@ -330,17 +330,17 @@ static int cxpr_graph_append_expr_ref_edges(
     cxpr_graph_buf* out,
     int* first,
     const cxpr_model* model,
-    const cxpr_ast* expr,
+    const cxpr_expr_ast* expr,
     const char* target_kind,
     const char* target_name,
     size_t target_index,
     int target_use_index) {
-    size_t ref_count = cxpr_ast_references(expr, NULL, 0u);
+    size_t ref_count = cxpr_expr_ast_references(expr, NULL, 0u);
     const char** refs;
     if (ref_count == 0u) return 1;
     refs = (const char**)calloc(ref_count, sizeof(char*));
     if (!refs) return 0;
-    ref_count = cxpr_ast_references(expr, refs, ref_count);
+    ref_count = cxpr_expr_ast_references(expr, refs, ref_count);
     for (size_t i = 0u; i < ref_count; ++i) {
         const char* source_kind;
         const char* source_name;

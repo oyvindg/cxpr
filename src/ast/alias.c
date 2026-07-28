@@ -136,28 +136,28 @@ static char** cxpr_alias_clone_arg_names(char* const* names, size_t argc) {
     return out;
 }
 
-static cxpr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
-                                         cxpr_ast* const* args,
+static cxpr_expr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
+                                         cxpr_expr_ast* const* args,
                                          size_t argc);
-static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_ast* ast);
-static cxpr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char* name);
+static cxpr_expr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_expr_ast* ast);
+static cxpr_expr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char* name);
 
-static cxpr_ast* cxpr_alias_make_field_from_expanded(cxpr_ast* expanded, const char* field) {
-    cxpr_ast** args;
+static cxpr_expr_ast* cxpr_alias_make_field_from_expanded(cxpr_expr_ast* expanded, const char* field) {
+    cxpr_expr_ast** args;
     char** arg_names;
-    cxpr_ast* out;
+    cxpr_expr_ast* out;
 
     if (!expanded || !field) return NULL;
     if (expanded->type == CXPR_NODE_FUNCTION_CALL) {
         args = NULL;
         arg_names = NULL;
         if (expanded->data.function_call.argc > 0u) {
-            args = (cxpr_ast**)calloc(expanded->data.function_call.argc, sizeof(*args));
+            args = (cxpr_expr_ast**)calloc(expanded->data.function_call.argc, sizeof(*args));
             if (!args) return NULL;
             for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) {
-                args[i] = cxpr_ast_clone(expanded->data.function_call.args[i]);
+                args[i] = cxpr_expr_ast_clone(expanded->data.function_call.args[i]);
                 if (!args[i]) {
-                    for (size_t j = 0u; j < i; ++j) cxpr_ast_free(args[j]);
+                    for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(args[j]);
                     free(args);
                     return NULL;
                 }
@@ -167,12 +167,12 @@ static cxpr_ast* cxpr_alias_make_field_from_expanded(cxpr_ast* expanded, const c
                 expanded->data.function_call.argc);
             if (expanded->data.function_call.argc > 0u &&
                 expanded->data.function_call.arg_names && !arg_names) {
-                for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) cxpr_ast_free(args[i]);
+                for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) cxpr_expr_ast_free(args[i]);
                 free(args);
                 return NULL;
             }
         }
-        out = cxpr_ast_new_producer_access_named(
+        out = cxpr_expr_ast_producer_field_named_new(
             expanded->data.function_call.name,
             args,
             arg_names,
@@ -180,7 +180,7 @@ static cxpr_ast* cxpr_alias_make_field_from_expanded(cxpr_ast* expanded, const c
             field);
         if (!out) {
             if (args) {
-                for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) cxpr_ast_free(args[i]);
+                for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) cxpr_expr_ast_free(args[i]);
                 free(args);
             }
             if (arg_names) {
@@ -193,14 +193,14 @@ static cxpr_ast* cxpr_alias_make_field_from_expanded(cxpr_ast* expanded, const c
     return NULL;
 }
 
-static cxpr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
-                                         cxpr_ast* const* args,
+static cxpr_expr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
+                                         cxpr_expr_ast* const* args,
                                          size_t argc) {
-    cxpr_ast** out;
+    cxpr_expr_ast** out;
     size_t i;
 
     if (argc == 0u) return NULL;
-    out = (cxpr_ast**)calloc(argc, sizeof(*out));
+    out = (cxpr_expr_ast**)calloc(argc, sizeof(*out));
     if (!out) {
         cxpr_alias_set_error(ctx, "Out of memory", 0u);
         return NULL;
@@ -208,7 +208,7 @@ static cxpr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
     for (i = 0u; i < argc; ++i) {
         out[i] = cxpr_alias_expand_ast(ctx, args[i]);
         if (!out[i]) {
-            while (i > 0u) cxpr_ast_free(out[--i]);
+            while (i > 0u) cxpr_expr_ast_free(out[--i]);
             free(out);
             return NULL;
         }
@@ -216,11 +216,11 @@ static cxpr_ast** cxpr_alias_expand_args(cxpr_alias_expand_ctx* ctx,
     return out;
 }
 
-static cxpr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char* name) {
+static cxpr_expr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char* name) {
     const char* expression;
     cxpr_parser* parser;
-    cxpr_ast* ast = NULL;
-    cxpr_ast* expanded = NULL;
+    cxpr_expr_ast* ast = NULL;
+    cxpr_expr_ast* expanded = NULL;
     cxpr_error parse_err = {0};
 
     expression = cxpr_alias_lookup(ctx, name);
@@ -231,7 +231,7 @@ static cxpr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char*
         cxpr_alias_set_error(ctx, "Out of memory", 0u);
         goto cleanup;
     }
-    ast = cxpr_parse(parser, expression, &parse_err);
+    ast = cxpr_expr_ast_parse(parser, expression, &parse_err);
     if (!ast) {
         if (ctx && ctx->err) *ctx->err = parse_err;
         goto cleanup;
@@ -239,23 +239,23 @@ static cxpr_ast* cxpr_alias_expand_named(cxpr_alias_expand_ctx* ctx, const char*
     expanded = cxpr_alias_expand_ast(ctx, ast);
 
 cleanup:
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     cxpr_alias_stack_pop(ctx);
     return expanded;
 }
 
-static cxpr_ast* cxpr_alias_expand_field(cxpr_alias_expand_ctx* ctx, const cxpr_ast* ast) {
+static cxpr_expr_ast* cxpr_alias_expand_field(cxpr_alias_expand_ctx* ctx, const cxpr_expr_ast* ast) {
     char* full_key;
     const char* alias_expr;
-    cxpr_ast* expanded;
-    cxpr_ast* out;
+    cxpr_expr_ast* expanded;
+    cxpr_expr_ast* out;
 
     if (ast->data.field_access.base) {
         expanded = cxpr_alias_expand_ast(ctx, ast->data.field_access.base);
         if (!expanded) return NULL;
-        out = cxpr_ast_new_field_access_expr(expanded, ast->data.field_access.field);
-        if (!out) cxpr_ast_free(expanded);
+        out = cxpr_expr_ast_field_expr_new(expanded, ast->data.field_access.field);
+        if (!out) cxpr_expr_ast_free(expanded);
         return out;
     }
 
@@ -276,17 +276,17 @@ static cxpr_ast* cxpr_alias_expand_field(cxpr_alias_expand_ctx* ctx, const cxpr_
         expanded = cxpr_alias_expand_named(ctx, ast->data.field_access.object);
         if (!expanded) return NULL;
         out = cxpr_alias_make_field_from_expanded(expanded, ast->data.field_access.field);
-        cxpr_ast_free(expanded);
+        cxpr_expr_ast_free(expanded);
         if (out) return out;
     }
-    return cxpr_ast_clone(ast);
+    return cxpr_expr_ast_clone(ast);
 }
 
-static cxpr_ast* cxpr_alias_expand_chain(cxpr_alias_expand_ctx* ctx, const cxpr_ast* ast) {
+static cxpr_expr_ast* cxpr_alias_expand_chain(cxpr_alias_expand_ctx* ctx, const cxpr_expr_ast* ast) {
     char* full_key = NULL;
     char* tail = NULL;
-    cxpr_ast* expanded = NULL;
-    cxpr_ast* out = NULL;
+    cxpr_expr_ast* expanded = NULL;
+    cxpr_expr_ast* out = NULL;
 
     full_key = cxpr_alias_join_path(ast->data.chain_access.path, 0u, ast->data.chain_access.depth);
     if (!full_key) {
@@ -305,20 +305,20 @@ static cxpr_ast* cxpr_alias_expand_chain(cxpr_alias_expand_ctx* ctx, const cxpr_
         if (!expanded) return NULL;
         tail = cxpr_alias_join_path(ast->data.chain_access.path, 1u, ast->data.chain_access.depth);
         if (!tail) {
-            cxpr_ast_free(expanded);
+            cxpr_expr_ast_free(expanded);
             cxpr_alias_set_error(ctx, "Out of memory", 0u);
             return NULL;
         }
         out = cxpr_alias_make_field_from_expanded(expanded, tail);
         free(tail);
-        cxpr_ast_free(expanded);
+        cxpr_expr_ast_free(expanded);
         if (out) return out;
     }
-    return cxpr_ast_clone(ast);
+    return cxpr_expr_ast_clone(ast);
 }
 
-static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_ast* ast) {
-    cxpr_ast** args;
+static cxpr_expr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_expr_ast* ast) {
+    cxpr_expr_ast** args;
     char** arg_names;
 
     if (!ast) return NULL;
@@ -327,7 +327,7 @@ static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_as
             if (cxpr_alias_lookup(ctx, ast->data.identifier.name)) {
                 return cxpr_alias_expand_named(ctx, ast->data.identifier.name);
             }
-            return cxpr_ast_clone(ast);
+            return cxpr_expr_ast_clone(ast);
         }
         case CXPR_NODE_FIELD_ACCESS:
             return cxpr_alias_expand_field(ctx, ast);
@@ -335,36 +335,36 @@ static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_as
             return cxpr_alias_expand_chain(ctx, ast);
         case CXPR_NODE_BINARY_OP:
         {
-            cxpr_ast* left = cxpr_alias_expand_ast(ctx, ast->data.binary_op.left);
-            cxpr_ast* right = left ? cxpr_alias_expand_ast(ctx, ast->data.binary_op.right) : NULL;
+            cxpr_expr_ast* left = cxpr_alias_expand_ast(ctx, ast->data.binary_op.left);
+            cxpr_expr_ast* right = left ? cxpr_alias_expand_ast(ctx, ast->data.binary_op.right) : NULL;
             if (!left || !right) {
-                cxpr_ast_free(left);
-                cxpr_ast_free(right);
+                cxpr_expr_ast_free(left);
+                cxpr_expr_ast_free(right);
                 return NULL;
             }
-            return cxpr_ast_new_binary_op(ast->data.binary_op.op, left, right);
+            return cxpr_expr_ast_binary_new(ast->data.binary_op.op, left, right);
         }
         case CXPR_NODE_UNARY_OP:
         {
-            cxpr_ast* operand = cxpr_alias_expand_ast(ctx, ast->data.unary_op.operand);
+            cxpr_expr_ast* operand = cxpr_alias_expand_ast(ctx, ast->data.unary_op.operand);
             if (!operand) return NULL;
-            return cxpr_ast_new_unary_op(ast->data.unary_op.op, operand);
+            return cxpr_expr_ast_unary_new(ast->data.unary_op.op, operand);
         }
         case CXPR_NODE_FUNCTION_CALL:
         {
-            cxpr_ast* out_call;
+            cxpr_expr_ast* out_call;
             args = cxpr_alias_expand_args(ctx, ast->data.function_call.args, ast->data.function_call.argc);
             if (ast->data.function_call.argc > 0u && !args) {
                 return NULL;
             }
             arg_names = cxpr_alias_clone_arg_names(ast->data.function_call.arg_names, ast->data.function_call.argc);
             if (ast->data.function_call.argc > 0u && ast->data.function_call.arg_names && !arg_names) {
-                for (size_t i = 0u; i < ast->data.function_call.argc; ++i) cxpr_ast_free(args[i]);
+                for (size_t i = 0u; i < ast->data.function_call.argc; ++i) cxpr_expr_ast_free(args[i]);
                 free(args);
                 cxpr_alias_set_error(ctx, "Out of memory", 0u);
                 return NULL;
             }
-            out_call = cxpr_ast_new_function_call_named(
+            out_call = cxpr_expr_ast_call_named_new(
                 ast->data.function_call.name,
                 args,
                 arg_names,
@@ -376,12 +376,12 @@ static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_as
             if (ast->data.producer_access.argc > 0u && !args) return NULL;
             arg_names = cxpr_alias_clone_arg_names(ast->data.producer_access.arg_names, ast->data.producer_access.argc);
             if (ast->data.producer_access.argc > 0u && ast->data.producer_access.arg_names && !arg_names) {
-                for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) cxpr_ast_free(args[i]);
+                for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) cxpr_expr_ast_free(args[i]);
                 free(args);
                 cxpr_alias_set_error(ctx, "Out of memory", 0u);
                 return NULL;
             }
-            return cxpr_ast_new_producer_access_named(
+            return cxpr_expr_ast_producer_field_named_new(
                 ast->data.producer_access.name,
                 args,
                 arg_names,
@@ -389,30 +389,30 @@ static cxpr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cxpr_as
                 ast->data.producer_access.field);
         case CXPR_NODE_LOOKBACK:
         {
-            cxpr_ast* target = cxpr_alias_expand_ast(ctx, ast->data.lookback.target);
-            cxpr_ast* index = target ? cxpr_alias_expand_ast(ctx, ast->data.lookback.index) : NULL;
+            cxpr_expr_ast* target = cxpr_alias_expand_ast(ctx, ast->data.lookback.target);
+            cxpr_expr_ast* index = target ? cxpr_alias_expand_ast(ctx, ast->data.lookback.index) : NULL;
             if (!target || !index) {
-                cxpr_ast_free(target);
-                cxpr_ast_free(index);
+                cxpr_expr_ast_free(target);
+                cxpr_expr_ast_free(index);
                 return NULL;
             }
-            return cxpr_ast_new_lookback(target, index);
+            return cxpr_expr_ast_lookback_new(target, index);
         }
         case CXPR_NODE_TERNARY:
         {
-            cxpr_ast* condition = cxpr_alias_expand_ast(ctx, ast->data.ternary.condition);
-            cxpr_ast* true_branch = condition ? cxpr_alias_expand_ast(ctx, ast->data.ternary.true_branch) : NULL;
-            cxpr_ast* false_branch = true_branch ? cxpr_alias_expand_ast(ctx, ast->data.ternary.false_branch) : NULL;
+            cxpr_expr_ast* condition = cxpr_alias_expand_ast(ctx, ast->data.ternary.condition);
+            cxpr_expr_ast* true_branch = condition ? cxpr_alias_expand_ast(ctx, ast->data.ternary.true_branch) : NULL;
+            cxpr_expr_ast* false_branch = true_branch ? cxpr_alias_expand_ast(ctx, ast->data.ternary.false_branch) : NULL;
             if (!condition || !true_branch || !false_branch) {
-                cxpr_ast_free(condition);
-                cxpr_ast_free(true_branch);
-                cxpr_ast_free(false_branch);
+                cxpr_expr_ast_free(condition);
+                cxpr_expr_ast_free(true_branch);
+                cxpr_expr_ast_free(false_branch);
                 return NULL;
             }
-            return cxpr_ast_new_ternary(condition, true_branch, false_branch);
+            return cxpr_expr_ast_ternary_new(condition, true_branch, false_branch);
         }
         default:
-            return cxpr_ast_clone(ast);
+            return cxpr_expr_ast_clone(ast);
     }
 }
 
@@ -422,8 +422,8 @@ int cxpr_expand_aliases(const char* expression,
                         char** out_expression,
                         cxpr_error* err) {
     cxpr_parser* parser = NULL;
-    cxpr_ast* ast = NULL;
-    cxpr_ast* expanded = NULL;
+    cxpr_expr_ast* ast = NULL;
+    cxpr_expr_ast* expanded = NULL;
     cxpr_alias_expand_ctx ctx = {0};
     int ok = 0;
 
@@ -438,7 +438,7 @@ int cxpr_expand_aliases(const char* expression,
         }
         return 0;
     }
-    ast = cxpr_parse(parser, expression ? expression : "", err);
+    ast = cxpr_expr_ast_parse(parser, expression ? expression : "", err);
     if (!ast) goto cleanup;
 
     ctx.aliases = aliases;
@@ -446,7 +446,7 @@ int cxpr_expand_aliases(const char* expression,
     ctx.err = err;
     expanded = cxpr_alias_expand_ast(&ctx, ast);
     if (!expanded) goto cleanup;
-    *out_expression = cxpr_ast_to_string(expanded);
+    *out_expression = cxpr_expr_ast_to_string(expanded);
     ok = (*out_expression != NULL);
     if (!ok && err) {
         err->message = "Out of memory";
@@ -455,8 +455,8 @@ int cxpr_expand_aliases(const char* expression,
 
 cleanup:
     free(ctx.stack);
-    cxpr_ast_free(expanded);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(expanded);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     return ok;
 }

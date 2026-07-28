@@ -36,7 +36,7 @@ static void test_program_compile_and_eval(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "a + b * 2", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "a + b * 2", &err);
     assert(ast);
     cxpr_context_set(ctx, "a", 3.0);
     cxpr_context_set(ctx, "b", 4.0);
@@ -50,7 +50,7 @@ static void test_program_compile_and_eval(void) {
     ASSERT_DOUBLE_EQ(result, 11.0);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -62,7 +62,7 @@ static void test_program_eval_bool(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "price > $limit", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "price > $limit", &err);
     assert(ast);
     cxpr_context_set(ctx, "price", 10.0);
     cxpr_context_set_param(ctx, "limit", 5.0);
@@ -76,7 +76,7 @@ static void test_program_eval_bool(void) {
     assert(result == true);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -88,7 +88,7 @@ static void test_program_eval_bool_param(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "$enabled and x > y", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "$enabled and x > y", &err);
     cxpr_program* prog;
     bool result;
 
@@ -111,7 +111,7 @@ static void test_program_eval_bool_param(void) {
     assert(result == false);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -123,7 +123,7 @@ static void test_program_eval_root_bool_param(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "$enabled", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "$enabled", &err);
     cxpr_program* prog;
     bool result;
 
@@ -139,7 +139,7 @@ static void test_program_eval_root_bool_param(void) {
     assert(result == true);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -151,7 +151,7 @@ static void test_program_eval_string_equality(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "region == \"EU\"", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "region == \"EU\"", &err);
     cxpr_program* prog;
     bool result;
 
@@ -172,7 +172,7 @@ static void test_program_eval_string_equality(void) {
     assert(result == false);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -184,7 +184,7 @@ static void test_program_eval_extended_scalar_equality(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         p,
         "null_a() == null_b() and ts_a() == ts_b() and dur_a() != dur_b()",
         &err);
@@ -208,7 +208,7 @@ static void test_program_eval_extended_scalar_equality(void) {
     assert(result == true);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -220,7 +220,7 @@ static void test_program_eval_top_level_nested_array(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "[1, [2, 3], flag]", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "[1, [2, 3], flag]", &err);
     cxpr_program* prog;
     cxpr_value result = cxpr_null();
 
@@ -246,7 +246,7 @@ static void test_program_eval_top_level_nested_array(void) {
 
     cxpr_value_free(&result);
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -258,7 +258,7 @@ static void test_program_eval_out_api(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "a + b * 2", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "a + b * 2", &err);
     cxpr_program* prog;
     double result = 0.0;
 
@@ -273,7 +273,7 @@ static void test_program_eval_out_api(void) {
     ASSERT_DOUBLE_EQ(result, 11.0);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -285,7 +285,7 @@ static void test_program_eval_number_rejects_bool_result(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "price > $limit", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "price > $limit", &err);
     cxpr_program* prog;
     double result = 0.0;
 
@@ -301,7 +301,7 @@ static void test_program_eval_number_rejects_bool_result(void) {
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -313,8 +313,8 @@ static void test_program_if_requires_bool_condition(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast_bool;
-    cxpr_ast* ast_number;
+    cxpr_expr_ast* ast_bool;
+    cxpr_expr_ast* ast_number;
     cxpr_program* prog_bool;
     cxpr_program* prog_number;
     double result = 0.0;
@@ -324,7 +324,7 @@ static void test_program_if_requires_bool_condition(void) {
     assert(reg);
     cxpr_register_defaults(reg);
 
-    ast_bool = cxpr_parse(p, "if(true, 10, 20)", &err);
+    ast_bool = cxpr_expr_ast_parse(p, "if(true, 10, 20)", &err);
     assert(ast_bool);
     prog_bool = cxpr_compile(ast_bool, reg, &err);
     assert(prog_bool);
@@ -332,7 +332,7 @@ static void test_program_if_requires_bool_condition(void) {
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(result, 10.0);
 
-    ast_number = cxpr_parse(p, "if(1.0, 30, 40)", &err);
+    ast_number = cxpr_expr_ast_parse(p, "if(1.0, 30, 40)", &err);
     assert(ast_number);
     prog_number = cxpr_compile(ast_number, reg, &err);
     assert(prog_number);
@@ -341,8 +341,8 @@ static void test_program_if_requires_bool_condition(void) {
 
     cxpr_program_free(prog_bool);
     cxpr_program_free(prog_number);
-    cxpr_ast_free(ast_bool);
-    cxpr_ast_free(ast_number);
+    cxpr_expr_ast_free(ast_bool);
+    cxpr_expr_ast_free(ast_number);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -354,7 +354,7 @@ static void test_program_eval_double_rejects_bool_intermediate_arithmetic(void) 
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "1 + (price > $limit)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "1 + (price > $limit)", &err);
     cxpr_program* prog;
 
     assert(ast);
@@ -365,7 +365,7 @@ static void test_program_eval_double_rejects_bool_intermediate_arithmetic(void) 
     assert(!prog);
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -377,7 +377,7 @@ static void test_program_dump(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "a + b * 2", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "a + b * 2", &err);
     assert(ast);
 
     cxpr_program* prog = cxpr_compile(ast, reg, &err);
@@ -398,7 +398,7 @@ static void test_program_dump(void) {
 
     fclose(tmp);
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);

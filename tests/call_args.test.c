@@ -3,18 +3,18 @@
 #include <math.h>
 #include <stdio.h>
 
-bool cxpr_call_bind_args(const cxpr_ast* ast, const cxpr_func_entry* entry,
-                         const cxpr_ast** out_args,
+bool cxpr_call_bind_args(const cxpr_expr_ast* ast, const cxpr_func_entry* entry,
+                         const cxpr_expr_ast** out_args,
                          cxpr_error_code* out_code,
                          const char** out_message);
 
 static void test_call_arg_binding_reorders_named_arguments(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_error err = {0};
     cxpr_func_entry* entry;
-    const cxpr_ast* ordered[2] = {0};
+    const cxpr_expr_ast* ordered[2] = {0};
     const char* params[] = {"slow", "fast"};
 
     assert(parser && reg);
@@ -22,18 +22,18 @@ static void test_call_arg_binding_reorders_named_arguments(void) {
     cxpr_registry_add_binary(reg, "spread", fmax);
     assert(cxpr_registry_set_param_names(reg, "spread", params, 2));
 
-    ast = cxpr_parse(parser, "spread(fast=9, slow=21)", &err);
+    ast = cxpr_expr_ast_parse(parser, "spread(fast=9, slow=21)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "spread");
     assert(entry);
 
     assert(cxpr_call_bind_args(ast, entry, ordered, NULL, NULL));
-    assert(cxpr_ast_type(ordered[0]) == CXPR_NODE_NUMBER);
-    assert(cxpr_ast_type(ordered[1]) == CXPR_NODE_NUMBER);
-    assert(cxpr_ast_number_value(ordered[0]) == 21.0);
-    assert(cxpr_ast_number_value(ordered[1]) == 9.0);
+    assert(cxpr_expr_ast_kind_of(ordered[0]) == CXPR_NODE_NUMBER);
+    assert(cxpr_expr_ast_kind_of(ordered[1]) == CXPR_NODE_NUMBER);
+    assert(cxpr_expr_ast_number_value(ordered[0]) == 21.0);
+    assert(cxpr_expr_ast_number_value(ordered[1]) == 9.0);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
 }
@@ -41,7 +41,7 @@ static void test_call_arg_binding_reorders_named_arguments(void) {
 static void test_call_arg_binding_reports_named_arg_error(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_error err = {0};
     cxpr_func_entry* entry;
     const char* params[] = {"slow", "fast"};
@@ -52,7 +52,7 @@ static void test_call_arg_binding_reports_named_arg_error(void) {
     cxpr_registry_add_binary(reg, "spread", fmax);
     assert(cxpr_registry_set_param_names(reg, "spread", params, 2));
 
-    ast = cxpr_parse(parser, "spread(fast=9, nope=21)", &err);
+    ast = cxpr_expr_ast_parse(parser, "spread(fast=9, nope=21)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "spread");
     assert(entry);
@@ -61,7 +61,7 @@ static void test_call_arg_binding_reports_named_arg_error(void) {
     assert(code == CXPR_ERR_SYNTAX);
     assert(message != NULL);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
 }
@@ -69,25 +69,25 @@ static void test_call_arg_binding_reports_named_arg_error(void) {
 static void test_call_arg_binding_accepts_bars_alias_for_samples(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_error err = {0};
     cxpr_func_entry* entry;
-    const cxpr_ast* ordered[2] = {0};
+    const cxpr_expr_ast* ordered[2] = {0};
 
     assert(parser && reg);
     cxpr_register_defaults(reg);
 
-    ast = cxpr_parse(parser, "rising(value=close, bars=3)", &err);
+    ast = cxpr_expr_ast_parse(parser, "rising(value=close, bars=3)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "rising");
     assert(entry);
 
     assert(cxpr_call_bind_args(ast, entry, ordered, NULL, NULL));
-    assert(cxpr_ast_type(ordered[0]) == CXPR_NODE_IDENTIFIER);
-    assert(cxpr_ast_type(ordered[1]) == CXPR_NODE_NUMBER);
-    assert(cxpr_ast_number_value(ordered[1]) == 3.0);
+    assert(cxpr_expr_ast_kind_of(ordered[0]) == CXPR_NODE_IDENTIFIER);
+    assert(cxpr_expr_ast_kind_of(ordered[1]) == CXPR_NODE_NUMBER);
+    assert(cxpr_expr_ast_number_value(ordered[1]) == 3.0);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
 }
@@ -95,25 +95,25 @@ static void test_call_arg_binding_accepts_bars_alias_for_samples(void) {
 static void test_call_arg_binding_accepts_condition_alias_for_value(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_error err = {0};
     cxpr_func_entry* entry;
-    const cxpr_ast* ordered[2] = {0};
+    const cxpr_expr_ast* ordered[2] = {0};
 
     assert(parser && reg);
     cxpr_register_defaults(reg);
 
-    ast = cxpr_parse(parser, "repeat(condition=close > base, bars=3)", &err);
+    ast = cxpr_expr_ast_parse(parser, "repeat(condition=close > base, bars=3)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "repeat");
     assert(entry);
 
     assert(cxpr_call_bind_args(ast, entry, ordered, NULL, NULL));
-    assert(cxpr_ast_type(ordered[0]) == CXPR_NODE_BINARY_OP);
-    assert(cxpr_ast_type(ordered[1]) == CXPR_NODE_NUMBER);
-    assert(cxpr_ast_number_value(ordered[1]) == 3.0);
+    assert(cxpr_expr_ast_kind_of(ordered[0]) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_expr_ast_kind_of(ordered[1]) == CXPR_NODE_NUMBER);
+    assert(cxpr_expr_ast_number_value(ordered[1]) == 3.0);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);
 }

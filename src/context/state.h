@@ -117,7 +117,7 @@ typedef struct {
 
 /** @brief One per-evaluation memoized AST result. */
 typedef struct {
-    const struct cxpr_ast* ast;
+    const struct cxpr_expr_ast* ast;
     unsigned long hash;
     cxpr_value value;
 } cxpr_eval_memo_entry;

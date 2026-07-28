@@ -21,11 +21,11 @@ static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     return result;
 }
@@ -35,11 +35,11 @@ static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_error_code expected) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
     return result;
 }
@@ -48,13 +48,13 @@ static cxpr_value ir_eval_typed(const char *expr,
                                       cxpr_context *ctx, cxpr_registry *reg) {
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_program *prog = cxpr_compile(ast, reg, &err);
     assert(prog != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_program(prog, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_program_free(prog);
     cxpr_parser_free(p);
     return result;
@@ -340,26 +340,26 @@ static void test_eval_double_wrapper(void) {
     cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
-    /* cxpr_ast_eval_double on a bool expression → NAN + TYPE_MISMATCH */
+    /* cxpr_expr_ast_eval_double on a bool expression → NAN + TYPE_MISMATCH */
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, "1.0 < 2.0", &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "1.0 < 2.0", &err);
     assert(ast != NULL);
     double d = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(isnan(d));
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
 
-    /* cxpr_ast_eval_double on a double expression → value, no error */
+    /* cxpr_expr_ast_eval_double on a double expression → value, no error */
     p = cxpr_parser_new();
     err = (cxpr_error){0};
-    ast = cxpr_parse(p, "2.0 + 3.0", &err);
+    ast = cxpr_expr_ast_parse(p, "2.0 + 3.0", &err);
     assert(ast != NULL);
     d = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(d, 5.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
 
     cxpr_context_free(ctx);
@@ -372,26 +372,26 @@ static void test_eval_bool_wrapper(void) {
     cxpr_register_defaults(reg);
     cxpr_context *ctx = cxpr_context_new();
 
-    /* cxpr_ast_eval_bool on a double expression → false + TYPE_MISMATCH */
+    /* cxpr_expr_ast_eval_bool on a double expression → false + TYPE_MISMATCH */
     cxpr_parser *p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, "1.0 + 2.0", &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "1.0 + 2.0", &err);
     assert(ast != NULL);
     bool b = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     assert(b == false);
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
 
-    /* cxpr_ast_eval_bool on a bool expression → value, no error */
+    /* cxpr_expr_ast_eval_bool on a bool expression → value, no error */
     p = cxpr_parser_new();
     err = (cxpr_error){0};
-    ast = cxpr_parse(p, "1.0 < 2.0", &err);
+    ast = cxpr_expr_ast_parse(p, "1.0 < 2.0", &err);
     assert(ast != NULL);
     b = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     assert(b == true);
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(p);
 
     cxpr_context_free(ctx);

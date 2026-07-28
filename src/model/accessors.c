@@ -120,7 +120,7 @@ void cxpr_model_record_fields_free(cxpr_model_record_field* fields, size_t count
     for (size_t i = 0; i < count; ++i) {
         free(fields[i].name);
         free(fields[i].source);
-        cxpr_ast_free(fields[i].expr);
+        cxpr_expr_ast_free(fields[i].expr);
     }
     free(fields);
 }
@@ -162,13 +162,13 @@ void cxpr_model_free(cxpr_model* model) {
     for (size_t i = 0; i < model->constant_count; ++i) {
         free(model->constants[i].name);
         free(model->constants[i].source);
-        cxpr_ast_free(model->constants[i].expr);
+        cxpr_expr_ast_free(model->constants[i].expr);
     }
     free(model->constants);
     for (size_t i = 0; i < model->binding_count; ++i) {
         free(model->bindings[i].name);
         free(model->bindings[i].source);
-        cxpr_ast_free(model->bindings[i].expr);
+        cxpr_expr_ast_free(model->bindings[i].expr);
     }
     free(model->bindings);
     for (size_t i = 0; i < model->output_count; ++i) free(model->outputs[i]);
@@ -177,7 +177,7 @@ void cxpr_model_free(cxpr_model* model) {
     free(model->output_has_spans);
     for (size_t i = 0; i < model->anonymous_output_count; ++i) {
         free(model->anonymous_outputs[i].source);
-        cxpr_ast_free(model->anonymous_outputs[i].expr);
+        cxpr_expr_ast_free(model->anonymous_outputs[i].expr);
     }
     free(model->anonymous_outputs);
     cxpr_model_metadatas_free(model->metadatas, model->metadata_count);
@@ -293,7 +293,7 @@ const char* cxpr_model_constant_name(const cxpr_model* model, size_t index) {
     return model && index < model->constant_count ? model->constants[index].name : NULL;
 }
 
-const cxpr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index) {
+const cxpr_expr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index) {
     return model && index < model->constant_count ? model->constants[index].expr : NULL;
 }
 
@@ -335,7 +335,7 @@ const char* cxpr_model_binding_name(const cxpr_model* model, size_t index) {
     return model && index < model->binding_count ? model->bindings[index].name : NULL;
 }
 
-const cxpr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index) {
+const cxpr_expr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index) {
     return model && index < model->binding_count ? model->bindings[index].expr : NULL;
 }
 

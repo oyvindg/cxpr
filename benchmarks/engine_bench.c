@@ -50,8 +50,8 @@ static void report_detail(const char* name, long long ns) {
     printf("  %-24s %7.2f ns/bar\n", name, (double)ns / total);
 }
 
-static cxpr_ast* parse_or_die(cxpr_parser* parser, const char* expr, cxpr_error* err) {
-    cxpr_ast* ast = cxpr_parse(parser, expr, err);
+static cxpr_expr_ast* parse_or_die(cxpr_parser* parser, const char* expr, cxpr_error* err) {
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, expr, err);
     if (!ast) {
         fprintf(stderr, "parse failed for '%s': %s\n", expr, err->message ? err->message : "?");
         exit(1);
@@ -59,7 +59,7 @@ static cxpr_ast* parse_or_die(cxpr_parser* parser, const char* expr, cxpr_error*
     return ast;
 }
 
-static cxpr_program* compile_or_die(cxpr_ast* ast, const cxpr_registry* reg, cxpr_error* err) {
+static cxpr_program* compile_or_die(cxpr_expr_ast* ast, const cxpr_registry* reg, cxpr_error* err) {
     cxpr_program* program = cxpr_compile(ast, reg, err);
     if (!program) {
         fprintf(stderr, "compile failed: %s\n", err->message ? err->message : "?");
@@ -84,9 +84,9 @@ static int run_basic(void) {
         cxpr_registry* reg = cxpr_registry_new();
         cxpr_parser* parser = cxpr_parser_new();
         cxpr_context* ctx = cxpr_context_new();
-        cxpr_ast* buy_ast;
-        cxpr_ast* exit_ast;
-        cxpr_ast* score_ast;
+        cxpr_expr_ast* buy_ast;
+        cxpr_expr_ast* exit_ast;
+        cxpr_expr_ast* score_ast;
         cxpr_program* buy_prog;
         cxpr_program* exit_prog;
         cxpr_program* score_prog;
@@ -122,7 +122,7 @@ static int run_basic(void) {
         }
         raw_ns = now_ns() - start;
         cxpr_program_free(score_prog); cxpr_program_free(exit_prog); cxpr_program_free(buy_prog);
-        cxpr_ast_free(score_ast); cxpr_ast_free(exit_ast); cxpr_ast_free(buy_ast);
+        cxpr_expr_ast_free(score_ast); cxpr_expr_ast_free(exit_ast); cxpr_expr_ast_free(buy_ast);
         cxpr_context_free(ctx); cxpr_parser_free(parser); cxpr_registry_free(reg);
     }
     { /* low-level */
@@ -244,9 +244,9 @@ static int run_lookback(void) {
         cxpr_registry* reg = cxpr_registry_new();
         cxpr_parser* parser = cxpr_parser_new();
         cxpr_context* ctx = cxpr_context_new();
-        cxpr_ast* brk_ast;
-        cxpr_ast* mom_ast;
-        cxpr_ast* sm_ast;
+        cxpr_expr_ast* brk_ast;
+        cxpr_expr_ast* mom_ast;
+        cxpr_expr_ast* sm_ast;
         cxpr_program* brk_prog;
         cxpr_program* mom_prog;
         cxpr_program* sm_prog;
@@ -286,7 +286,7 @@ static int run_lookback(void) {
         }
         raw_ns = now_ns() - start;
         cxpr_program_free(sm_prog); cxpr_program_free(mom_prog); cxpr_program_free(brk_prog);
-        cxpr_ast_free(sm_ast); cxpr_ast_free(mom_ast); cxpr_ast_free(brk_ast);
+        cxpr_expr_ast_free(sm_ast); cxpr_expr_ast_free(mom_ast); cxpr_expr_ast_free(brk_ast);
         cxpr_context_free(ctx); cxpr_parser_free(parser); cxpr_registry_free(reg);
     }
     { /* low-level: host writes + installs its own lookback resolver, tracks cursor */

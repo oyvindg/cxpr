@@ -28,13 +28,13 @@ static const char* cxpr_ir_unknown_identifier_message(const cxpr_ir_instr* instr
     return message;
 }
 
-static bool cxpr_ir_resolve_lookback_target(const cxpr_ast* target,
+static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
                                             size_t offset,
                                             const cxpr_context* ctx,
                                             const cxpr_registry* reg,
                                             cxpr_value* out,
                                             cxpr_error* err) {
-    cxpr_ast index_ast = {0};
+    cxpr_expr_ast index_ast = {0};
 
     if (!reg || !reg->lookback_resolver || !target || !out) {
         return false;
@@ -51,9 +51,9 @@ static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
                                            const cxpr_registry* reg,
                                            cxpr_value* out,
                                            cxpr_error* err) {
-    const cxpr_ast* borrowed = instr ? (const cxpr_ast*)instr->payload : NULL;
-    cxpr_ast target = {0};
-    cxpr_ast* target_ptr = (cxpr_ast*)borrowed;
+    const cxpr_expr_ast* borrowed = instr ? (const cxpr_expr_ast*)instr->payload : NULL;
+    cxpr_expr_ast target = {0};
+    cxpr_expr_ast* target_ptr = (cxpr_expr_ast*)borrowed;
     char field_key[256];
     char chain_key[512];
     char* segments[32];
@@ -699,8 +699,8 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             break;
         case CXPR_OP_LOOKBACK_RESOLVE:
             {
-                const cxpr_ast* target = (const cxpr_ast*)instr->payload;
-                cxpr_ast index_ast = {0};
+                const cxpr_expr_ast* target = (const cxpr_expr_ast*)instr->payload;
+                cxpr_expr_ast index_ast = {0};
                 result = cxpr_num(NAN);
                 if (!reg || !reg->lookback_resolver || !target) {
                     return cxpr_ir_runtime_error(err, "Lookback requires registry resolver");

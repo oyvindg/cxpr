@@ -52,12 +52,12 @@ int main(void) {
     cxpr_context_set_param(ctx, "max_slip", 0.10);
     cxpr_context_set_param(ctx, "max_heading_error", 12.0);
 
-    cxpr_ast* stop_expr = cxpr_parse(
+    cxpr_expr_ast* stop_expr = cxpr_expr_ast_parse(
         parser,
         "distance_front < $stop_distance ? 0.0 : (battery > 20 ? max_speed : 0.0)",
         &err
     );
-    cxpr_ast* slip_expr = cxpr_parse(
+    cxpr_expr_ast* slip_expr = cxpr_expr_ast_parse(
         parser,
         "slip_ratio > $max_slip or abs(heading_error) > $max_heading_error",
         &err
@@ -82,8 +82,8 @@ int main(void) {
     cxpr_context_set_fields(ctx, "pose3", xyz, pose3_xyz, 3);
     cxpr_context_set_param(ctx, "capture_radius", 5.0);
 
-    cxpr_ast* ast2 = cxpr_parse(parser, "planar_goal_range(goal2, pose2) < $capture_radius", &err);
-    cxpr_ast* ast3 = cxpr_parse(
+    cxpr_expr_ast* ast2 = cxpr_expr_ast_parse(parser, "planar_goal_range(goal2, pose2) < $capture_radius", &err);
+    cxpr_expr_ast* ast3 = cxpr_expr_ast_parse(
         parser,
         "spatial_waypoint_range(goal3.x, goal3.y, goal3.z, pose3.x, pose3.y, pose3.z) < $capture_radius",
         &err
@@ -115,17 +115,17 @@ int main(void) {
         };
 
         cxpr_context_set_param(ctx, "capture_radius", 0.5);
-        cxpr_ast* cmd_expr = cxpr_parse(
+        cxpr_expr_ast* cmd_expr = cxpr_expr_ast_parse(
             parser,
             "distance_front < $stop_distance ? 0.0 : (battery > 20 ? max_speed : 0.0)",
             &err
         );
-        cxpr_ast* guard_expr = cxpr_parse(
+        cxpr_expr_ast* guard_expr = cxpr_expr_ast_parse(
             parser,
             "slip_ratio > $max_slip or abs(heading_error) > $max_heading_error",
             &err
         );
-        cxpr_ast* reached_expr = cxpr_parse(parser, "planar_goal_range(goal, pose) < $capture_radius", &err);
+        cxpr_expr_ast* reached_expr = cxpr_expr_ast_parse(parser, "planar_goal_range(goal, pose) < $capture_radius", &err);
         assert(cmd_expr);
         assert(guard_expr);
         assert(reached_expr);
@@ -146,9 +146,9 @@ int main(void) {
             assert(cxpr_test_eval_ast_bool(reached_expr, ctx, reg, &err) == frames[i].expected_reached);
         }
 
-        cxpr_ast_free(reached_expr);
-        cxpr_ast_free(guard_expr);
-        cxpr_ast_free(cmd_expr);
+        cxpr_expr_ast_free(reached_expr);
+        cxpr_expr_ast_free(guard_expr);
+        cxpr_expr_ast_free(cmd_expr);
     }
 
     {
@@ -255,10 +255,10 @@ int main(void) {
         cxpr_engine_session_free(session);
     }
 
-    cxpr_ast_free(ast3);
-    cxpr_ast_free(ast2);
-    cxpr_ast_free(slip_expr);
-    cxpr_ast_free(stop_expr);
+    cxpr_expr_ast_free(ast3);
+    cxpr_expr_ast_free(ast2);
+    cxpr_expr_ast_free(slip_expr);
+    cxpr_expr_ast_free(stop_expr);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     cxpr_parser_free(parser);

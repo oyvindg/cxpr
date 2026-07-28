@@ -139,7 +139,7 @@ void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target) {
     program->code[at].index = target;
 }
 
-bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                   cxpr_value* out) {
     cxpr_value left, right;
     double numeric;
@@ -266,7 +266,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         const cxpr_func_entry* entry;
         size_t argc = ast->data.function_call.argc;
 
-        if (!reg || cxpr_ast_call_uses_named_args(ast) || argc > CXPR_MAX_CALL_ARGS) return false;
+        if (!reg || cxpr_expr_ast_call_uses_named_args(ast) || argc > CXPR_MAX_CALL_ARGS) return false;
 
         if (strcmp(ast->data.function_call.name, "if") == 0 && argc == 3u) {
             cxpr_value condition;
@@ -312,7 +312,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
     }
 }
 
-bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, double* out) {
+bool cxpr_ir_constant_value(const cxpr_expr_ast* ast, const cxpr_registry* reg, double* out) {
     cxpr_value value;
 
     if (!out) return false;
@@ -322,7 +322,7 @@ bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, doubl
     return true;
 }
 
-bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
+bool cxpr_ir_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right) {
     size_t i;
 
     if (left == right) return true;
@@ -647,10 +647,10 @@ bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
     return true;
 }
 
-cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
+cxpr_program* cxpr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                            cxpr_error* err) {
-    cxpr_ast* owned_ast = NULL;
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* owned_ast = NULL;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
     const unsigned long version = reg ? reg->version : 0u;
     if (err) *err = (cxpr_error){0};
     if (!ast) {
@@ -682,7 +682,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
         return NULL;
     }
 
-    owned_ast = cxpr_ast_clone(ast);
+    owned_ast = cxpr_expr_ast_clone(ast);
     if (!owned_ast) {
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
@@ -695,7 +695,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
     prog->owned_ast = owned_ast;
     prog->ast = owned_ast;
     if (!cxpr_ir_compile(owned_ast, reg, &prog->ir, err)) {
-        cxpr_ast_free(owned_ast);
+        cxpr_expr_ast_free(owned_ast);
         free(prog);
         return NULL;
     }
@@ -706,7 +706,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
 void cxpr_program_free(cxpr_program* prog) {
     if (!prog) return;
     cxpr_ir_program_reset(&prog->ir);
-    cxpr_ast_free(prog->owned_ast);
+    cxpr_expr_ast_free(prog->owned_ast);
     free(prog);
 }
 

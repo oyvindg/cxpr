@@ -15,13 +15,13 @@ static bool eval_bool_both(const char* expr, cxpr_context* ctx) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* prog;
     bool tree_r = false;
     bool prog_r = false;
 
     cxpr_register_defaults(reg);
-    ast = cxpr_parse(p, expr, &err);
+    ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast && err.code == CXPR_OK);
 
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &tree_r, &err) && err.code == CXPR_OK);
@@ -38,7 +38,7 @@ static bool eval_bool_both(const char* expr, cxpr_context* ctx) {
     }
 
     cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_parser_free(p);
     return tree_r;
@@ -127,21 +127,21 @@ static void test_contains_array_membership(void) {
 static void test_errors(void) {
     cxpr_parser* p = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     /* Empty set is rejected. */
     err = (cxpr_error){0};
-    ast = cxpr_parse(p, "x in []", &err);
+    ast = cxpr_expr_ast_parse(p, "x in []", &err);
     assert(ast == NULL && err.code == CXPR_ERR_SYNTAX);
 
     /* Unclosed set bracket. */
     err = (cxpr_error){0};
-    ast = cxpr_parse(p, "x in [1, 2", &err);
+    ast = cxpr_expr_ast_parse(p, "x in [1, 2", &err);
     assert(ast == NULL && err.code == CXPR_ERR_SYNTAX);
 
     /* The old infix interval sugar was removed; use within(x, lo, hi). */
     err = (cxpr_error){0};
-    ast = cxpr_parse(p, "x within [1, 2]", &err);
+    ast = cxpr_expr_ast_parse(p, "x within [1, 2]", &err);
     assert(ast == NULL && err.code == CXPR_ERR_SYNTAX);
 
     cxpr_parser_free(p);

@@ -28,7 +28,7 @@ static double eval_expr(const char* expr) {
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -39,7 +39,7 @@ static double eval_expr(const char* expr) {
         assert(0);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -53,7 +53,7 @@ static bool eval_bool_expr(const char* expr) {
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -64,7 +64,7 @@ static bool eval_bool_expr(const char* expr) {
         assert(0);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -82,7 +82,7 @@ static bool eval_bool_expr_ctx(const char* expr, const char* names[], const doub
         cxpr_context_set(ctx, names[i], values[i]);
     }
 
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -93,7 +93,7 @@ static bool eval_bool_expr_ctx(const char* expr, const char* names[], const doub
         assert(0);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);
@@ -118,7 +118,7 @@ static double eval_expr_ctx(const char* expr, const char* names[], const double 
         cxpr_context_set(ctx, names[i], values[i]);
     }
 
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed: %s for '%s'\n", err.message, expr);
         assert(0);
@@ -129,7 +129,7 @@ static double eval_expr_ctx(const char* expr, const char* names[], const double 
         assert(0);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);

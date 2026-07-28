@@ -85,27 +85,27 @@ static bool cxpr_model_record_root_field_exists(const cxpr_model* model,
 
 static bool cxpr_model_function_call_accepts_record_root(
     const cxpr_model* model,
-    const cxpr_ast* call,
+    const cxpr_expr_ast* call,
     cxpr_registry* function_registry,
     char* const* external_refs,
     size_t external_ref_count,
     const char* reference) {
     cxpr_func_entry* entry;
-    if (!call || cxpr_ast_type(call) != CXPR_NODE_FUNCTION_CALL ||
+    if (!call || cxpr_expr_ast_kind_of(call) != CXPR_NODE_FUNCTION_CALL ||
         !function_registry || !reference) {
         return false;
     }
-    entry = cxpr_registry_find(function_registry, cxpr_ast_function_name(call));
+    entry = cxpr_registry_find(function_registry, cxpr_expr_ast_call_name(call));
     if (!entry ||
         !entry->defined_param_fields ||
-        entry->defined_param_count != cxpr_ast_function_argc(call)) {
+        entry->defined_param_count != cxpr_expr_ast_call_arg_count(call)) {
         return false;
     }
-    for (size_t arg_i = 0u; arg_i < cxpr_ast_function_argc(call); ++arg_i) {
-        const cxpr_ast* arg = cxpr_ast_function_arg(call, arg_i);
+    for (size_t arg_i = 0u; arg_i < cxpr_expr_ast_call_arg_count(call); ++arg_i) {
+        const cxpr_expr_ast* arg = cxpr_expr_ast_call_arg(call, arg_i);
         if (!arg ||
-            cxpr_ast_type(arg) != CXPR_NODE_IDENTIFIER ||
-            !cxpr_model_names_match(cxpr_ast_identifier_name(arg), reference)) {
+            cxpr_expr_ast_kind_of(arg) != CXPR_NODE_IDENTIFIER ||
+            !cxpr_model_names_match(cxpr_expr_ast_identifier_name(arg), reference)) {
             continue;
         }
         if (entry->defined_param_field_counts[arg_i] == 0u) return false;
@@ -128,7 +128,7 @@ static bool cxpr_model_function_call_accepts_record_root(
 
 static bool cxpr_model_expr_accepts_record_root_ref(
     const cxpr_model* model,
-    const cxpr_ast* expr,
+    const cxpr_expr_ast* expr,
     cxpr_registry* function_registry,
     char* const* external_refs,
     size_t external_ref_count,
@@ -138,11 +138,11 @@ static bool cxpr_model_expr_accepts_record_root_ref(
             model, expr, function_registry, external_refs, external_ref_count, reference)) {
         return true;
     }
-    switch (cxpr_ast_type(expr)) {
+    switch (cxpr_expr_ast_kind_of(expr)) {
     case CXPR_NODE_RECORD:
-        for (size_t i = 0u; i < cxpr_ast_record_field_count(expr); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(expr); ++i) {
             if (cxpr_model_expr_accepts_record_root_ref(
-                    model, cxpr_ast_record_field_value(expr, i), function_registry,
+                    model, cxpr_expr_ast_record_field_value(expr, i), function_registry,
                     external_refs, external_ref_count, reference)) {
                 return true;
             }
@@ -150,28 +150,28 @@ static bool cxpr_model_expr_accepts_record_root_ref(
         return false;
     case CXPR_NODE_BINARY_OP:
         return cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_left(expr), function_registry,
+                   model, cxpr_expr_ast_binary_left(expr), function_registry,
                    external_refs, external_ref_count, reference) ||
                cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_right(expr), function_registry,
+                   model, cxpr_expr_ast_binary_right(expr), function_registry,
                    external_refs, external_ref_count, reference);
     case CXPR_NODE_UNARY_OP:
         return cxpr_model_expr_accepts_record_root_ref(
-            model, cxpr_ast_operand(expr), function_registry,
+            model, cxpr_expr_ast_unary_operand(expr), function_registry,
             external_refs, external_ref_count, reference);
     case CXPR_NODE_FUNCTION_CALL:
-        for (size_t i = 0u; i < cxpr_ast_function_argc(expr); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_call_arg_count(expr); ++i) {
             if (cxpr_model_expr_accepts_record_root_ref(
-                    model, cxpr_ast_function_arg(expr, i), function_registry,
+                    model, cxpr_expr_ast_call_arg(expr, i), function_registry,
                     external_refs, external_ref_count, reference)) {
                 return true;
             }
         }
         return false;
     case CXPR_NODE_PRODUCER_ACCESS:
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(expr); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(expr); ++i) {
             if (cxpr_model_expr_accepts_record_root_ref(
-                    model, cxpr_ast_producer_arg(expr, i), function_registry,
+                    model, cxpr_expr_ast_producer_arg(expr, i), function_registry,
                     external_refs, external_ref_count, reference)) {
                 return true;
             }
@@ -179,20 +179,20 @@ static bool cxpr_model_expr_accepts_record_root_ref(
         return false;
     case CXPR_NODE_LOOKBACK:
         return cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_lookback_target(expr), function_registry,
+                   model, cxpr_expr_ast_lookback_target(expr), function_registry,
                    external_refs, external_ref_count, reference) ||
                cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_lookback_index(expr), function_registry,
+                   model, cxpr_expr_ast_lookback_index(expr), function_registry,
                    external_refs, external_ref_count, reference);
     case CXPR_NODE_TERNARY:
         return cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_ternary_condition(expr), function_registry,
+                   model, cxpr_expr_ast_ternary_condition(expr), function_registry,
                    external_refs, external_ref_count, reference) ||
                cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_ternary_true_branch(expr), function_registry,
+                   model, cxpr_expr_ast_ternary_true(expr), function_registry,
                    external_refs, external_ref_count, reference) ||
                cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_ast_ternary_false_branch(expr), function_registry,
+                   model, cxpr_expr_ast_ternary_false(expr), function_registry,
                    external_refs, external_ref_count, reference);
     default:
         return false;
@@ -336,7 +336,7 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
 }
 
 static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
-                                                 const cxpr_ast* expr,
+                                                 const cxpr_expr_ast* expr,
                                                  bool constant_expr,
                                                  cxpr_registry* function_registry,
                                                  char* const* external_refs,
@@ -349,8 +349,8 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
     size_t nrefs;
     size_t nparams;
 
-    if (expr && cxpr_ast_type(expr) == CXPR_NODE_RECORD) {
-        const size_t field_count = cxpr_ast_record_field_count(expr);
+    if (expr && cxpr_expr_ast_kind_of(expr) == CXPR_NODE_RECORD) {
+        const size_t field_count = cxpr_expr_ast_record_field_count(expr);
         const char** scoped_refs =
             (const char**)calloc(local_ref_count + field_count,
                                  sizeof(char*));
@@ -362,7 +362,7 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
         for (size_t i = 0u; i < field_count; ++i) {
             if (!cxpr_model_validate_expr_refs_scoped(
                     model,
-                    cxpr_ast_record_field_value(expr, i),
+                    cxpr_expr_ast_record_field_value(expr, i),
                     constant_expr,
                     function_registry,
                     external_refs,
@@ -373,13 +373,13 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
                 free(scoped_refs);
                 return false;
             }
-            scoped_refs[local_ref_count + i] = cxpr_ast_record_field_name(expr, i);
+            scoped_refs[local_ref_count + i] = cxpr_expr_ast_record_field_name(expr, i);
         }
         free(scoped_refs);
         return true;
     }
 
-    nparams = cxpr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
+    nparams = cxpr_expr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
     for (size_t i = 0; i < nparams && i < CXPR_ARRAY_COUNT(params); ++i) {
         if (!cxpr_model_constant_exists(model, params[i]) &&
             (constant_expr ||
@@ -391,7 +391,7 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
         }
     }
 
-    nrefs = cxpr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
+    nrefs = cxpr_expr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
     for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
         if (cxpr_model_local_reference_exists(local_refs, local_ref_count, refs[i])) continue;
         if (!constant_expr &&
@@ -416,7 +416,7 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
 }
 
 static bool cxpr_model_validate_expr_refs(const cxpr_model* model,
-                                          const cxpr_ast* expr,
+                                          const cxpr_expr_ast* expr,
                                           bool constant_expr,
                                           cxpr_registry* function_registry,
                                           char* const* external_refs,
@@ -436,7 +436,7 @@ static bool cxpr_model_param_exists(char* const* params, size_t count, const cha
 
 static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
                                                    const cxpr_model_record_function* fn,
-                                                   const cxpr_ast* expr,
+                                                   const cxpr_expr_ast* expr,
                                                    const char* const* local_refs,
                                                    size_t local_ref_count,
                                                    char* const* external_refs,
@@ -447,7 +447,7 @@ static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
     size_t nrefs;
     size_t nparams;
 
-    nparams = cxpr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
+    nparams = cxpr_expr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
     for (size_t i = 0; i < nparams && i < CXPR_ARRAY_COUNT(params); ++i) {
         if (!cxpr_model_constant_exists(model, params[i])) {
             cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -456,7 +456,7 @@ static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
         }
     }
 
-    nrefs = cxpr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
+    nrefs = cxpr_expr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
     for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
         if (cxpr_model_param_exists(fn->params, fn->param_count, refs[i])) continue;
         if (cxpr_model_local_reference_exists(local_refs, local_ref_count, refs[i])) continue;

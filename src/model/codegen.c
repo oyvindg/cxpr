@@ -116,24 +116,24 @@ static bool cxpr_model_c_defined_function_used(const cxpr_model_program* program
                                                bool* used,
                                                cxpr_error* err);
 static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program* program,
-                                                       const cxpr_ast* ast,
+                                                       const cxpr_expr_ast* ast,
                                                        bool* used,
                                                        cxpr_error* err);
-static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
                                         unsigned lookback_offset,
                                         void* userdata,
                                         cxpr_error* err);
-static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                                         unsigned lookback_offset,
                                         void* userdata,
                                         bool* handled,
                                         cxpr_error* err);
-static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
                                             unsigned lookback_offset,
                                             void* userdata,
                                             cxpr_error* err);
 static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
-                                      const cxpr_ast* ast,
+                                      const cxpr_expr_ast* ast,
                                       const char* function_prefix,
                                       const double* literal_param_values,
                                       size_t literal_param_count,
@@ -142,13 +142,13 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
                                       size_t child_call_count,
                                       cxpr_error* err);
 static char* cxpr_model_ast_expr_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
-                                                 const cxpr_ast* ast,
+                                                 const cxpr_expr_ast* ast,
                                                  cxpr_error* err);
 static bool cxpr_model_ast_is_record_like(const cxpr_model_program* program,
-                                          const cxpr_ast* ast,
+                                          const cxpr_expr_ast* ast,
                                           unsigned depth);
 static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
-                                            const cxpr_ast* ast,
+                                            const cxpr_expr_ast* ast,
                                             const char* field,
                                             const cxpr_c_target* target,
                                             cxpr_error* err,
@@ -249,57 +249,57 @@ static void cxpr_model_c_emit_source_comment(cxpr_model_c_buf* b,
     cxpr_model_c_puts(b, "\n");
 }
 
-static const cxpr_ast* cxpr_model_producer_arg_for_param(const cxpr_ast* ast,
+static const cxpr_expr_ast* cxpr_model_producer_arg_for_param(const cxpr_expr_ast* ast,
                                                          const char* param_name,
                                                          size_t param_index) {
-    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
-    if (cxpr_ast_producer_has_named_args(ast)) {
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
-            const char* arg_name = cxpr_ast_producer_arg_name(ast, i);
+    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
+    if (cxpr_expr_ast_producer_has_named_args(ast)) {
+        for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
+            const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, i);
             if (arg_name && param_name && cxpr_model_names_match(arg_name, param_name)) {
-                return cxpr_ast_producer_arg(ast, i);
+                return cxpr_expr_ast_producer_arg(ast, i);
             }
         }
         return NULL;
     }
-    return param_index < cxpr_ast_producer_argc(ast)
-               ? cxpr_ast_producer_arg(ast, param_index)
+    return param_index < cxpr_expr_ast_producer_arg_count(ast)
+               ? cxpr_expr_ast_producer_arg(ast, param_index)
                : NULL;
 }
 
-static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
+static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
                                                         const cxpr_model_program* child,
-                                                        const cxpr_ast* ast) {
+                                                        const cxpr_expr_ast* ast) {
     if (!child_ref || !child || !ast ||
         child_ref->source_input_index == (size_t)-1 ||
         !child_ref->source_arg) {
         return NULL;
     }
-    if (cxpr_ast_producer_has_named_args(ast)) {
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
-            const char* name = cxpr_ast_producer_arg_name(ast, i);
+    if (cxpr_expr_ast_producer_has_named_args(ast)) {
+        for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
+            const char* name = cxpr_expr_ast_producer_arg_name(ast, i);
             if (name && cxpr_model_names_match(name, child_ref->source_arg)) {
-                return cxpr_ast_producer_arg(ast, i);
+                return cxpr_expr_ast_producer_arg(ast, i);
             }
         }
         return NULL;
     }
-    return cxpr_ast_producer_argc(ast) == child->constant_count + 1u
-               ? cxpr_ast_producer_arg(ast, 0u)
+    return cxpr_expr_ast_producer_arg_count(ast) == child->constant_count + 1u
+               ? cxpr_expr_ast_producer_arg(ast, 0u)
                : NULL;
 }
 
-static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
+static const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
                                                        const cxpr_model_program* child,
-                                                       const cxpr_ast* ast,
+                                                       const cxpr_expr_ast* ast,
                                                        size_t param_index) {
     if (!child || !ast || param_index >= child->constant_count) return NULL;
-    if (cxpr_ast_producer_has_named_args(ast)) {
+    if (cxpr_expr_ast_producer_has_named_args(ast)) {
         const char* param_name = child->constants[param_index].name;
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
-            const char* name = cxpr_ast_producer_arg_name(ast, i);
+        for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
+            const char* name = cxpr_expr_ast_producer_arg_name(ast, i);
             if (name && param_name && cxpr_model_names_match(name, param_name)) {
-                return cxpr_ast_producer_arg(ast, i);
+                return cxpr_expr_ast_producer_arg(ast, i);
             }
         }
         return NULL;
@@ -307,11 +307,11 @@ static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_pr
     {
         size_t offset =
             (child_ref && child_ref->source_input_index != (size_t)-1 &&
-             cxpr_ast_producer_argc(ast) == child->constant_count + 1u)
+             cxpr_expr_ast_producer_arg_count(ast) == child->constant_count + 1u)
                 ? 1u
                 : 0u;
-        return param_index + offset < cxpr_ast_producer_argc(ast)
-                   ? cxpr_ast_producer_arg(ast, param_index + offset)
+        return param_index + offset < cxpr_expr_ast_producer_arg_count(ast)
+                   ? cxpr_expr_ast_producer_arg(ast, param_index + offset)
                    : NULL;
     }
 }
@@ -338,20 +338,20 @@ static size_t cxpr_model_c_child_index_for_entry(const cxpr_model_program* progr
     return (size_t)-1;
 }
 
-static char* cxpr_model_c_child_call_key(const cxpr_ast* ast) {
+static char* cxpr_model_c_child_call_key(const cxpr_expr_ast* ast) {
     const char* name;
     size_t argc;
     size_t len;
     size_t pos;
     char* out;
-    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
-    name = cxpr_ast_producer_name(ast);
-    argc = cxpr_ast_producer_argc(ast);
+    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
+    name = cxpr_expr_ast_producer_name(ast);
+    argc = cxpr_expr_ast_producer_arg_count(ast);
     if (!name) return NULL;
     len = strlen(name) + 3u;
     for (size_t i = 0u; i < argc; ++i) {
-        const char* arg_name = cxpr_ast_producer_arg_name(ast, i);
-        char* arg = cxpr_ast_to_string(cxpr_ast_producer_arg(ast, i));
+        const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, i);
+        char* arg = cxpr_expr_ast_to_string(cxpr_expr_ast_producer_arg(ast, i));
         len += arg_name ? strlen(arg_name) + 1u : 0u;
         len += arg ? strlen(arg) : 0u;
         len += 2u;
@@ -361,8 +361,8 @@ static char* cxpr_model_c_child_call_key(const cxpr_ast* ast) {
     if (!out) return NULL;
     pos = (size_t)snprintf(out, len + 1u, "%s(", name);
     for (size_t i = 0u; i < argc; ++i) {
-        const char* arg_name = cxpr_ast_producer_arg_name(ast, i);
-        char* arg = cxpr_ast_to_string(cxpr_ast_producer_arg(ast, i));
+        const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, i);
+        char* arg = cxpr_expr_ast_to_string(cxpr_expr_ast_producer_arg(ast, i));
         if (i > 0u && pos < len) out[pos++] = ',';
         if (arg_name) {
             size_t n = strlen(arg_name);
@@ -437,14 +437,14 @@ static bool cxpr_model_c_child_call_collect_append(char*** keys,
 }
 
 static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_program* program,
-                                                      const cxpr_ast* ast,
+                                                      const cxpr_expr_ast* ast,
                                                       char*** keys,
                                                       size_t** child_indices,
                                                       size_t* count,
                                                       size_t* capacity,
                                                       cxpr_error* err) {
     if (!program || !ast) return true;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_ARRAY:
         for (size_t i = 0u; i < ast->data.array.count; ++i) {
             if (!cxpr_model_c_collect_child_calls_from_ast(
@@ -524,7 +524,7 @@ static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_program* 
 }
 
 static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* program,
-                                                 const cxpr_ast* ast,
+                                                 const cxpr_expr_ast* ast,
                                                  const char* function_prefix,
                                                  const double* literal_param_values,
                                                  size_t literal_param_count,
@@ -542,17 +542,17 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
     cxpr_c_target target;
 
     if (!program || !program->registry || !ast ||
-        cxpr_ast_type(ast) != CXPR_NODE_PRODUCER_ACCESS) {
+        cxpr_expr_ast_kind_of(ast) != CXPR_NODE_PRODUCER_ACCESS) {
         return NULL;
     }
-    producer = cxpr_ast_producer_name(ast);
-    field = cxpr_ast_producer_field(ast);
+    producer = cxpr_expr_ast_producer_name(ast);
+    field = cxpr_expr_ast_producer_field(ast);
     entry = cxpr_registry_find(program->registry, producer);
     if (!entry || (!entry->model_producer && entry->defined_return_field_count == 0u) ||
-        (!entry->model_producer && entry->defined_param_count != cxpr_ast_producer_argc(ast)) ||
+        (!entry->model_producer && entry->defined_param_count != cxpr_expr_ast_producer_arg_count(ast)) ||
         (entry->model_producer &&
-         (cxpr_ast_producer_argc(ast) < entry->min_args ||
-          cxpr_ast_producer_argc(ast) > entry->max_args))) {
+         (cxpr_expr_ast_producer_arg_count(ast) < entry->min_args ||
+          cxpr_expr_ast_producer_arg_count(ast) > entry->max_args))) {
         if (err) {
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
             err->message = "Unsupported model C producer access";
@@ -618,7 +618,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         free(helper_name);
         for (size_t i = 0u; i < child->input_count; ++i) {
             size_t input_index = 0u;
-            const cxpr_ast* source_arg =
+            const cxpr_expr_ast* source_arg =
                 (i == program->children[child_index].source_input_index)
                     ? cxpr_model_child_call_source_arg(&program->children[child_index], child, ast)
                     : NULL;
@@ -640,7 +640,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
                 .userdata = &target_data,
             };
             if (source_arg) {
-                source_expr = cxpr_ast_to_c_at_offset(source_arg, 0u, &target, err);
+                source_expr = cxpr_expr_ast_to_c_at_offset(source_arg, 0u, &target, err);
                 if (!source_expr) {
                     free(call.data);
                     return NULL;
@@ -674,7 +674,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             .userdata = &target_data,
         };
         for (size_t i = 0u; i < child->constant_count; ++i) {
-            const cxpr_ast* arg = cxpr_model_child_call_param_arg(
+            const cxpr_expr_ast* arg = cxpr_model_child_call_param_arg(
                 &program->children[child_index], child, ast, i);
             char* arg_expr;
             if (!arg && child->constants[i].ast) {
@@ -685,7 +685,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Missing producer argument", 0, 0);
                 return NULL;
             }
-            arg_expr = cxpr_ast_to_c_at_offset(arg, 0u, &target, err);
+            arg_expr = cxpr_expr_ast_to_c_at_offset(arg, 0u, &target, err);
             if (!arg_expr) {
                 free(call.data);
                 return NULL;
@@ -725,7 +725,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         .userdata = &target_data,
     };
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
-        const cxpr_ast* arg = cxpr_model_producer_arg_for_param(
+        const cxpr_expr_ast* arg = cxpr_model_producer_arg_for_param(
             ast, entry->defined_param_names ? entry->defined_param_names[i] : NULL, i);
         if (!arg) {
             if (err) {
@@ -734,7 +734,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             }
             goto fail;
         }
-        arg_exprs[i] = cxpr_ast_to_c_at_offset(arg, 0u, &target, err);
+        arg_exprs[i] = cxpr_expr_ast_to_c_at_offset(arg, 0u, &target, err);
         if (!arg_exprs[i]) goto fail;
     }
 
@@ -764,7 +764,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         target_data.param_names = names;
         target_data.param_exprs = exprs;
         target_data.param_count = name_count;
-        field_exprs[field_i] = cxpr_ast_to_c_at_offset(
+        field_exprs[field_i] = cxpr_expr_ast_to_c_at_offset(
             entry->defined_return_field_bodies[field_i], 0u, &target, err);
         free(names);
         free(exprs);
@@ -853,7 +853,7 @@ static char* cxpr_model_c_current_symbol_expr(const cxpr_model_program* program,
 
 bool cxpr_model_c_emit_dynamic_history_value(cxpr_model_c_buf* b,
                                              const char* value_name,
-                                             const cxpr_ast* ast,
+                                             const cxpr_expr_ast* ast,
                                              const char* offset_expr,
                                              const cxpr_c_target* target,
                                              const cxpr_model_program* program,
@@ -869,7 +869,7 @@ bool cxpr_model_c_emit_dynamic_history_value(cxpr_model_c_buf* b,
     hist_index = cxpr_model_c_history_find(program, key);
     free(key);
     if (hist_index == (size_t)-1) return false;
-    current_expr = cxpr_ast_to_c_at_offset(ast, 0u, target, err);
+    current_expr = cxpr_expr_ast_to_c_at_offset(ast, 0u, target, err);
     if (!current_expr) return false;
     depth = program->history_specs[hist_index].depth;
     capacity = cxpr_model_c_history_capacity(depth);
@@ -938,33 +938,33 @@ static const char* cxpr_model_c_ast_binary_op(int op) {
 }
 
 static bool cxpr_model_ast_is_record_like(const cxpr_model_program* program,
-                                          const cxpr_ast* ast,
+                                          const cxpr_expr_ast* ast,
                                           unsigned depth) {
     cxpr_func_entry* entry;
     const cxpr_model_compiled_binding* binding;
 
     if (!program || !ast || depth > 32u) return false;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_RECORD:
         return true;
     case CXPR_NODE_IDENTIFIER:
-        binding = cxpr_model_c_binding_for_name(program, cxpr_ast_identifier_name(ast));
+        binding = cxpr_model_c_binding_for_name(program, cxpr_expr_ast_identifier_name(ast));
         return binding ? cxpr_model_ast_is_record_like(program, binding->ast, depth + 1u) : false;
     case CXPR_NODE_FUNCTION_CALL:
         entry = program->registry
-                    ? cxpr_registry_find(program->registry, cxpr_ast_function_name(ast))
+                    ? cxpr_registry_find(program->registry, cxpr_expr_ast_call_name(ast))
                     : NULL;
         return entry && entry->defined_return_field_count > 0u;
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_ast_is_record_like(program, cxpr_ast_left(ast), depth + 1u) ||
-               cxpr_model_ast_is_record_like(program, cxpr_ast_right(ast), depth + 1u);
+        return cxpr_model_ast_is_record_like(program, cxpr_expr_ast_binary_left(ast), depth + 1u) ||
+               cxpr_model_ast_is_record_like(program, cxpr_expr_ast_binary_right(ast), depth + 1u);
     default:
         return false;
     }
 }
 
 static char* cxpr_model_ast_field_expr_try(const cxpr_model_program* program,
-                                           const cxpr_ast* ast,
+                                           const cxpr_expr_ast* ast,
                                            const char* field,
                                            const cxpr_c_target* target,
                                            unsigned depth) {
@@ -974,7 +974,7 @@ static char* cxpr_model_ast_field_expr_try(const cxpr_model_program* program,
 
 static char* cxpr_model_ast_record_function_field_to_c(
     const cxpr_model_program* program,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     const char* field,
     const cxpr_c_target* target,
     cxpr_error* err,
@@ -988,12 +988,12 @@ static char* cxpr_model_ast_record_function_field_to_c(
     cxpr_c_target inline_target;
 
     if (!program || !program->registry || !ast ||
-        cxpr_ast_type(ast) != CXPR_NODE_FUNCTION_CALL || !field || depth > 32u) {
+        cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL || !field || depth > 32u) {
         return NULL;
     }
-    entry = cxpr_registry_find(program->registry, cxpr_ast_function_name(ast));
+    entry = cxpr_registry_find(program->registry, cxpr_expr_ast_call_name(ast));
     if (!entry || entry->defined_return_field_count == 0u ||
-        entry->defined_param_count != cxpr_ast_function_argc(ast)) {
+        entry->defined_param_count != cxpr_expr_ast_call_arg_count(ast)) {
         return NULL;
     }
     for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
@@ -1016,7 +1016,7 @@ static char* cxpr_model_ast_record_function_field_to_c(
     }
 
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
-        arg_exprs[i] = cxpr_ast_to_c(cxpr_ast_function_arg(ast, i), target, err);
+        arg_exprs[i] = cxpr_expr_ast_to_c(cxpr_expr_ast_call_arg(ast, i), target, err);
         if (!arg_exprs[i]) goto fail;
     }
 
@@ -1044,7 +1044,7 @@ static char* cxpr_model_ast_record_function_field_to_c(
         inline_data.param_names = names;
         inline_data.param_exprs = exprs;
         inline_data.param_count = name_count;
-        field_exprs[field_i] = cxpr_ast_to_c(
+        field_exprs[field_i] = cxpr_expr_ast_to_c(
             entry->defined_return_field_bodies[field_i], &inline_target, err);
         free(names);
         free(exprs);
@@ -1075,13 +1075,13 @@ fail:
 
 static char* cxpr_model_ast_record_field_to_c(
     const cxpr_model_program* program,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     const char* field,
     const cxpr_c_target* target,
     cxpr_error* err,
     unsigned depth) {
     size_t selected_field = (size_t)-1;
-    const size_t field_count = cxpr_ast_record_field_count(ast);
+    const size_t field_count = cxpr_expr_ast_record_field_count(ast);
     const char* dot = strchr(field, '.');
     const size_t segment_len = dot ? (size_t)(dot - field) : strlen(field);
     const char* rest = dot ? dot + 1 : NULL;
@@ -1090,13 +1090,13 @@ static char* cxpr_model_ast_record_field_to_c(
     cxpr_model_ast_c_target inline_data;
     cxpr_c_target inline_target;
 
-    if (!program || !ast || cxpr_ast_type(ast) != CXPR_NODE_RECORD ||
+    if (!program || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_RECORD ||
         !field || !target || depth > 32u) {
         return NULL;
     }
     if (segment_len == 0u || (rest && rest[0] == '\0')) return NULL;
     for (size_t i = 0u; i < field_count; ++i) {
-        const char* field_name = cxpr_ast_record_field_name(ast, i);
+        const char* field_name = cxpr_expr_ast_record_field_name(ast, i);
         if (field_name &&
             strlen(field_name) == segment_len &&
             strncmp(field_name, field, segment_len) == 0) {
@@ -1131,7 +1131,7 @@ static char* cxpr_model_ast_record_field_to_c(
             exprs[i] = target_data->param_exprs ? target_data->param_exprs[i] : NULL;
         }
         for (size_t i = 0u; i < field_i; ++i) {
-            names[base_count + i] = (char*)cxpr_ast_record_field_name(ast, i);
+            names[base_count + i] = (char*)cxpr_expr_ast_record_field_name(ast, i);
             exprs[base_count + i] = field_exprs[i];
         }
         inline_data.param_names = names;
@@ -1140,14 +1140,14 @@ static char* cxpr_model_ast_record_field_to_c(
         if (field_i == selected_field && rest) {
             field_exprs[field_i] = cxpr_model_ast_field_expr_to_c(
                 program,
-                cxpr_ast_record_field_value(ast, field_i),
+                cxpr_expr_ast_record_field_value(ast, field_i),
                 rest,
                 &inline_target,
                 err,
                 depth + 1u);
         } else {
-            field_exprs[field_i] = cxpr_ast_to_c(
-                cxpr_ast_record_field_value(ast, field_i), &inline_target, err);
+            field_exprs[field_i] = cxpr_expr_ast_to_c(
+                cxpr_expr_ast_record_field_value(ast, field_i), &inline_target, err);
         }
         free(names);
         free(exprs);
@@ -1169,26 +1169,26 @@ fail:
 }
 
 static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
-                                            const cxpr_ast* ast,
+                                            const cxpr_expr_ast* ast,
                                             const char* field,
                                             const cxpr_c_target* target,
                                             cxpr_error* err,
                                             unsigned depth) {
     if (!program || !ast || !field || !target || depth > 32u) return NULL;
 
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_RECORD:
         return cxpr_model_ast_record_field_to_c(program, ast, field, target, err, depth + 1u);
     case CXPR_NODE_IDENTIFIER: {
         const cxpr_model_compiled_binding* binding =
-            cxpr_model_c_binding_for_name(program, cxpr_ast_identifier_name(ast));
+            cxpr_model_c_binding_for_name(program, cxpr_expr_ast_identifier_name(ast));
         return binding
                    ? cxpr_model_ast_field_expr_to_c(
                          program, binding->ast, field, target, err, depth + 1u)
                    : NULL;
     }
     case CXPR_NODE_VARIABLE: {
-        const char* variable_name = cxpr_ast_variable_name(ast);
+        const char* variable_name = cxpr_expr_ast_param_name(ast);
         const char* dot = variable_name ? strchr(variable_name, '.') : NULL;
         if (dot && dot > variable_name && dot[1] != '\0') {
             size_t root_len = (size_t)(dot - variable_name);
@@ -1215,7 +1215,7 @@ static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
         return cxpr_model_ast_record_function_field_to_c(
             program, ast, field, target, err, depth + 1u);
     case CXPR_NODE_BINARY_OP: {
-        const char* op = cxpr_model_c_ast_binary_op(cxpr_ast_operator(ast));
+        const char* op = cxpr_model_c_ast_binary_op(cxpr_expr_ast_operator(ast));
         char* left_field;
         char* right_field;
         char* left;
@@ -1223,18 +1223,18 @@ static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
         cxpr_model_c_buf b = {0};
         if (!op) return NULL;
         left_field = cxpr_model_ast_field_expr_try(
-            program, cxpr_ast_left(ast), field, target, depth + 1u);
+            program, cxpr_expr_ast_binary_left(ast), field, target, depth + 1u);
         right_field = cxpr_model_ast_field_expr_try(
-            program, cxpr_ast_right(ast), field, target, depth + 1u);
+            program, cxpr_expr_ast_binary_right(ast), field, target, depth + 1u);
         if (left_field) {
             left = left_field;
         } else {
-            left = cxpr_ast_to_c(cxpr_ast_left(ast), target, err);
+            left = cxpr_expr_ast_to_c(cxpr_expr_ast_binary_left(ast), target, err);
         }
         if (right_field) {
             right = right_field;
         } else {
-            right = cxpr_ast_to_c(cxpr_ast_right(ast), target, err);
+            right = cxpr_expr_ast_to_c(cxpr_expr_ast_binary_right(ast), target, err);
         }
         if (!left || !right) {
             free(left);
@@ -1256,7 +1256,7 @@ static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
     }
 }
 
-static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
                                         unsigned lookback_offset,
                                         void* userdata,
                                         cxpr_error* err) {
@@ -1323,8 +1323,8 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             return cxpr_strdup(raw);
         }
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_IDENTIFIER) {
-        name = cxpr_ast_identifier_name(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_IDENTIFIER) {
+        name = cxpr_expr_ast_identifier_name(ast);
         for (size_t i = 0u; target && i < target->param_count; ++i) {
             if (cxpr_model_names_match(target->param_names[i], name)) {
                 if (target->param_exprs && target->param_exprs[i]) {
@@ -1350,7 +1350,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
         }
         return NULL;
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_PRODUCER_ACCESS) {
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) {
         return cxpr_model_ast_producer_access_to_c(
             program,
             ast,
@@ -1362,7 +1362,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             target ? target->child_call_count : 0u,
             err);
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS) {
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
         cxpr_c_target field_target = {
             .api_version = CXPR_C_TARGET_API_VERSION,
             .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
@@ -1390,8 +1390,8 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             if (expr) return expr;
         }
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
-        name = cxpr_ast_variable_name(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_VARIABLE) {
+        name = cxpr_expr_ast_param_name(ast);
         const char* dot = name ? strchr(name, '.') : NULL;
         if (dot && dot > name && dot[1] != '\0') {
             size_t root_len = (size_t)(dot - name);
@@ -1444,14 +1444,14 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
     return NULL;
 }
 
-static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
                                             unsigned lookback_offset,
                                             void* userdata,
                                             cxpr_error* err) {
     cxpr_model_ast_c_target* data = (cxpr_model_ast_c_target*)userdata;
     const cxpr_model_program* program = data ? data->program : NULL;
-    const cxpr_ast* target_ast;
-    const cxpr_ast* index_ast;
+    const cxpr_expr_ast* target_ast;
+    const cxpr_expr_ast* index_ast;
     cxpr_c_target target;
     char* key = NULL;
     char* index_expr = NULL;
@@ -1461,9 +1461,9 @@ static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
     size_t capacity;
     char out[1024];
 
-    if (!data || !program || !ast || cxpr_ast_type(ast) != CXPR_NODE_LOOKBACK) return NULL;
-    target_ast = cxpr_ast_lookback_target(ast);
-    index_ast = cxpr_ast_lookback_index(ast);
+    if (!data || !program || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_LOOKBACK) return NULL;
+    target_ast = cxpr_expr_ast_lookback_target(ast);
+    index_ast = cxpr_expr_ast_lookback_index(ast);
     if (!cxpr_model_lookback_target_key(target_ast, &key, err)) return NULL;
     hist_index = cxpr_model_c_history_find(program, key);
     free(key);
@@ -1479,8 +1479,8 @@ static char* cxpr_model_ast_c_emit_lookback(const cxpr_ast* ast,
         .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = data,
     };
-    index_expr = cxpr_ast_to_c_at_offset(index_ast, 0u, &target, err);
-    current_expr = cxpr_ast_to_c_at_offset(target_ast, lookback_offset, &target, err);
+    index_expr = cxpr_expr_ast_to_c_at_offset(index_ast, 0u, &target, err);
+    current_expr = cxpr_expr_ast_to_c_at_offset(target_ast, lookback_offset, &target, err);
     if (!index_expr || !current_expr) {
         free(index_expr); free(current_expr);
         return NULL;
@@ -1514,33 +1514,33 @@ static const char* cxpr_model_c_window_op(const char* name) {
 }
 
 static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
-                                             const cxpr_ast* ast,
+                                             const cxpr_expr_ast* ast,
                                              double* out) {
     double left = 0.0;
     double right = 0.0;
     int op;
     if (!ast || !out) return false;
     if (cxpr_eval_constant_double(ast, out)) return true;
-    if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
-        const char* name = cxpr_ast_variable_name(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_expr_ast_param_name(ast);
         size_t index = cxpr_model_program_param_index(program, name);
         return index != (size_t)-1 &&
                program->constants[index].ast &&
                cxpr_eval_constant_double(program->constants[index].ast, out);
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
-        const char* name = cxpr_ast_function_name(ast);
-        size_t argc = cxpr_ast_function_argc(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = cxpr_expr_ast_call_name(ast);
+        size_t argc = cxpr_expr_ast_call_arg_count(ast);
         if ((!cxpr_model_names_match(name, "min") &&
              !cxpr_model_names_match(name, "max")) || argc == 0u ||
             !cxpr_model_c_constant_param_expr(
-                program, cxpr_ast_function_arg(ast, 0u), out)) {
+                program, cxpr_expr_ast_call_arg(ast, 0u), out)) {
             return false;
         }
         for (size_t i = 1u; i < argc; ++i) {
             double value = 0.0;
             if (!cxpr_model_c_constant_param_expr(
-                    program, cxpr_ast_function_arg(ast, i), &value)) {
+                    program, cxpr_expr_ast_call_arg(ast, i), &value)) {
                 return false;
             }
             *out = cxpr_model_names_match(name, "min")
@@ -1549,12 +1549,12 @@ static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
         }
         return true;
     }
-    if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
-    if (!cxpr_model_c_constant_param_expr(program, cxpr_ast_left(ast), &left) ||
-        !cxpr_model_c_constant_param_expr(program, cxpr_ast_right(ast), &right)) {
+    if (cxpr_expr_ast_kind_of(ast) != CXPR_NODE_BINARY_OP) return false;
+    if (!cxpr_model_c_constant_param_expr(program, cxpr_expr_ast_binary_left(ast), &left) ||
+        !cxpr_model_c_constant_param_expr(program, cxpr_expr_ast_binary_right(ast), &right)) {
         return false;
     }
-    op = cxpr_ast_operator(ast);
+    op = cxpr_expr_ast_operator(ast);
     if (op == CXPR_TOK_PLUS) *out = left + right;
     else if (op == CXPR_TOK_MINUS) *out = left - right;
     else if (op == CXPR_TOK_STAR) *out = left * right;
@@ -1564,15 +1564,15 @@ static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
 }
 
 static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* program,
-                                                const cxpr_ast* period_ast,
+                                                const cxpr_expr_ast* period_ast,
                                                 size_t* out_capacity,
                                                 cxpr_error* err) {
     double raw = 0.0;
     long period;
     (void)err;
     if (!period_ast || !out_capacity) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
-        const char* name = cxpr_ast_variable_name(period_ast);
+    if (cxpr_expr_ast_kind_of(period_ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_expr_ast_param_name(period_ast);
         const cxpr_model_compiled_binding* binding =
             cxpr_model_c_constant_for_name(program, name);
         if (binding && binding->has_max_value && isfinite(binding->max_value)) {
@@ -1589,28 +1589,28 @@ resolved:
     return true;
 }
 
-static bool cxpr_model_c_period_ast_same(const cxpr_ast* left, const cxpr_ast* right) {
-    if (!left || !right || cxpr_ast_type(left) != cxpr_ast_type(right)) return false;
-    if (cxpr_ast_type(left) == CXPR_NODE_VARIABLE) {
-        return cxpr_model_names_match(cxpr_ast_variable_name(left), cxpr_ast_variable_name(right));
+static bool cxpr_model_c_period_ast_same(const cxpr_expr_ast* left, const cxpr_expr_ast* right) {
+    if (!left || !right || cxpr_expr_ast_kind_of(left) != cxpr_expr_ast_kind_of(right)) return false;
+    if (cxpr_expr_ast_kind_of(left) == CXPR_NODE_VARIABLE) {
+        return cxpr_model_names_match(cxpr_expr_ast_param_name(left), cxpr_expr_ast_param_name(right));
     }
-    if (cxpr_ast_type(left) == CXPR_NODE_NUMBER) {
-        return fabs(cxpr_ast_number_value(left) - cxpr_ast_number_value(right)) < 1e-12;
+    if (cxpr_expr_ast_kind_of(left) == CXPR_NODE_NUMBER) {
+        return fabs(cxpr_expr_ast_number_value(left) - cxpr_expr_ast_number_value(right)) < 1e-12;
     }
     return false;
 }
 
-static bool cxpr_model_c_ast_same_simple(const cxpr_ast* left, const cxpr_ast* right) {
-    if (!left || !right || cxpr_ast_type(left) != cxpr_ast_type(right)) return false;
-    switch (cxpr_ast_type(left)) {
+static bool cxpr_model_c_ast_same_simple(const cxpr_expr_ast* left, const cxpr_expr_ast* right) {
+    if (!left || !right || cxpr_expr_ast_kind_of(left) != cxpr_expr_ast_kind_of(right)) return false;
+    switch (cxpr_expr_ast_kind_of(left)) {
     case CXPR_NODE_IDENTIFIER:
-        return cxpr_model_names_match(cxpr_ast_identifier_name(left),
-                                      cxpr_ast_identifier_name(right));
+        return cxpr_model_names_match(cxpr_expr_ast_identifier_name(left),
+                                      cxpr_expr_ast_identifier_name(right));
     case CXPR_NODE_VARIABLE:
-        return cxpr_model_names_match(cxpr_ast_variable_name(left),
-                                      cxpr_ast_variable_name(right));
+        return cxpr_model_names_match(cxpr_expr_ast_param_name(left),
+                                      cxpr_expr_ast_param_name(right));
     case CXPR_NODE_NUMBER:
-        return fabs(cxpr_ast_number_value(left) - cxpr_ast_number_value(right)) < 1e-12;
+        return fabs(cxpr_expr_ast_number_value(left) - cxpr_expr_ast_number_value(right)) < 1e-12;
     default:
         return false;
     }
@@ -1621,7 +1621,7 @@ static const char* cxpr_model_c_find_common_binding_expr(const cxpr_model_progra
                                                          const bool* needed_bindings,
                                                          const bool* skip_bindings,
                                                          char* const* emitted_names) {
-    const cxpr_ast* ast;
+    const cxpr_expr_ast* ast;
     if (!program || binding_index >= program->binding_count || !emitted_names) return NULL;
     if (program->bindings[binding_index].kind == CXPR_MODEL_BINDING_STATE_UPDATE) return NULL;
     ast = program->bindings[binding_index].ast;
@@ -1638,76 +1638,76 @@ static const char* cxpr_model_c_find_common_binding_expr(const cxpr_model_progra
     return NULL;
 }
 
-static bool cxpr_model_c_ast_is_number(const cxpr_ast* ast, double value) {
+static bool cxpr_model_c_ast_is_number(const cxpr_expr_ast* ast, double value) {
     return ast &&
-           cxpr_ast_type(ast) == CXPR_NODE_NUMBER &&
-           fabs(cxpr_ast_number_value(ast) - value) < 1e-12;
+           cxpr_expr_ast_kind_of(ast) == CXPR_NODE_NUMBER &&
+           fabs(cxpr_expr_ast_number_value(ast) - value) < 1e-12;
 }
 
-static bool cxpr_model_c_match_high_low_midpoint(const cxpr_ast* ast,
-                                                 const cxpr_ast** out_high_ast,
-                                                 const cxpr_ast** out_low_ast,
-                                                 const cxpr_ast** out_period_ast) {
-    const cxpr_ast* left;
-    const cxpr_ast* right;
-    const cxpr_ast* high_call = NULL;
-    const cxpr_ast* low_call = NULL;
-    const cxpr_ast* high_period;
-    const cxpr_ast* low_period;
+static bool cxpr_model_c_match_high_low_midpoint(const cxpr_expr_ast* ast,
+                                                 const cxpr_expr_ast** out_high_ast,
+                                                 const cxpr_expr_ast** out_low_ast,
+                                                 const cxpr_expr_ast** out_period_ast) {
+    const cxpr_expr_ast* left;
+    const cxpr_expr_ast* right;
+    const cxpr_expr_ast* high_call = NULL;
+    const cxpr_expr_ast* low_call = NULL;
+    const cxpr_expr_ast* high_period;
+    const cxpr_expr_ast* low_period;
 
     if (out_high_ast) *out_high_ast = NULL;
     if (out_low_ast) *out_low_ast = NULL;
     if (out_period_ast) *out_period_ast = NULL;
-    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP ||
-        cxpr_ast_operator(ast) != CXPR_TOK_PLUS) {
+    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_BINARY_OP ||
+        cxpr_expr_ast_operator(ast) != CXPR_TOK_PLUS) {
         return false;
     }
-    left = cxpr_ast_left(ast);
-    right = cxpr_ast_right(ast);
-    if (left && cxpr_ast_type(left) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_names_match(cxpr_ast_function_name(left), "window_highest")) {
+    left = cxpr_expr_ast_binary_left(ast);
+    right = cxpr_expr_ast_binary_right(ast);
+    if (left && cxpr_expr_ast_kind_of(left) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_names_match(cxpr_expr_ast_call_name(left), "window_highest")) {
         high_call = left;
-    } else if (left && cxpr_ast_type(left) == CXPR_NODE_FUNCTION_CALL &&
-               cxpr_model_names_match(cxpr_ast_function_name(left), "window_lowest")) {
+    } else if (left && cxpr_expr_ast_kind_of(left) == CXPR_NODE_FUNCTION_CALL &&
+               cxpr_model_names_match(cxpr_expr_ast_call_name(left), "window_lowest")) {
         low_call = left;
     }
-    if (right && cxpr_ast_type(right) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_names_match(cxpr_ast_function_name(right), "window_highest")) {
+    if (right && cxpr_expr_ast_kind_of(right) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_names_match(cxpr_expr_ast_call_name(right), "window_highest")) {
         high_call = right;
-    } else if (right && cxpr_ast_type(right) == CXPR_NODE_FUNCTION_CALL &&
-               cxpr_model_names_match(cxpr_ast_function_name(right), "window_lowest")) {
+    } else if (right && cxpr_expr_ast_kind_of(right) == CXPR_NODE_FUNCTION_CALL &&
+               cxpr_model_names_match(cxpr_expr_ast_call_name(right), "window_lowest")) {
         low_call = right;
     }
     if (!high_call || !low_call ||
-        cxpr_ast_function_argc(high_call) != 2u ||
-        cxpr_ast_function_argc(low_call) != 2u) {
+        cxpr_expr_ast_call_arg_count(high_call) != 2u ||
+        cxpr_expr_ast_call_arg_count(low_call) != 2u) {
         return false;
     }
-    high_period = cxpr_ast_function_arg(high_call, 1u);
-    low_period = cxpr_ast_function_arg(low_call, 1u);
+    high_period = cxpr_expr_ast_call_arg(high_call, 1u);
+    low_period = cxpr_expr_ast_call_arg(low_call, 1u);
     if (!cxpr_model_c_period_ast_same(high_period, low_period)) return false;
-    if (out_high_ast) *out_high_ast = cxpr_ast_function_arg(high_call, 0u);
-    if (out_low_ast) *out_low_ast = cxpr_ast_function_arg(low_call, 0u);
+    if (out_high_ast) *out_high_ast = cxpr_expr_ast_call_arg(high_call, 0u);
+    if (out_low_ast) *out_low_ast = cxpr_expr_ast_call_arg(low_call, 0u);
     if (out_period_ast) *out_period_ast = high_period;
     return true;
 }
 
-static bool cxpr_model_c_match_scaled_high_low_midpoint(const cxpr_ast* ast,
-                                                        const cxpr_ast** out_high_ast,
-                                                        const cxpr_ast** out_low_ast,
-                                                        const cxpr_ast** out_period_ast) {
-    const cxpr_ast* sum = NULL;
+static bool cxpr_model_c_match_scaled_high_low_midpoint(const cxpr_expr_ast* ast,
+                                                        const cxpr_expr_ast** out_high_ast,
+                                                        const cxpr_expr_ast** out_low_ast,
+                                                        const cxpr_expr_ast** out_period_ast) {
+    const cxpr_expr_ast* sum = NULL;
     if (out_high_ast) *out_high_ast = NULL;
     if (out_low_ast) *out_low_ast = NULL;
     if (out_period_ast) *out_period_ast = NULL;
-    if (!ast || cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP ||
-        cxpr_ast_operator(ast) != CXPR_TOK_STAR) {
+    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_BINARY_OP ||
+        cxpr_expr_ast_operator(ast) != CXPR_TOK_STAR) {
         return false;
     }
-    if (cxpr_model_c_ast_is_number(cxpr_ast_left(ast), 0.5)) {
-        sum = cxpr_ast_right(ast);
-    } else if (cxpr_model_c_ast_is_number(cxpr_ast_right(ast), 0.5)) {
-        sum = cxpr_ast_left(ast);
+    if (cxpr_model_c_ast_is_number(cxpr_expr_ast_binary_left(ast), 0.5)) {
+        sum = cxpr_expr_ast_binary_right(ast);
+    } else if (cxpr_model_c_ast_is_number(cxpr_expr_ast_binary_right(ast), 0.5)) {
+        sum = cxpr_expr_ast_binary_left(ast);
     }
     return sum && cxpr_model_c_match_high_low_midpoint(
                       sum, out_high_ast, out_low_ast, out_period_ast);
@@ -1715,9 +1715,9 @@ static bool cxpr_model_c_match_scaled_high_low_midpoint(const cxpr_ast* ast,
 
 static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
                                                const char* name,
-                                               const cxpr_ast* high_ast,
-                                               const cxpr_ast* low_ast,
-                                               const cxpr_ast* period_ast,
+                                               const cxpr_expr_ast* high_ast,
+                                               const cxpr_expr_ast* low_ast,
+                                               const cxpr_expr_ast* period_ast,
                                                const cxpr_c_target* target,
                                                const cxpr_model_program* program,
                                                cxpr_error* err) {
@@ -1727,7 +1727,7 @@ static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
 
     if (!b || !name || !high_ast || !low_ast || !period_ast || !target || !program) return false;
     if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return false;
-    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    period_expr = cxpr_expr_ast_to_c_at_offset(period_ast, 0u, target, err);
     if (!period_expr) return false;
     {
         cxpr_model_c_buf pb = {0};
@@ -1791,9 +1791,9 @@ static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
         free(loop.data);
     }
     for (size_t i = 0u; i < capacity; ++i) {
-        char* high_expr = cxpr_ast_to_c_at_offset(high_ast, (unsigned)i, target, err);
+        char* high_expr = cxpr_expr_ast_to_c_at_offset(high_ast, (unsigned)i, target, err);
         char* low_expr = high_expr
-                             ? cxpr_ast_to_c_at_offset(low_ast, (unsigned)i, target, err)
+                             ? cxpr_expr_ast_to_c_at_offset(low_ast, (unsigned)i, target, err)
                              : NULL;
         if (!high_expr || !low_expr) {
             free(high_expr);
@@ -1831,33 +1831,33 @@ static int cxpr_model_c_window_op_code(const char* name) {
 
 static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
                                                     const char* name,
-                                                    const cxpr_ast* ast,
+                                                    const cxpr_expr_ast* ast,
                                                     const cxpr_c_target* target,
                                                     const cxpr_model_program* program,
                                                     cxpr_error* err) {
     const char* fn_name;
-    const cxpr_ast* value_ast;
-    const cxpr_ast* period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* period_ast;
     int op;
     size_t capacity = 0u;
     char* period_expr = NULL;
     char* period_limit_expr = NULL;
 
-    if (!b || !name || !ast || cxpr_ast_type(ast) != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_function_argc(ast) != 2u || !target || !program) {
+    if (!b || !name || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_expr_ast_call_arg_count(ast) != 2u || !target || !program) {
         return false;
     }
-    fn_name = cxpr_ast_function_name(ast);
+    fn_name = cxpr_expr_ast_call_name(ast);
     op = cxpr_model_c_window_op_code(fn_name);
     if (op < 0) return false;
-    value_ast = cxpr_ast_function_arg(ast, 0u);
-    if (cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_window_is_function(cxpr_ast_function_name(value_ast))) {
+    value_ast = cxpr_expr_ast_call_arg(ast, 0u);
+    if (cxpr_expr_ast_kind_of(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_window_is_function(cxpr_expr_ast_call_name(value_ast))) {
         return false;
     }
-    period_ast = cxpr_ast_function_arg(ast, 1u);
+    period_ast = cxpr_expr_ast_call_arg(ast, 1u);
     if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return false;
-    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    period_expr = cxpr_expr_ast_to_c_at_offset(period_ast, 0u, target, err);
     if (!period_expr) return false;
     {
         cxpr_model_c_buf pb = {0};
@@ -1935,7 +1935,7 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
         free(loop.data);
     }
     for (size_t i = 0u; i < capacity; ++i) {
-        char* value_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
+        char* value_expr = cxpr_expr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
         if (!value_expr) {
             free(period_expr);
             free(period_limit_expr);
@@ -1978,45 +1978,45 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
     return true;
 }
 
-static bool cxpr_model_c_match_mean_stddev_pair(const cxpr_ast* mean_ast,
-                                                const cxpr_ast* stddev_ast) {
+static bool cxpr_model_c_match_mean_stddev_pair(const cxpr_expr_ast* mean_ast,
+                                                const cxpr_expr_ast* stddev_ast) {
     if (!mean_ast || !stddev_ast ||
-        cxpr_ast_type(mean_ast) != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_type(stddev_ast) != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_function_argc(mean_ast) != 2u ||
-        cxpr_ast_function_argc(stddev_ast) != 2u ||
-        !cxpr_model_names_match(cxpr_ast_function_name(mean_ast), "window_mean") ||
-        !cxpr_model_names_match(cxpr_ast_function_name(stddev_ast), "window_stddev")) {
+        cxpr_expr_ast_kind_of(mean_ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_expr_ast_kind_of(stddev_ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_expr_ast_call_arg_count(mean_ast) != 2u ||
+        cxpr_expr_ast_call_arg_count(stddev_ast) != 2u ||
+        !cxpr_model_names_match(cxpr_expr_ast_call_name(mean_ast), "window_mean") ||
+        !cxpr_model_names_match(cxpr_expr_ast_call_name(stddev_ast), "window_stddev")) {
         return false;
     }
-    return cxpr_model_c_ast_same_simple(cxpr_ast_function_arg(mean_ast, 0u),
-                                        cxpr_ast_function_arg(stddev_ast, 0u)) &&
-           cxpr_model_c_period_ast_same(cxpr_ast_function_arg(mean_ast, 1u),
-                                        cxpr_ast_function_arg(stddev_ast, 1u));
+    return cxpr_model_c_ast_same_simple(cxpr_expr_ast_call_arg(mean_ast, 0u),
+                                        cxpr_expr_ast_call_arg(stddev_ast, 0u)) &&
+           cxpr_model_c_period_ast_same(cxpr_expr_ast_call_arg(mean_ast, 1u),
+                                        cxpr_expr_ast_call_arg(stddev_ast, 1u));
 }
 
 static bool cxpr_model_c_emit_mean_stddev_bindings(cxpr_model_c_buf* b,
                                                    const char* mean_name,
                                                    const char* stddev_name,
-                                                   const cxpr_ast* mean_ast,
+                                                   const cxpr_expr_ast* mean_ast,
                                                    const cxpr_c_target* target,
                                                    const cxpr_model_program* program,
                                                    cxpr_error* err) {
-    const cxpr_ast* value_ast;
-    const cxpr_ast* period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* period_ast;
     size_t capacity = 0u;
     char* period_expr = NULL;
     char* period_limit_expr = NULL;
 
     if (!b || !mean_name || !stddev_name || !mean_ast ||
-        cxpr_ast_type(mean_ast) != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_function_argc(mean_ast) != 2u || !target || !program) {
+        cxpr_expr_ast_kind_of(mean_ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_expr_ast_call_arg_count(mean_ast) != 2u || !target || !program) {
         return false;
     }
-    value_ast = cxpr_ast_function_arg(mean_ast, 0u);
-    period_ast = cxpr_ast_function_arg(mean_ast, 1u);
+    value_ast = cxpr_expr_ast_call_arg(mean_ast, 0u);
+    period_ast = cxpr_expr_ast_call_arg(mean_ast, 1u);
     if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return false;
-    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    period_expr = cxpr_expr_ast_to_c_at_offset(period_ast, 0u, target, err);
     if (!period_expr) return false;
     {
         cxpr_model_c_buf pb = {0};
@@ -2082,7 +2082,7 @@ static bool cxpr_model_c_emit_mean_stddev_bindings(cxpr_model_c_buf* b,
         free(loop.data);
     }
     for (size_t i = 0u; i < capacity; ++i) {
-        char* value_expr = cxpr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
+        char* value_expr = cxpr_expr_ast_to_c_at_offset(value_ast, (unsigned)i, target, err);
         if (!value_expr) {
             free(period_expr);
             free(period_limit_expr);
@@ -2363,8 +2363,8 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
             "    _cx_state->%s = %s;\n",
             field_name,
             program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_BOOL
-                ? (cxpr_ast_type(program->state_defaults[i].ast) == CXPR_NODE_BOOL &&
-                           cxpr_ast_bool_value(program->state_defaults[i].ast)
+                ? (cxpr_expr_ast_kind_of(program->state_defaults[i].ast) == CXPR_NODE_BOOL &&
+                           cxpr_expr_ast_bool_value(program->state_defaults[i].ast)
                        ? "1u"
                        : "0u")
                 : "0.0");
@@ -2380,13 +2380,13 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
 }
 
 static bool cxpr_model_c_period_default_value(const cxpr_model_program* program,
-                                              const cxpr_ast* period_ast,
+                                              const cxpr_expr_ast* period_ast,
                                               double* out_value) {
     return cxpr_model_c_constant_param_expr(program, period_ast, out_value);
 }
 
 static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* program,
-                                                   const cxpr_ast* period_ast,
+                                                   const cxpr_expr_ast* period_ast,
                                                    size_t capacity,
                                                    const cxpr_c_target* target) {
     const cxpr_model_ast_c_target* target_data =
@@ -2395,10 +2395,10 @@ static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* pro
     long rounded;
 
     if (!program || !period_ast || capacity == 0u) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE &&
+    if (cxpr_expr_ast_kind_of(period_ast) == CXPR_NODE_VARIABLE &&
         target_data &&
         target_data->literal_param_values) {
-        const char* name = cxpr_ast_variable_name(period_ast);
+        const char* name = cxpr_expr_ast_param_name(period_ast);
         size_t index = cxpr_model_program_param_index(program, name);
         if (index != (size_t)-1 && index < target_data->literal_param_count) {
             value = target_data->literal_param_values[index];
@@ -2406,7 +2406,7 @@ static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* pro
             return false;
         }
     } else if (!cxpr_model_c_period_default_value(program, period_ast, &value) ||
-               cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+               cxpr_expr_ast_kind_of(period_ast) == CXPR_NODE_VARIABLE) {
         return false;
     }
     if (!isfinite(value) || value < 1.0) value = 1.0;
@@ -2416,7 +2416,7 @@ static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* pro
 }
 
 static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
-                                            const cxpr_ast* period_ast,
+                                            const cxpr_expr_ast* period_ast,
                                             size_t capacity,
                                             const cxpr_c_target* target,
                                             cxpr_error* err) {
@@ -2429,10 +2429,10 @@ static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
     cxpr_model_c_buf b = {0};
 
     if (!program || !period_ast || !target || capacity == 0u) return NULL;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE &&
+    if (cxpr_expr_ast_kind_of(period_ast) == CXPR_NODE_VARIABLE &&
         target_data &&
         target_data->literal_param_values) {
-        const char* name = cxpr_ast_variable_name(period_ast);
+        const char* name = cxpr_expr_ast_param_name(period_ast);
         size_t index = cxpr_model_program_param_index(program, name);
         if (index != (size_t)-1 && index < target_data->literal_param_count) {
             double literal = target_data->literal_param_values[index];
@@ -2450,12 +2450,12 @@ static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
         rounded = lround(default_value < 1.0 ? 1.0 : default_value);
         if (rounded < 1) rounded = 1;
         if ((size_t)rounded == capacity) {
-            if (cxpr_ast_type(period_ast) != CXPR_NODE_VARIABLE) {
+            if (cxpr_expr_ast_kind_of(period_ast) != CXPR_NODE_VARIABLE) {
                 cxpr_model_c_printf(&b, "%zuu", capacity);
                 return b.oom ? NULL : b.data;
             }
             cxpr_model_c_format_double(default_raw, sizeof(default_raw), default_value);
-            period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+            period_expr = cxpr_expr_ast_to_c_at_offset(period_ast, 0u, target, err);
             if (!period_expr) return NULL;
             cxpr_model_c_printf(
                 &b,
@@ -2470,7 +2470,7 @@ static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
         }
     }
 
-    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    period_expr = cxpr_expr_ast_to_c_at_offset(period_ast, 0u, target, err);
     if (!period_expr) return NULL;
     cxpr_model_c_printf(
         &b,
@@ -2490,9 +2490,9 @@ static bool cxpr_model_c_emit_planned_roc_aggregate_binding(
     const cxpr_model_program* program,
     cxpr_error* err) {
     const cxpr_model_window_plan_node* roc_node;
-    const cxpr_ast* value_ast;
-    const cxpr_ast* roc_period_ast;
-    const cxpr_ast* aggregate_period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* roc_period_ast;
+    const cxpr_expr_ast* aggregate_period_ast;
     size_t roc_capacity;
     size_t aggregate_capacity;
     size_t extra_base;
@@ -2525,9 +2525,9 @@ static bool cxpr_model_c_emit_planned_roc_aggregate_binding(
         program, aggregate_period_ast, aggregate_capacity, target);
 
     if (static_roc && static_aggregate) {
-        char* now_expr = cxpr_ast_to_c_at_offset(value_ast, 0u, target, err);
+        char* now_expr = cxpr_expr_ast_to_c_at_offset(value_ast, 0u, target, err);
         char* prev_expr = now_expr
-                              ? cxpr_ast_to_c_at_offset(
+                              ? cxpr_expr_ast_to_c_at_offset(
                                     value_ast, (unsigned)roc_capacity, target, err)
                               : NULL;
         if (!now_expr || !prev_expr) {
@@ -2577,9 +2577,9 @@ static bool cxpr_model_c_emit_planned_roc_aggregate_binding(
     }
 
     {
-        char* now_expr = cxpr_ast_to_c_at_offset(value_ast, 0u, target, err);
+        char* now_expr = cxpr_expr_ast_to_c_at_offset(value_ast, 0u, target, err);
         char* prev_expr = now_expr
-                              ? cxpr_ast_to_c_at_offset(
+                              ? cxpr_expr_ast_to_c_at_offset(
                                     value_ast, (unsigned)roc_capacity, target, err)
                               : NULL;
         if (!now_expr || !prev_expr) {
@@ -2640,8 +2640,8 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
     const cxpr_c_target* target,
     const cxpr_model_program* program,
     cxpr_error* err) {
-    const cxpr_ast* value_ast;
-    const cxpr_ast* period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* period_ast;
     size_t capacity;
     size_t node_index;
     char* period_limit_expr = NULL;
@@ -2665,7 +2665,7 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
 
     period_limit_expr = cxpr_model_c_period_limit_expr(
         program, period_ast, capacity, target, err);
-    value_expr = period_limit_expr ? cxpr_ast_to_c_at_offset(value_ast, 0u, target, err) : NULL;
+    value_expr = period_limit_expr ? cxpr_expr_ast_to_c_at_offset(value_ast, 0u, target, err) : NULL;
     if (!period_limit_expr || !value_expr) {
         free(period_limit_expr);
         free(value_expr);
@@ -2767,20 +2767,20 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
 
 typedef bool (*cxpr_model_c_single_binding_emitter)(cxpr_model_c_buf* b,
                                                     const char* name,
-                                                    const cxpr_ast* ast,
+                                                    const cxpr_expr_ast* ast,
                                                     const cxpr_c_target* target,
                                                     const cxpr_model_program* program,
                                                     cxpr_error* err);
 
 static bool cxpr_model_c_emit_midpoint_binding_from_ast(cxpr_model_c_buf* b,
                                                         const char* name,
-                                                        const cxpr_ast* ast,
+                                                        const cxpr_expr_ast* ast,
                                                         const cxpr_c_target* target,
                                                         const cxpr_model_program* program,
                                                         cxpr_error* err) {
-    const cxpr_ast* high_ast = NULL;
-    const cxpr_ast* low_ast = NULL;
-    const cxpr_ast* period_ast = NULL;
+    const cxpr_expr_ast* high_ast = NULL;
+    const cxpr_expr_ast* low_ast = NULL;
+    const cxpr_expr_ast* period_ast = NULL;
     if (!cxpr_model_c_match_scaled_high_low_midpoint(ast, &high_ast, &low_ast, &period_ast)) {
         return false;
     }
@@ -2790,7 +2790,7 @@ static bool cxpr_model_c_emit_midpoint_binding_from_ast(cxpr_model_c_buf* b,
 
 static bool cxpr_model_c_emit_optimized_single_binding(cxpr_model_c_buf* b,
                                                        const char* name,
-                                                       const cxpr_ast* ast,
+                                                       const cxpr_expr_ast* ast,
                                                        const cxpr_c_target* target,
                                                        const cxpr_model_program* program,
                                                        cxpr_error* err) {
@@ -2808,8 +2808,8 @@ static bool cxpr_model_c_emit_optimized_single_binding(cxpr_model_c_buf* b,
 static bool cxpr_model_c_emit_optimized_binding_pair(cxpr_model_c_buf* b,
                                                      const char* first_name,
                                                      const char* second_name,
-                                                     const cxpr_ast* first_ast,
-                                                     const cxpr_ast* second_ast,
+                                                     const cxpr_expr_ast* first_ast,
+                                                     const cxpr_expr_ast* second_ast,
                                                      const cxpr_c_target* target,
                                                      const cxpr_model_program* program,
                                                      cxpr_error* err) {
@@ -2818,12 +2818,12 @@ static bool cxpr_model_c_emit_optimized_binding_pair(cxpr_model_c_buf* b,
         b, first_name, second_name, first_ast, target, program, err);
 }
 
-static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_window_call(const cxpr_expr_ast* ast,
                                                unsigned lookback_offset,
                                                const cxpr_c_target* target,
                                                const cxpr_model_program* program,
                                                cxpr_error* err) {
-    const char* name = cxpr_ast_function_name(ast);
+    const char* name = cxpr_expr_ast_call_name(ast);
     const char* op = cxpr_model_c_window_op(name);
     const cxpr_window_ir* window = cxpr_window_ir_find(name);
     bool is_roc = window && window->op == CXPR_WINDOW_OP_ROC;
@@ -2831,8 +2831,8 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         window && window->op == CXPR_WINDOW_OP_BARS_SINCE_EXTREME;
     bool is_window_mean_absdev =
         window && window->op == CXPR_WINDOW_OP_MEAN_ABSDEV;
-    const cxpr_ast* value_ast;
-    const cxpr_ast* period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* period_ast;
     size_t capacity = 0u;
     size_t value_count;
     char* period_expr = NULL;
@@ -2841,16 +2841,16 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     cxpr_model_c_buf b = {0};
     if (!program || !window ||
         (!op && !is_roc && !is_bars_since_extreme && !is_window_mean_absdev) ||
-        cxpr_ast_function_argc(ast) != window->arity) {
+        cxpr_expr_ast_call_arg_count(ast) != window->arity) {
         cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
                              "window function has wrong arity", 0, 0);
         return NULL;
     }
-    value_ast = cxpr_ast_function_arg(ast, 0u);
-    period_ast = cxpr_ast_function_arg(ast, 1u);
-    guard_values = cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE;
+    value_ast = cxpr_expr_ast_call_arg(ast, 0u);
+    period_ast = cxpr_expr_ast_call_arg(ast, 1u);
+    guard_values = cxpr_expr_ast_kind_of(period_ast) == CXPR_NODE_VARIABLE;
     if (!cxpr_model_c_window_period_capacity(program, period_ast, &capacity, err)) return NULL;
-    period_expr = cxpr_ast_to_c_at_offset(period_ast, 0u, target, err);
+    period_expr = cxpr_expr_ast_to_c_at_offset(period_ast, 0u, target, err);
     if (!period_expr) return NULL;
     {
         cxpr_model_c_buf pb = {0};
@@ -2868,11 +2868,11 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         period_limit_expr = pb.data;
     }
     if (cxpr_model_names_match(name, "window_mean") &&
-        cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_names_match(cxpr_ast_function_name(value_ast), "window_roc") &&
-        cxpr_ast_function_argc(value_ast) == 2u) {
-        const cxpr_ast* roc_value_ast = cxpr_ast_function_arg(value_ast, 0u);
-        const cxpr_ast* roc_period_ast = cxpr_ast_function_arg(value_ast, 1u);
+        cxpr_expr_ast_kind_of(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_names_match(cxpr_expr_ast_call_name(value_ast), "window_roc") &&
+        cxpr_expr_ast_call_arg_count(value_ast) == 2u) {
+        const cxpr_expr_ast* roc_value_ast = cxpr_expr_ast_call_arg(value_ast, 0u);
+        const cxpr_expr_ast* roc_period_ast = cxpr_expr_ast_call_arg(value_ast, 1u);
         size_t roc_capacity = 0u;
         size_t source_count;
         char* roc_period_expr;
@@ -2883,7 +2883,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
             free(period_limit_expr);
             return NULL;
         }
-        roc_period_expr = cxpr_ast_to_c_at_offset(roc_period_ast, 0u, target, err);
+        roc_period_expr = cxpr_expr_ast_to_c_at_offset(roc_period_ast, 0u, target, err);
         if (!roc_period_expr) {
             free(period_expr);
             free(period_limit_expr);
@@ -2908,7 +2908,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         for (size_t i = 0u; i < source_count; ++i) {
             char* source_expr;
             if (i > 0u) cxpr_model_c_puts(&b, ", ");
-            source_expr = cxpr_ast_to_c_at_offset(
+            source_expr = cxpr_expr_ast_to_c_at_offset(
                 roc_value_ast, lookback_offset + (unsigned)i, target, err);
             if (!source_expr) {
                 free(roc_period_expr);
@@ -2939,8 +2939,8 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         return b.data;
     }
     if (is_bars_since_extreme) {
-        const cxpr_ast* mode_ast = cxpr_ast_function_arg(ast, 2u);
-        char* mode_expr = cxpr_ast_to_c_at_offset(mode_ast, 0u, target, err);
+        const cxpr_expr_ast* mode_ast = cxpr_expr_ast_call_arg(ast, 2u);
+        char* mode_expr = cxpr_expr_ast_to_c_at_offset(mode_ast, 0u, target, err);
         if (!mode_expr) {
             free(period_expr);
             free(period_limit_expr);
@@ -2950,7 +2950,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         for (size_t i = 0u; i < capacity; ++i) {
             char* value_expr;
             if (i > 0u) cxpr_model_c_puts(&b, ", ");
-            value_expr = cxpr_ast_to_c_at_offset(
+            value_expr = cxpr_expr_ast_to_c_at_offset(
                 value_ast, lookback_offset + (unsigned)i, target, err);
             if (!value_expr) {
                 free(mode_expr);
@@ -2987,8 +2987,8 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         return b.data;
     }
     if (is_window_mean_absdev) {
-        const cxpr_ast* center_ast = cxpr_ast_function_arg(ast, 2u);
-        char* center_expr = cxpr_ast_to_c_at_offset(center_ast, lookback_offset, target, err);
+        const cxpr_expr_ast* center_ast = cxpr_expr_ast_call_arg(ast, 2u);
+        char* center_expr = cxpr_expr_ast_to_c_at_offset(center_ast, lookback_offset, target, err);
         if (!center_expr) {
             free(period_expr);
             free(period_limit_expr);
@@ -2998,7 +2998,7 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
         for (size_t i = 0u; i < capacity; ++i) {
             char* value_expr;
             if (i > 0u) cxpr_model_c_puts(&b, ", ");
-            value_expr = cxpr_ast_to_c_at_offset(
+            value_expr = cxpr_expr_ast_to_c_at_offset(
                 value_ast, lookback_offset + (unsigned)i, target, err);
             if (!value_expr) {
                 free(center_expr);
@@ -3041,11 +3041,11 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     for (size_t i = 0u; i < value_count; ++i) {
         char* value_expr;
         if (i > 0u) cxpr_model_c_puts(&b, ", ");
-        value_expr = (cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
-                      cxpr_model_window_is_function(cxpr_ast_function_name(value_ast)))
+        value_expr = (cxpr_expr_ast_kind_of(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+                      cxpr_model_window_is_function(cxpr_expr_ast_call_name(value_ast)))
                          ? cxpr_model_ast_c_emit_window_call(
                                value_ast, lookback_offset + (unsigned)i, target, program, err)
-                         : cxpr_ast_to_c_at_offset(
+                         : cxpr_expr_ast_to_c_at_offset(
                                value_ast, lookback_offset + (unsigned)i, target, err);
         if (!value_expr) {
             free(period_expr);
@@ -3095,13 +3095,13 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_ast* ast,
     return b.data;
 }
 
-static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
+static char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                                         unsigned lookback_offset,
                                         void* userdata,
                                         bool* handled,
                                         cxpr_error* err) {
-    const char* name = cxpr_ast_function_name(ast);
-    size_t argc = cxpr_ast_function_argc(ast);
+    const char* name = cxpr_expr_ast_call_name(ast);
+    size_t argc = cxpr_expr_ast_call_arg_count(ast);
     cxpr_model_ast_c_target* target_data = (cxpr_model_ast_c_target*)userdata;
     const cxpr_c_target target = {
         .api_version = CXPR_C_TARGET_API_VERSION,
@@ -3130,9 +3130,9 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
         char* right;
         const char* op = cxpr_model_names_match(name, "min") ? "<" : ">";
         if (handled) *handled = true;
-        left = cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, 0u),
+        left = cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, 0u),
                                        lookback_offset, &target, err);
-        right = left ? cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, 1u),
+        right = left ? cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, 1u),
                                                lookback_offset, &target, err) : NULL;
         if (!left || !right) {
             free(left);
@@ -3158,8 +3158,8 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
         if (handled) *handled = true;
         cxpr_model_c_puts(&b, "((");
         for (size_t i = 0u; i < argc; ++i) {
-            char* arg = cxpr_ast_to_c_at_offset(
-                cxpr_ast_function_arg(ast, i), lookback_offset, &target, err);
+            char* arg = cxpr_expr_ast_to_c_at_offset(
+                cxpr_expr_ast_call_arg(ast, i), lookback_offset, &target, err);
             if (!arg) {
                 free(b.data);
                 return NULL;
@@ -3185,11 +3185,11 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
         char* yes;
         char* no;
         if (handled) *handled = true;
-        cond = cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, 0u),
+        cond = cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, 0u),
                                        lookback_offset, &target, err);
-        yes = cond ? cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, 1u),
+        yes = cond ? cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, 1u),
                                              lookback_offset, &target, err) : NULL;
-        no = yes ? cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, 2u),
+        no = yes ? cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, 2u),
                                            lookback_offset, &target, err) : NULL;
         if (!cond || !yes || !no) {
             free(cond);
@@ -3249,7 +3249,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
                 }
                 for (size_t i = 0u; i < argc; ++i) {
                     names[i] = entry->defined_param_names[i];
-                    exprs[i] = cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, i),
+                    exprs[i] = cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, i),
                                                        lookback_offset, &target, err);
                     if (!exprs[i]) {
                         for (size_t j = 0u; j < i; ++j) free(exprs[j]);
@@ -3261,7 +3261,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
                 inline_data.param_names = names;
                 inline_data.param_exprs = exprs;
                 inline_data.param_count = argc;
-                expr = cxpr_ast_to_c_at_offset(entry->defined_body,
+                expr = cxpr_expr_ast_to_c_at_offset(entry->defined_body,
                                                lookback_offset,
                                                &inline_target,
                                                err);
@@ -3295,7 +3295,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
             for (size_t i = 0u; i < argc; ++i) {
                 char* arg;
                 if (i > 0u) cxpr_model_c_puts(&b, ", ");
-                arg = cxpr_ast_to_c_at_offset(cxpr_ast_function_arg(ast, i),
+                arg = cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, i),
                                               lookback_offset, &target, err);
                 if (!arg) {
                     free(b.data);
@@ -3322,7 +3322,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
 }
 
 static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
-                                      const cxpr_ast* ast,
+                                      const cxpr_expr_ast* ast,
                                       const char* function_prefix,
                                       const double* literal_param_values,
                                       size_t literal_param_count,
@@ -3346,7 +3346,7 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
         .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = &userdata,
     };
-    return cxpr_ast_to_c(ast, &target, err);
+    return cxpr_expr_ast_to_c(ast, &target, err);
 }
 
 static char* cxpr_model_ast_temp_make(cxpr_model_ast_temp_emit* emit,
@@ -3367,9 +3367,9 @@ static char* cxpr_model_ast_temp_make(cxpr_model_ast_temp_emit* emit,
 }
 
 static char* cxpr_model_ast_binary_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
-                                                   const cxpr_ast* ast,
+                                                   const cxpr_expr_ast* ast,
                                                    cxpr_error* err) {
-    int op = cxpr_ast_operator(ast);
+    int op = cxpr_expr_ast_operator(ast);
     const char* ops = NULL;
     char* left;
     char* right;
@@ -3389,11 +3389,11 @@ static char* cxpr_model_ast_binary_to_c_with_temps(cxpr_model_ast_temp_emit* emi
     case CXPR_TOK_AND: ops = "&&"; break;
     case CXPR_TOK_OR: ops = "||"; break;
     default:
-        return cxpr_ast_to_c(ast, emit ? emit->target : NULL, err);
+        return cxpr_expr_ast_to_c(ast, emit ? emit->target : NULL, err);
     }
 
-    left = cxpr_model_ast_expr_to_c_with_temps(emit, cxpr_ast_left(ast), err);
-    right = left ? cxpr_model_ast_expr_to_c_with_temps(emit, cxpr_ast_right(ast), err) : NULL;
+    left = cxpr_model_ast_expr_to_c_with_temps(emit, cxpr_expr_ast_binary_left(ast), err);
+    right = left ? cxpr_model_ast_expr_to_c_with_temps(emit, cxpr_expr_ast_binary_right(ast), err) : NULL;
     if (!left || !right) {
         free(left);
         free(right);
@@ -3414,19 +3414,19 @@ static char* cxpr_model_ast_binary_to_c_with_temps(cxpr_model_ast_temp_emit* emi
 }
 
 static char* cxpr_model_ast_expr_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
-                                                 const cxpr_ast* ast,
+                                                 const cxpr_expr_ast* ast,
                                                  cxpr_error* err) {
     if (!emit || !ast) return NULL;
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
-        const char* name = cxpr_ast_function_name(ast);
-        const size_t argc = cxpr_ast_function_argc(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = cxpr_expr_ast_call_name(ast);
+        const size_t argc = cxpr_expr_ast_call_arg_count(ast);
         if ((cxpr_model_names_match(name, "min") || cxpr_model_names_match(name, "max")) &&
             argc == 2u) {
             const char* op = cxpr_model_names_match(name, "min") ? "<" : ">";
             char* left = cxpr_model_ast_expr_to_c_with_temps(
-                emit, cxpr_ast_function_arg(ast, 0u), err);
+                emit, cxpr_expr_ast_call_arg(ast, 0u), err);
             char* right = left ? cxpr_model_ast_expr_to_c_with_temps(
-                emit, cxpr_ast_function_arg(ast, 1u), err) : NULL;
+                emit, cxpr_expr_ast_call_arg(ast, 1u), err) : NULL;
             char* left_temp;
             char* right_temp;
             char* out;
@@ -3462,10 +3462,10 @@ static char* cxpr_model_ast_expr_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
             return out;
         }
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP) {
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP) {
         return cxpr_model_ast_binary_to_c_with_temps(emit, ast, err);
     }
-    return cxpr_ast_to_c(ast, emit->target, err);
+    return cxpr_expr_ast_to_c(ast, emit->target, err);
 }
 
 static bool cxpr_model_c_defined_function_used(const cxpr_model_program* program,
@@ -3488,26 +3488,26 @@ static bool cxpr_model_c_defined_function_used(const cxpr_model_program* program
 }
 
 static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program* program,
-                                                       const cxpr_ast* ast,
+                                                       const cxpr_expr_ast* ast,
                                                        bool* used,
                                                        cxpr_error* err) {
     if (!ast) return true;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_c_collect_defined_function_refs(program, cxpr_ast_left(ast),
+        return cxpr_model_c_collect_defined_function_refs(program, cxpr_expr_ast_binary_left(ast),
                                                           used, err) &&
-               cxpr_model_c_collect_defined_function_refs(program, cxpr_ast_right(ast),
+               cxpr_model_c_collect_defined_function_refs(program, cxpr_expr_ast_binary_right(ast),
                                                           used, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_model_c_collect_defined_function_refs(program, cxpr_ast_operand(ast),
+        return cxpr_model_c_collect_defined_function_refs(program, cxpr_expr_ast_unary_operand(ast),
                                                           used, err);
     case CXPR_NODE_FUNCTION_CALL: {
-        const char* name = cxpr_ast_function_name(ast);
-        size_t argc = cxpr_ast_function_argc(ast);
+        const char* name = cxpr_expr_ast_call_name(ast);
+        size_t argc = cxpr_expr_ast_call_arg_count(ast);
         if (!cxpr_model_c_defined_function_used(program, name, used, err)) return false;
         for (size_t i = 0u; i < argc; ++i) {
             if (!cxpr_model_c_collect_defined_function_refs(
-                    program, cxpr_ast_function_arg(ast, i), used, err)) {
+                    program, cxpr_expr_ast_call_arg(ast, i), used, err)) {
                 return false;
             }
         }
@@ -3516,10 +3516,10 @@ static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program*
     case CXPR_NODE_PRODUCER_ACCESS:
         {
             cxpr_func_entry* entry = program && program->registry
-                ? cxpr_registry_find(program->registry, cxpr_ast_producer_name(ast))
+                ? cxpr_registry_find(program->registry, cxpr_expr_ast_producer_name(ast))
                 : NULL;
             if (entry && !entry->model_producer && entry->defined_return_field_count > 0u) {
-                const char* field = cxpr_ast_producer_field(ast);
+                const char* field = cxpr_expr_ast_producer_field(ast);
                 for (size_t f = 0u; f < entry->defined_return_field_count; ++f) {
                     if (entry->defined_return_field_names[f] &&
                         field &&
@@ -3533,25 +3533,25 @@ static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program*
                 }
             }
         }
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
             if (!cxpr_model_c_collect_defined_function_refs(
-                    program, cxpr_ast_producer_arg(ast, i), used, err)) {
+                    program, cxpr_expr_ast_producer_arg(ast, i), used, err)) {
                 return false;
             }
         }
         return true;
     case CXPR_NODE_LOOKBACK:
         return cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_ast_lookback_target(ast), used, err) &&
+                   program, cxpr_expr_ast_lookback_target(ast), used, err) &&
                cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_ast_lookback_index(ast), used, err);
+                   program, cxpr_expr_ast_lookback_index(ast), used, err);
     case CXPR_NODE_TERNARY:
         return cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_ast_ternary_condition(ast), used, err) &&
+                   program, cxpr_expr_ast_ternary_condition(ast), used, err) &&
                cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_ast_ternary_true_branch(ast), used, err) &&
+                   program, cxpr_expr_ast_ternary_true(ast), used, err) &&
                cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_ast_ternary_false_branch(ast), used, err);
+                   program, cxpr_expr_ast_ternary_false(ast), used, err);
     default:
         return true;
     }
@@ -4066,7 +4066,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                 "Model invalid_input_guard references unknown binding", 0, 0);
             goto fail;
         }
-        guard_expr = cxpr_ast_to_c(
+        guard_expr = cxpr_expr_ast_to_c(
             program->bindings[guard_index].ast, &ast_target, err);
         guard_name = cxpr_model_c_safe_name(program->invalid_input_guard);
         if (!guard_expr || !guard_name) {
@@ -4085,8 +4085,8 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             cxpr_model_c_printf(
                 &b, "        isfinite(_cx_params[%zu]) &&\n", i);
         }
-        if (cxpr_ast_type(program->bindings[guard_index].ast) == CXPR_NODE_BOOL &&
-            cxpr_ast_bool_value(program->bindings[guard_index].ast)) {
+        if (cxpr_expr_ast_kind_of(program->bindings[guard_index].ast) == CXPR_NODE_BOOL &&
+            cxpr_expr_ast_bool_value(program->bindings[guard_index].ast)) {
             cxpr_model_c_puts(&b, "        true;\n");
         } else {
             cxpr_model_c_printf(&b, "        ((%s) != 0);\n", guard_expr);
@@ -4123,12 +4123,12 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         }
         if (!name) goto oom;
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE &&
-            cxpr_ast_type(program->bindings[i].ast) == CXPR_NODE_IDENTIFIER) {
+            cxpr_expr_ast_kind_of(program->bindings[i].ast) == CXPR_NODE_IDENTIFIER) {
             size_t slot = cxpr_model_fused_slot_find(
                 program->fused_slot_names,
                 program->fused_slot_count,
                 program->bindings[i].name);
-            expr = cxpr_ast_to_c(program->bindings[i].ast, &ast_target, err);
+            expr = cxpr_expr_ast_to_c(program->bindings[i].ast, &ast_target, err);
             if (!expr || slot == (size_t)-1) {
                 free(expr);
                 goto fail;
@@ -4235,7 +4235,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             if (owns_name) free(name);
             goto fail;
         }
-        expr = cxpr_ast_to_c(program->bindings[i].ast, &ast_target, err);
+        expr = cxpr_expr_ast_to_c(program->bindings[i].ast, &ast_target, err);
         if (!expr) {
             if (owns_name) free(name);
             goto fail;
@@ -4297,7 +4297,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         size_t capacity = cxpr_model_c_history_capacity(depth);
         char* current = NULL;
         if (program->history_specs[i].target &&
-            cxpr_ast_type(program->history_specs[i].target) == CXPR_NODE_PRODUCER_ACCESS) {
+            cxpr_expr_ast_kind_of(program->history_specs[i].target) == CXPR_NODE_PRODUCER_ACCESS) {
             current = cxpr_model_ast_expr_to_c(program,
                                                program->history_specs[i].target,
                                                function_name,

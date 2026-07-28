@@ -131,7 +131,7 @@ static int cxpr_meta_append_constants(cxpr_meta_buf* out, const cxpr_model* mode
     const size_t count = cxpr_model_constant_count(model);
     if (!cxpr_meta_append(out, "\"params\":[")) return 0;
     for (size_t i = 0u; i < count; ++i) {
-        char* expr = cxpr_ast_to_string(cxpr_model_constant_expr(model, i));
+        char* expr = cxpr_expr_ast_to_string(cxpr_model_constant_expr(model, i));
         int ok = 1;
         if (!expr) return 0;
         ok = (i == 0u || cxpr_meta_append(out, ",")) &&
@@ -150,7 +150,7 @@ static int cxpr_meta_append_bindings(cxpr_meta_buf* out, const cxpr_model* model
     const size_t count = cxpr_model_binding_count(model);
     if (!cxpr_meta_append(out, "\"bindings\":[")) return 0;
     for (size_t i = 0u; i < count; ++i) {
-        char* expr = cxpr_ast_to_string(cxpr_model_binding_expr(model, i));
+        char* expr = cxpr_expr_ast_to_string(cxpr_model_binding_expr(model, i));
         int ok = 1;
         if (!expr) return 0;
         ok = (i == 0u || cxpr_meta_append(out, ",")) &&

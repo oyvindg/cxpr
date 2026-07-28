@@ -282,7 +282,7 @@ static cxpr_value bench_tf_value_fn(const cxpr_value* args, size_t argc, void* u
     return cxpr_num(args[0].d + 1.0);
 }
 
-static cxpr_value bench_tf_ast_handler_fn(const cxpr_ast* call_ast,
+static cxpr_value bench_tf_ast_handler_fn(const cxpr_expr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           void* userdata,
@@ -290,14 +290,14 @@ static cxpr_value bench_tf_ast_handler_fn(const cxpr_ast* call_ast,
     double value = 0.0;
 
     (void)userdata;
-    if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &value, err)) {
+    if (!cxpr_eval_ast_number(cxpr_expr_ast_call_arg(call_ast, 0), ctx, reg, &value, err)) {
         return cxpr_num(NAN);
     }
 
-    if (cxpr_ast_function_argc(call_ast) == 2) {
-        const cxpr_ast* timeframe = cxpr_ast_function_arg(call_ast, 1);
-        if (!timeframe || cxpr_ast_type(timeframe) != CXPR_NODE_STRING ||
-            strcmp(cxpr_ast_string_value(timeframe), "1h") != 0) {
+    if (cxpr_expr_ast_call_arg_count(call_ast) == 2) {
+        const cxpr_expr_ast* timeframe = cxpr_expr_ast_call_arg(call_ast, 1);
+        if (!timeframe || cxpr_expr_ast_kind_of(timeframe) != CXPR_NODE_STRING ||
+            strcmp(cxpr_expr_ast_string_value(timeframe), "1h") != 0) {
             if (err) {
                 err->code = CXPR_ERR_SYNTAX;
                 err->message = "bench_tf expects timeframe \"1h\"";
@@ -702,7 +702,7 @@ static double time_mutate_params_prehashed_only(cxpr_context* ctx, size_t iterat
     return (double)(end - start) / (double)iterations;
 }
 
-static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
+static double time_ast(const cxpr_expr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
                        size_t iterations, int mutate_context) {
     size_t i;
     double total = 0.0;
@@ -1272,7 +1272,7 @@ static double typed_value_to_double(const cxpr_value* value, const char* field) 
     return found ? NAN : NAN;
 }
 
-static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
+static double time_ast_typed(const cxpr_expr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
                              size_t iterations, const char* field, int free_result) {
     size_t i;
     double total = 0.0;
@@ -1310,7 +1310,7 @@ static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, cons
     return total;
 }
 
-static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
+static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_program* program,
                                cxpr_context* ctx, const cxpr_registry* reg,
                                const bench_case* c) {
     size_t i;
@@ -1362,7 +1362,7 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
     long long ast_start, ast_end, ir_start, ir_end;
     double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, c->expr, &err);
     cxpr_program* program;
 
     if (!ast) {
@@ -1373,7 +1373,7 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
     program = cxpr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
         exit(1);
     }
 
@@ -1423,7 +1423,7 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
     }
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
@@ -1431,7 +1431,7 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     long long ast_start, ast_end, ir_start, ir_end;
     double ast_total, ir_total, c_total = 0.0, ast_ns, ir_ns, c_ns = NAN;
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, c->expr, &err);
     cxpr_program* program;
 
     if (!ast) {
@@ -1442,7 +1442,7 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     program = cxpr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
         exit(1);
     }
 
@@ -1496,10 +1496,10 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     }
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
-static double time_ast_lookback(const cxpr_ast* ast, cxpr_context* ctx,
+static double time_ast_lookback(const cxpr_expr_ast* ast, cxpr_context* ctx,
                                 const cxpr_registry* reg, size_t iterations) {
     size_t i;
     double total = 0.0;
@@ -1539,7 +1539,7 @@ static double time_ir_lookback(const cxpr_program* program, cxpr_context* ctx,
     return total;
 }
 
-static void validate_lookback_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
+static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_program* program,
                                         cxpr_context* ctx, const cxpr_registry* reg,
                                         const lookback_bench_case* c) {
     cxpr_error ast_err = {0};
@@ -1581,7 +1581,7 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
     long long ast_start, ast_end, ir_start, ir_end;
     double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, c->expr, &err);
     cxpr_program* program;
 
     if (!ast) {
@@ -1591,7 +1591,7 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
     program = cxpr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for lookback '%s': %s\n", c->name, err.message);
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
         exit(1);
     }
 
@@ -1639,7 +1639,7 @@ static void bench_one_lookback(cxpr_parser* parser, cxpr_context* ctx, cxpr_regi
     }
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
@@ -1650,7 +1650,7 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     churn_slots s;
     size_t i;
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, expr, &err);
     cxpr_program* program;
 
     if (!ast) { fprintf(stderr, "Parse failed: %s\n", err.message); exit(1); }
@@ -1688,7 +1688,7 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
            "context_slot", iterations, "-", churn_ns, "-", "-", "-");
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 static void bench_context_update_paths(cxpr_context* ctx) {
@@ -1817,7 +1817,7 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
     const size_t iterations = 200000;
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_program* program;
     double total = 0.0;
     double ns;
@@ -1828,7 +1828,7 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
     }
     cxpr_context_set(ctx, "src.x", 42.0);
 
-    ast = cxpr_parse(parser, expr, &err);
+    ast = cxpr_expr_ast_parse(parser, expr, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed for defined_overlay_prefix: %s\n", err.message);
         exit(1);
@@ -1850,7 +1850,7 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
            "defined_prefix", iterations, ns, total / (double)iterations);
 
     cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
 }
 

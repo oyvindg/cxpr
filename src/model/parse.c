@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static cxpr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t column,
+static cxpr_expr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t column,
                                        cxpr_error* err);
 
 typedef struct {
@@ -741,10 +741,10 @@ static bool cxpr_model_has_function_def(const cxpr_model* model, const char* nam
     return false;
 }
 
-static cxpr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t column,
+static cxpr_expr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t column,
                                        cxpr_error* err) {
     cxpr_parser* parser;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     if (!expr || expr[0] == '\0') {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Expected expression", line, column);
         return NULL;
@@ -754,15 +754,15 @@ static cxpr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t col
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", line, column);
         return NULL;
     }
-    ast = cxpr_parse(parser, expr, err);
+    ast = cxpr_expr_ast_parse(parser, expr, err);
     cxpr_parser_free(parser);
     return ast;
 }
 
-static bool cxpr_model_collect_ast_functions(const cxpr_model* model, const cxpr_ast* ast,
+static bool cxpr_model_collect_ast_functions(const cxpr_model* model, const cxpr_expr_ast* ast,
                                              char*** names, size_t* count) {
     const char* used[256];
-    size_t used_count = cxpr_ast_functions_used(ast, used, CXPR_ARRAY_COUNT(used));
+    size_t used_count = cxpr_expr_ast_functions_used(ast, used, CXPR_ARRAY_COUNT(used));
     for (size_t i = 0; i < used_count && i < CXPR_ARRAY_COUNT(used); ++i) {
         if (cxpr_model_has_function_def(model, used[i])) continue;
         if (!cxpr_model_string_set_add(names, count, used[i])) return false;
@@ -774,7 +774,7 @@ static bool cxpr_model_collect_def_functions(const cxpr_model* model, const char
                                              char*** names, size_t* count,
                                              cxpr_error* err) {
     const char* arrow = strstr(def, "=>");
-    cxpr_ast* body;
+    cxpr_expr_ast* body;
     bool ok;
     if (!arrow) return true;
     arrow += 2;
@@ -782,7 +782,7 @@ static bool cxpr_model_collect_def_functions(const cxpr_model* model, const char
     body = cxpr_model_parse_expr(arrow, 0, 0, err);
     if (!body) return false;
     ok = cxpr_model_collect_ast_functions(model, body, names, count);
-    cxpr_ast_free(body);
+    cxpr_expr_ast_free(body);
     if (!ok) cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
     return ok;
 }

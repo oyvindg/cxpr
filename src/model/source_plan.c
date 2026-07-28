@@ -20,7 +20,7 @@ static bool cxpr_model_source_bindings_append(cxpr_source_plan_bindings* out,
 }
 
 static bool cxpr_model_plan_bind_ast_sources(const cxpr_provider* provider,
-                                             const cxpr_ast* expr,
+                                             const cxpr_expr_ast* expr,
                                              const cxpr_context* ctx,
                                              cxpr_registry* reg,
                                              const cxpr_plan_config* config,

@@ -9,7 +9,7 @@ static void cxpr_model_compiled_binding_free(cxpr_model_compiled_binding* bindin
     if (!binding) return;
     free(binding->name);
     free(binding->source);
-    cxpr_ast_free(binding->ast);
+    cxpr_expr_ast_free(binding->ast);
     binding->name = NULL;
     binding->source = NULL;
     binding->name_hash = 0u;
@@ -17,7 +17,7 @@ static void cxpr_model_compiled_binding_free(cxpr_model_compiled_binding* bindin
     binding->ast = NULL;
 }
 
-static bool cxpr_model_eval_ast_bool_result(const cxpr_ast* ast,
+static bool cxpr_model_eval_ast_bool_result(const cxpr_expr_ast* ast,
                                             const cxpr_context* ctx,
                                             const cxpr_registry* reg,
                                             bool* out_value,
@@ -61,7 +61,7 @@ void cxpr_model_context_set_compiled_typed(cxpr_context* ctx,
 static void cxpr_model_history_spec_free(cxpr_model_history_spec* spec) {
     if (!spec) return;
     free(spec->name);
-    cxpr_ast_free(spec->target);
+    cxpr_expr_ast_free(spec->target);
     spec->name = NULL;
     spec->target = NULL;
     spec->depth = 0u;

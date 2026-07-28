@@ -447,9 +447,9 @@ char* cxpr_program_to_c_function(const cxpr_program* prog,
             cxpr_ir_c_printf(&b, "    _cx_l[%zu] = _cx_s[--_cx_sp];\n", instr->index);
             break;
         case CXPR_OP_CALL_AST:
-            if (instr->ast && cxpr_ast_type(instr->ast) == CXPR_NODE_FUNCTION_CALL) {
+            if (instr->ast && cxpr_expr_ast_kind_of(instr->ast) == CXPR_NODE_FUNCTION_CALL) {
                 static char message[160];
-                const char* name = cxpr_ast_function_name(instr->ast);
+                const char* name = cxpr_expr_ast_call_name(instr->ast);
                 (void)snprintf(
                     message,
                     sizeof(message),

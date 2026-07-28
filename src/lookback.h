@@ -8,7 +8,7 @@
 
 #include <cxpr/ast/expression.h>
 
-bool cxpr_lookback_literal_offset(const cxpr_ast* index_ast,
+bool cxpr_lookback_literal_offset(const cxpr_expr_ast* index_ast,
                                   unsigned* out_offset,
                                   cxpr_error* err,
                                   const char* context);

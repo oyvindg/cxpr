@@ -17,7 +17,7 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     const char* fields[] = {"x", "y"};
     double left_vals[] = {3.0, 4.0};
     double right_vals[] = {0.0, 0.0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(p);
     assert(ctx);
@@ -30,7 +30,7 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     cxpr_context_set_fields(ctx, "lhs", fields, left_vals, 2);
     cxpr_context_set_fields(ctx, "rhs", fields, right_vals, 2);
 
-    ast = cxpr_parse(p, "dist2(lhs, rhs) + dist2(lhs, rhs)", &err);
+    ast = cxpr_expr_ast_parse(p, "dist2(lhs, rhs) + dist2(lhs, rhs)", &err);
     assert(ast);
 
     for (size_t i = 0; i < 256; ++i) {
@@ -45,7 +45,7 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
         cxpr_ir_program_reset(&program);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_parser_free(p);

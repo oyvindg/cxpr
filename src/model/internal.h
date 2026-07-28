@@ -15,7 +15,7 @@
 typedef struct {
     char* name;
     char* source;
-    cxpr_ast* expr;
+    cxpr_expr_ast* expr;
     cxpr_source_span span;
     bool has_span;
     bool is_call_param;
@@ -25,20 +25,20 @@ typedef struct {
     cxpr_model_binding_kind kind;
     char* name;
     char* source;
-    cxpr_ast* expr;
+    cxpr_expr_ast* expr;
     cxpr_source_span span;
     bool has_span;
 } cxpr_model_binding;
 
 typedef struct {
     char* source;
-    cxpr_ast* expr;
+    cxpr_expr_ast* expr;
 } cxpr_model_anonymous_output;
 
 typedef struct {
     char* name;
     char* source;
-    cxpr_ast* expr;
+    cxpr_expr_ast* expr;
 } cxpr_model_record_field;
 
 typedef struct {
@@ -114,7 +114,7 @@ typedef struct {
     char* source;
     unsigned long name_hash;
     cxpr_model_result_kind result_kind;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double min_value;
     double max_value;
     bool has_min_value;
@@ -124,7 +124,7 @@ typedef struct {
 
 typedef struct {
     char* name;
-    cxpr_ast* expr;
+    cxpr_expr_ast* expr;
 } cxpr_model_local_binding;
 
 typedef struct {
@@ -141,7 +141,7 @@ typedef struct {
 
 typedef struct {
     char* name;
-    cxpr_ast* target;
+    cxpr_expr_ast* target;
     size_t depth;
 } cxpr_model_history_spec;
 
@@ -260,7 +260,7 @@ struct cxpr_model_session {
 void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
                           const char* message, size_t line, size_t column);
 bool cxpr_model_names_match(const char* a, const char* b);
-bool cxpr_model_ast_equal(const cxpr_ast* left, const cxpr_ast* right);
+bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right);
 void cxpr_model_context_set_compiled_number(cxpr_context* ctx,
                                             const cxpr_model_compiled_binding* binding,
                                             double value);
@@ -270,23 +270,23 @@ void cxpr_model_context_set_compiled_bool(cxpr_context* ctx,
 void cxpr_model_context_set_compiled_typed(cxpr_context* ctx,
                                            const cxpr_model_compiled_binding* binding,
                                            const cxpr_value* value);
-cxpr_ast* cxpr_model_inline_locals(const cxpr_ast* ast,
+cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
                                    const cxpr_model_local_binding* locals,
                                    size_t local_count);
-bool cxpr_model_lookback_target_key(const cxpr_ast* target,
+bool cxpr_model_lookback_target_key(const cxpr_expr_ast* target,
                                     char** out_key,
                                     cxpr_error* err);
 
 bool cxpr_model_lookback_bound(const cxpr_model* model,
-                               const cxpr_ast* index,
+                               const cxpr_expr_ast* index,
                                size_t* out_bound,
                                cxpr_error* err);
 bool cxpr_model_collect_lookbacks(const cxpr_model* model,
                                   cxpr_model_history_spec** specs,
                                   size_t* count,
                                   cxpr_error* err);
-bool cxpr_model_lookback_resolver(const cxpr_ast* target,
-                                  const cxpr_ast* index,
+bool cxpr_model_lookback_resolver(const cxpr_expr_ast* target,
+                                  const cxpr_expr_ast* index,
                                   const cxpr_context* ctx,
                                   const cxpr_registry* reg,
                                   void* userdata,
@@ -298,7 +298,7 @@ bool cxpr_model_collect_required_defaults(const cxpr_model* model,
                                           cxpr_error* err);
 void cxpr_model_record_fields_free(cxpr_model_record_field* fields, size_t count);
 void cxpr_model_record_function_clear(cxpr_model_record_function* fn);
-const cxpr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
+const cxpr_expr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
                                         size_t count,
                                         const char* name);
 bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program,
@@ -320,7 +320,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
                                          const cxpr_model_import* imports,
                                          size_t import_count,
                                          cxpr_error* err);
-cxpr_value cxpr_model_eval_child_producer(const cxpr_ast* ast,
+cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           void* userdata,

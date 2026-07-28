@@ -17,33 +17,33 @@ static size_t cxpr_model_window_plan_param_index(const cxpr_model_program* progr
 }
 
 static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* program,
-                                                 const cxpr_ast* ast,
+                                                 const cxpr_expr_ast* ast,
                                                  double* out) {
     double left = 0.0;
     double right = 0.0;
     int op;
     if (!ast || !out) return false;
     if (cxpr_eval_constant_double(ast, out)) return true;
-    if (cxpr_ast_type(ast) == CXPR_NODE_VARIABLE) {
-        const char* name = cxpr_ast_variable_name(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_VARIABLE) {
+        const char* name = cxpr_expr_ast_param_name(ast);
         size_t index = cxpr_model_window_plan_param_index(program, name);
         return index != (size_t)-1 &&
                program->constants[index].ast &&
                cxpr_eval_constant_double(program->constants[index].ast, out);
     }
-    if (cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL) {
-        const char* name = cxpr_ast_function_name(ast);
-        size_t argc = cxpr_ast_function_argc(ast);
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = cxpr_expr_ast_call_name(ast);
+        size_t argc = cxpr_expr_ast_call_arg_count(ast);
         if ((!cxpr_model_names_match(name, "min") &&
              !cxpr_model_names_match(name, "max")) || argc == 0u ||
             !cxpr_model_window_plan_constant_expr(
-                program, cxpr_ast_function_arg(ast, 0u), out)) {
+                program, cxpr_expr_ast_call_arg(ast, 0u), out)) {
             return false;
         }
         for (size_t i = 1u; i < argc; ++i) {
             double value = 0.0;
             if (!cxpr_model_window_plan_constant_expr(
-                    program, cxpr_ast_function_arg(ast, i), &value)) {
+                    program, cxpr_expr_ast_call_arg(ast, i), &value)) {
                 return false;
             }
             *out = cxpr_model_names_match(name, "min")
@@ -52,12 +52,12 @@ static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* progr
         }
         return true;
     }
-    if (cxpr_ast_type(ast) != CXPR_NODE_BINARY_OP) return false;
-    if (!cxpr_model_window_plan_constant_expr(program, cxpr_ast_left(ast), &left) ||
-        !cxpr_model_window_plan_constant_expr(program, cxpr_ast_right(ast), &right)) {
+    if (cxpr_expr_ast_kind_of(ast) != CXPR_NODE_BINARY_OP) return false;
+    if (!cxpr_model_window_plan_constant_expr(program, cxpr_expr_ast_binary_left(ast), &left) ||
+        !cxpr_model_window_plan_constant_expr(program, cxpr_expr_ast_binary_right(ast), &right)) {
         return false;
     }
-    op = cxpr_ast_operator(ast);
+    op = cxpr_expr_ast_operator(ast);
     if (op == CXPR_TOK_PLUS) *out = left + right;
     else if (op == CXPR_TOK_MINUS) *out = left - right;
     else if (op == CXPR_TOK_STAR) *out = left * right;
@@ -67,16 +67,16 @@ static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* progr
 }
 
 static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* program,
-                                                   const cxpr_ast* period_ast,
+                                                   const cxpr_expr_ast* period_ast,
                                                    size_t* out_capacity,
                                                    cxpr_error* err) {
     double raw = 0.0;
     long period;
     (void)err;
     if (!period_ast || !out_capacity) return false;
-    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+    if (cxpr_expr_ast_kind_of(period_ast) == CXPR_NODE_VARIABLE) {
         size_t index = cxpr_model_window_plan_param_index(
-            program, cxpr_ast_variable_name(period_ast));
+            program, cxpr_expr_ast_param_name(period_ast));
         if (index != (size_t)-1 &&
             program->constants[index].has_max_value &&
             isfinite(program->constants[index].max_value)) {
@@ -131,36 +131,36 @@ static bool cxpr_model_window_plan_append(cxpr_model_window_plan* plan,
 static bool cxpr_model_window_plan_add_nested_roc_aggregate(
     const cxpr_model_program* program,
     cxpr_model_window_plan* plan,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_model_window_plan_op op,
     cxpr_error* err) {
-    const cxpr_ast* roc_ast;
-    const cxpr_ast* value_ast;
-    const cxpr_ast* roc_period_ast;
-    const cxpr_ast* aggregate_period_ast;
+    const cxpr_expr_ast* roc_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* roc_period_ast;
+    const cxpr_expr_ast* aggregate_period_ast;
     size_t roc_capacity = 0u;
     size_t aggregate_capacity = 0u;
     size_t roc_index = 0u;
     cxpr_model_window_plan_node roc_node = {0};
     cxpr_model_window_plan_node aggregate_node = {0};
 
-    if (!program || !plan || !ast || cxpr_ast_type(ast) != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_function_argc(ast) != 2u) {
+    if (!program || !plan || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_expr_ast_call_arg_count(ast) != 2u) {
         return true;
     }
     if (op != CXPR_MODEL_WINDOW_PLAN_OP_MEAN &&
         op != CXPR_MODEL_WINDOW_PLAN_OP_SUM) {
         return true;
     }
-    roc_ast = cxpr_ast_function_arg(ast, 0u);
-    if (!roc_ast || cxpr_ast_type(roc_ast) != CXPR_NODE_FUNCTION_CALL ||
-        !cxpr_model_names_match(cxpr_ast_function_name(roc_ast), "window_roc") ||
-        cxpr_ast_function_argc(roc_ast) != 2u) {
+    roc_ast = cxpr_expr_ast_call_arg(ast, 0u);
+    if (!roc_ast || cxpr_expr_ast_kind_of(roc_ast) != CXPR_NODE_FUNCTION_CALL ||
+        !cxpr_model_names_match(cxpr_expr_ast_call_name(roc_ast), "window_roc") ||
+        cxpr_expr_ast_call_arg_count(roc_ast) != 2u) {
         return true;
     }
-    value_ast = cxpr_ast_function_arg(roc_ast, 0u);
-    roc_period_ast = cxpr_ast_function_arg(roc_ast, 1u);
-    aggregate_period_ast = cxpr_ast_function_arg(ast, 1u);
+    value_ast = cxpr_expr_ast_call_arg(roc_ast, 0u);
+    roc_period_ast = cxpr_expr_ast_call_arg(roc_ast, 1u);
+    aggregate_period_ast = cxpr_expr_ast_call_arg(ast, 1u);
     if (!cxpr_model_window_plan_period_capacity(
             program, roc_period_ast, &roc_capacity, err) ||
         !cxpr_model_window_plan_period_capacity(
@@ -199,28 +199,28 @@ static bool cxpr_model_window_plan_add_nested_roc_aggregate(
 static bool cxpr_model_window_plan_add_simple_aggregate(
     const cxpr_model_program* program,
     cxpr_model_window_plan* plan,
-    const cxpr_ast* ast,
+    const cxpr_expr_ast* ast,
     cxpr_model_window_plan_op op,
     cxpr_error* err) {
-    const cxpr_ast* value_ast;
-    const cxpr_ast* period_ast;
+    const cxpr_expr_ast* value_ast;
+    const cxpr_expr_ast* period_ast;
     size_t capacity = 0u;
     cxpr_model_window_plan_node node = {0};
 
-    if (!program || !plan || !ast || cxpr_ast_type(ast) != CXPR_NODE_FUNCTION_CALL ||
-        cxpr_ast_function_argc(ast) != 2u) {
+    if (!program || !plan || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL ||
+        cxpr_expr_ast_call_arg_count(ast) != 2u) {
         return true;
     }
     if (op != CXPR_MODEL_WINDOW_PLAN_OP_MEAN &&
         op != CXPR_MODEL_WINDOW_PLAN_OP_SUM) {
         return true;
     }
-    value_ast = cxpr_ast_function_arg(ast, 0u);
-    if (cxpr_ast_type(value_ast) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_window_is_function(cxpr_ast_function_name(value_ast))) {
+    value_ast = cxpr_expr_ast_call_arg(ast, 0u);
+    if (cxpr_expr_ast_kind_of(value_ast) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_model_window_is_function(cxpr_expr_ast_call_name(value_ast))) {
         return true;
     }
-    period_ast = cxpr_ast_function_arg(ast, 1u);
+    period_ast = cxpr_expr_ast_call_arg(ast, 1u);
     if (!cxpr_model_window_plan_period_capacity(program, period_ast, &capacity, err)) {
         return false;
     }
@@ -245,13 +245,13 @@ static bool cxpr_model_window_plan_add_simple_aggregate(
 
 static bool cxpr_model_window_plan_visit(const cxpr_model_program* program,
                                          cxpr_model_window_plan* plan,
-                                         const cxpr_ast* ast,
+                                         const cxpr_expr_ast* ast,
                                          cxpr_error* err) {
     cxpr_model_window_plan_op op;
     if (!ast) return true;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_FUNCTION_CALL:
-        op = cxpr_model_window_plan_op_for_name(cxpr_ast_function_name(ast));
+        op = cxpr_model_window_plan_op_for_name(cxpr_expr_ast_call_name(ast));
         if (op != CXPR_MODEL_WINDOW_PLAN_OP_NONE) {
             if (!cxpr_model_window_plan_add_nested_roc_aggregate(
                     program, plan, ast, op, err)) {
@@ -262,25 +262,25 @@ static bool cxpr_model_window_plan_visit(const cxpr_model_program* program,
                 return false;
             }
         }
-        for (size_t i = 0u; i < cxpr_ast_function_argc(ast); ++i) {
+        for (size_t i = 0u; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
             if (!cxpr_model_window_plan_visit(
-                    program, plan, cxpr_ast_function_arg(ast, i), err)) {
+                    program, plan, cxpr_expr_ast_call_arg(ast, i), err)) {
                 return false;
             }
         }
         return true;
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_window_plan_visit(program, plan, cxpr_ast_left(ast), err) &&
-               cxpr_model_window_plan_visit(program, plan, cxpr_ast_right(ast), err);
+        return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_binary_left(ast), err) &&
+               cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_binary_right(ast), err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_model_window_plan_visit(program, plan, cxpr_ast_operand(ast), err);
+        return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_unary_operand(ast), err);
     case CXPR_NODE_TERNARY:
-        return cxpr_model_window_plan_visit(program, plan, cxpr_ast_ternary_condition(ast), err) &&
-               cxpr_model_window_plan_visit(program, plan, cxpr_ast_ternary_true_branch(ast), err) &&
-               cxpr_model_window_plan_visit(program, plan, cxpr_ast_ternary_false_branch(ast), err);
+        return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_ternary_condition(ast), err) &&
+               cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_ternary_true(ast), err) &&
+               cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_ternary_false(ast), err);
     case CXPR_NODE_LOOKBACK:
-        return cxpr_model_window_plan_visit(program, plan, cxpr_ast_lookback_target(ast), err) &&
-               cxpr_model_window_plan_visit(program, plan, cxpr_ast_lookback_index(ast), err);
+        return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_lookback_target(ast), err) &&
+               cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_lookback_index(ast), err);
     default:
         return true;
     }
@@ -293,7 +293,7 @@ bool cxpr_model_window_plan_build(const cxpr_model_program* program,
     *out = (cxpr_model_window_plan){0};
     if (!program || !program->has_fused_layout) return true;
     for (size_t i = 0u; i < program->binding_count; ++i) {
-        const cxpr_ast* ast =
+        const cxpr_expr_ast* ast =
             program->bindings[i].ast;
         if (!cxpr_model_window_plan_visit(program, out, ast, err)) {
             cxpr_model_window_plan_free(out);
@@ -311,7 +311,7 @@ void cxpr_model_window_plan_free(cxpr_model_window_plan* plan) {
 
 const cxpr_model_window_plan_node* cxpr_model_window_plan_find_ast(
     const cxpr_model_window_plan* plan,
-    const cxpr_ast* ast) {
+    const cxpr_expr_ast* ast) {
     if (!plan || !ast) return NULL;
     for (size_t i = 0u; i < plan->node_count; ++i) {
         if (plan->nodes[i].ast == ast || cxpr_model_ast_equal(plan->nodes[i].ast, ast)) {

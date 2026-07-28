@@ -96,7 +96,7 @@ static const char* cxpr_source_canonical_operator(int op) {
     }
 }
 
-static int cxpr_source_canonical_rendered_append(char** out_text, const cxpr_ast* sub) {
+static int cxpr_source_canonical_rendered_append(char** out_text, const cxpr_expr_ast* sub) {
     char* piece = NULL;
     if (!cxpr_source_plan_render_ast_canonical(sub, &piece)) return 0;
     if (!cxpr_source_canonical_text_append(out_text, piece)) {
@@ -107,91 +107,91 @@ static int cxpr_source_canonical_rendered_append(char** out_text, const cxpr_ast
     return 1;
 }
 
-int cxpr_source_plan_render_ast_canonical(const cxpr_ast* ast, char** out_text) {
+int cxpr_source_plan_render_ast_canonical(const cxpr_expr_ast* ast, char** out_text) {
     char buffer[64];
     size_t i;
 
     if (!ast || !out_text) return 0;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_NUMBER:
-            snprintf(buffer, sizeof(buffer), "%.17g", cxpr_ast_number_value(ast));
+            snprintf(buffer, sizeof(buffer), "%.17g", cxpr_expr_ast_number_value(ast));
             return cxpr_source_canonical_text_append(out_text, buffer);
         case CXPR_NODE_BOOL:
             return cxpr_source_canonical_text_append(
-                out_text, cxpr_ast_bool_value(ast) ? "true" : "false");
+                out_text, cxpr_expr_ast_bool_value(ast) ? "true" : "false");
         case CXPR_NODE_STRING: {
-            const char* sv = cxpr_ast_string_value(ast);
+            const char* sv = cxpr_expr_ast_string_value(ast);
             if (!cxpr_source_canonical_text_append(out_text, "\"")) return 0;
             if (sv && !cxpr_source_canonical_text_append(out_text, sv)) return 0;
             return cxpr_source_canonical_text_append(out_text, "\"");
         }
         case CXPR_NODE_IDENTIFIER:
-            return cxpr_source_canonical_text_append(out_text, cxpr_ast_identifier_name(ast));
+            return cxpr_source_canonical_text_append(out_text, cxpr_expr_ast_identifier_name(ast));
         case CXPR_NODE_VARIABLE:
             if (!cxpr_source_canonical_text_append(out_text, "$")) return 0;
-            return cxpr_source_canonical_text_append(out_text, cxpr_ast_variable_name(ast));
+            return cxpr_source_canonical_text_append(out_text, cxpr_expr_ast_param_name(ast));
         case CXPR_NODE_BINARY_OP:
             if (!cxpr_source_canonical_text_append(out_text, "(")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_left(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_binary_left(ast))) return 0;
             if (!cxpr_source_canonical_text_append(
-                    out_text, cxpr_source_canonical_operator(cxpr_ast_operator(ast)))) {
+                    out_text, cxpr_source_canonical_operator(cxpr_expr_ast_operator(ast)))) {
                 return 0;
             }
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_right(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_binary_right(ast))) return 0;
             return cxpr_source_canonical_text_append(out_text, ")");
         case CXPR_NODE_UNARY_OP:
             if (!cxpr_source_canonical_text_append(
-                    out_text, cxpr_source_canonical_operator(cxpr_ast_operator(ast)))) {
+                    out_text, cxpr_source_canonical_operator(cxpr_expr_ast_operator(ast)))) {
                 return 0;
             }
             if (!cxpr_source_canonical_text_append(out_text, "(")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_operand(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_unary_operand(ast))) return 0;
             return cxpr_source_canonical_text_append(out_text, ")");
         case CXPR_NODE_FUNCTION_CALL: {
-            const char* fn = cxpr_ast_function_name(ast);
-            size_t argc = cxpr_ast_function_argc(ast);
+            const char* fn = cxpr_expr_ast_call_name(ast);
+            size_t argc = cxpr_expr_ast_call_arg_count(ast);
             if (!fn || !cxpr_source_canonical_text_append(out_text, fn) ||
                 !cxpr_source_canonical_text_append(out_text, "(")) {
                 return 0;
             }
             for (i = 0u; i < argc; ++i) {
                 if (i > 0u && !cxpr_source_canonical_text_append(out_text, ",")) return 0;
-                if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_function_arg(ast, i))) return 0;
+                if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_call_arg(ast, i))) return 0;
             }
             return cxpr_source_canonical_text_append(out_text, ")");
         }
         case CXPR_NODE_PRODUCER_ACCESS: {
-            const char* name = cxpr_ast_producer_name(ast);
-            const char* field = cxpr_ast_producer_field(ast);
-            size_t argc = cxpr_ast_producer_argc(ast);
+            const char* name = cxpr_expr_ast_producer_name(ast);
+            const char* field = cxpr_expr_ast_producer_field(ast);
+            size_t argc = cxpr_expr_ast_producer_arg_count(ast);
             if (!name || !cxpr_source_canonical_text_append(out_text, name) ||
                 !cxpr_source_canonical_text_append(out_text, "(")) {
                 return 0;
             }
             for (i = 0u; i < argc; ++i) {
                 if (i > 0u && !cxpr_source_canonical_text_append(out_text, ",")) return 0;
-                if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_producer_arg(ast, i))) return 0;
+                if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_producer_arg(ast, i))) return 0;
             }
             if (!cxpr_source_canonical_text_append(out_text, ").")) return 0;
             return field ? cxpr_source_canonical_text_append(out_text, field) : 0;
         }
         case CXPR_NODE_LOOKBACK:
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_lookback_target(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_lookback_target(ast))) return 0;
             if (!cxpr_source_canonical_text_append(out_text, "[")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_lookback_index(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_lookback_index(ast))) return 0;
             return cxpr_source_canonical_text_append(out_text, "]");
         case CXPR_NODE_TERNARY:
             if (!cxpr_source_canonical_text_append(out_text, "(")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_ternary_condition(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_ternary_condition(ast))) return 0;
             if (!cxpr_source_canonical_text_append(out_text, "?")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_ternary_true_branch(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_ternary_true(ast))) return 0;
             if (!cxpr_source_canonical_text_append(out_text, ":")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_ast_ternary_false_branch(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_ternary_false(ast))) return 0;
             return cxpr_source_canonical_text_append(out_text, ")");
         case CXPR_NODE_FIELD_ACCESS: {
-            const cxpr_ast* base = cxpr_ast_field_base(ast);
-            const char* obj = cxpr_ast_field_object(ast);
-            const char* fld = cxpr_ast_field_name(ast);
+            const cxpr_expr_ast* base = cxpr_expr_ast_field_base(ast);
+            const char* obj = cxpr_expr_ast_field_object(ast);
+            const char* fld = cxpr_expr_ast_field_name(ast);
             if (base) {
                 if (!fld) return 0;
                 if (!cxpr_source_canonical_text_append(out_text, "(")) return 0;

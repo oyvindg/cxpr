@@ -217,11 +217,11 @@ static void test_parse_minimal_strategy_model(void) {
     assert(strcmp(cxpr_model_input(model, 1), "position") == 0);
     assert(cxpr_model_constant_count(model) == 2);
     assert(strcmp(cxpr_model_constant_name(model, 0), "fast") == 0);
-    assert(cxpr_ast_type(cxpr_model_constant_expr(model, 0)) == CXPR_NODE_NUMBER);
+    assert(cxpr_expr_ast_kind_of(cxpr_model_constant_expr(model, 0)) == CXPR_NODE_NUMBER);
     assert(cxpr_model_binding_count(model) == 3);
     assert(strcmp(cxpr_model_binding_name(model, 2), "buy") == 0);
     assert(cxpr_model_binding_kind_at(model, 2) == CXPR_MODEL_BINDING_EXPR);
-    assert(cxpr_ast_type(cxpr_model_binding_expr(model, 2)) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_expr_ast_kind_of(cxpr_model_binding_expr(model, 2)) == CXPR_NODE_BINARY_OP);
     assert(cxpr_model_output_count(model) == 1);
     assert(strcmp(cxpr_model_output(model, 0), "buy") == 0);
 
@@ -1109,7 +1109,7 @@ static void test_parse_state_init_and_update_state(void) {
     assert(cxpr_model_binding_kind_at(model, 0) == CXPR_MODEL_BINDING_STATE);
     assert(strcmp(cxpr_model_binding_name(model, 1), "r") == 0);
     assert(cxpr_model_binding_kind_at(model, 1) == CXPR_MODEL_BINDING_STATE_UPDATE);
-    assert(cxpr_ast_type(cxpr_model_binding_expr(model, 1)) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_expr_ast_kind_of(cxpr_model_binding_expr(model, 1)) == CXPR_NODE_BINARY_OP);
 
     cxpr_model_free(model);
     printf("  ✓ test_parse_state_init_and_update_state\n");

@@ -15,7 +15,7 @@ static bool cxpr_lookback_err(cxpr_error* err, const char* message) {
     return false;
 }
 
-bool cxpr_lookback_literal_offset(const cxpr_ast* index_ast,
+bool cxpr_lookback_literal_offset(const cxpr_expr_ast* index_ast,
                                   unsigned* out_offset,
                                   cxpr_error* err,
                                   const char* context) {
@@ -23,12 +23,12 @@ bool cxpr_lookback_literal_offset(const cxpr_ast* index_ast,
     unsigned offset;
 
     if (out_offset) *out_offset = 0u;
-    if (!index_ast || cxpr_ast_type(index_ast) != CXPR_NODE_NUMBER) {
+    if (!index_ast || cxpr_expr_ast_kind_of(index_ast) != CXPR_NODE_NUMBER) {
         return cxpr_lookback_err(
             err,
             context ? context : "lookback requires constant index");
     }
-    raw = cxpr_ast_number_value(index_ast);
+    raw = cxpr_expr_ast_number_value(index_ast);
     offset = raw >= 0.0 ? (unsigned)(raw + 0.5) : 0u;
     if (!isfinite(raw) || raw < 0.0 || fabs(raw - (double)offset) > 1e-9) {
         return cxpr_lookback_err(

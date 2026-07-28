@@ -15,7 +15,7 @@ struct cxpr_document_ast_node {
     char* name;
     char* value;
     char* text;
-    cxpr_ast* expression;
+    cxpr_expr_ast* expression;
     cxpr_document_ast_node_list children;
 };
 

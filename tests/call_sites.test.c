@@ -32,11 +32,11 @@ static int visit_arg(
 int main(void) {
     cxpr_parser* parser = cxpr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     visit_state state = {0};
 
     assert(parser);
-    ast = cxpr_parse(
+    ast = cxpr_expr_ast_parse(
         parser,
         "custom(source=base(partition=\"archive\"), scope=\"daily\", "
         "label=$dynamic)",
@@ -47,7 +47,7 @@ int main(void) {
     assert(state.found_custom_scope);
     assert(state.found_nested_scope);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_parser_free(parser);
     puts("call-site metadata tests passed");
     return 0;

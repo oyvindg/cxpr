@@ -19,13 +19,13 @@ static const char* cxpr_eval_producer_unknown_function_message(const char* name)
     return message;
 }
 
-cxpr_value cxpr_eval_cached_producer_access(const cxpr_ast* ast,
+cxpr_value cxpr_eval_cached_producer_access(const cxpr_expr_ast* ast,
                                             const cxpr_context* ctx,
                                             const cxpr_registry* reg,
                                             cxpr_error* err) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
     cxpr_func_entry* entry = cxpr_eval_cached_producer_entry(ast, reg);
-    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
     const cxpr_struct_value* produced;
     char const_key_local[256];
     char* const_key_heap = NULL;
