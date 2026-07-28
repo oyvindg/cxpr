@@ -4,7 +4,7 @@
  */
 
 #include "registry/internal.h" // IWYU pragma: keep
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/window.h>
 #include <math.h>
 #include <string.h>

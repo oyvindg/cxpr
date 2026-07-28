@@ -35,7 +35,7 @@ typedef struct {
     size_t slot_count;
 } cxpr_model_window_plan;
 
-bool cxpr_model_window_plan_build(const cxpr_model_program* program,
+bool cxpr_model_window_plan_build(const cxpr_model_compiled* program,
                                   cxpr_model_window_plan* out,
                                   cxpr_error* err);
 void cxpr_model_window_plan_free(cxpr_model_window_plan* plan);

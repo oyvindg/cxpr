@@ -113,7 +113,7 @@ static void test_document_model_extension_exposes_model_view(void) {
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     const cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_model_session* session;
     cxpr_context* ctx;
     cxpr_struct_value* signal;
@@ -468,7 +468,7 @@ static void test_document_ast_lowering_handles_struct_input_blocks(void) {
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     const cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_model_session* session;
     cxpr_context* ctx;
     cxpr_struct_value* signal;
@@ -489,7 +489,7 @@ static void test_document_ast_lowering_handles_struct_input_blocks(void) {
     assert(strcmp(cxpr_model_input(model, 2u), "position.entry_price") == 0);
     assert(strcmp(cxpr_model_input(model, 3u), "position.bars_in_position") == 0);
 
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     assert(program != NULL);
     session = cxpr_model_session_new(program, NULL, &err);
     assert(session != NULL);
@@ -503,11 +503,11 @@ static void test_document_ast_lowering_handles_struct_input_blocks(void) {
     cxpr_struct_value_free(signal);
     cxpr_struct_value_free(position);
     assert(cxpr_model_session_tick(program, session, NULL, &err));
-    assert(cxpr_model_session_output_bool(session, "entry_ok", &entry_ok));
+    assert(cxpr_model_session_get_bool(session, "entry_ok", &entry_ok));
     assert(entry_ok);
 
     cxpr_model_session_free(session);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_struct_input_blocks\n");
 }
@@ -522,16 +522,16 @@ static void test_document_ast_lowering_handles_scalar_function_declaration(void)
         "out signal\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
     assert(cxpr_doc_model(document) != NULL);
-    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
+    program = cxpr_model_compile(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
-    assert(cxpr_model_program_function_count(program) == 1u);
+    assert(cxpr_model_compiled_function_count(program) == 1u);
 
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_scalar_function_declaration\n");
 }
@@ -546,23 +546,23 @@ static void test_document_ast_lowering_handles_record_function_shorthand(void) {
         "out { top, bottom }\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx;
     bool found = false;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
+    program = cxpr_model_compile(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     ctx = cxpr_context_new();
     assert(ctx != NULL);
     cxpr_context_set(ctx, "close", 10.0);
-    assert(cxpr_eval_model_program(program, ctx, NULL, &err));
+    assert(cxpr_model_compiled_eval(program, ctx, NULL, &err));
     assert(cxpr_context_get(ctx, "top", &found) == 11.0 && found);
     assert(cxpr_context_get(ctx, "bottom", &found) == 9.0 && found);
 
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_record_function_shorthand\n");
 }
@@ -580,22 +580,22 @@ static void test_document_ast_lowering_handles_scalar_function_block(void) {
         "out signal\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx;
     bool found = false;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
+    program = cxpr_model_compile(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     ctx = cxpr_context_new();
     assert(ctx != NULL);
     cxpr_context_set(ctx, "close", 13.0);
-    assert(cxpr_eval_model_program(program, ctx, NULL, &err));
+    assert(cxpr_model_compiled_eval(program, ctx, NULL, &err));
     assert(cxpr_context_get_bool(ctx, "signal", &found) && found);
 
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_scalar_function_block\n");
 }
@@ -614,23 +614,23 @@ static void test_document_ast_lowering_handles_record_function_block(void) {
         "out { top, bottom }\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx;
     bool found = false;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
+    program = cxpr_model_compile(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     ctx = cxpr_context_new();
     assert(ctx != NULL);
     cxpr_context_set(ctx, "close", 10.0);
-    assert(cxpr_eval_model_program(program, ctx, NULL, &err));
+    assert(cxpr_model_compiled_eval(program, ctx, NULL, &err));
     assert(cxpr_context_get(ctx, "top", &found) == 11.0 && found);
     assert(cxpr_context_get(ctx, "bottom", &found) == 9.0 && found);
 
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_record_function_block\n");
 }

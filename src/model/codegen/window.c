@@ -56,7 +56,7 @@ bool cxpr_model_c_emit_planned_roc_aggregate_fallback(
     const cxpr_expr_ast* value_ast,
     cxpr_model_window_plan_op op,
     const cxpr_c_target* target,
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_error* err) {
     if (!b || !name || !value_ast || !target || !program) return false;
     cxpr_model_c_puts(

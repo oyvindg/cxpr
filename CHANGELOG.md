@@ -272,7 +272,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `_param_` variants), plus per-evaluation cached structs
   (`cxpr_context_set_cached_struct`, `cxpr_context_get_cached_struct`,
   `cxpr_context_clear_cached_structs`).
-- AST inspection and analysis (`cxpr/ast/expression.h`): `cxpr_ast_clone`,
+- AST inspection and analysis (`cxpr/expr/ast.h`): `cxpr_ast_clone`,
   `cxpr_ast_to_string`/`cxpr_ast_dump`, producer-field and reference/variable
   collection, call-argument context tracing
   (`cxpr_ast_call_arg_contexts_for_reference`/`_for_variable`),

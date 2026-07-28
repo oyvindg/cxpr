@@ -6,7 +6,7 @@
 #ifndef CXPR_LOOKBACK_H
 #define CXPR_LOOKBACK_H
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 
 bool cxpr_lookback_literal_offset(const cxpr_expr_ast* index_ast,
                                   unsigned* out_offset,

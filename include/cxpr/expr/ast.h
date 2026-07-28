@@ -1,10 +1,10 @@
 /**
- * @file ast/expression.h
+ * @file expr/ast.h
  * @brief Public AST API for cxpr.
  */
 
-#ifndef CXPR_AST_EXPRESSION_H
-#define CXPR_AST_EXPRESSION_H
+#ifndef CXPR_EXPR_AST_H
+#define CXPR_EXPR_AST_H
 
 #include <cxpr/token.h>
 #include <cxpr/types.h>
@@ -494,6 +494,6 @@ size_t cxpr_expr_ast_call_arg_contexts_for_variable(const cxpr_expr_ast* ast,
 #include <cxpr/analysis.h>
 #include <cxpr/eval.h>
 #include <cxpr/parser.h>
-#include <cxpr/program.h>
+#include <cxpr/expr/compiled.h>
 
-#endif /* CXPR_AST_EXPRESSION_H */
+#endif /* CXPR_EXPR_AST_H */

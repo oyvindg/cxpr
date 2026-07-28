@@ -37,8 +37,8 @@ typedef struct cxpr_model_plugin_event {
     const char* model_path;
     /** Borrowed parsed model. */
     const cxpr_model* model;
-    /** Borrowed compiled model program. */
-    const cxpr_model_program* program;
+    /** Borrowed compiled model. */
+    const cxpr_model_compiled* compiled;
 } cxpr_model_plugin_event;
 
 /**

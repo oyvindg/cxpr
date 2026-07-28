@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     char* source;
     char* code;
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx = NULL;
     double* param_values = NULL;
     size_t param_count = 0u;
@@ -60,14 +60,14 @@ int main(int argc, char** argv) {
         free(source);
         return 1;
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     if (!program) {
         fprintf(stderr, "compile failed: %s\n", err.message);
         cxpr_model_free(model);
         free(source);
         return 1;
     }
-    param_count = cxpr_model_program_c_param_count(program);
+    param_count = cxpr_model_compiled_c_param_count(program);
     if (param_count > 0u) {
         ctx = cxpr_context_new();
         param_values = (double*)calloc(param_count, sizeof(double));
@@ -75,29 +75,29 @@ int main(int argc, char** argv) {
             fprintf(stderr, "out of memory while preparing specialized params\n");
             cxpr_context_free(ctx);
             free(param_values);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_free(model);
             free(source);
             return 1;
         }
-        if (!cxpr_model_program_seed_defaults(program, ctx, NULL, &err)) {
+        if (!cxpr_model_compiled_seed_defaults(program, ctx, NULL, &err)) {
             fprintf(stderr, "default param eval failed: %s\n", err.message);
             cxpr_context_free(ctx);
             free(param_values);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_free(model);
             free(source);
             return 1;
         }
         for (size_t i = 0u; i < param_count; ++i) {
             bool found = false;
-            const char* name = cxpr_model_program_c_param_name(program, i);
+            const char* name = cxpr_model_compiled_c_param_name(program, i);
             param_values[i] = cxpr_context_get_param(ctx, name, &found);
             if (!found) {
                 fprintf(stderr, "default param missing: %s\n", name ? name : "(null)");
                 cxpr_context_free(ctx);
                 free(param_values);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_free(model);
                 free(source);
                 return 1;
@@ -105,19 +105,19 @@ int main(int argc, char** argv) {
         }
     }
     code = param_values
-        ? cxpr_model_program_to_c_tick_function_with_params(program, qualifiers,
+        ? cxpr_model_compiled_generate_c_with_params(program, qualifiers,
                                                             function_name,
                                                             param_values,
                                                             param_count,
                                                             &err)
-        : cxpr_model_program_to_c_tick_function(program, qualifiers,
+        : cxpr_model_compiled_generate_c(program, qualifiers,
                                                 function_name,
                                                 &err);
     if (!code) {
         fprintf(stderr, "C emit failed: %s\n", err.message);
         cxpr_context_free(ctx);
         free(param_values);
-        cxpr_model_program_free(program);
+        cxpr_model_compiled_free(program);
         cxpr_model_free(model);
         free(source);
         return 1;
@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
     if (!out) {
         fprintf(stderr, "failed to open %s\n", argv[2]);
         free(code);
-        cxpr_model_program_free(program);
+        cxpr_model_compiled_free(program);
         cxpr_model_free(model);
         free(source);
         return 1;
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
     free(code);
     cxpr_context_free(ctx);
     free(param_values);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(source);
     return 0;

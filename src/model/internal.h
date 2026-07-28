@@ -181,7 +181,7 @@ typedef struct {
 
 typedef struct {
     char* name;
-    const cxpr_model_program* program;
+    const cxpr_model_compiled* program;
     size_t registry_index;
     char* source_arg;
     size_t source_input_index;
@@ -199,7 +199,7 @@ typedef struct {
     cxpr_model_session* session;
 } cxpr_model_child_instance;
 
-struct cxpr_model_program {
+struct cxpr_model_compiled {
     cxpr_registry* registry;
     cxpr_model_backend_kind requested_backend;
     cxpr_model_backend_kind selected_backend;
@@ -240,7 +240,7 @@ struct cxpr_model_program {
 };
 
 struct cxpr_model_session {
-    const cxpr_model_program* program;
+    const cxpr_model_compiled* program;
     cxpr_context* ctx;
     cxpr_model_output_state* outputs;
     size_t output_count;
@@ -315,7 +315,7 @@ void cxpr_model_record_function_clear(cxpr_model_record_function* fn);
 const cxpr_expr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
                                         size_t count,
                                         const char* name);
-bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program,
+bool cxpr_model_compiled_mark_required_bindings(const cxpr_model_compiled* program,
                                                const size_t* output_indices,
                                                size_t output_count,
                                                bool include_all_outputs,
@@ -324,12 +324,12 @@ bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program
                                                bool* out_required,
                                                cxpr_error* err);
 size_t cxpr_model_fused_slot_find(char* const* names, size_t count, const char* name);
-void cxpr_model_fused_program_clear(cxpr_model_program* program);
-bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
+void cxpr_model_fused_program_clear(cxpr_model_compiled* program);
+bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                                      const cxpr_model* model,
                                      const cxpr_registry* reg,
                                      cxpr_error* err);
-bool cxpr_model_program_register_imports(cxpr_model_program* program,
+bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
                                          const cxpr_model* model,
                                          const cxpr_model_import* imports,
                                          size_t import_count,

@@ -30,10 +30,10 @@ char* cxpr_model_c_child_field_name(const char* function_prefix,
 bool cxpr_model_c_is_power_of_two(size_t value);
 bool cxpr_model_c_history_use_shift(size_t depth);
 size_t cxpr_model_c_history_capacity(size_t depth);
-size_t cxpr_model_program_param_index(const cxpr_model_program* program,
+size_t cxpr_model_compiled_param_index(const cxpr_model_compiled* program,
                                       const char* name);
 const char* cxpr_model_c_binary_op(cxpr_opcode op);
-bool cxpr_model_c_emit_defined_functions(const cxpr_model_program* program,
+bool cxpr_model_c_emit_defined_functions(const cxpr_model_compiled* program,
                                          cxpr_model_c_buf* b,
                                          cxpr_error* err);
 bool cxpr_model_c_emit_dynamic_history_value(cxpr_model_c_buf* b,
@@ -41,7 +41,7 @@ bool cxpr_model_c_emit_dynamic_history_value(cxpr_model_c_buf* b,
                                              const cxpr_expr_ast* ast,
                                              const char* offset_expr,
                                              const cxpr_c_target* target,
-                                             const cxpr_model_program* program,
+                                             const cxpr_model_compiled* program,
                                              cxpr_error* err);
 bool cxpr_model_c_emit_planned_roc_rolling_update(
     cxpr_model_c_buf* b,
@@ -60,9 +60,9 @@ bool cxpr_model_c_emit_planned_roc_aggregate_fallback(
     const cxpr_expr_ast* value_ast,
     cxpr_model_window_plan_op op,
     const cxpr_c_target* target,
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_error* err);
-bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program,
+bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                                                const char* qualifiers,
                                                const char* function_name,
                                                const double* literal_param_values,

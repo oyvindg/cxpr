@@ -92,7 +92,7 @@ int main(void) {
 
     event.model_path = "graph_demo.cxpr";
     event.model = model;
-    event.program = NULL;
+    event.compiled = NULL;
     assert(cxpr_graph_plugin_emit_graph(&event, NULL, &host, &err));
     assert(strcmp(sink.kind, "cxpr.graph.v1") == 0);
     assert(sink.data != NULL);

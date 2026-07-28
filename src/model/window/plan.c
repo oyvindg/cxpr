@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static size_t cxpr_model_window_plan_param_index(const cxpr_model_program* program,
+static size_t cxpr_model_window_plan_param_index(const cxpr_model_compiled* program,
                                                  const char* name) {
     if (!program || !name) return (size_t)-1;
     for (size_t i = 0u; i < program->constant_count; ++i) {
@@ -16,7 +16,7 @@ static size_t cxpr_model_window_plan_param_index(const cxpr_model_program* progr
     return (size_t)-1;
 }
 
-static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* program,
+static bool cxpr_model_window_plan_constant_expr(const cxpr_model_compiled* program,
                                                  const cxpr_expr_ast* ast,
                                                  double* out) {
     double left = 0.0;
@@ -66,7 +66,7 @@ static bool cxpr_model_window_plan_constant_expr(const cxpr_model_program* progr
     return true;
 }
 
-static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* program,
+static bool cxpr_model_window_plan_period_capacity(const cxpr_model_compiled* program,
                                                    const cxpr_expr_ast* period_ast,
                                                    size_t* out_capacity,
                                                    cxpr_error* err) {
@@ -129,7 +129,7 @@ static bool cxpr_model_window_plan_append(cxpr_model_window_plan* plan,
 }
 
 static bool cxpr_model_window_plan_add_nested_roc_aggregate(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_model_window_plan* plan,
     const cxpr_expr_ast* ast,
     cxpr_model_window_plan_op op,
@@ -197,7 +197,7 @@ static bool cxpr_model_window_plan_add_nested_roc_aggregate(
 }
 
 static bool cxpr_model_window_plan_add_simple_aggregate(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_model_window_plan* plan,
     const cxpr_expr_ast* ast,
     cxpr_model_window_plan_op op,
@@ -243,7 +243,7 @@ static bool cxpr_model_window_plan_add_simple_aggregate(
     return true;
 }
 
-static bool cxpr_model_window_plan_visit(const cxpr_model_program* program,
+static bool cxpr_model_window_plan_visit(const cxpr_model_compiled* program,
                                          cxpr_model_window_plan* plan,
                                          const cxpr_expr_ast* ast,
                                          cxpr_error* err) {
@@ -286,7 +286,7 @@ static bool cxpr_model_window_plan_visit(const cxpr_model_program* program,
     }
 }
 
-bool cxpr_model_window_plan_build(const cxpr_model_program* program,
+bool cxpr_model_window_plan_build(const cxpr_model_compiled* program,
                                   cxpr_model_window_plan* out,
                                   cxpr_error* err) {
     if (!out) return false;

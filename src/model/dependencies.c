@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static size_t cxpr_model_program_binding_index_for_name(
-    const cxpr_model_program* program,
+static size_t cxpr_model_compiled_binding_index_for_name(
+    const cxpr_model_compiled* program,
     const char* name) {
     if (!program || !name) return (size_t)-1;
     for (size_t i = 0u; i < program->binding_count; ++i) {
@@ -18,34 +18,34 @@ static size_t cxpr_model_program_binding_index_for_name(
     return (size_t)-1;
 }
 
-static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* program,
+static bool cxpr_model_compiled_mark_required_symbol(const cxpr_model_compiled* program,
                                                     const char* name,
                                                     bool* out_required,
                                                     cxpr_error* err);
 
-static bool cxpr_model_program_mark_required_ast(const cxpr_model_program* program,
+static bool cxpr_model_compiled_mark_required_ast(const cxpr_model_compiled* program,
                                                  const cxpr_expr_ast* ast,
                                                  bool* out_required,
                                                  cxpr_error* err) {
     if (!ast) return true;
     switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_IDENTIFIER:
-        return cxpr_model_program_mark_required_symbol(
+        return cxpr_model_compiled_mark_required_symbol(
             program, cxpr_expr_ast_identifier_name(ast), out_required, err);
     case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_model_program_mark_required_symbol(
+        return cxpr_model_compiled_mark_required_symbol(
             program, cxpr_expr_ast_field_object(ast), out_required, err);
     case CXPR_NODE_CHAIN_ACCESS:
-        return cxpr_model_program_mark_required_symbol(
+        return cxpr_model_compiled_mark_required_symbol(
             program, cxpr_expr_ast_chain_segment(ast, 0u), out_required, err);
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_program_mark_required_ast(program, cxpr_expr_ast_binary_left(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(program, cxpr_expr_ast_binary_right(ast), out_required, err);
+        return cxpr_model_compiled_mark_required_ast(program, cxpr_expr_ast_binary_left(ast), out_required, err) &&
+               cxpr_model_compiled_mark_required_ast(program, cxpr_expr_ast_binary_right(ast), out_required, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_model_program_mark_required_ast(program, cxpr_expr_ast_unary_operand(ast), out_required, err);
+        return cxpr_model_compiled_mark_required_ast(program, cxpr_expr_ast_unary_operand(ast), out_required, err);
     case CXPR_NODE_FUNCTION_CALL:
         for (size_t i = 0u; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
-            if (!cxpr_model_program_mark_required_ast(
+            if (!cxpr_model_compiled_mark_required_ast(
                     program, cxpr_expr_ast_call_arg(ast, i), out_required, err)) {
                 return false;
             }
@@ -53,43 +53,43 @@ static bool cxpr_model_program_mark_required_ast(const cxpr_model_program* progr
         return true;
     case CXPR_NODE_PRODUCER_ACCESS:
         for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
-            if (!cxpr_model_program_mark_required_ast(
+            if (!cxpr_model_compiled_mark_required_ast(
                     program, cxpr_expr_ast_producer_arg(ast, i), out_required, err)) {
                 return false;
             }
         }
         return true;
     case CXPR_NODE_LOOKBACK:
-        return cxpr_model_program_mark_required_ast(
+        return cxpr_model_compiled_mark_required_ast(
                    program, cxpr_expr_ast_lookback_target(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(
+               cxpr_model_compiled_mark_required_ast(
                    program, cxpr_expr_ast_lookback_index(ast), out_required, err);
     case CXPR_NODE_TERNARY:
-        return cxpr_model_program_mark_required_ast(
+        return cxpr_model_compiled_mark_required_ast(
                    program, cxpr_expr_ast_ternary_condition(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(
+               cxpr_model_compiled_mark_required_ast(
                    program, cxpr_expr_ast_ternary_true(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(
+               cxpr_model_compiled_mark_required_ast(
                    program, cxpr_expr_ast_ternary_false(ast), out_required, err);
     default:
         return true;
     }
 }
 
-static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* program,
+static bool cxpr_model_compiled_mark_required_symbol(const cxpr_model_compiled* program,
                                                     const char* name,
                                                     bool* out_required,
                                                     cxpr_error* err) {
-    size_t index = cxpr_model_program_binding_index_for_name(program, name);
+    size_t index = cxpr_model_compiled_binding_index_for_name(program, name);
     if (index == (size_t)-1) return true;
     if (out_required[index]) return true;
     out_required[index] = true;
     if (!program->bindings[index].ast) return true;
-    return cxpr_model_program_mark_required_ast(
+    return cxpr_model_compiled_mark_required_ast(
         program, program->bindings[index].ast, out_required, err);
 }
 
-bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program,
+bool cxpr_model_compiled_mark_required_bindings(const cxpr_model_compiled* program,
                                                const size_t* output_indices,
                                                size_t output_count,
                                                bool include_all_outputs,
@@ -100,7 +100,7 @@ bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program
     if (!program || !out_required) return false;
     if (include_all_outputs) {
         for (size_t i = 0u; i < program->fused_output_count; ++i) {
-            if (!cxpr_model_program_mark_required_symbol(
+            if (!cxpr_model_compiled_mark_required_symbol(
                     program, program->fused_outputs[i].name, out_required, err)) {
                 return false;
             }
@@ -114,7 +114,7 @@ bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program
                                      "Model selected-output index out of range", 0, 0);
                 return false;
             }
-            if (!cxpr_model_program_mark_required_symbol(
+            if (!cxpr_model_compiled_mark_required_symbol(
                     program, program->fused_outputs[i].name, out_required, err)) {
                 return false;
             }
@@ -128,7 +128,7 @@ bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program
                                      "Model state commit slot out of range", 0, 0);
                 return false;
             }
-            if (!cxpr_model_program_mark_required_symbol(
+            if (!cxpr_model_compiled_mark_required_symbol(
                     program, program->fused_slot_names[slot], out_required, err)) {
                 return false;
             }
@@ -136,7 +136,7 @@ bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program
     }
     if (include_history_captures) {
         for (size_t i = 0u; i < program->history_spec_count; ++i) {
-            if (!cxpr_model_program_mark_required_symbol(
+            if (!cxpr_model_compiled_mark_required_symbol(
                     program, program->history_specs[i].name, out_required, err)) {
                 return false;
             }

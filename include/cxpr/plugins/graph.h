@@ -30,7 +30,7 @@ typedef struct cxpr_graph_plugin_options {
  *
  * Artifact kind: `cxpr.graph.v1`.
  *
- * @param event Model event. `event->model` is required; `event->program` is optional.
+ * @param event Model event. `event->model` is required; `event->compiled` is optional.
  * @param options Optional graph options. NULL uses defaults.
  * @param host Artifact callbacks supplied by the embedding host.
  * @param err Optional error output.

@@ -8,7 +8,7 @@
  */
 
 #include <cxpr/registry.h>
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/types.h>
 
 #include <math.h>

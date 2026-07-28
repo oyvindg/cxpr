@@ -1,10 +1,10 @@
 /**
- * @file program.h
- * @brief Public compiled-program API for cxpr.
+ * @file expr/compiled.h
+ * @brief Public compiled-expression API for cxpr.
  */
 
-#ifndef CXPR_PROGRAM_H
-#define CXPR_PROGRAM_H
+#ifndef CXPR_EXPR_COMPILED_H
+#define CXPR_EXPR_COMPILED_H
 
 #include <cxpr/types.h>
 #include <stdio.h>
@@ -70,4 +70,4 @@ void cxpr_expr_compiled_dump(const cxpr_expr_compiled* prog, FILE* out);
 }
 #endif
 
-#endif /* CXPR_PROGRAM_H */
+#endif /* CXPR_EXPR_COMPILED_H */

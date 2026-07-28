@@ -16,7 +16,7 @@
 #ifndef CXPR_CODEGEN_H
 #define CXPR_CODEGEN_H
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/types.h>
 
 #include <stdbool.h>

@@ -62,7 +62,7 @@ static void test_function_only_import(void) {
     cxpr_model* root = cxpr_model_parse(root_source, &err);
     cxpr_model_import_bundle* bundle;
     const cxpr_model_import* imports;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     size_t import_count = 0u;
 
     assert(root);
@@ -74,11 +74,11 @@ static void test_function_only_import(void) {
     imports = cxpr_model_import_bundle_root_imports(bundle, &import_count);
     assert(imports);
     assert(import_count == 1u);
-    program = cxpr_compile_model_with_imports(
+    program = cxpr_model_compile_with_imports(
         root, NULL, imports, import_count, &err);
     assert(program);
 
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_import_bundle_free(bundle);
     cxpr_model_free(root);
 }

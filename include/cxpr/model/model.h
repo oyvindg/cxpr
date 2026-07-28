@@ -6,7 +6,7 @@
 #ifndef CXPR_MODEL_H
 #define CXPR_MODEL_H
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/source.h>
 #include <cxpr/types.h>
 
@@ -55,7 +55,7 @@ typedef struct {
 /** @brief One precompiled model supplied as a direct import. */
 typedef struct {
     const char* name;
-    const cxpr_model_program* program;
+    const cxpr_model_compiled* program;
 } cxpr_model_import;
 
 /** @brief Result of resolving one model `use` declaration. */
@@ -249,11 +249,11 @@ bool cxpr_model_plan_bind_sources(const cxpr_model* model,
  * scalar backend when the model shape supports it. It does not register model
  * bindings in a runtime evaluator, avoiding per-tick binding setup.
  */
-cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
+cxpr_model_compiled* cxpr_model_compile(const cxpr_model* model,
                                        const cxpr_registry* reg,
                                        cxpr_error* err);
 
-cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
+cxpr_model_compiled* cxpr_model_compile_with_imports(const cxpr_model* model,
                                                     const cxpr_registry* reg,
                                                     const cxpr_model_import* imports,
                                                     size_t import_count,
@@ -264,13 +264,13 @@ cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
  *
  * NULL options use `{ CXPR_MODEL_BACKEND_AUTO, true, false }`.
  */
-cxpr_model_program* cxpr_compile_model_with_options(
+cxpr_model_compiled* cxpr_model_compile_with_options(
     const cxpr_model* model,
     const cxpr_registry* reg,
     const cxpr_model_compile_options* options,
     cxpr_error* err);
 
-cxpr_model_program* cxpr_compile_model_with_imports_and_options(
+cxpr_model_compiled* cxpr_model_compile_full(
     const cxpr_model* model,
     const cxpr_registry* reg,
     const cxpr_model_import* imports,
@@ -279,7 +279,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
     cxpr_error* err);
 
 /** @brief Free a compiled .cxpr model program. */
-void cxpr_model_program_free(cxpr_model_program* program);
+void cxpr_model_compiled_free(cxpr_model_compiled* program);
 
 /**
  * @brief Seed model `$` constants into a context.
@@ -287,7 +287,7 @@ void cxpr_model_program_free(cxpr_model_program* program);
  * Call once when creating a session/context, then override params on that
  * context as needed. Evaluation does not re-seed constants per tick.
  */
-bool cxpr_model_program_seed_defaults(const cxpr_model_program* program,
+bool cxpr_model_compiled_seed_defaults(const cxpr_model_compiled* program,
                                       cxpr_context* ctx,
                                       const cxpr_registry* reg,
                                       cxpr_error* err);
@@ -299,159 +299,159 @@ bool cxpr_model_program_seed_defaults(const cxpr_model_program* program,
  * `$` params are read from @p ctx; the host remains responsible only for
  * supplying inputs and reading outputs.
  */
-bool cxpr_eval_model_program(const cxpr_model_program* program,
+bool cxpr_model_compiled_eval(const cxpr_model_compiled* program,
                              cxpr_context* ctx,
                              const cxpr_registry* reg,
                              cxpr_error* err);
 
 /** @brief Return the number of dependency-ordered executable bindings. */
-size_t cxpr_model_program_binding_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_binding_count(const cxpr_model_compiled* program);
 
 /** @brief Return the name of executable binding @p index, or NULL when out of range. */
-const char* cxpr_model_program_binding_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_binding_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the semantic binding kind for executable binding @p index. */
-cxpr_model_binding_kind cxpr_model_program_binding_kind(const cxpr_model_program* program,
+cxpr_model_binding_kind cxpr_model_compiled_binding_kind(const cxpr_model_compiled* program,
                                                         size_t index);
 
 /** @brief Return the inferred scalar result kind for executable binding @p index. */
-cxpr_model_result_kind cxpr_model_program_binding_result_kind(
-    const cxpr_model_program* program,
+cxpr_model_result_kind cxpr_model_compiled_binding_result_kind(
+    const cxpr_model_compiled* program,
     size_t index);
 
 /** @brief Return the number of compiled parameter/default expressions. */
-size_t cxpr_model_program_constant_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_param_count(const cxpr_model_compiled* program);
 
 /** @brief Return the parameter/default name at @p index, or NULL when out of range. */
-const char* cxpr_model_program_constant_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_param_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the inferred scalar result kind for parameter/default @p index. */
-cxpr_model_result_kind cxpr_model_program_constant_result_kind(
-    const cxpr_model_program* program,
+cxpr_model_result_kind cxpr_model_compiled_param_result_kind(
+    const cxpr_model_compiled* program,
     size_t index);
 
 /** @brief Return the number of compiled state initializer expressions. */
-size_t cxpr_model_program_state_default_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_state_default_count(const cxpr_model_compiled* program);
 
 /** @brief Return the state initializer name at @p index, or NULL when out of range. */
-const char* cxpr_model_program_state_default_name(const cxpr_model_program* program,
+const char* cxpr_model_compiled_state_default_name(const cxpr_model_compiled* program,
                                                   size_t index);
 
 /** @brief Return the inferred scalar result kind for state initializer @p index. */
-cxpr_model_result_kind cxpr_model_program_state_default_result_kind(
-    const cxpr_model_program* program,
+cxpr_model_result_kind cxpr_model_compiled_state_default_result_kind(
+    const cxpr_model_compiled* program,
     size_t index);
 
 /** @brief Return the number of exported model outputs. */
-size_t cxpr_model_program_output_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_output_count(const cxpr_model_compiled* program);
 
 /** @brief Return output name @p index, or NULL when out of range. */
-const char* cxpr_model_program_output_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_output_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the number of declared model inputs. */
-size_t cxpr_model_program_input_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_input_count(const cxpr_model_compiled* program);
 
 /** @brief Return input name @p index, or NULL when out of range. */
-const char* cxpr_model_program_input_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_input_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the number of resolved imported child model programs. */
-size_t cxpr_model_program_child_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_child_count(const cxpr_model_compiled* program);
 
 /** @brief Return resolved child model alias/name @p index, or NULL when out of range. */
-const char* cxpr_model_program_child_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_child_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the input name used as the child model source argument, if any. */
-const char* cxpr_model_program_child_source_arg(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_child_source_arg(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the number of planned history/lookback buffers. */
-size_t cxpr_model_program_history_spec_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_history_count(const cxpr_model_compiled* program);
 
 /** @brief Return planned history buffer name @p index, or NULL when out of range. */
-const char* cxpr_model_program_history_spec_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_history_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return planned history depth for history buffer @p index. */
-size_t cxpr_model_program_history_spec_depth(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_history_depth(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return number of functions in the model-owned registry, for diagnostics/benchmarks. */
-size_t cxpr_model_program_function_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_function_count(const cxpr_model_compiled* program);
 
 /** @brief Return the backend requested at compile time. */
-cxpr_model_backend_kind cxpr_model_program_requested_backend(const cxpr_model_program* program);
+cxpr_model_backend_kind cxpr_model_compiled_requested_backend(const cxpr_model_compiled* program);
 
 /** @brief Return the backend selected by compilation. AUTO means evaluator path. */
-cxpr_model_backend_kind cxpr_model_program_selected_backend(const cxpr_model_program* program);
+cxpr_model_backend_kind cxpr_model_compiled_backend(const cxpr_model_compiled* program);
 
 /** @brief Return whether compile options allowed backend fusion. */
-bool cxpr_model_program_compile_fuse_enabled(const cxpr_model_program* program);
+bool cxpr_model_compiled_fusion_enabled(const cxpr_model_compiled* program);
 
 /** @brief Return whether compile options requested trace-friendly evaluation. */
-bool cxpr_model_program_compile_trace_enabled(const cxpr_model_program* program);
+bool cxpr_model_compiled_trace_enabled(const cxpr_model_compiled* program);
 
 /** @brief Return true when the compiled model uses the scalar fast-path backend for ticks. */
-bool cxpr_model_program_uses_fast_path(const cxpr_model_program* program);
+bool cxpr_model_compiled_uses_fast_path(const cxpr_model_compiled* program);
 
 /** @brief Return fast-path backend instruction count, or 0 when the fast path is not active. */
-size_t cxpr_model_program_fast_path_instruction_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_fast_path_instruction_count(const cxpr_model_compiled* program);
 
 /** @brief Return why fast-path compilation was skipped, or NULL when active/not attempted. */
-const char* cxpr_model_program_fast_path_disabled_reason(const cxpr_model_program* program);
+const char* cxpr_model_compiled_fast_path_reason(const cxpr_model_compiled* program);
 
 /** @brief Return the number of resolved fast-path runtime slots. */
-size_t cxpr_model_program_fast_path_slot_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_fast_path_slot_count(const cxpr_model_compiled* program);
 
 /** @brief Return fast-path slot name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fast_path_slot_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_fast_path_slot_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the number of fast-path input slot references. */
-size_t cxpr_model_program_fast_path_input_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_fast_path_input_count(const cxpr_model_compiled* program);
 
 /** @brief Return fast-path input reference name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fast_path_input_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_fast_path_input_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return fast-path slot index read by input reference @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fast_path_input_slot(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_fast_path_input_slot(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return inferred scalar result kind for fast-path input reference @p index. */
-cxpr_model_result_kind cxpr_model_program_fast_path_input_result_kind(
-    const cxpr_model_program* program,
+cxpr_model_result_kind cxpr_model_compiled_fast_path_input_result_kind(
+    const cxpr_model_compiled* program,
     size_t index);
 
 /** @brief Return the number of fast-path context export references. */
-size_t cxpr_model_program_fast_path_export_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_fast_path_export_count(const cxpr_model_compiled* program);
 
 /** @brief Return fast-path export reference name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fast_path_export_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_fast_path_export_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return fast-path slot index written by export reference @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fast_path_export_slot(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_fast_path_export_slot(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return inferred scalar result kind for fast-path export reference @p index. */
-cxpr_model_result_kind cxpr_model_program_fast_path_export_result_kind(
-    const cxpr_model_program* program,
+cxpr_model_result_kind cxpr_model_compiled_fast_path_export_result_kind(
+    const cxpr_model_compiled* program,
     size_t index);
 
 /** @brief Return the number of fast-path output references. */
-size_t cxpr_model_program_fast_path_output_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_fast_path_output_count(const cxpr_model_compiled* program);
 
 /** @brief Return fast-path output reference name @p index, or NULL when out of range. */
-const char* cxpr_model_program_fast_path_output_name(const cxpr_model_program* program, size_t index);
+const char* cxpr_model_compiled_fast_path_output_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return fast-path slot index read by output reference @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fast_path_output_slot(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_fast_path_output_slot(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return inferred scalar result kind for fast-path output reference @p index. */
-cxpr_model_result_kind cxpr_model_program_fast_path_output_result_kind(
-    const cxpr_model_program* program,
+cxpr_model_result_kind cxpr_model_compiled_fast_path_output_result_kind(
+    const cxpr_model_compiled* program,
     size_t index);
 
 /** @brief Return the number of fast-path atomic state commit mappings. */
-size_t cxpr_model_program_fast_path_commit_count(const cxpr_model_program* program);
+size_t cxpr_model_compiled_fast_path_commit_count(const cxpr_model_compiled* program);
 
 /** @brief Return destination state slot for fast-path commit @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fast_path_commit_state_slot(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_fast_path_commit_state_slot(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return pending update slot for fast-path commit @p index, or SIZE_MAX when invalid. */
-size_t cxpr_model_program_fast_path_commit_update_slot(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_fast_path_commit_update_slot(const cxpr_model_compiled* program, size_t index);
 
 /**
  * @brief Emit a `.cxpr` model-defined scalar `fn` as a standalone C function.
@@ -460,7 +460,7 @@ size_t cxpr_model_program_fast_path_commit_update_slot(const cxpr_model_program*
  * registration of the function. Unsupported dynamic backend codegen returns
  * NULL with @p err set, so callers can keep the normal evaluator as fallback.
  */
-char* cxpr_model_program_function_to_c_function(const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_function_c(const cxpr_model_compiled* program,
                                                 const char* name,
                                                 const char* qualifiers,
                                                 const char* return_type,
@@ -479,7 +479,7 @@ char* cxpr_model_program_function_to_c_function(const cxpr_model_program* progra
  * Inputs and outputs use model declaration order. Params use model constant
  * order. The generated `state` object owns model scratch/state storage.
  */
-char* cxpr_model_program_to_c_tick_function(const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c(const cxpr_model_compiled* program,
                                             const char* qualifiers,
                                             const char* function_name,
                                             cxpr_error* err);
@@ -490,8 +490,8 @@ char* cxpr_model_program_to_c_tick_function(const cxpr_model_program* program,
  * receives model output `output_indices[i]`. State updates and history capture
  * are still evaluated normally.
  */
-char* cxpr_model_program_to_c_tick_function_select_outputs(
-    const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c_outputs(
+    const cxpr_model_compiled* program,
     const char* qualifiers,
     const char* function_name,
     const size_t* output_indices,
@@ -501,13 +501,13 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
  * @brief Emit a C tick function with model `$` params baked in as numeric literals.
  *
  * @p param_values must contain one value for each
- * `cxpr_model_program_c_param_name(program, i)` entry. The generated function
+ * `cxpr_model_compiled_c_param_name(program, i)` entry. The generated function
  * keeps the normal params pointer in its ABI for caller compatibility, but the
  * emitted expression code does not load from it. Window periods that resolve to
  * these literals are emitted as fixed hot-path state updates; dynamic-period
  * fallback code is omitted for those windows.
  */
-char* cxpr_model_program_to_c_tick_function_with_params(const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c_with_params(const cxpr_model_compiled* program,
                                                         const char* qualifiers,
                                                         const char* function_name,
                                                         const double* param_values,
@@ -516,11 +516,11 @@ char* cxpr_model_program_to_c_tick_function_with_params(const cxpr_model_program
 /**
  * @brief Emit a specialized C tick function that writes only selected outputs.
  *
- * This combines @ref cxpr_model_program_to_c_tick_function_with_params and
- * @ref cxpr_model_program_to_c_tick_function_select_outputs.
+ * This combines @ref cxpr_model_compiled_generate_c_with_params and
+ * @ref cxpr_model_compiled_generate_c_outputs.
  */
-char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
-    const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c_specialized(
+    const cxpr_model_compiled* program,
     const char* qualifiers,
     const char* function_name,
     const double* param_values,
@@ -529,14 +529,14 @@ char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
     size_t output_count,
     cxpr_error* err);
 /** @brief Legacy backend slot count. The generated state ABI does not expose slots. */
-size_t cxpr_model_program_c_slot_count(const cxpr_model_program* program);
-size_t cxpr_model_program_c_param_count(const cxpr_model_program* program);
-const char* cxpr_model_program_c_param_name(const cxpr_model_program* program, size_t index);
-size_t cxpr_model_program_call_param_count(const cxpr_model_program* program);
-const char* cxpr_model_program_call_param_name(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_compiled_c_slot_count(const cxpr_model_compiled* program);
+size_t cxpr_model_compiled_c_param_count(const cxpr_model_compiled* program);
+const char* cxpr_model_compiled_c_param_name(const cxpr_model_compiled* program, size_t index);
+size_t cxpr_model_compiled_call_param_count(const cxpr_model_compiled* program);
+const char* cxpr_model_compiled_call_param_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Create a mutable session for one compiled model. */
-cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
+cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
                                            const cxpr_registry* reg,
                                            cxpr_error* err);
 /** @brief Free a model session. */
@@ -548,7 +548,7 @@ cxpr_context* cxpr_model_session_context(cxpr_model_session* session);
  *
  * This interpreter-style session API exists for diagnostics, editor/tooling,
  * parity tests, and explicit fallback paths. Production/backtest/optimizer
- * per-bar loops should use generated C from `cxpr_model_program_to_c_tick_function*`
+ * per-bar loops should use generated C from `cxpr_model_compiled_generate_c*`
  * when the caller requires hot-path execution.
  *
  * Expressions in tick N read state from the start of that tick. State update
@@ -556,7 +556,7 @@ cxpr_context* cxpr_model_session_context(cxpr_model_session* session);
  * tick. Direct state outputs may expose the staged next value for the current
  * tick; other expressions still observe the current state.
  */
-bool cxpr_model_session_tick(const cxpr_model_program* program,
+bool cxpr_model_session_tick(const cxpr_model_compiled* program,
                              cxpr_model_session* session,
                              const cxpr_registry* reg,
                              cxpr_error* err);
@@ -569,19 +569,19 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
  * history capture when the model does not require lookback history. Unsupported
  * models fall back to `cxpr_model_session_tick`.
  */
-bool cxpr_model_session_tick_fast(const cxpr_model_program* program,
+bool cxpr_model_session_tick_fast(const cxpr_model_compiled* program,
                                   cxpr_model_session* session,
                                   const cxpr_registry* reg,
                                   cxpr_error* err);
-bool cxpr_model_session_output_bool(const cxpr_model_session* session,
+bool cxpr_model_session_get_bool(const cxpr_model_session* session,
                                     const char* name,
                                     bool* out_value);
-bool cxpr_model_session_output_number(const cxpr_model_session* session,
+bool cxpr_model_session_get_number(const cxpr_model_session* session,
                                       const char* name,
                                       double* out_value);
-bool cxpr_model_session_output_rising(const cxpr_model_session* session, const char* name);
-bool cxpr_model_session_output_falling(const cxpr_model_session* session, const char* name);
-bool cxpr_model_session_output_changed(const cxpr_model_session* session, const char* name);
+bool cxpr_model_session_is_rising(const cxpr_model_session* session, const char* name);
+bool cxpr_model_session_is_falling(const cxpr_model_session* session, const char* name);
+bool cxpr_model_session_is_changed(const cxpr_model_session* session, const char* name);
 
 const char* cxpr_model_name(const cxpr_model* model);
 bool cxpr_model_name_source_span(const cxpr_model* model, cxpr_source_span* out_span);

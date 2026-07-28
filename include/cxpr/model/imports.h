@@ -48,7 +48,7 @@ cxpr_model_import_bundle* cxpr_model_import_bundle_build(
 
 void cxpr_model_import_bundle_free(cxpr_model_import_bundle* bundle);
 
-/** Direct imports to pass to `cxpr_compile_model_with_imports*` for the root. */
+/** Direct imports to pass to `cxpr_model_compile_with_imports*` for the root. */
 const cxpr_model_import* cxpr_model_import_bundle_root_imports(
     const cxpr_model_import_bundle* bundle,
     size_t* out_count);

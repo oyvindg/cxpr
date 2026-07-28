@@ -32,25 +32,25 @@ static char* read_indicator_fixture(const char* name) {
     return source;
 }
 
-static cxpr_model_program* compile_fixture(const char* name,
+static cxpr_model_compiled* compile_fixture(const char* name,
                                            cxpr_model** out_model) {
     cxpr_error err = {0};
     char* source = read_indicator_fixture(name);
     cxpr_model* model = cxpr_model_parse(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
 
     free(source);
     assert(model);
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     assert(program);
     *out_model = model;
     return program;
 }
 
-static void assert_generated_c(cxpr_model_program* program,
+static void assert_generated_c(cxpr_model_compiled* program,
                                const char* function_name) {
     cxpr_error err = {0};
-    char* code = cxpr_model_program_to_c_tick_function(
+    char* code = cxpr_model_compiled_generate_c(
         program, "static inline", function_name, &err);
 
     assert(code);
@@ -66,7 +66,7 @@ static void test_ema_snapshot(void) {
     };
     cxpr_error err = {0};
     cxpr_model* model;
-    cxpr_model_program* program = compile_fixture("ema.cxpr", &model);
+    cxpr_model_compiled* program = compile_fixture("ema.cxpr", &model);
     cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
     cxpr_context* context;
 
@@ -78,13 +78,13 @@ static void test_ema_snapshot(void) {
         double actual = 0.0;
         cxpr_context_set(context, "source", inputs[i]);
         assert(cxpr_model_session_tick(program, session, NULL, &err));
-        assert(cxpr_model_session_output_number(session, "value", &actual));
+        assert(cxpr_model_session_get_number(session, "value", &actual));
         assert(fabs(actual - golden[i]) < 1e-12);
     }
 
     assert_generated_c(program, "cxpr_test_ema_tick");
     cxpr_model_session_free(session);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
 }
 
@@ -97,7 +97,7 @@ static void test_true_range_snapshot(void) {
     static const double golden[] = {3.0, 5.0, 6.0};
     cxpr_error err = {0};
     cxpr_model* model;
-    cxpr_model_program* program =
+    cxpr_model_compiled* program =
         compile_fixture("true_range.cxpr", &model);
     cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
     cxpr_context* context;
@@ -112,13 +112,13 @@ static void test_true_range_snapshot(void) {
         cxpr_context_set(context, "low", bars[i][1]);
         cxpr_context_set(context, "close", bars[i][2]);
         assert(cxpr_model_session_tick(program, session, NULL, &err));
-        assert(cxpr_model_session_output_number(session, "value", &actual));
+        assert(cxpr_model_session_get_number(session, "value", &actual));
         assert(fabs(actual - golden[i]) < 1e-12);
     }
 
     assert_generated_c(program, "cxpr_test_true_range_tick");
     cxpr_model_session_free(session);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
 }
 

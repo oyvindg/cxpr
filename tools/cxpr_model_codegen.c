@@ -429,16 +429,16 @@ static const char* bool_name(int value) {
 static void print_model_backend_error(const char* phase,
                                       const char* model_path,
                                       const cxpr_model* model,
-                                      const cxpr_model_program* program,
+                                      const cxpr_model_compiled* program,
                                       const cxpr_model_compile_options* options,
                                       const cxpr_error* err) {
     const char* model_name = model ? cxpr_model_name(model) : NULL;
     cxpr_model_backend_kind requested_backend =
-        program ? cxpr_model_program_requested_backend(program)
+        program ? cxpr_model_compiled_requested_backend(program)
                 : (options ? options->backend : CXPR_MODEL_BACKEND_AUTO);
     const char* selected_backend =
-        program ? model_backend_name(cxpr_model_program_selected_backend(program)) : "none";
-    int fuse = program ? (int)cxpr_model_program_compile_fuse_enabled(program)
+        program ? model_backend_name(cxpr_model_compiled_backend(program)) : "none";
+    int fuse = program ? (int)cxpr_model_compiled_fusion_enabled(program)
                        : (options ? (int)options->fuse : 0);
 
     fprintf(stderr,
@@ -453,7 +453,7 @@ static void print_model_backend_error(const char* phase,
             (err && err->message) ? err->message : "(null)");
 }
 
-static int output_selection_parse(const cxpr_model_program* program,
+static int output_selection_parse(const cxpr_model_compiled* program,
                                   const char* csv,
                                   size_t** out_indices,
                                   size_t* out_count) {
@@ -480,8 +480,8 @@ static int output_selection_parse(const cxpr_model_program* program,
             free(indices);
             return 0;
         }
-        for (size_t i = 0u; i < cxpr_model_program_output_count(program); ++i) {
-            const char* candidate = cxpr_model_program_output_name(program, i);
+        for (size_t i = 0u; i < cxpr_model_compiled_output_count(program); ++i) {
+            const char* candidate = cxpr_model_compiled_output_name(program, i);
             if (candidate && strcmp(candidate, name) == 0) {
                 found = i;
                 break;
@@ -643,7 +643,7 @@ static int emit_model_c(const char* model_path,
     char* source = NULL;
     char* combined_source = NULL;
     cxpr_model* model = NULL;
-    cxpr_model_program* program = NULL;
+    cxpr_model_compiled* program = NULL;
     cxpr_model_import_bundle* import_bundle = NULL;
     const cxpr_model_import* import_api = NULL;
     size_t import_count = 0u;
@@ -685,14 +685,14 @@ static int emit_model_c(const char* model_path,
     }
     import_api = cxpr_model_import_bundle_root_imports(
         import_bundle, &import_count);
-    program = cxpr_compile_model_with_imports_and_options(
+    program = cxpr_model_compile_full(
         model, NULL, import_api, import_count, &compile_options, &err);
     if (!program) {
         print_model_backend_error("compile", model_path, model, NULL, &compile_options, &err);
         goto cleanup;
     }
 
-    param_count = cxpr_model_program_c_param_count(program);
+    param_count = cxpr_model_compiled_c_param_count(program);
     if (specialize_defaults && param_count > 0u) {
         ctx = cxpr_context_new();
         param_values = (double*)calloc(param_count, sizeof(double));
@@ -700,13 +700,13 @@ static int emit_model_c(const char* model_path,
             fprintf(stderr, "cxpr_model_codegen: out of memory preparing params\n");
             goto cleanup;
         }
-        if (!cxpr_model_program_seed_defaults(program, ctx, NULL, &err)) {
+        if (!cxpr_model_compiled_seed_defaults(program, ctx, NULL, &err)) {
             fprintf(stderr, "cxpr_model_codegen: default param eval failed: %s\n", err.message);
             goto cleanup;
         }
         for (size_t i = 0u; i < param_count; ++i) {
             bool found = false;
-            const char* name = cxpr_model_program_c_param_name(program, i);
+            const char* name = cxpr_model_compiled_c_param_name(program, i);
             param_values[i] = cxpr_context_get_param(ctx, name, &found);
             if (!found) {
                 fprintf(stderr, "cxpr_model_codegen: default param missing: %s\n",
@@ -721,11 +721,11 @@ static int emit_model_c(const char* model_path,
     }
 
     if (output_path) {
-        const size_t descriptor_input_count = cxpr_model_program_input_count(program);
+        const size_t descriptor_input_count = cxpr_model_compiled_input_count(program);
         const size_t descriptor_output_count =
-            output_count > 0u ? output_count : cxpr_model_program_output_count(program);
+            output_count > 0u ? output_count : cxpr_model_compiled_output_count(program);
         const size_t descriptor_param_count =
-            cxpr_model_program_call_param_count(program);
+            cxpr_model_compiled_call_param_count(program);
         if (descriptor_input_count > CXPR_GENERATED_MODEL_MAX_INPUTS ||
             descriptor_output_count > CXPR_GENERATED_MODEL_MAX_OUTPUTS ||
             descriptor_param_count > CXPR_GENERATED_MODEL_MAX_PARAMS) {
@@ -756,7 +756,7 @@ static int emit_model_c(const char* model_path,
         host.end_artifact = artifact_file_end;
         event.model_path = model_path;
         event.model = model;
-        event.program = program;
+        event.compiled = program;
         c_options.function_name = function_name;
         c_options.qualifiers = qualifiers;
         c_options.param_values = param_values;
@@ -784,14 +784,14 @@ static int emit_model_c(const char* model_path,
             }
             defaults_ctx = cxpr_context_new();
             if (!defaults_ctx ||
-                !cxpr_model_program_seed_defaults(program, defaults_ctx, NULL, &err)) {
+                !cxpr_model_compiled_seed_defaults(program, defaults_ctx, NULL, &err)) {
                 fprintf(stderr, "cxpr_model_codegen: descriptor defaults failed: %s\n",
                         err.message ? err.message : "(null)");
                 cxpr_context_free(defaults_ctx);
                 fclose(descriptor_out);
                 goto cleanup;
             }
-            call_param_count = cxpr_model_program_call_param_count(program);
+            call_param_count = cxpr_model_compiled_call_param_count(program);
             fprintf(descriptor_out,
                     "\n#include <cxpr/generated.h>\n"
                     "static size_t %s_descriptor_state_size(void) {\n"
@@ -806,7 +806,7 @@ static int emit_model_c(const char* model_path,
                     function_name, cxpr_model_name(model),
                     function_name, function_name, call_param_count);
             for (size_t i = 0u; i < call_param_count; ++i) {
-                const char* name = cxpr_model_program_call_param_name(program, i);
+                const char* name = cxpr_model_compiled_call_param_name(program, i);
                 bool found = false;
                 double value = cxpr_context_get_param(defaults_ctx, name, &found);
                 fprintf(descriptor_out,
@@ -816,24 +816,24 @@ static int emit_model_c(const char* model_path,
                         i, name ? name : "", i, value, i, found ? 1u : 0u);
             }
             fprintf(descriptor_out, "    .input_count = %zu,\n",
-                    cxpr_model_program_input_count(program));
-            for (size_t i = 0u; i < cxpr_model_program_input_count(program); ++i) {
+                    cxpr_model_compiled_input_count(program));
+            for (size_t i = 0u; i < cxpr_model_compiled_input_count(program); ++i) {
                 fprintf(descriptor_out, "    .input_names[%zu] = \"%s\",\n",
-                        i, cxpr_model_program_input_name(program, i));
+                        i, cxpr_model_compiled_input_name(program, i));
             }
             fprintf(descriptor_out, "    .output_count = %zu,\n",
                     output_count > 0u ? output_count
-                                      : cxpr_model_program_output_count(program));
+                                      : cxpr_model_compiled_output_count(program));
             if (output_count > 0u) {
                 for (size_t i = 0u; i < output_count; ++i) {
                     fprintf(descriptor_out, "    .output_names[%zu] = \"%s\",\n",
                             i,
-                            cxpr_model_program_output_name(program, output_indices[i]));
+                            cxpr_model_compiled_output_name(program, output_indices[i]));
                 }
             } else {
-                for (size_t i = 0u; i < cxpr_model_program_output_count(program); ++i) {
+                for (size_t i = 0u; i < cxpr_model_compiled_output_count(program); ++i) {
                     fprintf(descriptor_out, "    .output_names[%zu] = \"%s\",\n",
-                            i, cxpr_model_program_output_name(program, i));
+                            i, cxpr_model_compiled_output_name(program, i));
                 }
             }
             fprintf(descriptor_out,
@@ -859,7 +859,7 @@ static int emit_model_c(const char* model_path,
         host.end_artifact = artifact_file_end;
         event.model_path = model_path;
         event.model = model;
-        event.program = program;
+        event.compiled = program;
         if (!cxpr_meta_plugin_emit_manifest(&event, NULL, &host, &err)) {
             fprintf(stderr, "cxpr_model_codegen: meta emit failed: %s\n",
                     err.message ? err.message : "(null)");
@@ -878,7 +878,7 @@ static int emit_model_c(const char* model_path,
         host.end_artifact = artifact_file_end;
         event.model_path = model_path;
         event.model = model;
-        event.program = program;
+        event.compiled = program;
         if (!cxpr_graph_plugin_emit_graph(&event, NULL, &host, &err)) {
             fprintf(stderr, "cxpr_model_codegen: graph emit failed: %s\n",
                     err.message ? err.message : "(null)");
@@ -894,7 +894,7 @@ cleanup:
     output_selection_free(output_indices);
     free(param_values);
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     free(c_preamble);
     cxpr_model_import_bundle_free(import_bundle);
     cxpr_model_free(model);

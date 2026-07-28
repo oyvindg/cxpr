@@ -183,7 +183,7 @@ fail:
     return false;
 }
 
-static bool cxpr_model_c_validate_selected_outputs(const cxpr_model_program* program,
+static bool cxpr_model_c_validate_selected_outputs(const cxpr_model_compiled* program,
                                                    const size_t* output_indices,
                                                    size_t output_count,
                                                    cxpr_error* err) {
@@ -203,8 +203,8 @@ static bool cxpr_model_c_validate_selected_outputs(const cxpr_model_program* pro
     return true;
 }
 
-char* cxpr_model_program_to_c_tick_function_select_outputs(
-    const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c_outputs(
+    const cxpr_model_compiled* program,
     const char* qualifiers,
     const char* function_name,
     const size_t* output_indices,
@@ -226,7 +226,7 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
     if (!cxpr_model_c_validate_selected_outputs(program, output_indices, output_count, err)) {
         return NULL;
     }
-    if (cxpr_model_program_to_c_tick_function_ast(program, qualifiers, function_name,
+    if (cxpr_model_compiled_generate_c_ast(program, qualifiers, function_name,
                                                  NULL, 0u,
                                                  output_indices,
                                                  output_indices ? output_count : 0u,
@@ -300,7 +300,7 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
                                 sp, instr->index, instr->index);
             break;
         case CXPR_OP_LOAD_PARAM: {
-            size_t param_index = cxpr_model_program_param_index(program, instr->name);
+            size_t param_index = cxpr_model_compiled_param_index(program, instr->name);
             if (param_index == (size_t)-1) {
                 cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                      "Unknown model C parameter", 0, 0);
@@ -310,7 +310,7 @@ char* cxpr_model_program_to_c_tick_function_select_outputs(
             break;
         }
         case CXPR_OP_LOAD_PARAM_SQUARE: {
-            size_t param_index = cxpr_model_program_param_index(program, instr->name);
+            size_t param_index = cxpr_model_compiled_param_index(program, instr->name);
             if (param_index == (size_t)-1) {
                 cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                      "Unknown model C parameter", 0, 0);
@@ -515,26 +515,26 @@ fail:
     return NULL;
 }
 
-char* cxpr_model_program_to_c_tick_function(const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c(const cxpr_model_compiled* program,
                                             const char* qualifiers,
                                             const char* function_name,
                                             cxpr_error* err) {
-    return cxpr_model_program_to_c_tick_function_select_outputs(
+    return cxpr_model_compiled_generate_c_outputs(
         program, qualifiers, function_name, NULL, 0u, err);
 }
 
-char* cxpr_model_program_to_c_tick_function_with_params(const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c_with_params(const cxpr_model_compiled* program,
                                                         const char* qualifiers,
                                                         const char* function_name,
                                                         const double* param_values,
                                                         size_t param_count,
                                                         cxpr_error* err) {
-    return cxpr_model_program_to_c_tick_function_with_params_select_outputs(
+    return cxpr_model_compiled_generate_c_specialized(
         program, qualifiers, function_name, param_values, param_count, NULL, 0u, err);
 }
 
-char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
-    const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_c_specialized(
+    const cxpr_model_compiled* program,
     const char* qualifiers,
     const char* function_name,
     const double* param_values,
@@ -559,7 +559,7 @@ char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
     if (!cxpr_model_c_validate_selected_outputs(program, output_indices, output_count, err)) {
         return NULL;
     }
-    if (cxpr_model_program_to_c_tick_function_ast(program, qualifiers, function_name,
+    if (cxpr_model_compiled_generate_c_ast(program, qualifiers, function_name,
                                                  param_values, param_count,
                                                  output_indices,
                                                  output_indices ? output_count : 0u,
@@ -570,6 +570,6 @@ char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
         if (err) *err = ast_err;
         return NULL;
     }
-    return cxpr_model_program_to_c_tick_function_select_outputs(
+    return cxpr_model_compiled_generate_c_outputs(
         program, qualifiers, function_name, output_indices, output_count, err);
 }

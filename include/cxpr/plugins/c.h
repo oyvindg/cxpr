@@ -38,7 +38,7 @@ int cxpr_c_plugin_emit_source(
  * @return Owned source on success, or NULL on failure.
  */
 char* cxpr_c_plugin_source_from_program(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_c_plugin_options* options,
     cxpr_error* err);
 

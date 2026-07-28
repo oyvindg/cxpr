@@ -82,7 +82,7 @@ The main types are:
 | `cxpr_doc` | Parsed document containing host blocks and optionally a model |
 | `cxpr_model` | Validated semantic representation of model declarations |
 | `cxpr_expr_compiled` | Compiled typed IR for one expression |
-| `cxpr_model_program` | Immutable compiled plan for a complete model |
+| `cxpr_model_compiled` | Immutable compiled plan for a complete model |
 | `cxpr_context` | Runtime variables, parameters, structs, slots, and overlays |
 | `cxpr_registry` | Built-in, expression-defined, and host-defined functions |
 | `cxpr_model_session` | Mutable state for one execution of a model program |
@@ -474,7 +474,7 @@ use indicators/ema as ema_lib
 ```
 
 Library callers can resolve imports explicitly with
-`cxpr_compile_model_with_imports*` or the import bundle APIs. The
+`cxpr_model_compile_with_imports*` or the import bundle APIs. The
 `cxpr_model_codegen` tool resolves adjacent `.cxpr` imports and also probes
 ancestor `libs/dyn/cxpr/` directories for project integrations.
 
@@ -518,7 +518,7 @@ The reference/tooling path is:
 ```c
 cxpr_error err = {0};
 cxpr_model* model = cxpr_model_parse(source, &err);
-cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
 cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
 cxpr_context* ctx = cxpr_model_session_context(session);
 
@@ -527,10 +527,10 @@ cxpr_context_set_bool(ctx, "sensor_ok", true);
 cxpr_model_session_tick(program, session, NULL, &err);
 
 bool alarm = false;
-cxpr_model_session_output_bool(session, "alarm", &alarm);
+cxpr_model_session_get_bool(session, "alarm", &alarm);
 
 cxpr_model_session_free(session);
-cxpr_model_program_free(program);
+cxpr_model_compiled_free(program);
 cxpr_model_free(model);
 ```
 
@@ -569,7 +569,7 @@ cxpr_expr_ast_free(condition);
 ```
 
 Constructors that accept child nodes take ownership as documented in
-`<cxpr/ast/expression.h>`. The document AST has no corresponding public
+`<cxpr/expr/ast.h>`. The document AST has no corresponding public
 mutation/builder API; it is produced by parsing and inspected through const
 accessors and the visitor API.
 
@@ -631,7 +631,7 @@ free(code);
 It can adapt the traversal to C-like targets while keeping memory layout and
 host source access outside `cxpr`.
 
-For complete models, `cxpr_model_program_to_c_tick_function*` emits a stateful
+For complete models, `cxpr_model_compiled_generate_c*` emits a stateful
 tick function with this logical ABI:
 
 ```c
@@ -725,7 +725,7 @@ A plugin consumes a borrowed model event:
 typedef struct cxpr_model_plugin_event {
     const char* model_path;
     const cxpr_model* model;
-    const cxpr_model_program* program;
+    const cxpr_model_compiled* compiled;
 } cxpr_model_plugin_event;
 ```
 
@@ -756,7 +756,7 @@ Run a backend generically:
 cxpr_model_plugin_event event = {
     .model_path = "controller.cxpr",
     .model = model,
-    .program = program,
+    .compiled = program,
 };
 
 cxpr_model_plugin_run(

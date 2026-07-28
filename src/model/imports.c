@@ -8,7 +8,7 @@ typedef struct cxpr_model_import_node {
     char* namespace_name;
     char* source;
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     bool function_only;
 } cxpr_model_import_node;
 
@@ -112,7 +112,7 @@ static bool import_compile(
     char* combined = NULL;
     char* compilable = NULL;
     cxpr_model* model = NULL;
-    cxpr_model_program* program = NULL;
+    cxpr_model_compiled* program = NULL;
     cxpr_model_import* direct = NULL;
     size_t direct_count = 0u;
     bool function_only;
@@ -197,7 +197,7 @@ static bool import_compile(
         model = cxpr_model_parse(compilable, err);
         if (!model) goto fail;
     }
-    program = cxpr_compile_model_with_imports(
+    program = cxpr_model_compile_with_imports(
         model, NULL, direct, direct_count, err);
     if (!program) goto fail;
     {
@@ -255,7 +255,7 @@ fail:
         builder->stack_count--;
     }
     free(direct);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(compilable);
     free(combined);
@@ -318,7 +318,7 @@ void cxpr_model_import_bundle_free(cxpr_model_import_bundle* graph) {
     size_t i;
     if (!graph) return;
     for (i = 0u; i < graph->node_count; ++i) {
-        cxpr_model_program_free(graph->nodes[i].program);
+        cxpr_model_compiled_free(graph->nodes[i].program);
         cxpr_model_free(graph->nodes[i].model);
         free(graph->nodes[i].namespace_name);
         free(graph->nodes[i].source);

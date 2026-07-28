@@ -5,7 +5,7 @@
 
 #include "internal.h"
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 
 #include <stdio.h>
 #include <stdlib.h>

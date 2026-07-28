@@ -32,7 +32,7 @@ static int cxpr_c_append(cxpr_c_buf* b, const char* text) {
 }
 
 char* cxpr_c_plugin_source_from_program(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_c_plugin_options* options,
     cxpr_error* err) {
     static const cxpr_c_plugin_options defaults = {
@@ -50,7 +50,7 @@ char* cxpr_c_plugin_source_from_program(
     cxpr_c_buf out = {0};
 
     if (opts->param_values && opts->param_count > 0u) {
-        body = cxpr_model_program_to_c_tick_function_with_params_select_outputs(
+        body = cxpr_model_compiled_generate_c_specialized(
             program,
             opts->qualifiers,
             function_name,
@@ -60,7 +60,7 @@ char* cxpr_c_plugin_source_from_program(
             opts->output_count,
             err);
     } else {
-        body = cxpr_model_program_to_c_tick_function_select_outputs(
+        body = cxpr_model_compiled_generate_c_outputs(
             program,
             opts->qualifiers,
             function_name,
@@ -102,7 +102,7 @@ int cxpr_c_plugin_emit_source(
     char* source;
     int ok;
 
-    if (!event || !event->program || !host ||
+    if (!event || !event->compiled || !host ||
         !host->begin_artifact || !host->write_artifact || !host->end_artifact) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -110,7 +110,7 @@ int cxpr_c_plugin_emit_source(
         }
         return 0;
     }
-    source = cxpr_c_plugin_source_from_program(event->program, options, err);
+    source = cxpr_c_plugin_source_from_program(event->compiled, options, err);
     if (!source) return 0;
     artifact.name = event->model_path ? event->model_path : artifact.name;
     ok = host->begin_artifact(host->user, &artifact, err) &&

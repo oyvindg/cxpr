@@ -195,7 +195,7 @@ static bool cxpr_model_session_history_push(cxpr_model_session* session,
     return true;
 }
 
-static bool cxpr_model_session_capture_history(const cxpr_model_program* program,
+static bool cxpr_model_session_capture_history(const cxpr_model_compiled* program,
                                                cxpr_model_session* session,
                                                const cxpr_registry* reg,
                                                cxpr_error* err) {
@@ -280,7 +280,7 @@ bool cxpr_model_lookback_resolver(const cxpr_expr_ast* target,
     return true;
 }
 
-static void cxpr_model_session_refresh_outputs(const cxpr_model_program* program,
+static void cxpr_model_session_refresh_outputs(const cxpr_model_compiled* program,
                                                cxpr_model_session* session) {
     if (!program || !session) return;
     for (size_t i = 0; i < session->output_count; ++i) {
@@ -355,7 +355,7 @@ static void cxpr_model_output_state_set_bool(cxpr_model_output_state* state,
 }
 
 static bool cxpr_model_session_refresh_outputs_fused(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_model_session* session) {
     if (!program || !session || !session->fused_slots ||
         program->fused_output_count != session->output_count) {
@@ -381,7 +381,7 @@ static bool cxpr_model_session_refresh_outputs_fused(
     return true;
 }
 
-cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
+cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
                                            const cxpr_registry* reg,
                                            cxpr_error* err) {
     const cxpr_registry* eval_reg;
@@ -515,7 +515,7 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
     }
 
     eval_reg = program->registry ? program->registry : reg;
-    if (!cxpr_model_program_seed_defaults(program, session->ctx, eval_reg, err)) {
+    if (!cxpr_model_compiled_seed_defaults(program, session->ctx, eval_reg, err)) {
         cxpr_model_session_free(session);
         return NULL;
     }
@@ -625,7 +625,7 @@ static void cxpr_model_session_clear_pending(cxpr_model_session* session) {
 }
 
 static cxpr_model_session* cxpr_model_session_child_instance(
-    const cxpr_model_program* parent_program,
+    const cxpr_model_compiled* parent_program,
     cxpr_model_session* parent,
     size_t child_index,
     const char* key,
@@ -676,7 +676,7 @@ static cxpr_model_session* cxpr_model_session_child_instance(
     return child_session;
 }
 
-static void cxpr_model_session_commit_pending(const cxpr_model_program* program,
+static void cxpr_model_session_commit_pending(const cxpr_model_compiled* program,
                                               cxpr_model_session* session) {
     if (!program || !session) return;
     for (size_t i = 0u; i < session->pending_count; ++i) {
@@ -703,7 +703,7 @@ static void cxpr_model_session_commit_pending(const cxpr_model_program* program,
 }
 
 static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
-                                                        const cxpr_model_program* child,
+                                                        const cxpr_model_compiled* child,
                                                         const cxpr_expr_ast* ast) {
     size_t call_param_count = 0u;
     if (!child_ref || !child || !ast ||
@@ -730,7 +730,7 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
 }
 
 static const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
-                                                       const cxpr_model_program* child,
+                                                       const cxpr_model_compiled* child,
                                                        const cxpr_expr_ast* ast,
                                                        size_t param_index) {
     size_t explicit_count = 0u;
@@ -774,7 +774,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     cxpr_model_child_program* child_ref = (cxpr_model_child_program*)userdata;
     cxpr_model_session* parent = cxpr_model_active_session();
     cxpr_model_session* child_session;
-    const cxpr_model_program* child;
+    const cxpr_model_compiled* child;
     cxpr_value* fields = NULL;
     cxpr_struct_value* record = NULL;
     cxpr_value result = cxpr_num(NAN);
@@ -894,9 +894,9 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     for (size_t i = 0u; i < child->output_count; ++i) {
         double number = 0.0;
         bool boolean = false;
-        if (cxpr_model_session_output_number(child_session, child->outputs[i], &number)) {
+        if (cxpr_model_session_get_number(child_session, child->outputs[i], &number)) {
             fields[i] = cxpr_num(number);
-        } else if (cxpr_model_session_output_bool(child_session, child->outputs[i], &boolean)) {
+        } else if (cxpr_model_session_get_bool(child_session, child->outputs[i], &boolean)) {
             fields[i] = cxpr_bool(boolean);
         } else {
             fields[i] = cxpr_context_get_typed(child_session->ctx, child->outputs[i], &found);
@@ -936,7 +936,7 @@ cxpr_context* cxpr_model_session_context(cxpr_model_session* session) {
     return session ? session->ctx : NULL;
 }
 
-static bool cxpr_model_session_tick_fused(const cxpr_model_program* program,
+static bool cxpr_model_session_tick_fused(const cxpr_model_compiled* program,
                                           cxpr_model_session* session,
                                           const cxpr_registry* eval_reg,
                                           bool materialize_context,
@@ -1052,7 +1052,7 @@ static bool cxpr_model_session_tick_fused(const cxpr_model_program* program,
     return true;
 }
 
-bool cxpr_model_session_tick(const cxpr_model_program* program,
+bool cxpr_model_session_tick(const cxpr_model_compiled* program,
                              cxpr_model_session* session,
                              const cxpr_registry* reg,
                              cxpr_error* err) {
@@ -1149,7 +1149,7 @@ bool cxpr_model_session_tick(const cxpr_model_program* program,
     return true;
 }
 
-bool cxpr_model_session_tick_fast(const cxpr_model_program* program,
+bool cxpr_model_session_tick_fast(const cxpr_model_compiled* program,
                                   cxpr_model_session* session,
                                   const cxpr_registry* reg,
                                   cxpr_error* err) {

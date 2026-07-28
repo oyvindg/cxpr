@@ -6,7 +6,7 @@
 #ifndef CXPR_DOC_AST_H
 #define CXPR_DOC_AST_H
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/doc.h>
 #include <cxpr/source.h>
 #include <cxpr/types.h>

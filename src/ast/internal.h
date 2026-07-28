@@ -6,7 +6,7 @@
 #ifndef CXPR_AST_INTERNAL_H
 #define CXPR_AST_INTERNAL_H
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 
 /** @brief Internal owned AST node representation. */
 struct cxpr_expr_ast {

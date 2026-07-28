@@ -90,7 +90,7 @@ int main(void) {
 
     event.model_path = "demo.cxpr";
     event.model = model;
-    event.program = NULL;
+    event.compiled = NULL;
     assert(cxpr_meta_plugin_emit_manifest(&event, NULL, &host, &err));
     assert(strcmp(sink.kind, "cxpr.meta.manifest.v1") == 0);
     assert(sink.data != NULL);

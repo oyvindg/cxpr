@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-char* cxpr_model_program_function_to_c_function(const cxpr_model_program* program,
+char* cxpr_model_compiled_generate_function_c(const cxpr_model_compiled* program,
                                                 const char* name,
                                                 const char* qualifiers,
                                                 const char* return_type,
@@ -30,7 +30,7 @@ char* cxpr_model_program_function_to_c_function(const cxpr_model_program* progra
                                                   err);
 }
 
-size_t cxpr_model_program_param_index(const cxpr_model_program* program,
+size_t cxpr_model_compiled_param_index(const cxpr_model_compiled* program,
                                       const char* name) {
     if (!program || !name) return (size_t)-1;
     for (size_t i = 0u; i < program->constant_count; ++i) {
@@ -55,7 +55,7 @@ const char* cxpr_model_c_binary_op(cxpr_opcode op) {
     }
 }
 
-bool cxpr_model_c_emit_defined_functions(const cxpr_model_program* program,
+bool cxpr_model_c_emit_defined_functions(const cxpr_model_compiled* program,
                                          cxpr_model_c_buf* b,
                                          cxpr_error* err) {
     if (!program || !program->registry) return true;
@@ -91,7 +91,7 @@ bool cxpr_model_c_emit_defined_functions(const cxpr_model_program* program,
 }
 
 typedef struct {
-    const cxpr_model_program* program;
+    const cxpr_model_compiled* program;
     char** param_names;
     char** param_exprs;
     size_t param_count;
@@ -111,11 +111,11 @@ typedef struct {
     size_t next_temp;
 } cxpr_model_ast_temp_emit;
 
-static bool cxpr_model_c_defined_function_used(const cxpr_model_program* program,
+static bool cxpr_model_c_defined_function_used(const cxpr_model_compiled* program,
                                                const char* name,
                                                bool* used,
                                                cxpr_error* err);
-static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program* program,
+static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_compiled* program,
                                                        const cxpr_expr_ast* ast,
                                                        bool* used,
                                                        cxpr_error* err);
@@ -132,7 +132,7 @@ static char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
                                             unsigned lookback_offset,
                                             void* userdata,
                                             cxpr_error* err);
-static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
+static char* cxpr_model_ast_expr_to_c(const cxpr_model_compiled* program,
                                       const cxpr_expr_ast* ast,
                                       const char* function_prefix,
                                       const double* literal_param_values,
@@ -144,17 +144,17 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
 static char* cxpr_model_ast_expr_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
                                                  const cxpr_expr_ast* ast,
                                                  cxpr_error* err);
-static bool cxpr_model_ast_is_record_like(const cxpr_model_program* program,
+static bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
                                           const cxpr_expr_ast* ast,
                                           unsigned depth);
-static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
+static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                                             const cxpr_expr_ast* ast,
                                             const char* field,
                                             const cxpr_c_target* target,
                                             cxpr_error* err,
                                             unsigned depth);
 
-static bool cxpr_model_c_symbol_is_input(const cxpr_model_program* program,
+static bool cxpr_model_c_symbol_is_input(const cxpr_model_compiled* program,
                                          const char* name,
                                          size_t* out_index) {
     if (!program || !name) return false;
@@ -167,7 +167,7 @@ static bool cxpr_model_c_symbol_is_input(const cxpr_model_program* program,
     return false;
 }
 
-static bool cxpr_model_c_symbol_is_state(const cxpr_model_program* program,
+static bool cxpr_model_c_symbol_is_state(const cxpr_model_compiled* program,
                                          const char* name,
                                          size_t* out_slot) {
     if (!program || !name) return false;
@@ -182,7 +182,7 @@ static bool cxpr_model_c_symbol_is_state(const cxpr_model_program* program,
     return false;
 }
 
-static bool cxpr_model_c_symbol_is_binding(const cxpr_model_program* program,
+static bool cxpr_model_c_symbol_is_binding(const cxpr_model_compiled* program,
                                            const char* name) {
     if (!program || !name) return false;
     for (size_t i = 0u; i < program->binding_count; ++i) {
@@ -193,7 +193,7 @@ static bool cxpr_model_c_symbol_is_binding(const cxpr_model_program* program,
 }
 
 static const cxpr_model_compiled_binding* cxpr_model_c_binding_for_name(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const char* name) {
     if (!program || !name) return NULL;
     for (size_t i = 0u; i < program->binding_count; ++i) {
@@ -204,7 +204,7 @@ static const cxpr_model_compiled_binding* cxpr_model_c_binding_for_name(
 }
 
 static const cxpr_model_compiled_binding* cxpr_model_c_constant_for_name(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const char* name) {
     if (!program || !name) return NULL;
     for (size_t i = 0u; i < program->constant_count; ++i) {
@@ -213,7 +213,7 @@ static const cxpr_model_compiled_binding* cxpr_model_c_constant_for_name(
     return NULL;
 }
 
-static const char* cxpr_model_c_source_for_name(const cxpr_model_program* program,
+static const char* cxpr_model_c_source_for_name(const cxpr_model_compiled* program,
                                                 const char* name) {
     const cxpr_model_compiled_binding* binding;
     if (!program || !name) return NULL;
@@ -268,7 +268,7 @@ static const cxpr_expr_ast* cxpr_model_producer_arg_for_param(const cxpr_expr_as
 }
 
 static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
-                                                        const cxpr_model_program* child,
+                                                        const cxpr_model_compiled* child,
                                                         const cxpr_expr_ast* ast) {
     if (!child_ref || !child || !ast ||
         child_ref->source_input_index == (size_t)-1 ||
@@ -290,7 +290,7 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
 }
 
 static const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
-                                                       const cxpr_model_program* child,
+                                                       const cxpr_model_compiled* child,
                                                        const cxpr_expr_ast* ast,
                                                        size_t param_index) {
     if (!child || !ast || param_index >= child->constant_count) return NULL;
@@ -317,19 +317,19 @@ static const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_chi
 }
 
 static size_t CXPR_MODEL_MAYBE_UNUSED
-cxpr_model_c_child_base_inline(const cxpr_model_program* program,
+cxpr_model_c_child_base_inline(const cxpr_model_compiled* program,
                                size_t child_index) {
     size_t base;
     if (!program || child_index >= program->child_count) return (size_t)-1;
     base = program->state_default_count;
     for (size_t i = 0u; i < child_index; ++i) {
-        const cxpr_model_program* child = program->children[i].program;
-        base += cxpr_model_program_c_slot_count(child) + 1u + child->output_count;
+        const cxpr_model_compiled* child = program->children[i].program;
+        base += cxpr_model_compiled_c_slot_count(child) + 1u + child->output_count;
     }
     return base;
 }
 
-static size_t cxpr_model_c_child_index_for_entry(const cxpr_model_program* program,
+static size_t cxpr_model_c_child_index_for_entry(const cxpr_model_compiled* program,
                                                  const cxpr_func_entry* entry) {
     if (!program || !entry || !entry->model_producer_userdata) return (size_t)-1;
     for (size_t i = 0u; i < program->child_count; ++i) {
@@ -436,7 +436,7 @@ static bool cxpr_model_c_child_call_collect_append(char*** keys,
     return true;
 }
 
-static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_program* program,
+static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_compiled* program,
                                                       const cxpr_expr_ast* ast,
                                                       char*** keys,
                                                       size_t** child_indices,
@@ -523,7 +523,7 @@ static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_program* 
     }
 }
 
-static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* program,
+static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                                                  const cxpr_expr_ast* ast,
                                                  const char* function_prefix,
                                                  const double* literal_param_values,
@@ -577,7 +577,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
 
     if (entry->model_producer) {
         size_t child_index = cxpr_model_c_child_index_for_entry(program, entry);
-        const cxpr_model_program* child =
+        const cxpr_model_compiled* child =
             child_index == (size_t)-1 ? NULL : program->children[child_index].program;
         size_t child_call_index;
         char* child_call_key;
@@ -790,7 +790,7 @@ fail:
     return NULL;
 }
 
-static size_t cxpr_model_c_state_slot_for_name(const cxpr_model_program* program,
+static size_t cxpr_model_c_state_slot_for_name(const cxpr_model_compiled* program,
                                                const char* name) {
     if (!program || !name) return (size_t)-1;
     for (size_t i = 0u; i < program->state_default_count; ++i) {
@@ -799,21 +799,21 @@ static size_t cxpr_model_c_state_slot_for_name(const cxpr_model_program* program
     return (size_t)-1;
 }
 
-static size_t cxpr_model_c_state_slot_for_fused_slot(const cxpr_model_program* program,
+static size_t cxpr_model_c_state_slot_for_fused_slot(const cxpr_model_compiled* program,
                                                      size_t fused_slot) {
     if (!program || fused_slot >= program->fused_slot_count) return (size_t)-1;
     return cxpr_model_c_state_slot_for_name(program, program->fused_slot_names[fused_slot]);
 }
 
 static size_t CXPR_MODEL_MAYBE_UNUSED
-cxpr_model_c_history_base(const cxpr_model_program* program,
+cxpr_model_c_history_base(const cxpr_model_compiled* program,
                           size_t history_index) {
     (void)program;
     (void)history_index;
     return (size_t)-1;
 }
 
-static size_t cxpr_model_c_history_find(const cxpr_model_program* program,
+static size_t cxpr_model_c_history_find(const cxpr_model_compiled* program,
                                         const char* name) {
     if (!program || !name) return (size_t)-1;
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
@@ -822,7 +822,7 @@ static size_t cxpr_model_c_history_find(const cxpr_model_program* program,
     return (size_t)-1;
 }
 
-static char* cxpr_model_c_current_symbol_expr(const cxpr_model_program* program,
+static char* cxpr_model_c_current_symbol_expr(const cxpr_model_compiled* program,
                                               char** state_next_names,
                                               const char* name,
                                               cxpr_error* err) {
@@ -856,7 +856,7 @@ bool cxpr_model_c_emit_dynamic_history_value(cxpr_model_c_buf* b,
                                              const cxpr_expr_ast* ast,
                                              const char* offset_expr,
                                              const cxpr_c_target* target,
-                                             const cxpr_model_program* program,
+                                             const cxpr_model_compiled* program,
                                              cxpr_error* err) {
     char* current_expr = NULL;
     char* key = NULL;
@@ -937,7 +937,7 @@ static const char* cxpr_model_c_ast_binary_op(int op) {
     }
 }
 
-static bool cxpr_model_ast_is_record_like(const cxpr_model_program* program,
+static bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
                                           const cxpr_expr_ast* ast,
                                           unsigned depth) {
     cxpr_func_entry* entry;
@@ -963,7 +963,7 @@ static bool cxpr_model_ast_is_record_like(const cxpr_model_program* program,
     }
 }
 
-static char* cxpr_model_ast_field_expr_try(const cxpr_model_program* program,
+static char* cxpr_model_ast_field_expr_try(const cxpr_model_compiled* program,
                                            const cxpr_expr_ast* ast,
                                            const char* field,
                                            const cxpr_c_target* target,
@@ -973,7 +973,7 @@ static char* cxpr_model_ast_field_expr_try(const cxpr_model_program* program,
 }
 
 static char* cxpr_model_ast_record_function_field_to_c(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_expr_ast* ast,
     const char* field,
     const cxpr_c_target* target,
@@ -1074,7 +1074,7 @@ fail:
 }
 
 static char* cxpr_model_ast_record_field_to_c(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_expr_ast* ast,
     const char* field,
     const cxpr_c_target* target,
@@ -1168,7 +1168,7 @@ fail:
     return NULL;
 }
 
-static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_program* program,
+static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                                             const cxpr_expr_ast* ast,
                                             const char* field,
                                             const cxpr_c_target* target,
@@ -1261,7 +1261,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
                                         void* userdata,
                                         cxpr_error* err) {
     cxpr_model_ast_c_target* target = (cxpr_model_ast_c_target*)userdata;
-    const cxpr_model_program* program = target ? target->program : NULL;
+    const cxpr_model_compiled* program = target ? target->program : NULL;
     const char* name = NULL;
     size_t index = 0u;
     size_t slot = 0u;
@@ -1415,7 +1415,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
                 if (expr) return expr;
             }
         }
-        index = cxpr_model_program_param_index(program, name);
+        index = cxpr_model_compiled_param_index(program, name);
         if (index == (size_t)-1) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
@@ -1449,7 +1449,7 @@ static char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
                                             void* userdata,
                                             cxpr_error* err) {
     cxpr_model_ast_c_target* data = (cxpr_model_ast_c_target*)userdata;
-    const cxpr_model_program* program = data ? data->program : NULL;
+    const cxpr_model_compiled* program = data ? data->program : NULL;
     const cxpr_expr_ast* target_ast;
     const cxpr_expr_ast* index_ast;
     cxpr_c_target target;
@@ -1513,7 +1513,7 @@ static const char* cxpr_model_c_window_op(const char* name) {
                : NULL;
 }
 
-static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
+static bool cxpr_model_c_constant_param_expr(const cxpr_model_compiled* program,
                                              const cxpr_expr_ast* ast,
                                              double* out) {
     double left = 0.0;
@@ -1523,7 +1523,7 @@ static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
     if (cxpr_eval_constant_double(ast, out)) return true;
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_VARIABLE) {
         const char* name = cxpr_expr_ast_param_name(ast);
-        size_t index = cxpr_model_program_param_index(program, name);
+        size_t index = cxpr_model_compiled_param_index(program, name);
         return index != (size_t)-1 &&
                program->constants[index].ast &&
                cxpr_eval_constant_double(program->constants[index].ast, out);
@@ -1563,7 +1563,7 @@ static bool cxpr_model_c_constant_param_expr(const cxpr_model_program* program,
     return true;
 }
 
-static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* program,
+static bool cxpr_model_c_window_period_capacity(const cxpr_model_compiled* program,
                                                 const cxpr_expr_ast* period_ast,
                                                 size_t* out_capacity,
                                                 cxpr_error* err) {
@@ -1616,7 +1616,7 @@ static bool cxpr_model_c_ast_same_simple(const cxpr_expr_ast* left, const cxpr_e
     }
 }
 
-static const char* cxpr_model_c_find_common_binding_expr(const cxpr_model_program* program,
+static const char* cxpr_model_c_find_common_binding_expr(const cxpr_model_compiled* program,
                                                          size_t binding_index,
                                                          const bool* needed_bindings,
                                                          const bool* skip_bindings,
@@ -1719,7 +1719,7 @@ static bool cxpr_model_c_emit_midpoint_binding(cxpr_model_c_buf* b,
                                                const cxpr_expr_ast* low_ast,
                                                const cxpr_expr_ast* period_ast,
                                                const cxpr_c_target* target,
-                                               const cxpr_model_program* program,
+                                               const cxpr_model_compiled* program,
                                                cxpr_error* err) {
     size_t capacity = 0u;
     char* period_expr = NULL;
@@ -1833,7 +1833,7 @@ static bool cxpr_model_c_emit_simple_window_binding(cxpr_model_c_buf* b,
                                                     const char* name,
                                                     const cxpr_expr_ast* ast,
                                                     const cxpr_c_target* target,
-                                                    const cxpr_model_program* program,
+                                                    const cxpr_model_compiled* program,
                                                     cxpr_error* err) {
     const char* fn_name;
     const cxpr_expr_ast* value_ast;
@@ -2000,7 +2000,7 @@ static bool cxpr_model_c_emit_mean_stddev_bindings(cxpr_model_c_buf* b,
                                                    const char* stddev_name,
                                                    const cxpr_expr_ast* mean_ast,
                                                    const cxpr_c_target* target,
-                                                   const cxpr_model_program* program,
+                                                   const cxpr_model_compiled* program,
                                                    cxpr_error* err) {
     const cxpr_expr_ast* value_ast;
     const cxpr_expr_ast* period_ast;
@@ -2111,12 +2111,12 @@ static bool cxpr_model_c_emit_mean_stddev_bindings(cxpr_model_c_buf* b,
     return true;
 }
 
-static size_t cxpr_model_c_standard_slot_count_inline(const cxpr_model_program* program) {
+static size_t cxpr_model_c_standard_slot_count_inline(const cxpr_model_compiled* program) {
     (void)program;
     return 0u;
 }
 
-static size_t cxpr_model_c_window_plan_base(const cxpr_model_program* program,
+static size_t cxpr_model_c_window_plan_base(const cxpr_model_compiled* program,
                                             const cxpr_model_window_plan_node* node) {
     if (!program || !node || node->slot_count == 0u) return (size_t)-1;
     return cxpr_model_c_standard_slot_count_inline(program) + node->slot_offset;
@@ -2134,7 +2134,7 @@ static const char* cxpr_model_c_history_counter_type(size_t capacity) {
 
 static bool cxpr_model_c_emit_runtime_state_typedef(
     cxpr_model_c_buf* b,
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_model_window_plan* window_plan,
     const char* safe_name,
     const size_t* child_call_child_indices,
@@ -2204,7 +2204,7 @@ static bool cxpr_model_c_emit_runtime_state_typedef(
 }
 
 static bool cxpr_model_c_emit_state_typedefs(cxpr_model_c_buf* b,
-                                             const cxpr_model_program* program,
+                                             const cxpr_model_compiled* program,
                                              const cxpr_model_window_plan* window_plan,
                                              const char* safe_name,
                                              cxpr_error* err) {
@@ -2287,7 +2287,7 @@ static bool cxpr_model_c_emit_state_typedefs(cxpr_model_c_buf* b,
     return true;
 }
 
-static bool cxpr_model_c_init_sentinel_slot(const cxpr_model_program* program,
+static bool cxpr_model_c_init_sentinel_slot(const cxpr_model_compiled* program,
                                             const cxpr_model_window_plan* window_plan,
                                             size_t* out_slot) {
     (void)out_slot;
@@ -2300,7 +2300,7 @@ static bool cxpr_model_c_init_sentinel_slot(const cxpr_model_program* program,
 }
 
 static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
-                                                 const cxpr_model_program* program,
+                                                 const cxpr_model_compiled* program,
                                                  const cxpr_model_window_plan* window_plan,
                                                  const char* qualifiers,
                                                  const char* safe_name,
@@ -2379,13 +2379,13 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
     return true;
 }
 
-static bool cxpr_model_c_period_default_value(const cxpr_model_program* program,
+static bool cxpr_model_c_period_default_value(const cxpr_model_compiled* program,
                                               const cxpr_expr_ast* period_ast,
                                               double* out_value) {
     return cxpr_model_c_constant_param_expr(program, period_ast, out_value);
 }
 
-static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* program,
+static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_compiled* program,
                                                    const cxpr_expr_ast* period_ast,
                                                    size_t capacity,
                                                    const cxpr_c_target* target) {
@@ -2399,7 +2399,7 @@ static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* pro
         target_data &&
         target_data->literal_param_values) {
         const char* name = cxpr_expr_ast_param_name(period_ast);
-        size_t index = cxpr_model_program_param_index(program, name);
+        size_t index = cxpr_model_compiled_param_index(program, name);
         if (index != (size_t)-1 && index < target_data->literal_param_count) {
             value = target_data->literal_param_values[index];
         } else {
@@ -2415,7 +2415,7 @@ static bool cxpr_model_c_period_is_static_capacity(const cxpr_model_program* pro
     return (size_t)rounded == capacity;
 }
 
-static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
+static char* cxpr_model_c_period_limit_expr(const cxpr_model_compiled* program,
                                             const cxpr_expr_ast* period_ast,
                                             size_t capacity,
                                             const cxpr_c_target* target,
@@ -2433,7 +2433,7 @@ static char* cxpr_model_c_period_limit_expr(const cxpr_model_program* program,
         target_data &&
         target_data->literal_param_values) {
         const char* name = cxpr_expr_ast_param_name(period_ast);
-        size_t index = cxpr_model_program_param_index(program, name);
+        size_t index = cxpr_model_compiled_param_index(program, name);
         if (index != (size_t)-1 && index < target_data->literal_param_count) {
             double literal = target_data->literal_param_values[index];
             if (!isfinite(literal) || literal < 1.0) literal = 1.0;
@@ -2487,7 +2487,7 @@ static bool cxpr_model_c_emit_planned_roc_aggregate_binding(
     const cxpr_model_window_plan* plan,
     const cxpr_model_window_plan_node* node,
     const cxpr_c_target* target,
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_error* err) {
     const cxpr_model_window_plan_node* roc_node;
     const cxpr_expr_ast* value_ast;
@@ -2638,7 +2638,7 @@ static bool cxpr_model_c_emit_planned_simple_aggregate_binding(
     const cxpr_model_window_plan* plan,
     const cxpr_model_window_plan_node* node,
     const cxpr_c_target* target,
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     cxpr_error* err) {
     const cxpr_expr_ast* value_ast;
     const cxpr_expr_ast* period_ast;
@@ -2769,14 +2769,14 @@ typedef bool (*cxpr_model_c_single_binding_emitter)(cxpr_model_c_buf* b,
                                                     const char* name,
                                                     const cxpr_expr_ast* ast,
                                                     const cxpr_c_target* target,
-                                                    const cxpr_model_program* program,
+                                                    const cxpr_model_compiled* program,
                                                     cxpr_error* err);
 
 static bool cxpr_model_c_emit_midpoint_binding_from_ast(cxpr_model_c_buf* b,
                                                         const char* name,
                                                         const cxpr_expr_ast* ast,
                                                         const cxpr_c_target* target,
-                                                        const cxpr_model_program* program,
+                                                        const cxpr_model_compiled* program,
                                                         cxpr_error* err) {
     const cxpr_expr_ast* high_ast = NULL;
     const cxpr_expr_ast* low_ast = NULL;
@@ -2792,7 +2792,7 @@ static bool cxpr_model_c_emit_optimized_single_binding(cxpr_model_c_buf* b,
                                                        const char* name,
                                                        const cxpr_expr_ast* ast,
                                                        const cxpr_c_target* target,
-                                                       const cxpr_model_program* program,
+                                                       const cxpr_model_compiled* program,
                                                        cxpr_error* err) {
     static const cxpr_model_c_single_binding_emitter emitters[] = {
         cxpr_model_c_emit_midpoint_binding_from_ast,
@@ -2811,7 +2811,7 @@ static bool cxpr_model_c_emit_optimized_binding_pair(cxpr_model_c_buf* b,
                                                      const cxpr_expr_ast* first_ast,
                                                      const cxpr_expr_ast* second_ast,
                                                      const cxpr_c_target* target,
-                                                     const cxpr_model_program* program,
+                                                     const cxpr_model_compiled* program,
                                                      cxpr_error* err) {
     if (!cxpr_model_c_match_mean_stddev_pair(first_ast, second_ast)) return false;
     return cxpr_model_c_emit_mean_stddev_bindings(
@@ -2821,7 +2821,7 @@ static bool cxpr_model_c_emit_optimized_binding_pair(cxpr_model_c_buf* b,
 static char* cxpr_model_ast_c_emit_window_call(const cxpr_expr_ast* ast,
                                                unsigned lookback_offset,
                                                const cxpr_c_target* target,
-                                               const cxpr_model_program* program,
+                                               const cxpr_model_compiled* program,
                                                cxpr_error* err) {
     const char* name = cxpr_expr_ast_call_name(ast);
     const char* op = cxpr_model_c_window_op(name);
@@ -3321,7 +3321,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
     return NULL;
 }
 
-static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
+static char* cxpr_model_ast_expr_to_c(const cxpr_model_compiled* program,
                                       const cxpr_expr_ast* ast,
                                       const char* function_prefix,
                                       const double* literal_param_values,
@@ -3468,7 +3468,7 @@ static char* cxpr_model_ast_expr_to_c_with_temps(cxpr_model_ast_temp_emit* emit,
     return cxpr_expr_ast_to_c(ast, emit->target, err);
 }
 
-static bool cxpr_model_c_defined_function_used(const cxpr_model_program* program,
+static bool cxpr_model_c_defined_function_used(const cxpr_model_compiled* program,
                                                const char* name,
                                                bool* used,
                                                cxpr_error* err) {
@@ -3487,7 +3487,7 @@ static bool cxpr_model_c_defined_function_used(const cxpr_model_program* program
     return true;
 }
 
-static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program* program,
+static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_compiled* program,
                                                        const cxpr_expr_ast* ast,
                                                        bool* used,
                                                        cxpr_error* err) {
@@ -3557,7 +3557,7 @@ static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_program*
     }
 }
 
-static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_program* program,
+static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_compiled* program,
                                             const cxpr_func_entry* entry,
                                             const char* function_prefix,
                                             cxpr_error* err) {
@@ -3652,7 +3652,7 @@ static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_program* program,
     return b.data;
 }
 
-static bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_program* program,
+static bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_compiled* program,
                                                     const char* function_prefix,
                                                     cxpr_model_c_buf* b,
                                                     cxpr_error* err) {
@@ -3708,7 +3708,7 @@ static const char* cxpr_model_c_common_helpers_source(void) {
 }
 
 static bool cxpr_model_c_emit_child_model_helpers(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const char* function_prefix,
     const size_t* child_call_child_indices,
     size_t child_call_count,
@@ -3716,7 +3716,7 @@ static bool cxpr_model_c_emit_child_model_helpers(
     cxpr_error* err) {
     if (!program || !function_prefix || !b) return true;
     for (size_t i = 0u; i < program->child_count; ++i) {
-        const cxpr_model_program* child = program->children[i].program;
+        const cxpr_model_compiled* child = program->children[i].program;
         char* tick_name;
         char* tick_source;
         const char* nested_source;
@@ -3732,7 +3732,7 @@ static bool cxpr_model_c_emit_child_model_helpers(
         }
         cxpr_model_c_printf(b, "/* Source model tick: %s */\n",
                             program->children[i].name ? program->children[i].name : "(unnamed)");
-        tick_source = cxpr_model_program_to_c_tick_function_select_outputs(
+        tick_source = cxpr_model_compiled_generate_c_outputs(
             child, "static inline", tick_name, NULL, 0u, err);
         if (!tick_source) {
             free(tick_name);
@@ -3829,7 +3829,7 @@ static void cxpr_model_c_emit_common_helpers(cxpr_model_c_buf* b) {
     cxpr_model_c_puts(b, cxpr_model_c_common_helpers_source());
 }
 
-bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program,
+bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                                                const char* qualifiers,
                                                const char* function_name,
                                                const double* literal_param_values,
@@ -3892,7 +3892,7 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         free(state_next_names);
         return false;
     }
-    if (!cxpr_model_program_mark_required_bindings(
+    if (!cxpr_model_compiled_mark_required_bindings(
             program,
             output_indices,
             output_indices ? selected_output_count : 0u,

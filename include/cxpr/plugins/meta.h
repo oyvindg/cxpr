@@ -31,7 +31,7 @@ typedef struct cxpr_meta_plugin_options {
  *
  * Artifact kind: `cxpr.meta.manifest.v1`.
  *
- * @param event Model event. `event->model` is required; `event->program` is optional.
+ * @param event Model event. `event->model` is required; `event->compiled` is optional.
  * @param options Optional manifest options. NULL uses the defaults.
  * @param host Artifact callbacks supplied by the embedding host.
  * @param err Optional error output.

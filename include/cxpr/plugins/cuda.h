@@ -33,7 +33,7 @@ int cxpr_cuda_plugin_emit_source(
  * @return Owned source on success, or NULL on failure.
  */
 char* cxpr_cuda_plugin_source_from_program(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_cuda_plugin_options* options,
     cxpr_error* err);
 

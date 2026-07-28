@@ -1,4 +1,4 @@
-#include <cxpr/model/model.h>
+#include <cxpr/model/compiled.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>

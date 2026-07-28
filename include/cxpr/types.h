@@ -30,7 +30,7 @@ typedef struct cxpr_expr_compiled cxpr_expr_compiled;
 /** @brief Opaque parsed .cxpr model handle. */
 typedef struct cxpr_model cxpr_model;
 /** @brief Opaque compiled .cxpr model program handle. */
-typedef struct cxpr_model_program cxpr_model_program;
+typedef struct cxpr_model_compiled cxpr_model_compiled;
 /** @brief Opaque mutable .cxpr model session handle. */
 typedef struct cxpr_model_session cxpr_model_session;
 /** @brief Opaque expression evaluator handle. */

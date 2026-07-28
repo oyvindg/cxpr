@@ -13,7 +13,7 @@ size_t cxpr_model_fused_slot_find(char* const* names, size_t count,
     return (size_t)-1;
 }
 
-static bool cxpr_model_fused_slot_add(cxpr_model_program* program,
+static bool cxpr_model_fused_slot_add(cxpr_model_compiled* program,
                                       const char* name,
                                       size_t* out_slot,
                                       cxpr_error* err) {
@@ -82,8 +82,8 @@ static bool cxpr_model_slot_ref_append(cxpr_model_slot_ref** refs,
     return true;
 }
 
-static cxpr_model_result_kind cxpr_model_program_symbol_result_kind(
-    const cxpr_model_program* program,
+static cxpr_model_result_kind cxpr_model_compiled_symbol_result_kind(
+    const cxpr_model_compiled* program,
     const char* name) {
     if (!program || !name) return CXPR_MODEL_RESULT_UNKNOWN;
     for (size_t i = 0; i < program->binding_count; ++i) {
@@ -104,7 +104,7 @@ static cxpr_model_result_kind cxpr_model_program_symbol_result_kind(
     return CXPR_MODEL_RESULT_UNKNOWN;
 }
 
-static bool cxpr_model_state_commit_append(cxpr_model_program* program,
+static bool cxpr_model_state_commit_append(cxpr_model_compiled* program,
                                            size_t state_slot,
                                            size_t update_slot,
                                            cxpr_error* err) {
@@ -123,7 +123,7 @@ static bool cxpr_model_state_commit_append(cxpr_model_program* program,
     return true;
 }
 
-static bool cxpr_model_fused_slot_is_committed_state(const cxpr_model_program* program,
+static bool cxpr_model_fused_slot_is_committed_state(const cxpr_model_compiled* program,
                                                      size_t slot) {
     if (!program) return false;
     for (size_t i = 0; i < program->fused_commit_count; ++i) {
@@ -239,7 +239,7 @@ static bool cxpr_model_fused_ast_supported(const cxpr_expr_ast* ast,
     }
 }
 
-bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
+bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                                      const cxpr_model* model,
                                      const cxpr_registry* reg,
                                      cxpr_error* err) {
@@ -302,7 +302,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_program* program,
             cxpr_model_fused_program_clear(program);
             return true;
         }
-        result_kind = cxpr_model_program_symbol_result_kind(program, program->outputs[i]);
+        result_kind = cxpr_model_compiled_symbol_result_kind(program, program->outputs[i]);
         if (!cxpr_model_slot_ref_append(&program->fused_outputs,
                                         &program->fused_output_count,
                                         program->outputs[i],

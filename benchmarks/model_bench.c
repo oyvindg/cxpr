@@ -161,17 +161,17 @@ static double time_model_setup(size_t iterations) {
     for (size_t i = 0; i < iterations; ++i) {
         cxpr_error err = {0};
         cxpr_model* model = cxpr_model_parse(source, &err);
-        cxpr_model_program* program = NULL;
+        cxpr_model_compiled* program = NULL;
         if (!model) {
             fprintf(stderr, "model parse failed: %s\n", err.message);
             abort();
         }
-        program = cxpr_compile_model(model, NULL, &err);
+        program = cxpr_model_compile(model, NULL, &err);
         if (!program) {
             fprintf(stderr, "model compile failed: %s\n", err.message);
             abort();
         }
-        cxpr_model_program_free(program);
+        cxpr_model_compiled_free(program);
         cxpr_model_free(model);
     }
     return (double)(now_ns() - start) / (double)iterations;
@@ -226,7 +226,7 @@ static double time_model_eval(size_t iterations) {
         "out signal\n";
     cxpr_error err = {0};
     cxpr_model* model = cxpr_model_parse(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx;
     long long start;
     double total = 0.0;
@@ -235,7 +235,7 @@ static double time_model_eval(size_t iterations) {
         fprintf(stderr, "model parse failed: %s\n", err.message);
         abort();
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     ctx = cxpr_context_new();
     if (!program || !ctx) {
         fprintf(stderr, "model eval setup failed: %s\n", err.message);
@@ -246,7 +246,7 @@ static double time_model_eval(size_t iterations) {
     for (size_t i = 0; i < iterations; ++i) {
         bool found = false;
         cxpr_context_set(ctx, "close", 9.0 + (double)(i & 3u));
-        if (!cxpr_eval_model_program(program, ctx, NULL, &err)) {
+        if (!cxpr_model_compiled_eval(program, ctx, NULL, &err)) {
             fprintf(stderr, "model eval failed: %s\n", err.message);
             abort();
         }
@@ -255,7 +255,7 @@ static double time_model_eval(size_t iterations) {
     }
 
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     g_sink += total;
     return (double)(now_ns() - start) / (double)iterations;
@@ -313,7 +313,7 @@ static double time_host_registered_signal_helper_eval(size_t iterations) {
 static double time_model_signal_helper_eval(size_t iterations) {
     cxpr_error err = {0};
     cxpr_model* model = cxpr_model_parse(signal_helper_model_source(), &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx;
     long long start;
     double total = 0.0;
@@ -322,7 +322,7 @@ static double time_model_signal_helper_eval(size_t iterations) {
         fprintf(stderr, "model signal helper parse failed: %s\n", err.message);
         abort();
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     ctx = cxpr_context_new();
     if (!program || !ctx) {
         fprintf(stderr, "model signal helper setup failed: %s\n", err.message);
@@ -339,7 +339,7 @@ static double time_model_signal_helper_eval(size_t iterations) {
         cxpr_context_set(ctx, "cur_right", 2.0);
         cxpr_context_set(ctx, "prev_left", (i & 1u) ? 3.0 : 1.0);
         cxpr_context_set(ctx, "prev_right", 2.0);
-        if (!cxpr_eval_model_program(program, ctx, NULL, &err)) {
+        if (!cxpr_model_compiled_eval(program, ctx, NULL, &err)) {
             fprintf(stderr, "model signal helper eval failed: %s\n", err.message);
             abort();
         }
@@ -348,7 +348,7 @@ static double time_model_signal_helper_eval(size_t iterations) {
     }
 
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     g_sink += total;
     return (double)(now_ns() - start) / (double)iterations;
@@ -358,7 +358,7 @@ static double time_strategy_fixture_eval(size_t iterations) {
     cxpr_error err = {0};
     char* source = read_fixture("fixtures/strategies/ensemble_score_model.cxpr");
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_context* ctx;
     long long start;
     double total = 0.0;
@@ -369,13 +369,13 @@ static double time_strategy_fixture_eval(size_t iterations) {
         fprintf(stderr, "strategy fixture parse failed: %s\n", err.message);
         abort();
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     ctx = cxpr_context_new();
     if (!program || !ctx) {
         fprintf(stderr, "strategy fixture setup failed: %s\n", err.message);
         abort();
     }
-    if (!cxpr_model_program_seed_defaults(program, ctx, NULL, &err)) {
+    if (!cxpr_model_compiled_seed_defaults(program, ctx, NULL, &err)) {
         fprintf(stderr, "strategy fixture seed failed: %s\n", err.message);
         abort();
     }
@@ -393,7 +393,7 @@ static double time_strategy_fixture_eval(size_t iterations) {
         cxpr_context_set(ctx, "volume", 140.0 + (double)(i & 15u));
         cxpr_context_set(ctx, "vol_ma", 100.0);
         cxpr_context_set(ctx, "atr_value", 3.0 + 0.1 * (double)(i & 3u));
-        if (!cxpr_eval_model_program(program, ctx, NULL, &err)) {
+        if (!cxpr_model_compiled_eval(program, ctx, NULL, &err)) {
             fprintf(stderr, "strategy fixture eval failed: %s\n", err.message);
             abort();
         }
@@ -404,7 +404,7 @@ static double time_strategy_fixture_eval(size_t iterations) {
     }
 
     cxpr_context_free(ctx);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(source);
     g_sink += total;
@@ -415,7 +415,7 @@ static double time_rsi_state_strategy_fixture_tick(size_t iterations) {
     cxpr_error err = {0};
     char* source = read_fixture("fixtures/strategies/rsi_state_model.cxpr");
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_model_session* session;
     cxpr_context* ctx;
     long long start;
@@ -427,7 +427,7 @@ static double time_rsi_state_strategy_fixture_tick(size_t iterations) {
         fprintf(stderr, "rsi strategy fixture parse failed: %s\n", err.message);
         abort();
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     if (!program) {
         fprintf(stderr, "rsi strategy fixture compile failed: %s\n", err.message);
         abort();
@@ -451,14 +451,14 @@ static double time_rsi_state_strategy_fixture_tick(size_t iterations) {
             fprintf(stderr, "rsi strategy fixture tick failed: %s\n", err.message);
             abort();
         }
-        if (!cxpr_model_session_output_bool(session, "entry", &entry)) abort();
+        if (!cxpr_model_session_get_bool(session, "entry", &entry)) abort();
         total += entry ? 1.0 : 0.0;
-        if (!cxpr_model_session_output_number(session, "r", &r)) abort();
+        if (!cxpr_model_session_get_number(session, "r", &r)) abort();
         total += r;
     }
 
     cxpr_model_session_free(session);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(source);
     g_sink += total;
@@ -741,7 +741,7 @@ static double time_macd_record_strategy_fixture_tick(size_t iterations) {
     cxpr_error err = {0};
     char* source = read_fixture("fixtures/strategies/macd_record_cross_model.cxpr");
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_model_session* session;
     cxpr_context* ctx;
     long long start;
@@ -753,7 +753,7 @@ static double time_macd_record_strategy_fixture_tick(size_t iterations) {
         fprintf(stderr, "macd record fixture parse failed: %s\n", err.message);
         abort();
     }
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     if (!program) {
         fprintf(stderr, "macd record fixture compile failed: %s\n", err.message);
         abort();
@@ -775,12 +775,12 @@ static double time_macd_record_strategy_fixture_tick(size_t iterations) {
             fprintf(stderr, "macd record fixture tick failed: %s\n", err.message);
             abort();
         }
-        if (!cxpr_model_session_output_bool(session, "entry", &entry)) abort();
+        if (!cxpr_model_session_get_bool(session, "entry", &entry)) abort();
         total += entry ? 1.0 : 0.0;
     }
 
     cxpr_model_session_free(session);
-    cxpr_model_program_free(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(source);
     g_sink += total;
@@ -796,13 +796,13 @@ static size_t model_registry_function_count(void) {
         "out signal\n";
     cxpr_error err = {0};
     cxpr_model* model = cxpr_model_parse(source, &err);
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     size_t count;
     if (!model) abort();
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     if (!program) abort();
-    count = cxpr_model_program_function_count(program);
-    cxpr_model_program_free(program);
+    count = cxpr_model_compiled_function_count(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     return count;
 }
@@ -811,15 +811,15 @@ static size_t rsi_fused_ir_instruction_count(void) {
     cxpr_error err = {0};
     char* source = read_fixture("fixtures/strategies/rsi_state_model.cxpr");
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     size_t count;
     if (!source) abort();
     model = cxpr_model_parse(source, &err);
     if (!model) abort();
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     if (!program) abort();
-    count = cxpr_model_program_fast_path_instruction_count(program);
-    cxpr_model_program_free(program);
+    count = cxpr_model_compiled_fast_path_instruction_count(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(source);
     return count;
@@ -829,15 +829,15 @@ static const char* rsi_fused_ir_disabled_opcode(void) {
     cxpr_error err = {0};
     char* source = read_fixture("fixtures/strategies/rsi_state_model.cxpr");
     cxpr_model* model;
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     const char* opcode;
     if (!source) abort();
     model = cxpr_model_parse(source, &err);
     if (!model) abort();
-    program = cxpr_compile_model(model, NULL, &err);
+    program = cxpr_model_compile(model, NULL, &err);
     if (!program) abort();
-    opcode = cxpr_model_program_fast_path_disabled_reason(program);
-    cxpr_model_program_free(program);
+    opcode = cxpr_model_compiled_fast_path_reason(program);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     free(source);
     return opcode;

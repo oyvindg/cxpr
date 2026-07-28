@@ -298,7 +298,7 @@ static const char* cxpr_cuda_model_runtime_source =
     "#endif\n\n";
 
 char* cxpr_cuda_plugin_source_from_program(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const cxpr_cuda_plugin_options* options,
     cxpr_error* err) {
     static const cxpr_cuda_plugin_options defaults = {
@@ -315,7 +315,7 @@ char* cxpr_cuda_plugin_source_from_program(
     char* cuda_patched;
     cxpr_cuda_buf out = {0};
 
-    code = cxpr_model_program_to_c_tick_function(
+    code = cxpr_model_compiled_generate_c(
         program,
         qualifiers,
         function_name,
@@ -421,11 +421,11 @@ int cxpr_cuda_plugin_emit_source(
     char* source;
     int ok;
 
-    if (!event || !event->program || !host ||
+    if (!event || !event->compiled || !host ||
         !host->begin_artifact || !host->write_artifact || !host->end_artifact) {
         return 0;
     }
-    source = cxpr_cuda_plugin_source_from_program(event->program, options, err);
+    source = cxpr_cuda_plugin_source_from_program(event->compiled, options, err);
     if (!source) return 0;
     artifact.name = event->model_path ? event->model_path : artifact.name;
     ok = host->begin_artifact(host->user, &artifact, err) &&

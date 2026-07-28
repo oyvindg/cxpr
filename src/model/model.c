@@ -80,7 +80,7 @@ static bool cxpr_model_parse_lifetime_metadata(const cxpr_model* model,
                                                bool* out_saw_type,
                                                cxpr_error* err);
 
-static const cxpr_model_program* cxpr_model_import_program_for_name(
+static const cxpr_model_compiled* cxpr_model_import_program_for_name(
     const cxpr_model* model,
     const cxpr_model_import* imports,
     size_t import_count,
@@ -467,7 +467,7 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
             }
             return true;
         case CXPR_NODE_PRODUCER_ACCESS: {
-            const cxpr_model_program* child =
+            const cxpr_model_compiled* child =
                 cxpr_model_import_program_for_name(model, imports, import_count,
                                                    ast->data.producer_access.name);
             if (child) {
@@ -613,7 +613,7 @@ static bool cxpr_model_expand_anonymous_outputs(cxpr_model* model,
     if (!model || model->anonymous_output_count == 0u) return true;
     for (size_t i = 0u; i < model->anonymous_output_count; ++i) {
         const cxpr_expr_ast* expr = model->anonymous_outputs[i].expr;
-        const cxpr_model_program* child;
+        const cxpr_model_compiled* child;
         if (!expr || expr->type != CXPR_NODE_FUNCTION_CALL) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                                  "Anonymous out must be a record function call", 0, 0);
@@ -652,7 +652,7 @@ static void cxpr_model_slot_ref_free(cxpr_model_slot_ref* ref) {
     ref->result_kind = CXPR_MODEL_RESULT_UNKNOWN;
 }
 
-void cxpr_model_fused_program_clear(cxpr_model_program* program) {
+void cxpr_model_fused_program_clear(cxpr_model_compiled* program) {
     if (!program) return;
     cxpr_ir_program_reset(&program->fused_ir);
     for (size_t i = 0; i < program->fused_slot_count; ++i) {
@@ -753,7 +753,7 @@ cleanup:
 }
 
 static cxpr_model_result_kind cxpr_model_state_default_result_kind(
-    const cxpr_model_program* program,
+    const cxpr_model_compiled* program,
     const char* name) {
     if (!program || !name) return CXPR_MODEL_RESULT_UNKNOWN;
     for (size_t i = 0; i < program->state_default_count; ++i) {
@@ -799,16 +799,16 @@ static bool cxpr_model_compile_options_resolve(
     return true;
 }
 
-static void cxpr_model_program_drop_runnable_fast_path(cxpr_model_program* program) {
+static void cxpr_model_compiled_drop_runnable_fast_path(cxpr_model_compiled* program) {
     if (!program) return;
     cxpr_ir_program_reset(&program->fused_ir);
     program->has_fused_ir = false;
 }
 
-static bool cxpr_model_program_validate_c_backend(cxpr_model_program* program,
+static bool cxpr_model_compiled_validate_c_backend(cxpr_model_compiled* program,
                                                   cxpr_error* err) {
     cxpr_error codegen_err = {0};
-    char* source = cxpr_model_program_to_c_tick_function(
+    char* source = cxpr_model_compiled_generate_c(
         program, "", "cxpr_model_backend_validate", &codegen_err);
     if (!source) {
         if (err) {
@@ -825,7 +825,7 @@ static bool cxpr_model_program_validate_c_backend(cxpr_model_program* program,
     return true;
 }
 
-static bool cxpr_model_program_select_backend(cxpr_model_program* program,
+static bool cxpr_model_compiled_select_backend(cxpr_model_compiled* program,
                                               const cxpr_model* model,
                                               const cxpr_registry* compile_reg,
                                               const cxpr_model_compile_options* options,
@@ -869,27 +869,27 @@ static bool cxpr_model_program_select_backend(cxpr_model_program* program,
     }
 
     if (!options->fuse) {
-        cxpr_model_program_drop_runnable_fast_path(program);
+        cxpr_model_compiled_drop_runnable_fast_path(program);
     }
-    if (!cxpr_model_program_validate_c_backend(program, err)) {
+    if (!cxpr_model_compiled_validate_c_backend(program, err)) {
         return false;
     }
     program->selected_backend = CXPR_MODEL_BACKEND_C;
     return true;
 }
 
-cxpr_model_program* cxpr_compile_model(const cxpr_model* model,
+cxpr_model_compiled* cxpr_model_compile(const cxpr_model* model,
                                        const cxpr_registry* reg,
                                        cxpr_error* err) {
-    return cxpr_compile_model_with_options(model, reg, NULL, err);
+    return cxpr_model_compile_with_options(model, reg, NULL, err);
 }
 
-cxpr_model_program* cxpr_compile_model_with_options(
+cxpr_model_compiled* cxpr_model_compile_with_options(
     const cxpr_model* model,
     const cxpr_registry* reg,
     const cxpr_model_compile_options* options,
     cxpr_error* err) {
-    return cxpr_compile_model_with_imports_and_options(model, reg, NULL, 0u, options, err);
+    return cxpr_model_compile_full(model, reg, NULL, 0u, options, err);
 }
 
 static const char* cxpr_model_import_namespace_for(const cxpr_model* model,
@@ -897,7 +897,7 @@ static const char* cxpr_model_import_namespace_for(const cxpr_model* model,
     return cxpr_model_import_namespace_name(model, import_name);
 }
 
-static size_t cxpr_model_program_exposed_param_count(const cxpr_model_program* program) {
+static size_t cxpr_model_compiled_exposed_param_count(const cxpr_model_compiled* program) {
     size_t explicit_count = 0u;
     if (!program) return 0u;
     for (size_t i = 0u; i < program->constant_count; ++i) {
@@ -906,7 +906,7 @@ static size_t cxpr_model_program_exposed_param_count(const cxpr_model_program* p
     return explicit_count > 0u ? explicit_count : program->constant_count;
 }
 
-static bool cxpr_model_program_constant_is_exposed(const cxpr_model_program* program,
+static bool cxpr_model_compiled_param_is_exposed(const cxpr_model_compiled* program,
                                                    size_t index) {
     size_t explicit_count = 0u;
     if (!program || index >= program->constant_count) return false;
@@ -916,8 +916,8 @@ static bool cxpr_model_program_constant_is_exposed(const cxpr_model_program* pro
     return explicit_count == 0u || program->constants[index].is_call_param;
 }
 
-static bool cxpr_model_program_inputs_are_implicit_market(
-    const cxpr_model_program* program) {
+static bool cxpr_model_compiled_inputs_are_implicit_market(
+    const cxpr_model_compiled* program) {
     if (!program || program->input_count == 0u || program->source_arg) return false;
     for (size_t i = 0u; i < program->input_count; ++i) {
         const char* input = program->inputs[i];
@@ -1095,7 +1095,7 @@ static bool cxpr_model_clone_defined_param_fields(cxpr_func_entry* dst,
     return true;
 }
 
-static bool cxpr_model_register_imported_defined_function(cxpr_model_program* program,
+static bool cxpr_model_register_imported_defined_function(cxpr_model_compiled* program,
                                                           const char* namespace_name,
                                                           const cxpr_registry* source_registry,
                                                           const cxpr_func_entry* src,
@@ -1183,7 +1183,7 @@ static bool cxpr_model_register_imported_defined_function(cxpr_model_program* pr
     return true;
 }
 
-bool cxpr_model_program_register_imports(cxpr_model_program* program,
+bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
                                          const cxpr_model* model,
                                          const cxpr_model_import* imports,
                                          size_t import_count,
@@ -1204,7 +1204,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
     }
     program->child_count = import_count;
     for (size_t i = 0u; i < import_count; ++i) {
-        const cxpr_model_program* child = imports[i].program;
+        const cxpr_model_compiled* child = imports[i].program;
         const char* namespace_name = cxpr_model_import_namespace_for(model, imports[i].name);
         cxpr_func_entry* entry;
         size_t exposed_input_count;
@@ -1214,8 +1214,8 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
             return false;
         }
         exposed_input_count =
-            cxpr_model_program_inputs_are_implicit_market(child) ? 0u : child->input_count;
-        exposed_param_count = cxpr_model_program_exposed_param_count(child);
+            cxpr_model_compiled_inputs_are_implicit_market(child) ? 0u : child->input_count;
+        exposed_param_count = cxpr_model_compiled_exposed_param_count(child);
         for (size_t prev = 0u; prev < i; ++prev) {
             if (program->children[prev].name &&
                 cxpr_model_names_match(program->children[prev].name, namespace_name)) {
@@ -1284,7 +1284,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
                 }
             }
             for (size_t p = 0u; p < child->constant_count; ++p) {
-                if (!cxpr_model_program_constant_is_exposed(child, p)) continue;
+                if (!cxpr_model_compiled_param_is_exposed(child, p)) continue;
                 entry->defined_param_names[name_index++] = cxpr_strdup(child->constants[p].name);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -1311,23 +1311,23 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
     return true;
 }
 
-cxpr_model_program* cxpr_compile_model_with_imports(const cxpr_model* model,
+cxpr_model_compiled* cxpr_model_compile_with_imports(const cxpr_model* model,
                                                     const cxpr_registry* reg,
                                                     const cxpr_model_import* imports,
                                                     size_t import_count,
                                                     cxpr_error* err) {
-    return cxpr_compile_model_with_imports_and_options(
+    return cxpr_model_compile_full(
         model, reg, imports, import_count, NULL, err);
 }
 
-cxpr_model_program* cxpr_compile_model_with_imports_and_options(
+cxpr_model_compiled* cxpr_model_compile_full(
     const cxpr_model* model,
     const cxpr_registry* reg,
     const cxpr_model_import* imports,
     size_t import_count,
     const cxpr_model_compile_options* options,
     cxpr_error* err) {
-    cxpr_model_program* program;
+    cxpr_model_compiled* program;
     cxpr_model inferred_model = {0};
     cxpr_model_compile_options compile_options;
     const cxpr_registry* compile_reg = reg;
@@ -1380,7 +1380,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
         if (expanded_anonymous_outputs) cxpr_model_expanded_copy_free(&inferred_model);
         return NULL;
     }
-    program = (cxpr_model_program*)calloc(1, sizeof(cxpr_model_program));
+    program = (cxpr_model_compiled*)calloc(1, sizeof(cxpr_model_compiled));
     if (!program) {
         for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
         free(required_defaults);
@@ -1401,7 +1401,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             free(required_defaults);
             for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);
             free(inferred_inputs);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             return NULL;
         }
         (void)saw_type;
@@ -1421,7 +1421,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                     free(inferred_inputs[d]);
                 }
                 free(inferred_inputs);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_set_error(
                     err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
@@ -1436,7 +1436,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 free(required_defaults);
                 for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);
                 free(inferred_inputs);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
@@ -1450,7 +1450,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
         free(required_defaults);
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
         free(inferred_inputs);
-        cxpr_model_program_free(program);
+        cxpr_model_compiled_free(program);
         return NULL;
     }
     if (model->function_count > 0 || model->record_function_count > 0u ||
@@ -1462,7 +1462,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             free(required_defaults);
             for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
             free(inferred_inputs);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                                  "model lookback with external registry is not supported yet",
                                  0, 0);
@@ -1474,7 +1474,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             free(required_defaults);
             for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
             free(inferred_inputs);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
@@ -1482,12 +1482,12 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             cxpr_registry_set_lookback_resolver(
                 program->registry, cxpr_model_lookback_resolver, NULL, NULL);
         }
-        if (!cxpr_model_program_register_imports(program, model, imports, import_count, err)) {
+        if (!cxpr_model_compiled_register_imports(program, model, imports, import_count, err)) {
             for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
             free(required_defaults);
             for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
             free(inferred_inputs);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             return NULL;
         }
         for (size_t i = 0; i < required_default_count; ++i) {
@@ -1500,7 +1500,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 free(required_defaults);
                 for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
                 free(inferred_inputs);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 return NULL;
             }
         }
@@ -1512,7 +1512,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 free(required_defaults);
                 for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
                 free(inferred_inputs);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 return NULL;
             }
         }
@@ -1531,7 +1531,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 free(required_defaults);
                 for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
                 free(inferred_inputs);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
@@ -1555,7 +1555,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 free(required_defaults);
                 for (size_t k = 0u; k < inferred_input_count; ++k) free(inferred_inputs[k]);
                 free(inferred_inputs);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 return NULL;
             }
         }
@@ -1570,7 +1570,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             (cxpr_model_compiled_binding*)calloc(model->constant_count,
                                                  sizeof(cxpr_model_compiled_binding));
         if (!program->constants) {
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
@@ -1600,7 +1600,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             if (!program->constants[i].name ||
                 !program->constants[i].source ||
                 !program->constants[i].ast) {
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 if (err && err->code == CXPR_OK) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 }
@@ -1622,7 +1622,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 (cxpr_model_compiled_binding*)calloc(state_count,
                                                      sizeof(cxpr_model_compiled_binding));
             if (!program->state_defaults) {
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
@@ -1639,7 +1639,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 if (!program->state_defaults[out_i].name ||
                     !program->state_defaults[out_i].source ||
                     !program->state_defaults[out_i].ast) {
-                    cxpr_model_program_free(program);
+                    cxpr_model_compiled_free(program);
                     if (err && err->code == CXPR_OK) {
                         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                     }
@@ -1657,13 +1657,13 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                                                  sizeof(cxpr_model_compiled_binding));
         if (!order || !program->bindings) {
             free(order);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
         if (!cxpr_model_executable_eval_order(model, order, executable_count, err)) {
             free(order);
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             return NULL;
         }
         program->binding_count = executable_count;
@@ -1684,7 +1684,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
                 !program->bindings[out_i].source ||
                 !program->bindings[out_i].ast) {
                 free(order);
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 if (err && err->code == CXPR_OK) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 }
@@ -1698,7 +1698,7 @@ compile_outputs:
     if (model->input_count > 0) {
         program->inputs = (char**)calloc(model->input_count, sizeof(char*));
         if (!program->inputs) {
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
@@ -1706,7 +1706,7 @@ compile_outputs:
         for (size_t i = 0; i < model->input_count; ++i) {
             program->inputs[i] = cxpr_strdup(model->inputs[i]);
             if (!program->inputs[i]) {
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
@@ -1715,7 +1715,7 @@ compile_outputs:
     if (model->output_count > 0) {
         program->outputs = (char**)calloc(model->output_count, sizeof(char*));
         if (!program->outputs) {
-            cxpr_model_program_free(program);
+            cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
@@ -1723,15 +1723,15 @@ compile_outputs:
         for (size_t i = 0; i < model->output_count; ++i) {
             program->outputs[i] = cxpr_strdup(model->outputs[i]);
             if (!program->outputs[i]) {
-                cxpr_model_program_free(program);
+                cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
         }
     }
 
-    if (!cxpr_model_program_select_backend(program, model, compile_reg, &compile_options, err)) {
-        cxpr_model_program_free(program);
+    if (!cxpr_model_compiled_select_backend(program, model, compile_reg, &compile_options, err)) {
+        cxpr_model_compiled_free(program);
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
         free(inferred_inputs);
         return NULL;

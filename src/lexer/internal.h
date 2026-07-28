@@ -6,7 +6,7 @@
 #ifndef CXPR_LEXER_INTERNAL_H
 #define CXPR_LEXER_INTERNAL_H
 
-#include <cxpr/ast/expression.h>
+#include <cxpr/expr/ast.h>
 #include <stddef.h>
 
 /** @brief One lexer token with source span metadata. */
