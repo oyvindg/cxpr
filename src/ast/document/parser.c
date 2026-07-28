@@ -1211,11 +1211,11 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         free(owned);
         return false;
     }
-    if ((parser->extensions & CXPR_DOCUMENT_EXTENSION_MODEL) == 0u) {
+    if ((parser->extensions & CXPR_DOC_EXTENSION_MODEL) == 0u) {
         cxpr_doc_ast_node_free(node);
         free(owned);
         cxpr_doc_ast_set_error(parser->err, CXPR_ERR_SYNTAX,
-                                    "Model syntax requires CXPR_DOCUMENT_EXTENSION_MODEL",
+                                    "Model syntax requires CXPR_DOC_EXTENSION_MODEL",
                                     span.start.line, span.start.column + 1u);
         return false;
     }

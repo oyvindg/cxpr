@@ -22,7 +22,7 @@ bool cxpr_document_names_match(const char* a, const char* b) {
     return a && b && strcmp(a, b) == 0;
 }
 
-static void cxpr_document_model_prepare_span_storage(cxpr_model* model) {
+static void cxpr_doc_model_prepare_span_storage(cxpr_model* model) {
     if (!model) return;
     if (model->use_count > 0u && !model->use_spans) {
         model->use_spans = (cxpr_source_span*)calloc(model->use_count,
@@ -271,7 +271,7 @@ void cxpr_document_map_source_spans(cxpr_model* model,
                                            const cxpr_doc_ast* syntax) {
     cxpr_document_span_mapper mapper;
     if (!model || !syntax) return;
-    cxpr_document_model_prepare_span_storage(model);
+    cxpr_doc_model_prepare_span_storage(model);
     mapper = (cxpr_document_span_mapper){0};
     mapper.model = model;
     (void)cxpr_doc_ast_visit(syntax, cxpr_document_map_source_span_node, &mapper);

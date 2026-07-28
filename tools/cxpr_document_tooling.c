@@ -296,7 +296,7 @@ int main(int argc, char** argv) {
     ast = cxpr_doc_ast_parse(
         source,
         source_name,
-        CXPR_DOCUMENT_EXTENSION_MODEL,
+        CXPR_DOC_EXTENSION_MODEL,
         &err);
     if (!ast) {
         fputs("{\"ok\":false,\"error\":", stdout);

@@ -66,17 +66,17 @@ static void test_manifest_document_accepts_host_blocks_without_model(void) {
         "  recommended = [\"dynasty.cxpr-tools\"]\n"
         "}\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_manifest(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_manifest(source, &err);
     const cxpr_model_host_block* project;
     const cxpr_model_host_block* vsix;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    assert(cxpr_document_model(document) == NULL);
-    assert(cxpr_document_host_block_count(document) == 2u);
+    assert(cxpr_doc_model(document) == NULL);
+    assert(cxpr_doc_host_block_count(document) == 2u);
 
-    project = cxpr_document_host_block(document, "project");
-    vsix = cxpr_document_host_block(document, "vsix");
+    project = cxpr_doc_host_block(document, "project");
+    vsix = cxpr_doc_host_block(document, "vsix");
     assert(project != NULL);
     assert(vsix != NULL);
     assert(strcmp(cxpr_host_block_field_value_by_key(project, "name"), "\"dynasty\"") == 0);
@@ -84,7 +84,7 @@ static void test_manifest_document_accepts_host_blocks_without_model(void) {
     assert(strcmp(cxpr_host_block_field_value_by_key(vsix, "recommended"),
                   "[\"dynasty.cxpr-tools\"]") == 0);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_manifest_document_accepts_host_blocks_without_model\n");
 }
 
@@ -94,12 +94,12 @@ static void test_manifest_document_rejects_model_syntax_without_extension(void) 
         "in { close }\n"
         "out close\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_manifest(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_manifest(source, &err);
 
     assert(document == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
-    assert(strstr(err.message, "CXPR_DOCUMENT_EXTENSION_MODEL") != NULL);
+    assert(strstr(err.message, "CXPR_DOC_EXTENSION_MODEL") != NULL);
     printf("  ✓ test_manifest_document_rejects_model_syntax_without_extension\n");
 }
 
@@ -111,7 +111,7 @@ static void test_document_model_extension_exposes_model_view(void) {
         "signal = close > 0\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     const cxpr_model* model;
     cxpr_model_program* program;
     cxpr_model_session* session;
@@ -126,19 +126,19 @@ static void test_document_model_extension_exposes_model_view(void) {
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    model = cxpr_document_model(document);
+    model = cxpr_doc_model(document);
     assert(model != NULL);
     assert(strcmp(cxpr_model_name(model), "strategy") == 0);
     assert(cxpr_model_input_count(model) == 1u);
     assert(strcmp(cxpr_model_input(model, 0u), "close") == 0);
     assert(cxpr_model_output_count(model) == 1u);
     assert(strcmp(cxpr_model_output(model, 0u), "signal") == 0);
-    assert(cxpr_document_host_block_count(document) == 1u);
+    assert(cxpr_doc_host_block_count(document) == 1u);
     assert(strcmp(cxpr_host_block_field_value_by_key(
-                      cxpr_document_host_block(document, "project"), "name"),
+                      cxpr_doc_host_block(document, "project"), "name"),
                   "\"dynasty\"") == 0);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_model_extension_exposes_model_view\n");
 }
 
@@ -211,7 +211,7 @@ static void test_document_exposes_owned_syntax_tree(void) {
         "state { signal = 0 }\n"
         "out signal := close\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     const cxpr_doc_ast* syntax;
     const cxpr_doc_ast_node* root;
     const cxpr_doc_ast_node* state_block;
@@ -219,7 +219,7 @@ static void test_document_exposes_owned_syntax_tree(void) {
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    syntax = cxpr_document_syntax(document);
+    syntax = cxpr_doc_ast_view(document);
     assert(syntax != NULL);
     root = cxpr_doc_ast_root(syntax);
     assert(root != NULL);
@@ -236,7 +236,7 @@ static void test_document_exposes_owned_syntax_tree(void) {
     assert(strcmp(cxpr_doc_ast_node_name(output_update), "signal") == 0);
     assert(cxpr_doc_ast_node_expr(output_update) != NULL);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_exposes_owned_syntax_tree\n");
 }
 
@@ -247,7 +247,7 @@ static void test_document_ast_exposes_compact_initial_state_update(void) {
         "out bars\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
-        cxpr_doc_ast_parse(source, "counter.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+        cxpr_doc_ast_parse(source, "counter.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
     const cxpr_doc_ast_node* root;
     const cxpr_doc_ast_node* update;
     const cxpr_doc_ast_node* declaration;
@@ -283,7 +283,7 @@ static void test_parse_document_ast_preserves_block_shapes(void) {
         "out score { role = \"score\" }\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
-        cxpr_doc_ast_parse(source, "shape.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+        cxpr_doc_ast_parse(source, "shape.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
     const cxpr_doc_ast_node* root;
     const cxpr_doc_ast_node* host;
     const cxpr_doc_ast_node* model_decl;
@@ -349,8 +349,8 @@ static void test_document_ast_lowers_to_independent_document(void) {
         "out signal\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
-        cxpr_doc_ast_parse(source, "lower.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
-    cxpr_document* document;
+        cxpr_doc_ast_parse(source, "lower.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    cxpr_doc* document;
     const cxpr_model* model;
 
     assert(syntax != NULL);
@@ -359,14 +359,14 @@ static void test_document_ast_lowers_to_independent_document(void) {
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    assert(cxpr_document_syntax(document) != NULL);
-    model = cxpr_document_model(document);
+    assert(cxpr_doc_ast_view(document) != NULL);
+    model = cxpr_doc_model(document);
     assert(model != NULL);
     assert(strcmp(cxpr_model_name(model), "strategy") == 0);
     assert(cxpr_model_output_count(model) == 1u);
     assert(strcmp(cxpr_model_output(model, 0u), "signal") == 0);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowers_to_independent_document\n");
 }
 
@@ -387,20 +387,20 @@ static void test_document_ast_lowering_equivalent_block_and_shorthand_forms(void
         "score := score + close + $fast - $slow\n"
         "out { score }\n";
     cxpr_error err = {0};
-    cxpr_document* shorthand_document = cxpr_parse_model_document(shorthand, &err);
-    cxpr_document* block_document;
+    cxpr_doc* shorthand_document = cxpr_doc_parse_model(shorthand, &err);
+    cxpr_doc* block_document;
 
     assert(shorthand_document != NULL);
     assert(err.code == CXPR_OK);
-    block_document = cxpr_parse_model_document(block, &err);
+    block_document = cxpr_doc_parse_model(block, &err);
     assert(block_document != NULL);
     assert(err.code == CXPR_OK);
 
-    assert_models_have_same_public_shape(cxpr_document_model(shorthand_document),
-                                         cxpr_document_model(block_document));
+    assert_models_have_same_public_shape(cxpr_doc_model(shorthand_document),
+                                         cxpr_doc_model(block_document));
 
-    cxpr_document_free(block_document);
-    cxpr_document_free(shorthand_document);
+    cxpr_doc_free(block_document);
+    cxpr_doc_free(shorthand_document);
     printf("  ✓ test_document_ast_lowering_equivalent_block_and_shorthand_forms\n");
 }
 
@@ -410,7 +410,7 @@ static void test_document_ast_lowering_rejects_state_output_assignment(void) {
         "state signal = 0\n"
         "out signal = close\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
 
     assert(document == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
@@ -427,13 +427,13 @@ static void test_document_ast_lowering_handles_use_aliases_and_groups(void) {
         "in high, low, close\n"
         "out high, close\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     const cxpr_model* model;
     cxpr_source_span span;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    model = cxpr_document_model(document);
+    model = cxpr_doc_model(document);
     assert(model != NULL);
     assert(cxpr_model_use_count(model) == 3u);
     assert(strcmp(cxpr_model_use(model, 0u), "indicators/atr") == 0);
@@ -451,7 +451,7 @@ static void test_document_ast_lowering_handles_use_aliases_and_groups(void) {
     assert(cxpr_model_use_source_span(model, 0u, &span));
     assert(span.start.line == 2u);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_use_aliases_and_groups\n");
 }
 
@@ -466,7 +466,7 @@ static void test_document_ast_lowering_handles_struct_input_blocks(void) {
         "entry_ok = not signal.fills_next_session and position.bars_in_position == 0\n"
         "out entry_ok\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     const cxpr_model* model;
     cxpr_model_program* program;
     cxpr_model_session* session;
@@ -481,7 +481,7 @@ static void test_document_ast_lowering_handles_struct_input_blocks(void) {
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    model = cxpr_document_model(document);
+    model = cxpr_doc_model(document);
     assert(model != NULL);
     assert(cxpr_model_input_count(model) == 4u);
     assert(strcmp(cxpr_model_input(model, 0u), "signal.fills_next_session") == 0);
@@ -508,7 +508,7 @@ static void test_document_ast_lowering_handles_struct_input_blocks(void) {
 
     cxpr_model_session_free(session);
     cxpr_model_program_free(program);
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_struct_input_blocks\n");
 }
 
@@ -521,18 +521,18 @@ static void test_document_ast_lowering_handles_scalar_function_declaration(void)
         "signal = above(close, $threshold)\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     cxpr_model_program* program;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    assert(cxpr_document_model(document) != NULL);
-    program = cxpr_compile_model(cxpr_document_model(document), NULL, &err);
+    assert(cxpr_doc_model(document) != NULL);
+    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     assert(cxpr_model_program_function_count(program) == 1u);
 
     cxpr_model_program_free(program);
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_scalar_function_declaration\n");
 }
 
@@ -545,14 +545,14 @@ static void test_document_ast_lowering_handles_record_function_shorthand(void) {
         "bottom = bands(close).lower\n"
         "out { top, bottom }\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     bool found = false;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    program = cxpr_compile_model(cxpr_document_model(document), NULL, &err);
+    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     ctx = cxpr_context_new();
     assert(ctx != NULL);
@@ -563,7 +563,7 @@ static void test_document_ast_lowering_handles_record_function_shorthand(void) {
 
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_record_function_shorthand\n");
 }
 
@@ -579,14 +579,14 @@ static void test_document_ast_lowering_handles_scalar_function_block(void) {
         "signal = impulse(close, 10, 2)\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     bool found = false;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    program = cxpr_compile_model(cxpr_document_model(document), NULL, &err);
+    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     ctx = cxpr_context_new();
     assert(ctx != NULL);
@@ -596,7 +596,7 @@ static void test_document_ast_lowering_handles_scalar_function_block(void) {
 
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_scalar_function_block\n");
 }
 
@@ -613,14 +613,14 @@ static void test_document_ast_lowering_handles_record_function_block(void) {
         "bottom = bands(close).lower\n"
         "out { top, bottom }\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_model_document(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     bool found = false;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    program = cxpr_compile_model(cxpr_document_model(document), NULL, &err);
+    program = cxpr_compile_model(cxpr_doc_model(document), NULL, &err);
     assert(program != NULL);
     ctx = cxpr_context_new();
     assert(ctx != NULL);
@@ -631,7 +631,7 @@ static void test_document_ast_lowering_handles_record_function_block(void) {
 
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_ast_lowering_handles_record_function_block\n");
 }
 
@@ -647,7 +647,7 @@ static void test_document_model_exposes_semantic_source_spans(void) {
         "out { signal }\n";
     cxpr_error err = {0};
     cxpr_model* direct_model = cxpr_parse_model_source(source, &err);
-    cxpr_document* document;
+    cxpr_doc* document;
     const cxpr_model* model;
     cxpr_source_span span;
 
@@ -656,10 +656,10 @@ static void test_document_model_exposes_semantic_source_spans(void) {
     assert(span.start.line == 2u);
     cxpr_model_free(direct_model);
 
-    document = cxpr_parse_model_document(source, &err);
+    document = cxpr_doc_parse_model(source, &err);
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    model = cxpr_document_model(document);
+    model = cxpr_doc_model(document);
     assert(model != NULL);
 
     assert(cxpr_model_host_block_source_span(model, 0u, &span));
@@ -681,7 +681,7 @@ static void test_document_model_exposes_semantic_source_spans(void) {
     assert(cxpr_model_metadata_source_span(model, 0u, &span));
     assert(span.start.line == 5u);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_document_model_exposes_semantic_source_spans\n");
 }
 
@@ -697,7 +697,7 @@ static void test_document_ast_function_body_host_fields_and_visitor(void) {
         "out impulse(close, 10, 2)\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
-        cxpr_doc_ast_parse(source, "fn.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+        cxpr_doc_ast_parse(source, "fn.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
     const cxpr_doc_ast_node* root;
     const cxpr_doc_ast_node* host;
     const cxpr_doc_ast_node* function;
@@ -749,7 +749,7 @@ static void test_document_ast_represents_advanced_existing_syntax(void) {
         "out bb(close, 1)\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
-        cxpr_doc_ast_parse(source, "advanced.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+        cxpr_doc_ast_parse(source, "advanced.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
     const cxpr_doc_ast_node* root;
     const cxpr_doc_ast_node* model_decl;
     const cxpr_doc_ast_node* grouped_use;
@@ -793,7 +793,7 @@ static void test_document_ast_represents_struct_input_blocks(void) {
         "out signal.fills_next_session\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
-        cxpr_doc_ast_parse(source, "struct-inputs.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+        cxpr_doc_ast_parse(source, "struct-inputs.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
     const cxpr_doc_ast_node* root;
     const cxpr_doc_ast_node* inputs;
 
@@ -818,21 +818,21 @@ static void test_load_document_file_is_primary_entrypoint(void) {
     const char* path = "/tmp/cxpr_document_manifest_test.cxpr";
     FILE* file = fopen(path, "wb");
     cxpr_error err = {0};
-    cxpr_document* document;
+    cxpr_doc* document;
     const cxpr_model_host_block* tooling;
 
     assert(file != NULL);
     fputs("tooling { cli = \"dyn_cli\" }\n", file);
     fclose(file);
 
-    document = cxpr_load_manifest_file(path, &err);
+    document = cxpr_doc_load_manifest(path, &err);
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    tooling = cxpr_document_host_block(document, "tooling");
+    tooling = cxpr_doc_host_block(document, "tooling");
     assert(tooling != NULL);
     assert(strcmp(cxpr_host_block_field_value_by_key(tooling, "cli"), "\"dyn_cli\"") == 0);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     unlink(path);
     printf("  ✓ test_load_document_file_is_primary_entrypoint\n");
 }
@@ -851,15 +851,15 @@ static void test_manifest_document_accepts_comment_forms(void) {
         "  }\n"
         "}\n";
     cxpr_error err = {0};
-    cxpr_document* document = cxpr_parse_manifest(source, &err);
+    cxpr_doc* document = cxpr_doc_parse_manifest(source, &err);
     const cxpr_model_host_block* profile;
     const cxpr_model_host_block* close_source;
     const cxpr_model_host_block* note_input;
 
     assert(document != NULL);
     assert(err.code == CXPR_OK);
-    assert(cxpr_document_host_block_count(document) == 1u);
-    profile = cxpr_document_host_block(document, "host_profile");
+    assert(cxpr_doc_host_block_count(document) == 1u);
+    profile = cxpr_doc_host_block(document, "host_profile");
     assert(profile != NULL);
     assert(strcmp(cxpr_host_block_name(profile), "trading") == 0);
     assert(strcmp(cxpr_host_block_field_value_by_key(profile, "type"),
@@ -875,7 +875,7 @@ static void test_manifest_document_accepts_comment_forms(void) {
     assert(strcmp(cxpr_host_block_field_value_by_key(note_input, "type"),
                   "\"string with # and // preserved\"") == 0);
 
-    cxpr_document_free(document);
+    cxpr_doc_free(document);
     printf("  ✓ test_manifest_document_accepts_comment_forms\n");
 }
 

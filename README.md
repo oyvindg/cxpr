@@ -79,7 +79,7 @@ The main types are:
 | --- | --- |
 | `cxpr_expr_ast` | Parsed expression tree |
 | `cxpr_doc_ast` | Source-oriented tree for a complete `.cxpr` document |
-| `cxpr_document` | Parsed document containing host blocks and optionally a model |
+| `cxpr_doc` | Parsed document containing host blocks and optionally a model |
 | `cxpr_model` | Validated semantic representation of model declarations |
 | `cxpr_expr_compiled` | Compiled typed IR for one expression |
 | `cxpr_model_program` | Immutable compiled plan for a complete model |
@@ -340,8 +340,8 @@ A `.cxpr` file is parsed in one of two modes:
 - A **model document** enables the model extension and may contain both host
   blocks and executable model statements.
 
-Use `cxpr_parse_manifest` / `cxpr_load_manifest_file` for manifests and
-`cxpr_parse_model_document` / `cxpr_load_model_document_file` for model
+Use `cxpr_doc_parse_manifest` / `cxpr_doc_load_manifest` for manifests and
+`cxpr_doc_parse_model` / `cxpr_doc_load_model` for model
 documents. `cxpr_parse_model_source` is the direct owning entry point when only
 the semantic model is needed.
 
@@ -504,7 +504,7 @@ out healthy {
 
 The document parser owns syntax and source spans; the host owns the schema and
 meaning. Register allowed block kinds with `cxpr_host_block_registry` and
-validate them with `cxpr_document_validate_host_blocks` or
+validate them with `cxpr_doc_validate_host_blocks` or
 `cxpr_model_validate_host_blocks`.
 
 This separation lets editors and build tools understand document structure
@@ -577,7 +577,7 @@ The document AST can be visited without lowering:
 
 ```c
 cxpr_doc_ast* ast = cxpr_doc_ast_parse(
-    source, "controller.cxpr", CXPR_DOCUMENT_EXTENSION_MODEL, &err);
+    source, "controller.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
 cxpr_doc_ast_visit(ast, visitor, userdata);
 cxpr_doc_ast_free(ast);
 ```

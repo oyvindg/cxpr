@@ -7,7 +7,7 @@
 #define CXPR_DOC_AST_H
 
 #include <cxpr/ast/expression.h>
-#include <cxpr/document/document.h>
+#include <cxpr/doc.h>
 #include <cxpr/source.h>
 #include <cxpr/types.h>
 
@@ -128,11 +128,11 @@ typedef cxpr_visit_control (*cxpr_doc_ast_visit_fn)(
  *
  * The returned tree owns its copied source text and expression subtrees. Model
  * syntax is accepted only when @p extensions includes
- * @ref CXPR_DOCUMENT_EXTENSION_MODEL.
+ * @ref CXPR_DOC_EXTENSION_MODEL.
  *
  * @param source NUL-terminated document source.
  * @param source_name Optional diagnostic/source label; copied when present.
- * @param extensions Bitmask of @ref cxpr_document_extension values.
+ * @param extensions Bitmask of @ref cxpr_doc_extension values.
  * @param err Optional error output, reset on entry.
  * @return New AST on success, or NULL on syntax/allocation failure. Free with
  *         @ref cxpr_doc_ast_free.
@@ -154,17 +154,17 @@ void cxpr_doc_ast_free(cxpr_doc_ast* ast);
  * @param ast Parsed syntax tree to lower.
  * @param err Optional error output, reset on entry.
  * @return New document on success, or NULL on validation/allocation failure.
- *         Free with @ref cxpr_document_free.
+ *         Free with @ref cxpr_doc_free.
  */
-cxpr_document* cxpr_doc_ast_lower(const cxpr_doc_ast* ast, cxpr_error* err);
+cxpr_doc* cxpr_doc_ast_lower(const cxpr_doc_ast* ast, cxpr_error* err);
 
 /**
  * @brief Return the owned syntax tree for a parsed document.
  *
  * The returned pointer is borrowed and remains valid until
- * @ref cxpr_document_free is called.
+ * @ref cxpr_doc_free is called.
  */
-const cxpr_doc_ast* cxpr_document_syntax(const cxpr_document* document);
+const cxpr_doc_ast* cxpr_doc_ast_view(const cxpr_doc* document);
 
 /** @brief Return the root node of @p ast, or NULL for NULL. */
 const cxpr_doc_ast_node* cxpr_doc_ast_root(const cxpr_doc_ast* ast);
