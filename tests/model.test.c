@@ -536,6 +536,7 @@ static void test_parse_model_param_block(void) {
     cxpr_model_program* program;
     cxpr_model_session* session;
     cxpr_context* ctx;
+    char* code;
     double value = 0.0;
     bool found = false;
 
@@ -2390,6 +2391,7 @@ static void test_imported_producer_anonymous_out_expands_child_outputs(void) {
     cxpr_model_program* parent_program;
     cxpr_model_session* session;
     cxpr_context* ctx;
+    char* code;
     double upper = 0.0;
     double lower = 0.0;
 
@@ -2540,6 +2542,7 @@ static void test_compile_import_path_uses_leaf_namespace(void) {
     cxpr_model_program* parent_program;
     cxpr_model_session* session;
     cxpr_context* ctx;
+    char* code;
 
     assert(child_program != NULL);
     imports[0].name = "indicators/macd";
@@ -2643,6 +2646,85 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
     cxpr_model_program_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_source_arg_maps_call_source\n");
+}
+
+static void test_imported_producer_explicit_call_params_hide_internal_params(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    char* code;
+    cxpr_model* child = parse_model_ok(
+        "model configurable {\n"
+        "    source_arg = \"source\"\n"
+        "}\n"
+        "in source, $period = 20, $slope = 5\n"
+        "$epsilon = 0.5\n"
+        "value = source + $period + $slope + $epsilon\n"
+        "out value\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    assert(child_program != NULL);
+    assert(cxpr_model_program_call_param_count(child_program) == 2u);
+    assert(strcmp(cxpr_model_program_call_param_name(child_program, 0u), "period") == 0);
+    assert(strcmp(cxpr_model_program_call_param_name(child_program, 1u), "slope") == 0);
+    imports[0].name = "configurable";
+    imports[0].program = child_program;
+
+    parent = parse_model_ok(
+        "model parent\n"
+        "use configurable\n"
+        "in close\n"
+        "positional = configurable(close, 5, 2).value\n"
+        "named = configurable(source=close, period=7, slope=3).value\n"
+        "value = positional + named\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 38.0);
+    code = cxpr_model_program_to_c_tick_function(
+        parent_program, "static inline", "explicit_call_params_parent_tick", &err);
+    if (!code) {
+        fprintf(stderr, "explicit call params C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+
+    err = (cxpr_error){0};
+    parent = parse_model_ok(
+        "model invalid_parent\n"
+        "use configurable\n"
+        "in close\n"
+        "value = configurable(source=close, epsilon=2).value\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(!cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(err.code != CXPR_OK);
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_explicit_call_params_hide_internal_params\n");
 }
 
 static void test_imported_producer_repeated_calls_cache_same_args(void) {
@@ -3986,6 +4068,7 @@ int main(void) {
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();
     test_imported_producer_source_arg_maps_call_source();
+    test_imported_producer_explicit_call_params_hide_internal_params();
     test_imported_producer_repeated_calls_cache_same_args();
     test_imported_stateful_producer_calls_keep_independent_state();
     test_imported_producer_default_singleton_shares_state();

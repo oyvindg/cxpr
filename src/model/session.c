@@ -706,6 +706,7 @@ static void cxpr_model_session_commit_pending(const cxpr_model_program* program,
 static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_program* child_ref,
                                                         const cxpr_model_program* child,
                                                         const cxpr_ast* ast) {
+    size_t call_param_count = 0u;
     if (!child_ref || !child || !ast ||
         child_ref->source_input_index == (size_t)-1 ||
         !child_ref->source_arg) {
@@ -720,7 +721,11 @@ static const cxpr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_p
         }
         return NULL;
     }
-    return cxpr_model_child_call_argc(ast) == child->constant_count + 1u
+    for (size_t i = 0u; i < child->constant_count; ++i) {
+        if (child->constants[i].is_call_param) ++call_param_count;
+    }
+    if (call_param_count == 0u) call_param_count = child->constant_count;
+    return cxpr_model_child_call_argc(ast) == call_param_count + 1u
                ? cxpr_model_child_call_arg(ast, 0u)
                : NULL;
 }
@@ -729,7 +734,16 @@ static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_pr
                                                        const cxpr_model_program* child,
                                                        const cxpr_ast* ast,
                                                        size_t param_index) {
+    size_t explicit_count = 0u;
+    size_t exposed_index = 0u;
     if (!child || !ast || param_index >= child->constant_count) return NULL;
+    for (size_t i = 0u; i < child->constant_count; ++i) {
+        if (child->constants[i].is_call_param) ++explicit_count;
+    }
+    if (explicit_count > 0u && !child->constants[param_index].is_call_param) return NULL;
+    for (size_t i = 0u; i < param_index; ++i) {
+        if (explicit_count == 0u || child->constants[i].is_call_param) ++exposed_index;
+    }
     if (cxpr_model_child_call_has_named_args(ast)) {
         const char* param_name = child->constants[param_index].name;
         for (size_t i = 0u; i < cxpr_model_child_call_argc(ast); ++i) {
@@ -743,11 +757,12 @@ static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_pr
     {
         size_t offset =
             (child_ref && child_ref->source_input_index != (size_t)-1 &&
-             cxpr_model_child_call_argc(ast) == child->constant_count + 1u)
+             cxpr_model_child_call_argc(ast) ==
+                 (explicit_count > 0u ? explicit_count : child->constant_count) + 1u)
                 ? 1u
                 : 0u;
-        return param_index + offset < cxpr_model_child_call_argc(ast)
-                   ? cxpr_model_child_call_arg(ast, param_index + offset)
+        return exposed_index + offset < cxpr_model_child_call_argc(ast)
+                   ? cxpr_model_child_call_arg(ast, exposed_index + offset)
                    : NULL;
     }
 }

@@ -97,7 +97,7 @@ static void test_dotted_expression_scope_requires_struct_prefix_ir(void) {
 
     cxpr_evaluator_eval(evaluator, ctx, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Expression-scope chain has no struct prefix") == 0);
+    assert(strstr(err.message, "Expression-scope chain has no struct prefix") != NULL);
 
     cxpr_context_free(ctx);
     cxpr_evaluator_free(evaluator);

@@ -637,6 +637,15 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_CLAMP }, err);
         }
 
+        if (entry->ast_func) {
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_CALL_AST,
+                                    .ast = ast,
+                                },
+                                err);
+        }
+
         if ((strcmp(fname, "min") == 0 || strcmp(fname, "max") == 0) &&
             ast->data.function_call.argc >= 1 &&
             ast->data.function_call.argc <= 8) {
@@ -656,15 +665,6 @@ bool cxpr_ir_compile_node(const cxpr_ast* ast, cxpr_ir_program* program,
                     .index = ast->data.function_call.argc,
                 },
                 err);
-        }
-
-        if (entry->ast_func) {
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){
-                                    .op = CXPR_OP_CALL_AST,
-                                    .ast = ast,
-                                },
-                                err);
         }
 
         if (entry->ast_func_handler &&

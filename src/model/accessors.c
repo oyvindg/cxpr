@@ -297,6 +297,21 @@ const cxpr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index) 
     return model && index < model->constant_count ? model->constants[index].expr : NULL;
 }
 
+bool cxpr_model_constant_is_call_param(const cxpr_model* model, size_t index) {
+    return model && index < model->constant_count
+               ? model->constants[index].is_call_param
+               : false;
+}
+
+size_t cxpr_model_call_param_count(const cxpr_model* model) {
+    size_t count = 0u;
+    if (!model) return 0u;
+    for (size_t i = 0u; i < model->constant_count; ++i) {
+        if (model->constants[i].is_call_param) ++count;
+    }
+    return count;
+}
+
 bool cxpr_model_constant_source_span(const cxpr_model* model,
                                      size_t index,
                                      cxpr_source_span* out_span) {

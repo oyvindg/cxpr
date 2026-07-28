@@ -1194,6 +1194,25 @@ static const char* cxpr_model_import_namespace_for(const cxpr_model* model,
     return cxpr_model_import_namespace_name(model, import_name);
 }
 
+static size_t cxpr_model_program_exposed_param_count(const cxpr_model_program* program) {
+    size_t explicit_count = 0u;
+    if (!program) return 0u;
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (program->constants[i].is_call_param) ++explicit_count;
+    }
+    return explicit_count > 0u ? explicit_count : program->constant_count;
+}
+
+static bool cxpr_model_program_constant_is_exposed(const cxpr_model_program* program,
+                                                   size_t index) {
+    size_t explicit_count = 0u;
+    if (!program || index >= program->constant_count) return false;
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (program->constants[i].is_call_param) ++explicit_count;
+    }
+    return explicit_count == 0u || program->constants[index].is_call_param;
+}
+
 static char* cxpr_model_join_namespace(const char* ns, const char* name) {
     size_t ns_len;
     size_t name_len;
@@ -1519,7 +1538,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
         entry->model_producer = cxpr_model_eval_child_producer;
         entry->model_producer_userdata = &program->children[i];
         entry->min_args = 0u;
-        entry->max_args = child->input_count + child->constant_count;
+        entry->max_args = child->input_count + cxpr_model_program_exposed_param_count(child);
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
         entry->defined_return_field_names = cxpr_registry_clone_param_names(
@@ -1540,6 +1559,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
                 }
             }
             for (size_t p = 0u; p < child->constant_count; ++p) {
+                if (!cxpr_model_program_constant_is_exposed(child, p)) continue;
                 entry->defined_param_names[name_index++] = cxpr_strdup(child->constants[p].name);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -1816,6 +1836,7 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
             program->constants[i].ast = cxpr_ast_clone(model->constants[i].expr);
             program->constants[i].result_kind =
                 cxpr_model_infer_result_kind(program->constants[i].ast, compile_reg);
+            program->constants[i].is_call_param = model->constants[i].is_call_param;
             for (size_t m = 0u; m < cxpr_model_metadata_count(model); ++m) {
                 const char* target;
                 if (cxpr_model_metadata_target_kind_at(model, m) !=

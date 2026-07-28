@@ -142,6 +142,68 @@ static void test_document_model_extension_exposes_model_view(void) {
     printf("  ✓ test_document_model_extension_exposes_model_view\n");
 }
 
+static void test_document_input_defaults_lower_to_params(void) {
+    const char* source =
+        "model configurable_indicator\n"
+        "in source, $period = 20, $slope_bars = 5\n"
+        "$epsilon = 0.001\n"
+        "value = source + $period + $slope_bars + $epsilon\n"
+        "out value\n";
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    double metadata_number = 0.0;
+
+    assert(model != NULL);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_model_input_count(model) == 1u);
+    assert(strcmp(cxpr_model_input(model, 0u), "source") == 0);
+    assert(cxpr_model_constant_count(model) == 3u);
+    assert(strcmp(cxpr_model_constant_name(model, 0u), "period") == 0);
+    assert(strcmp(cxpr_model_constant_name(model, 1u), "slope_bars") == 0);
+    assert(strcmp(cxpr_model_constant_name(model, 2u), "epsilon") == 0);
+    assert(cxpr_model_call_param_count(model) == 2u);
+    assert(cxpr_model_constant_is_call_param(model, 0u));
+    assert(cxpr_model_constant_is_call_param(model, 1u));
+    assert(!cxpr_model_constant_is_call_param(model, 2u));
+    assert(cxpr_model_validate(model, &err));
+
+    cxpr_model_free(model);
+
+    err = (cxpr_error){0};
+    model = cxpr_parse_model_source(
+        "model configurable_with_metadata\n"
+        "in {\n"
+        "    source\n"
+        "    $period = 20 { min = 2, max = 512, description = \"Window period\" }\n"
+        "}\n"
+        "out source\n",
+        &err);
+    assert(model != NULL);
+    assert(cxpr_model_call_param_count(model) == 1u);
+    assert(cxpr_model_metadata_count(model) == 1u);
+    assert(cxpr_model_metadata_target_kind_at(model, 0u) ==
+           CXPR_MODEL_METADATA_TARGET_PARAM);
+    assert(strcmp(cxpr_model_metadata_target_name(model, 0u), "period") == 0);
+    assert(cxpr_model_metadata_field_number(model, 0u, "min", &metadata_number));
+    assert(metadata_number == 2.0);
+    assert(cxpr_model_metadata_field_number(model, 0u, "max", &metadata_number));
+    assert(metadata_number == 512.0);
+    assert(strcmp(cxpr_model_metadata_field_value(
+                      model, 0u, "description"),
+                  "\"Window period\"") == 0);
+    cxpr_model_free(model);
+
+    err = (cxpr_error){0};
+    model = cxpr_parse_model_source(
+        "model ambiguous\n"
+        "in source, period = 20\n"
+        "out source\n",
+        &err);
+    assert(model == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    printf("  ✓ test_document_input_defaults_lower_to_params\n");
+}
+
 static void test_document_exposes_owned_syntax_tree(void) {
     const char* source =
         "model strategy\n"
@@ -822,6 +884,7 @@ int main(void) {
     test_manifest_document_accepts_host_blocks_without_model();
     test_manifest_document_rejects_model_syntax_without_extension();
     test_document_model_extension_exposes_model_view();
+    test_document_input_defaults_lower_to_params();
     test_document_exposes_owned_syntax_tree();
     test_document_ast_exposes_compact_initial_state_update();
     test_parse_document_ast_preserves_block_shapes();

@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef struct {
     double close;
@@ -40,8 +41,11 @@ static double eval_number_or_die(cxpr_ast* ast, cxpr_context* ctx, cxpr_registry
     cxpr_error err = {0};
     double out = NAN;
     if (!cxpr_eval_ast_number(ast, ctx, reg, &out, &err) || err.code != CXPR_OK) {
-        fprintf(stderr, "AST lookback eval failed: %s\n",
+        char* expression = cxpr_ast_to_string(ast);
+        fprintf(stderr, "AST lookback eval failed for '%s': %s\n",
+                expression ? expression : "(null)",
                 err.message ? err.message : "(no message)");
+        free(expression);
         assert(0);
     }
     return out;

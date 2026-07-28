@@ -277,7 +277,7 @@ static void test_error_struct_arg_not_identifier(void) {
     /* Passing a number literal where a struct identifier is required */
     double r = eval_expr("len2(1.0)", ctx, reg, &err);
     assert(isnan(r));
-    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);

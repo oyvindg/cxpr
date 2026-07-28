@@ -750,7 +750,8 @@ static bool cxpr_document_model_has_state(const cxpr_model* model, const char* n
 }
 
 static bool cxpr_document_model_append_constant(cxpr_model* model,
-                                                const cxpr_document_ast_node* node) {
+                                                const cxpr_document_ast_node* node,
+                                                bool is_call_param) {
     cxpr_model_constant* grown;
     const char* name = cxpr_document_ast_node_name(node);
     const char* text = cxpr_document_ast_node_text(node);
@@ -766,6 +767,7 @@ static bool cxpr_document_model_append_constant(cxpr_model* model,
     model->constants[model->constant_count].expr = cxpr_ast_clone(expr);
     model->constants[model->constant_count].span = cxpr_document_ast_node_span(node);
     model->constants[model->constant_count].has_span = true;
+    model->constants[model->constant_count].is_call_param = is_call_param;
     if (!model->constants[model->constant_count].name ||
         !model->constants[model->constant_count].source ||
         !model->constants[model->constant_count].expr) {
@@ -1465,10 +1467,16 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
         case CXPR_MODEL_AST_OUTPUT_BLOCK:
             return cxpr_document_lower_children_to_model(model, node, err);
         case CXPR_MODEL_AST_INPUT_DECL:
+            if (cxpr_document_ast_node_expression(node)) {
+                return cxpr_document_model_append_constant(model, node, true) &&
+                       cxpr_document_lower_metadata_children(
+                           model, node, "param",
+                           CXPR_MODEL_METADATA_TARGET_PARAM);
+            }
             return cxpr_document_model_append_name_list(
                 &model->inputs, &model->input_count, name, false, err);
         case CXPR_MODEL_AST_PARAM_DECL:
-            return cxpr_document_model_append_constant(model, node) &&
+            return cxpr_document_model_append_constant(model, node, false) &&
                    cxpr_document_lower_metadata_children(
                        model, node, "param", CXPR_MODEL_METADATA_TARGET_PARAM);
         case CXPR_MODEL_AST_STATE_DECL:

@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void test_parser_expression_forms(void) {
@@ -37,6 +38,22 @@ static void test_parser_expression_forms(void) {
     assert(ast);
     assert(cxpr_ast_type(ast) == CXPR_NODE_UNARY_OP);
     assert(cxpr_ast_operator(ast) == CXPR_TOK_NOT);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "age >= 18 < 65", &err);
+    assert(ast);
+    char* text = cxpr_ast_to_string(ast);
+    assert(text);
+    assert(strcmp(text, "age >= 18 and age < 65") == 0);
+    free(text);
+    cxpr_ast_free(ast);
+
+    ast = cxpr_parse(p, "18 <= age < 65", &err);
+    assert(ast);
+    text = cxpr_ast_to_string(ast);
+    assert(text);
+    assert(strcmp(text, "18 <= age and age < 65") == 0);
+    free(text);
     cxpr_ast_free(ast);
 
     ast = cxpr_parse(p, "a ? b : c", &err);

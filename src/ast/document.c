@@ -645,9 +645,24 @@ static bool cxpr_document_ast_parse_comma_or_line_decls(
                                                 "Out of memory", 0u, 0u);
                     return false;
                 }
-                if (params || child_kind == CXPR_MODEL_AST_STATE_DECL) {
+                if (child_kind == CXPR_MODEL_AST_INPUT_DECL && strchr(entry, '=') &&
+                    entry[0] != '$') {
+                    const size_t error_line = child->span.start.line;
+                    const size_t error_column = child->span.start.column + 1u;
+                    cxpr_document_ast_node_free(child);
+                    free(entry);
+                    cxpr_document_ast_set_error(
+                        parser->err, CXPR_ERR_SYNTAX,
+                        "Defaulted input parameters must use '$name = default'",
+                        error_line, error_column);
+                    return false;
+                }
+                if (params || child_kind == CXPR_MODEL_AST_STATE_DECL ||
+                    (child_kind == CXPR_MODEL_AST_INPUT_DECL && strchr(entry, '='))) {
                     if (!cxpr_document_ast_assign_name_expr(
-                            child, parser, entry, params, body_offset + rel,
+                            child, parser, entry,
+                            params || child_kind == CXPR_MODEL_AST_INPUT_DECL,
+                            body_offset + rel,
                             child->span.start.line,
                             child->span.start.column + 1u, parser->err)) {
                         cxpr_document_ast_node_free(child);
@@ -1049,6 +1064,11 @@ static bool cxpr_document_ast_parse_statement(cxpr_document_ast_parser* parser,
                     parser, node, CXPR_MODEL_AST_INPUT_DECL, open + 1,
                     start_offset + (size_t)(open + 1 - statement), false);
             }
+        } else if (strchr(rest, '=') || strchr(rest, ',')) {
+            node->kind = CXPR_MODEL_AST_INPUT_BLOCK;
+            ok = cxpr_document_ast_parse_comma_or_line_decls(
+                parser, node, CXPR_MODEL_AST_INPUT_DECL, rest,
+                start_offset + (size_t)(rest - statement), false);
         } else {
             node->name = cxpr_strdup(rest);
             ok = node->name != NULL;

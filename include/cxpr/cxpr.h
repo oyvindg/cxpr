@@ -18,9 +18,12 @@
 #include <cxpr/snapshot.h>
 #include <cxpr/program.h>
 #include <cxpr/codegen.h>
+#include <cxpr/generated.h>
+#include <cxpr/execution.h>
 #include <cxpr/document/document.h>
 #include <cxpr/ast/document.h>
 #include <cxpr/model/model.h>
+#include <cxpr/model/imports.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
 #include <cxpr/ir.h>

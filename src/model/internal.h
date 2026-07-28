@@ -12,6 +12,7 @@ typedef struct {
     cxpr_ast* expr;
     cxpr_source_span span;
     bool has_span;
+    bool is_call_param;
 } cxpr_model_constant;
 
 typedef struct {
@@ -112,6 +113,7 @@ typedef struct {
     double max_value;
     bool has_min_value;
     bool has_max_value;
+    bool is_call_param;
 } cxpr_model_compiled_binding;
 
 typedef struct {

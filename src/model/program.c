@@ -408,3 +408,27 @@ size_t cxpr_model_program_c_param_count(const cxpr_model_program* program) {
 const char* cxpr_model_program_c_param_name(const cxpr_model_program* program, size_t index) {
     return program && index < program->constant_count ? program->constants[index].name : NULL;
 }
+
+size_t cxpr_model_program_call_param_count(const cxpr_model_program* program) {
+    size_t explicit_count = 0u;
+    if (!program) return 0u;
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (program->constants[i].is_call_param) ++explicit_count;
+    }
+    return explicit_count > 0u ? explicit_count : program->constant_count;
+}
+
+const char* cxpr_model_program_call_param_name(const cxpr_model_program* program,
+                                               size_t index) {
+    size_t explicit_count = 0u;
+    size_t cursor = 0u;
+    if (!program) return NULL;
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (program->constants[i].is_call_param) ++explicit_count;
+    }
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (explicit_count > 0u && !program->constants[i].is_call_param) continue;
+        if (cursor++ == index) return program->constants[i].name;
+    }
+    return NULL;
+}

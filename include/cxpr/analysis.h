@@ -42,6 +42,43 @@ typedef struct {
     const char* first_unsupported_codegen_node; /**< First unsupported codegen node kind, or NULL if none. */
 } cxpr_analysis;
 
+typedef enum {
+    CXPR_CALL_SITE_FUNCTION = 1,
+    CXPR_CALL_SITE_PRODUCER = 2,
+} cxpr_call_site_kind;
+
+/**
+ * @brief One borrowed static named string argument discovered at a call site.
+ *
+ * CXPR reports syntax only. Hosts decide whether names such as `timeframe`,
+ * `region`, or `warehouse` carry provider-specific scope semantics.
+ */
+typedef struct {
+    cxpr_call_site_kind call_kind;
+    const cxpr_ast* call;
+    const char* callee;
+    const char* argument;
+    const char* value;
+} cxpr_static_named_string_arg;
+
+/**
+ * Return non-zero to continue traversal, or zero to stop.
+ */
+typedef int (*cxpr_static_named_string_arg_visitor)(
+    const cxpr_static_named_string_arg* arg,
+    void* userdata);
+
+/**
+ * @brief Visit static named string arguments in every nested call.
+ *
+ * Values passed to the visitor are borrowed from @p ast. No provider registry
+ * is required, so imported/custom calls are reported as well as builtins.
+ */
+bool cxpr_visit_static_named_string_args(
+    const cxpr_ast* ast,
+    cxpr_static_named_string_arg_visitor visitor,
+    void* userdata);
+
 /**
  * @brief Perform structural and registry-backed semantic analysis on an AST.
  * @param ast AST to inspect.

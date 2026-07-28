@@ -516,16 +516,6 @@ typedef struct artifact_file_sink {
     FILE* file;
 } artifact_file_sink;
 
-typedef struct compiled_model_import {
-    cxpr_model_import api;
-    char* path;
-    char* source;
-    cxpr_model* model;
-    cxpr_model_program* program;
-    struct compiled_model_import* imports;
-    size_t import_count;
-} compiled_model_import;
-
 static char* resolve_import_path_for_model(const char* dir, const char* use_name) {
     char* path = join_import_path(dir, use_name);
     if (!path) return NULL;
@@ -540,147 +530,35 @@ static char* resolve_import_path_for_model(const char* dir, const char* use_name
     return join_import_path(dir, use_name);
 }
 
-static void compiled_imports_free(compiled_model_import* imports, size_t count) {
-    if (!imports) return;
-    for (size_t i = 0u; i < count; ++i) {
-        compiled_imports_free(imports[i].imports, imports[i].import_count);
-        cxpr_model_program_free(imports[i].program);
-        cxpr_model_free(imports[i].model);
-        free(imports[i].path);
-        free(imports[i].source);
-    }
-    free(imports);
-}
-
-static int build_model_imports(const char* model_path,
-                               const char* source,
-                               compiled_model_import** out_imports,
-                               size_t* out_count) {
-    cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
-    char* dir = NULL;
-    compiled_model_import* imports = NULL;
-    size_t count = 0u;
-    int ok = 0;
-
-    if (out_imports) *out_imports = NULL;
-    if (out_count) *out_count = 0u;
-    if (!model) return 0;
-    dir = path_dirname(model_path);
-    if (!dir) goto cleanup;
-
-    for (size_t i = 0u; i < cxpr_model_use_count(model); ++i) {
-        const char* use_name = cxpr_model_use(model, i);
-        char* import_path = resolve_import_path_for_model(dir, use_name);
-        char* import_source;
-        char* import_combined;
-        cxpr_model* import_model;
-        cxpr_model_program* import_program;
-        compiled_model_import* nested_imports = NULL;
-        cxpr_model_import* nested_import_api = NULL;
-        size_t nested_import_count = 0u;
-        compiled_model_import* grown;
-        const char* model_name;
-        if (!import_path) goto cleanup;
-        import_source = read_file(import_path);
-        if (!import_source) {
-            free(import_path);
-            goto cleanup;
-        }
-        import_combined = build_source_with_imports(import_path, import_source);
-        if (!import_combined) {
-            free(import_source);
-            free(import_path);
-            goto cleanup;
-        }
-        import_model = cxpr_parse_model_source(import_combined, &err);
-        if (!import_model) {
-            free(import_source);
-            free(import_combined);
-            free(import_path);
-            goto cleanup;
-        }
-        if (cxpr_model_output_count(import_model) == 0u) {
-            cxpr_model_free(import_model);
-            free(import_source);
-            free(import_combined);
-            free(import_path);
-            continue;
-        }
-        if (!build_model_imports(import_path, import_source,
-                                 &nested_imports, &nested_import_count)) {
-            cxpr_model_free(import_model);
-            free(import_source);
-            free(import_combined);
-            free(import_path);
-            goto cleanup;
-        }
-        free(import_source);
-        if (nested_import_count > 0u) {
-            nested_import_api =
-                (cxpr_model_import*)calloc(nested_import_count, sizeof(*nested_import_api));
-            if (!nested_import_api) {
-                compiled_imports_free(nested_imports, nested_import_count);
-                cxpr_model_free(import_model);
-                free(import_combined);
-                free(import_path);
-                goto cleanup;
-            }
-            for (size_t nested = 0u; nested < nested_import_count; ++nested) {
-                nested_import_api[nested] = nested_imports[nested].api;
-            }
-        }
-        {
-            const cxpr_model_compile_options compile_options = {
-                CXPR_MODEL_BACKEND_C,
-                true,
-                false,
-            };
-            import_program = cxpr_compile_model_with_imports_and_options(
-                import_model, NULL, nested_import_api, nested_import_count,
-                &compile_options, &err);
-        }
-        free(nested_import_api);
-        if (!import_program) {
-            compiled_imports_free(nested_imports, nested_import_count);
-            cxpr_model_free(import_model);
-            free(import_combined);
-            free(import_path);
-            goto cleanup;
-        }
-        grown = (compiled_model_import*)realloc(imports, (count + 1u) * sizeof(*imports));
-        if (!grown) {
-            cxpr_model_program_free(import_program);
-            cxpr_model_free(import_model);
-            free(import_combined);
-            free(import_path);
-            goto cleanup;
-        }
-        imports = grown;
-        memset(&imports[count], 0, sizeof(imports[count]));
-        model_name = cxpr_model_name(import_model);
-        imports[count].api.name = model_name ? model_name : use_name;
-        imports[count].api.program = import_program;
-        imports[count].path = import_path;
-        imports[count].source = import_combined;
-        imports[count].model = import_model;
-        imports[count].program = import_program;
-        imports[count].imports = nested_imports;
-        imports[count].import_count = nested_import_count;
-        count++;
-    }
-    ok = 1;
-
-cleanup:
+static bool model_codegen_load_import(
+    const char* importer_path,
+    const char* use_name,
+    void* userdata,
+    char** out_path,
+    char** out_source,
+    cxpr_error* err) {
+    char* dir;
+    (void)userdata;
+    if (out_path) *out_path = NULL;
+    if (out_source) *out_source = NULL;
+    if (!importer_path || !use_name || !out_path || !out_source) return false;
+    dir = path_dirname(importer_path);
+    if (!dir) return false;
+    *out_path = resolve_import_path_for_model(dir, use_name);
     free(dir);
-    cxpr_model_free(model);
-    if (!ok) {
-        compiled_imports_free(imports, count);
-        return 0;
+    if (*out_path) *out_source = read_file(*out_path);
+    if (!*out_path || !*out_source) {
+        free(*out_path);
+        free(*out_source);
+        *out_path = NULL;
+        *out_source = NULL;
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "Failed to load model import";
+        }
+        return false;
     }
-    if (out_imports) *out_imports = imports;
-    if (out_count) *out_count = count;
-    return 1;
+    return true;
 }
 
 static int artifact_file_begin(void* user, const cxpr_plugin_artifact_event* artifact, cxpr_error* err) {
@@ -716,7 +594,7 @@ static int artifact_file_end(void* user, cxpr_error* err) {
 }
 
 static char* build_c_source_preamble(const char* model_path,
-                                     const compiled_model_import* imports,
+                                     const cxpr_model_import* imports,
                                      size_t import_count) {
     char* out = NULL;
     size_t len = 0u;
@@ -739,10 +617,7 @@ static char* build_c_source_preamble(const char* model_path,
         for (size_t i = 0u; i < import_count; ++i) {
             if (!append_cstr(&out, &len, &cap, " *   - ") ||
                 !append_cstr(&out, &len, &cap,
-                             imports[i].api.name ? imports[i].api.name : "(unnamed)") ||
-                !append_cstr(&out, &len, &cap, ": ") ||
-                !append_cstr(&out, &len, &cap,
-                             imports[i].path ? imports[i].path : "(unknown)") ||
+                             imports[i].name ? imports[i].name : "(unnamed)") ||
                 !append_cstr(&out, &len, &cap, "\n")) {
                 free(out);
                 return NULL;
@@ -769,8 +644,8 @@ static int emit_model_c(const char* model_path,
     char* combined_source = NULL;
     cxpr_model* model = NULL;
     cxpr_model_program* program = NULL;
-    compiled_model_import* compiled_imports = NULL;
-    cxpr_model_import* import_api = NULL;
+    cxpr_model_import_bundle* import_bundle = NULL;
+    const cxpr_model_import* import_api = NULL;
     size_t import_count = 0u;
     char* c_preamble = NULL;
     cxpr_context* ctx = NULL;
@@ -802,15 +677,14 @@ static int emit_model_c(const char* model_path,
         fprintf(stderr, "cxpr_model_codegen: parse failed: %s\n", err.message);
         goto cleanup;
     }
-    if (!build_model_imports(model_path, source, &compiled_imports, &import_count)) {
+    import_bundle = cxpr_model_import_bundle_build(
+        model_path, model, model_codegen_load_import, NULL, &err);
+    if (!import_bundle) {
         fprintf(stderr, "cxpr_model_codegen: failed to compile model imports\n");
         goto cleanup;
     }
-    if (import_count > 0u) {
-        import_api = (cxpr_model_import*)calloc(import_count, sizeof(*import_api));
-        if (!import_api) goto cleanup;
-        for (size_t i = 0u; i < import_count; ++i) import_api[i] = compiled_imports[i].api;
-    }
+    import_api = cxpr_model_import_bundle_root_imports(
+        import_bundle, &import_count);
     program = cxpr_compile_model_with_imports_and_options(
         model, NULL, import_api, import_count, &compile_options, &err);
     if (!program) {
@@ -853,7 +727,7 @@ static int emit_model_c(const char* model_path,
 
         artifact_file_sink c_sink = {0};
         c_sink.path = output_path;
-        c_preamble = build_c_source_preamble(model_path, compiled_imports, import_count);
+        c_preamble = build_c_source_preamble(model_path, import_api, import_count);
         if (!c_preamble) {
             fprintf(stderr, "cxpr_model_codegen: failed to build C source preamble\n");
             goto cleanup;
@@ -881,6 +755,79 @@ static int emit_model_c(const char* model_path,
                 c_sink.file = NULL;
             }
             goto cleanup;
+        }
+        {
+            FILE* descriptor_out = fopen(output_path, "ab");
+            cxpr_context* defaults_ctx = NULL;
+            size_t call_param_count;
+            if (!descriptor_out) {
+                fprintf(stderr, "cxpr_model_codegen: failed to append descriptor to %s\n",
+                        output_path);
+                goto cleanup;
+            }
+            defaults_ctx = cxpr_context_new();
+            if (!defaults_ctx ||
+                !cxpr_model_program_seed_defaults(program, defaults_ctx, NULL, &err)) {
+                fprintf(stderr, "cxpr_model_codegen: descriptor defaults failed: %s\n",
+                        err.message ? err.message : "(null)");
+                cxpr_context_free(defaults_ctx);
+                fclose(descriptor_out);
+                goto cleanup;
+            }
+            call_param_count = cxpr_model_program_call_param_count(program);
+            fprintf(descriptor_out,
+                    "\n#include <cxpr/generated.h>\n"
+                    "static size_t %s_descriptor_state_size(void) {\n"
+                    "    return sizeof(%s_state);\n"
+                    "}\n"
+                    "static const cxpr_generated_model_descriptor %s_descriptor = {\n"
+                    "    .name = \"%s\",\n"
+                    "    .tick = (cxpr_generated_tick_fn)%s,\n"
+                    "    .state_size = %s_descriptor_state_size,\n"
+                    "    .param_count = %zu,\n",
+                    function_name, function_name,
+                    function_name, cxpr_model_name(model),
+                    function_name, function_name, call_param_count);
+            for (size_t i = 0u; i < call_param_count; ++i) {
+                const char* name = cxpr_model_program_call_param_name(program, i);
+                bool found = false;
+                double value = cxpr_context_get_param(defaults_ctx, name, &found);
+                fprintf(descriptor_out,
+                        "    .param_names[%zu] = \"%s\",\n"
+                        "    .param_defaults[%zu] = %.17g,\n"
+                        "    .param_has_default[%zu] = %uu,\n",
+                        i, name ? name : "", i, value, i, found ? 1u : 0u);
+            }
+            fprintf(descriptor_out, "    .input_count = %zu,\n",
+                    cxpr_model_program_input_count(program));
+            for (size_t i = 0u; i < cxpr_model_program_input_count(program); ++i) {
+                fprintf(descriptor_out, "    .input_names[%zu] = \"%s\",\n",
+                        i, cxpr_model_program_input_name(program, i));
+            }
+            fprintf(descriptor_out, "    .output_count = %zu,\n",
+                    output_count > 0u ? output_count
+                                      : cxpr_model_program_output_count(program));
+            if (output_count > 0u) {
+                for (size_t i = 0u; i < output_count; ++i) {
+                    fprintf(descriptor_out, "    .output_names[%zu] = \"%s\",\n",
+                            i,
+                            cxpr_model_program_output_name(program, output_indices[i]));
+                }
+            } else {
+                for (size_t i = 0u; i < cxpr_model_program_output_count(program); ++i) {
+                    fprintf(descriptor_out, "    .output_names[%zu] = \"%s\",\n",
+                            i, cxpr_model_program_output_name(program, i));
+                }
+            }
+            fprintf(descriptor_out,
+                    "    .abi_version = CXPR_GENERATED_MODEL_ABI_VERSION,\n"
+                    "};\n");
+            cxpr_context_free(defaults_ctx);
+            if (fclose(descriptor_out) != 0) {
+                fprintf(stderr, "cxpr_model_codegen: failed to finish descriptor %s\n",
+                        output_path);
+                goto cleanup;
+            }
         }
     }
 
@@ -932,8 +879,7 @@ cleanup:
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
     free(c_preamble);
-    free(import_api);
-    compiled_imports_free(compiled_imports, import_count);
+    cxpr_model_import_bundle_free(import_bundle);
     cxpr_model_free(model);
     free(combined_source);
     free(source);

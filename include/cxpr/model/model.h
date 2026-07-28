@@ -527,6 +527,8 @@ char* cxpr_model_program_to_c_tick_function_with_params_select_outputs(
 size_t cxpr_model_program_c_slot_count(const cxpr_model_program* program);
 size_t cxpr_model_program_c_param_count(const cxpr_model_program* program);
 const char* cxpr_model_program_c_param_name(const cxpr_model_program* program, size_t index);
+size_t cxpr_model_program_call_param_count(const cxpr_model_program* program);
+const char* cxpr_model_program_call_param_name(const cxpr_model_program* program, size_t index);
 
 /** @brief Create a mutable session for one compiled model. */
 cxpr_model_session* cxpr_model_session_new(const cxpr_model_program* program,
@@ -601,6 +603,10 @@ bool cxpr_model_input_source_span(const cxpr_model* model,
 size_t cxpr_model_constant_count(const cxpr_model* model);
 const char* cxpr_model_constant_name(const cxpr_model* model, size_t index);
 const cxpr_ast* cxpr_model_constant_expr(const cxpr_model* model, size_t index);
+/** @brief Return whether a model parameter is explicitly exported in its `in` signature. */
+bool cxpr_model_constant_is_call_param(const cxpr_model* model, size_t index);
+/** @brief Return the number of explicitly exported call parameters. */
+size_t cxpr_model_call_param_count(const cxpr_model* model);
 bool cxpr_model_constant_source_span(const cxpr_model* model,
                                      size_t index,
                                      cxpr_source_span* out_span);

@@ -415,11 +415,16 @@ bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* s
         const char* key = src->variables.entries[i].key;
         char dst_key[256];
 
-        if (!key) continue;
-        if (strncmp(key, src_prefix, src_prefix_len) != 0 || key[src_prefix_len] != '.') continue;
-        if (dst_prefix_len + strlen(key + src_prefix_len) >= sizeof(dst_key)) continue;
+        char separator;
 
-        snprintf(dst_key, sizeof(dst_key), "%s%s", dst_prefix, key + src_prefix_len);
+        if (!key) continue;
+        if (strncmp(key, src_prefix, src_prefix_len) != 0) continue;
+        separator = key[src_prefix_len];
+        if (separator != '.' && separator != '_') continue;
+        if (dst_prefix_len + 1u + strlen(key + src_prefix_len + 1u) >= sizeof(dst_key)) continue;
+
+        snprintf(dst_key, sizeof(dst_key), "%s.%s",
+                 dst_prefix, key + src_prefix_len + 1u);
         cxpr_context_set(dst, dst_key, src->variables.entries[i].value);
         copied = true;
     }
@@ -546,6 +551,11 @@ static bool cxpr_eval_defined_call_can_inline_value_args(
         return false;
     }
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
+        if (entry->defined_param_fields &&
+            entry->defined_param_fields[i] &&
+            entry->defined_param_field_counts[i] > 0u) {
+            return false;
+        }
         if (!cxpr_eval_defined_inline_arg_is_stable(ordered_args[i])) {
             return false;
         }

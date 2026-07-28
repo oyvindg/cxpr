@@ -50,8 +50,8 @@ static void test_analysis_reports_codegen_unsupported_nodes_without_flagging_lit
 
     assert(cxpr_analyze_expr("close[$n]", NULL, &analysis, &err));
     assert(err.code == CXPR_OK);
-    assert(analysis.has_unsupported_codegen_nodes == true);
-    assert(strcmp(analysis.first_unsupported_codegen_node, "lookback_index") == 0);
+    assert(analysis.has_unsupported_codegen_nodes == false);
+    assert(analysis.first_unsupported_codegen_node == NULL);
 
     analysis = (cxpr_analysis){0};
     err = (cxpr_error){0};

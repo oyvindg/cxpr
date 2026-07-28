@@ -674,6 +674,9 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             const cxpr_ast* arg = cxpr_model_child_call_param_arg(
                 &program->children[child_index], child, ast, i);
             char* arg_expr;
+            if (!arg && child->constants[i].ast) {
+                arg = child->constants[i].ast;
+            }
             if (!arg) {
                 free(call.data);
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Missing producer argument", 0, 0);
