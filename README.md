@@ -342,7 +342,7 @@ A `.cxpr` file is parsed in one of two modes:
 
 Use `cxpr_doc_parse_manifest` / `cxpr_doc_load_manifest` for manifests and
 `cxpr_doc_parse_model` / `cxpr_doc_load_model` for model
-documents. `cxpr_parse_model_source` is the direct owning entry point when only
+documents. `cxpr_model_parse` is the direct owning entry point when only
 the semantic model is needed.
 
 ### Complete model example
@@ -517,7 +517,7 @@ The reference/tooling path is:
 
 ```c
 cxpr_error err = {0};
-cxpr_model* model = cxpr_parse_model_source(source, &err);
+cxpr_model* model = cxpr_model_parse(source, &err);
 cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
 cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
 cxpr_context* ctx = cxpr_model_session_context(session);

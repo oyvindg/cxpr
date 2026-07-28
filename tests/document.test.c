@@ -150,7 +150,7 @@ static void test_document_input_defaults_lower_to_params(void) {
         "value = source + $period + $slope_bars + $epsilon\n"
         "out value\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     double metadata_number = 0.0;
 
     assert(model != NULL);
@@ -170,7 +170,7 @@ static void test_document_input_defaults_lower_to_params(void) {
     cxpr_model_free(model);
 
     err = (cxpr_error){0};
-    model = cxpr_parse_model_source(
+    model = cxpr_model_parse(
         "model configurable_with_metadata\n"
         "in {\n"
         "    source\n"
@@ -194,7 +194,7 @@ static void test_document_input_defaults_lower_to_params(void) {
     cxpr_model_free(model);
 
     err = (cxpr_error){0};
-    model = cxpr_parse_model_source(
+    model = cxpr_model_parse(
         "model ambiguous\n"
         "in source, period = 20\n"
         "out source\n",
@@ -646,7 +646,7 @@ static void test_document_model_exposes_semantic_source_spans(void) {
         "signal := close > $fast\n"
         "out { signal }\n";
     cxpr_error err = {0};
-    cxpr_model* direct_model = cxpr_parse_model_source(source, &err);
+    cxpr_model* direct_model = cxpr_model_parse(source, &err);
     cxpr_doc* document;
     const cxpr_model* model;
     cxpr_source_span span;

@@ -128,7 +128,7 @@ cxpr_doc* cxpr_doc_parse_model(const char* source, cxpr_error* err);
  * This is the owning model entrypoint for callers that do not need to keep the
  * document syntax tree or host block document wrapper alive.
  */
-cxpr_model* cxpr_parse_model_source(const char* source, cxpr_error* err);
+cxpr_model* cxpr_model_parse(const char* source, cxpr_error* err);
 
 /** @brief Free a document returned by any cxpr document parse/load API. */
 void cxpr_doc_free(cxpr_doc* document);

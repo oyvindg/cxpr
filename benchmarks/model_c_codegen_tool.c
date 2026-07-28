@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "failed to read %s\n", argv[1]);
         return 1;
     }
-    model = cxpr_parse_model_source(source, &err);
+    model = cxpr_model_parse(source, &err);
     if (!model) {
         fprintf(stderr, "parse failed: %s\n", err.message);
         free(source);

@@ -70,7 +70,7 @@ static char* join_sources(const char* first, const char* second) {
 
 static cxpr_model* parse_model_ok(const char* source) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     if (!model) {
         fprintf(stderr, "parse model failed: %s at %zu:%zu\n",
                 err.message ? err.message : "(null)", err.line, err.column);
@@ -574,7 +574,7 @@ static void test_parse_model_rejects_legacy_meta_block(void) {
         "}\n"
         "model legacy_meta\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     assert(model == NULL);
     assert(err.code != CXPR_OK);
     printf("  ✓ test_parse_model_rejects_legacy_meta_block\n");
@@ -582,7 +582,7 @@ static void test_parse_model_rejects_legacy_meta_block(void) {
 
 static void test_parse_model_rejects_legacy_name_statement(void) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(
+    cxpr_model* model = cxpr_model_parse(
         "name legacy_name\n"
         "in close\n"
         "out close\n",
@@ -600,7 +600,7 @@ static void test_parse_model_rejects_decorator_metadata(void) {
         "}\n"
         "model decorated\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     assert(model == NULL);
     assert(err.code != CXPR_OK);
     assert(err.message != NULL);
@@ -845,7 +845,7 @@ static void test_parse_model_host_blocks_reject_inline_fields_without_comma(void
         "  symbols { primary { symbol = \"TSLA\" strategy = \"market_neutral\" } }\n"
         "}\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     assert(model == NULL);
     assert(err.code != CXPR_OK);
     assert(err.message != NULL);
@@ -1025,7 +1025,7 @@ static void test_parse_model_rejects_yaml_mapping_in_host_block(void) {
         "}\n"
         "model invalid_yaml_host\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     assert(model == NULL);
     assert(err.code != CXPR_OK);
     assert(err.message != NULL);
@@ -1040,7 +1040,7 @@ static void test_parse_model_rejects_meta_as_host_block(void) {
         "}\n"
         "model invalid_meta_host\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     assert(model == NULL);
     assert(err.code != CXPR_OK);
     assert(err.message != NULL);
@@ -1302,7 +1302,7 @@ static void test_update_state_supports_block_local_temporaries(void) {
 
 static void test_reject_legacy_out_state_update_syntax(void) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(
+    cxpr_model* model = cxpr_model_parse(
         "model invalid_legacy_update\n"
         "state {\n"
         "    r = 0\n"
@@ -1320,7 +1320,7 @@ static void test_reject_legacy_out_state_update_syntax(void) {
 
 static void test_reject_update_state_block_syntax(void) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(
+    cxpr_model* model = cxpr_model_parse(
         "model invalid_update_block\n"
         "state {\n"
         "    r = 0\n"
@@ -1391,7 +1391,7 @@ static void test_validate_accepts_conditional_state_update(void) {
 
 static void test_reject_invalid_out_assignment_name(void) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source("model bad\nout 123 = close\n", &err);
+    cxpr_model* model = cxpr_model_parse("model bad\nout 123 = close\n", &err);
     assert(model == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
@@ -1401,7 +1401,7 @@ static void test_reject_invalid_out_assignment_name(void) {
 
 static void test_reject_invalid_output_name(void) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source("model bad\nout 123\n", &err);
+    cxpr_model* model = cxpr_model_parse("model bad\nout 123\n", &err);
     assert(model == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);

@@ -60,7 +60,7 @@ int main(void) {
         "    plot { key = \"value\" }\n"
         "}\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     cxpr_model_plugin_event event;
     test_artifact_sink sink = {0};
     cxpr_model_plugin_host host = {

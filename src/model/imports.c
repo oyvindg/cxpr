@@ -158,7 +158,7 @@ static bool import_compile(
     builder->stack = grown_stack;
     builder->stack[builder->stack_count++] = id;
 
-    model = cxpr_parse_model_source(source, err);
+    model = cxpr_model_parse(source, err);
     if (!model) goto fail;
     function_only = cxpr_model_output_count(model) == 0u;
     for (i = 0u; i < cxpr_model_use_count(model); ++i) {
@@ -187,14 +187,14 @@ static bool import_compile(
     }
     if (combined) {
         cxpr_model_free(model);
-        model = cxpr_parse_model_source(combined, err);
+        model = cxpr_model_parse(combined, err);
         if (!model) goto fail;
     }
     compilable = import_make_compilable_source(combined ? combined : source, model);
     if (!compilable) goto oom;
     if (strcmp(compilable, source) != 0) {
         cxpr_model_free(model);
-        model = cxpr_parse_model_source(compilable, err);
+        model = cxpr_model_parse(compilable, err);
         if (!model) goto fail;
     }
     program = cxpr_compile_model_with_imports(

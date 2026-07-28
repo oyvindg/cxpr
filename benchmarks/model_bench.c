@@ -160,7 +160,7 @@ static double time_model_setup(size_t iterations) {
     long long start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         cxpr_error err = {0};
-        cxpr_model* model = cxpr_parse_model_source(source, &err);
+        cxpr_model* model = cxpr_model_parse(source, &err);
         cxpr_model_program* program = NULL;
         if (!model) {
             fprintf(stderr, "model parse failed: %s\n", err.message);
@@ -225,7 +225,7 @@ static double time_model_eval(size_t iterations) {
         "signal = above(close, 10)\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     long long start;
@@ -312,7 +312,7 @@ static double time_host_registered_signal_helper_eval(size_t iterations) {
 
 static double time_model_signal_helper_eval(size_t iterations) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(signal_helper_model_source(), &err);
+    cxpr_model* model = cxpr_model_parse(signal_helper_model_source(), &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     long long start;
@@ -364,7 +364,7 @@ static double time_strategy_fixture_eval(size_t iterations) {
     double total = 0.0;
 
     if (!source) abort();
-    model = cxpr_parse_model_source(source, &err);
+    model = cxpr_model_parse(source, &err);
     if (!model) {
         fprintf(stderr, "strategy fixture parse failed: %s\n", err.message);
         abort();
@@ -422,7 +422,7 @@ static double time_rsi_state_strategy_fixture_tick(size_t iterations) {
     double total = 0.0;
 
     if (!source) abort();
-    model = cxpr_parse_model_source(source, &err);
+    model = cxpr_model_parse(source, &err);
     if (!model) {
         fprintf(stderr, "rsi strategy fixture parse failed: %s\n", err.message);
         abort();
@@ -748,7 +748,7 @@ static double time_macd_record_strategy_fixture_tick(size_t iterations) {
     double total = 0.0;
 
     if (!source) abort();
-    model = cxpr_parse_model_source(source, &err);
+    model = cxpr_model_parse(source, &err);
     if (!model) {
         fprintf(stderr, "macd record fixture parse failed: %s\n", err.message);
         abort();
@@ -795,7 +795,7 @@ static size_t model_registry_function_count(void) {
         "signal = above(close, 10)\n"
         "out signal\n";
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     cxpr_model_program* program;
     size_t count;
     if (!model) abort();
@@ -814,7 +814,7 @@ static size_t rsi_fused_ir_instruction_count(void) {
     cxpr_model_program* program;
     size_t count;
     if (!source) abort();
-    model = cxpr_parse_model_source(source, &err);
+    model = cxpr_model_parse(source, &err);
     if (!model) abort();
     program = cxpr_compile_model(model, NULL, &err);
     if (!program) abort();
@@ -832,7 +832,7 @@ static const char* rsi_fused_ir_disabled_opcode(void) {
     cxpr_model_program* program;
     const char* opcode;
     if (!source) abort();
-    model = cxpr_parse_model_source(source, &err);
+    model = cxpr_model_parse(source, &err);
     if (!model) abort();
     program = cxpr_compile_model(model, NULL, &err);
     if (!program) abort();

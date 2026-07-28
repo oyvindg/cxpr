@@ -129,7 +129,7 @@ typedef struct cxpr_host_block_spec {
  * This is the model-owning entrypoint backed by the document AST parser and
  * lowerer. Free the returned model with @ref cxpr_model_free.
  */
-cxpr_model* cxpr_parse_model_source(const char* source, cxpr_error* err);
+cxpr_model* cxpr_model_parse(const char* source, cxpr_error* err);
 
 /** @brief Free a parsed .cxpr model. */
 void cxpr_model_free(cxpr_model* model);

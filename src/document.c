@@ -1406,7 +1406,7 @@ cxpr_doc* cxpr_doc_parse_model(const char* source, cxpr_error* err) {
     return cxpr_doc_parse(source, CXPR_DOC_EXTENSION_MODEL, err);
 }
 
-cxpr_model* cxpr_parse_model_source(const char* source, cxpr_error* err) {
+cxpr_model* cxpr_model_parse(const char* source, cxpr_error* err) {
     cxpr_doc* document = cxpr_doc_parse_model(source, err);
     cxpr_model* model;
     if (!document) return NULL;

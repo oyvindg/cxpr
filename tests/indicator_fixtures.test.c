@@ -36,7 +36,7 @@ static cxpr_model_program* compile_fixture(const char* name,
                                            cxpr_model** out_model) {
     cxpr_error err = {0};
     char* source = read_indicator_fixture(name);
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     cxpr_model_program* program;
 
     free(source);

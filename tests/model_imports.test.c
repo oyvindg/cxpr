@@ -59,7 +59,7 @@ static void test_function_only_import(void) {
         "out result = math_helpers.twice(value)\n";
     test_loader loader = {sources, 1u};
     cxpr_error err = {0};
-    cxpr_model* root = cxpr_parse_model_source(root_source, &err);
+    cxpr_model* root = cxpr_model_parse(root_source, &err);
     cxpr_model_import_bundle* bundle;
     const cxpr_model_import* imports;
     cxpr_model_program* program;
@@ -91,7 +91,7 @@ static void test_cycle_is_rejected(void) {
     const char root_source[] = "model root\nuse a\nout value = 0\n";
     test_loader loader = {sources, 2u};
     cxpr_error err = {0};
-    cxpr_model* root = cxpr_parse_model_source(root_source, &err);
+    cxpr_model* root = cxpr_model_parse(root_source, &err);
     cxpr_model_import_bundle* bundle;
 
     assert(root);
@@ -111,7 +111,7 @@ static void test_duplicate_namespace_is_rejected(void) {
         "model root\nuse first\nuse second\nout value = 0\n";
     test_loader loader = {sources, 2u};
     cxpr_error err = {0};
-    cxpr_model* root = cxpr_parse_model_source(root_source, &err);
+    cxpr_model* root = cxpr_model_parse(root_source, &err);
     cxpr_model_import_bundle* bundle;
 
     assert(root);

@@ -301,7 +301,7 @@ static int collect_import_functions(const char* model_path,
                                     size_t* out_len,
                                     size_t* out_cap) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(source, &err);
+    cxpr_model* model = cxpr_model_parse(source, &err);
     char* dir = NULL;
     int ok = 0;
 
@@ -672,7 +672,7 @@ static int emit_model_c(const char* model_path,
         fprintf(stderr, "cxpr_model_codegen: failed to resolve model imports\n");
         goto cleanup;
     }
-    model = cxpr_parse_model_source(combined_source, &err);
+    model = cxpr_model_parse(combined_source, &err);
     if (!model) {
         fprintf(stderr, "cxpr_model_codegen: parse failed: %s\n", err.message);
         goto cleanup;
