@@ -14,18 +14,22 @@
 extern "C" {
 #endif
 
+#define CXPR_IR_VIEW_API_VERSION 1u
+
 /**
  * @brief Stable public opcode tags for inspecting a compiled program.
  *
  * These values intentionally do not expose cxpr's internal IR structs. The
  * opcode sequence is a borrowed read-only view valid for the lifetime of the
- * `cxpr_program` it came from.
+ * `cxpr_program` it came from. Opcode values are an inspection API, not a
+ * serialized bytecode format; persist source or generated C instead.
  */
 typedef enum {
     CXPR_IR_VIEW_OP_UNKNOWN = 0,
     CXPR_IR_VIEW_OP_PUSH_CONST,
     CXPR_IR_VIEW_OP_PUSH_BOOL,
     CXPR_IR_VIEW_OP_PUSH_STRING,
+    CXPR_IR_VIEW_OP_BUILD_ARRAY,
     CXPR_IR_VIEW_OP_LOAD_LOCAL,
     CXPR_IR_VIEW_OP_LOAD_LOCAL_SQUARE,
     CXPR_IR_VIEW_OP_LOAD_VAR,
@@ -99,7 +103,7 @@ typedef struct {
     const char* func_name;  /**< Registered function/producer name for call ops. */
     double value;           /**< PUSH_CONST or PUSH_BOOL payload. */
     size_t index;           /**< LOAD_LOCAL or jump target operand. */
-    size_t arg_count;       /**< Function/producer argument count for call ops. */
+    size_t arg_count;       /**< Function/producer argument count or array element count. */
     unsigned long hash;     /**< Cached lookup hash for load ops. */
     const double* number_args; /**< Constant numeric call args, when available. */
     size_t number_arg_count;

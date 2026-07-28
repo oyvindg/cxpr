@@ -47,6 +47,10 @@ int main(void) {
     assert(!cxpr_generated_model_descriptor_abi_valid(&descriptor));
 
     descriptor = valid_descriptor();
+    descriptor.param_count = CXPR_GENERATED_MODEL_MAX_PARAMS + 1u;
+    assert(!cxpr_generated_model_descriptor_abi_valid(&descriptor));
+
+    descriptor = valid_descriptor();
     descriptor.tick = NULL;
     assert(!cxpr_generated_model_descriptor_abi_valid(&descriptor));
     assert(!cxpr_generated_model_descriptor_abi_valid(NULL));

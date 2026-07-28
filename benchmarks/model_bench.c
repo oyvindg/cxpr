@@ -95,16 +95,16 @@ static double host_cross_below4(const double* args, size_t argc, void* userdata)
     return args[2] >= args[3] && args[0] < args[1] ? 1.0 : 0.0;
 }
 
-static void register_host_cxta_signals(cxpr_registry* reg) {
+static void register_host_signal_helpers(cxpr_registry* reg) {
     cxpr_registry_add_numeric(reg, "above", host_above, 2, 2, NULL, NULL);
     cxpr_registry_add_numeric(reg, "score", host_score, 3, 3, NULL, NULL);
     cxpr_registry_add_numeric(reg, "cross_above4", host_cross_above4, 4, 4, NULL, NULL);
     cxpr_registry_add_numeric(reg, "cross_below4", host_cross_below4, 4, 4, NULL, NULL);
 }
 
-static const char* cxta_signal_model_source(void) {
+static const char* signal_helper_model_source(void) {
     return
-        "model cxta_signal_bench\n"
+        "model signal_helper_bench\n"
         "in { value, from, to, cur_left, cur_right, prev_left, prev_right }\n"
         "fn above(left, right) = left > right\n"
         "fn score(value, from, to) =\n"
@@ -261,7 +261,7 @@ static double time_model_eval(size_t iterations) {
     return (double)(now_ns() - start) / (double)iterations;
 }
 
-static double time_host_registered_cxta_signal_eval(size_t iterations) {
+static double time_host_registered_signal_helper_eval(size_t iterations) {
     cxpr_error err = {0};
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_evaluator* eval;
@@ -270,7 +270,7 @@ static double time_host_registered_cxta_signal_eval(size_t iterations) {
     double total = 0.0;
 
     if (!reg) abort();
-    register_host_cxta_signals(reg);
+    register_host_signal_helpers(reg);
     eval = cxpr_evaluator_new(reg);
     ctx = cxpr_context_new();
     if (!eval || !ctx) abort();
@@ -280,7 +280,7 @@ static double time_host_registered_cxta_signal_eval(size_t iterations) {
         !cxpr_expression_add(eval, "cross_down", "cross_below4(cur_left, cur_right, prev_left, prev_right)", &err) ||
         !cxpr_expression_add(eval, "signal", "above_signal > 0 and score_value >= 0.5 and (cross_up > 0 or not (cross_down > 0))", &err) ||
         !cxpr_evaluator_compile(eval, &err)) {
-        fprintf(stderr, "host cxta signal eval setup failed: %s\n", err.message);
+        fprintf(stderr, "host signal helper eval setup failed: %s\n", err.message);
         abort();
     }
 
@@ -296,7 +296,7 @@ static double time_host_registered_cxta_signal_eval(size_t iterations) {
         cxpr_context_set(ctx, "prev_right", 2.0);
         cxpr_evaluator_eval(eval, ctx, &err);
         if (err.code != CXPR_OK) {
-            fprintf(stderr, "host cxta signal eval failed: %s\n", err.message);
+            fprintf(stderr, "host signal helper eval failed: %s\n", err.message);
             abort();
         }
         total += cxpr_expression_get_bool(eval, "signal", &found) ? 1.0 : 0.0;
@@ -310,22 +310,22 @@ static double time_host_registered_cxta_signal_eval(size_t iterations) {
     return (double)(now_ns() - start) / (double)iterations;
 }
 
-static double time_model_cxta_signal_eval(size_t iterations) {
+static double time_model_signal_helper_eval(size_t iterations) {
     cxpr_error err = {0};
-    cxpr_model* model = cxpr_parse_model_source(cxta_signal_model_source(), &err);
+    cxpr_model* model = cxpr_parse_model_source(signal_helper_model_source(), &err);
     cxpr_model_program* program;
     cxpr_context* ctx;
     long long start;
     double total = 0.0;
 
     if (!model) {
-        fprintf(stderr, "model cxta signal parse failed: %s\n", err.message);
+        fprintf(stderr, "model signal helper parse failed: %s\n", err.message);
         abort();
     }
     program = cxpr_compile_model(model, NULL, &err);
     ctx = cxpr_context_new();
     if (!program || !ctx) {
-        fprintf(stderr, "model cxta signal setup failed: %s\n", err.message);
+        fprintf(stderr, "model signal helper setup failed: %s\n", err.message);
         abort();
     }
 
@@ -340,7 +340,7 @@ static double time_model_cxta_signal_eval(size_t iterations) {
         cxpr_context_set(ctx, "prev_left", (i & 1u) ? 3.0 : 1.0);
         cxpr_context_set(ctx, "prev_right", 2.0);
         if (!cxpr_eval_model_program(program, ctx, NULL, &err)) {
-            fprintf(stderr, "model cxta signal eval failed: %s\n", err.message);
+            fprintf(stderr, "model signal helper eval failed: %s\n", err.message);
             abort();
         }
         total += cxpr_context_get_bool(ctx, "signal", &found) ? 1.0 : 0.0;
@@ -847,8 +847,8 @@ int main(void) {
     const size_t eval_iters = 200000u;
     const double host_eval = time_host_registered_eval(eval_iters);
     const double model_eval = time_model_eval(eval_iters);
-    const double host_cxta_signal_eval = time_host_registered_cxta_signal_eval(eval_iters);
-    const double model_cxta_signal_eval = time_model_cxta_signal_eval(eval_iters);
+    const double host_signal_helper_eval = time_host_registered_signal_helper_eval(eval_iters);
+    const double model_signal_helper_eval = time_model_signal_helper_eval(eval_iters);
     const double strategy_fixture_eval = time_strategy_fixture_eval(eval_iters);
     const double rsi_state_fixture_tick = time_rsi_state_strategy_fixture_tick(eval_iters);
     const double rsi_state_fixture_c_tick = time_rsi_state_strategy_fixture_c_tick(eval_iters);
@@ -867,9 +867,9 @@ int main(void) {
     printf("eval  host_registered_fn: %.2f ns/op\n", host_eval);
     printf("eval  cxpr_model_fn:      %.2f ns/op (%.2fx host)\n",
            model_eval, model_eval / host_eval);
-    printf("eval  host_cxta_signals:  %.2f ns/op\n", host_cxta_signal_eval);
-    printf("eval  cxpr_cxta_signals:  %.2f ns/op (%.2fx host)\n",
-           model_cxta_signal_eval, model_cxta_signal_eval / host_cxta_signal_eval);
+    printf("eval  host_signal_helpers: %.2f ns/op\n", host_signal_helper_eval);
+    printf("eval  cxpr_signal_helpers: %.2f ns/op (%.2fx host)\n",
+           model_signal_helper_eval, model_signal_helper_eval / host_signal_helper_eval);
     printf("eval  cxpr_strategy_fixture: %.2f ns/op\n", strategy_fixture_eval);
     printf("tick  cxpr_rsi_state_fixture: %.2f ns/op\n", rsi_state_fixture_tick);
     printf("tick  cxpr_rsi_state_c:       %.2f ns/op (%.2fx fused IR)\n",

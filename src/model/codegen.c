@@ -316,8 +316,9 @@ static const cxpr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_pr
     }
 }
 
-static size_t cxpr_model_c_child_base_inline(const cxpr_model_program* program,
-                                             size_t child_index) {
+static size_t CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_c_child_base_inline(const cxpr_model_program* program,
+                               size_t child_index) {
     size_t base;
     if (!program || child_index >= program->child_count) return (size_t)-1;
     base = program->state_default_count;
@@ -635,6 +636,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
                 .api_version = CXPR_C_TARGET_API_VERSION,
                 .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
                 .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
                 .userdata = &target_data,
             };
             if (source_arg) {
@@ -668,6 +670,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
             .api_version = CXPR_C_TARGET_API_VERSION,
             .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
             .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+            .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
             .userdata = &target_data,
         };
         for (size_t i = 0u; i < child->constant_count; ++i) {
@@ -718,6 +721,7 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_program* progr
         .api_version = CXPR_C_TARGET_API_VERSION,
         .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
         .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+        .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = &target_data,
     };
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
@@ -801,8 +805,9 @@ static size_t cxpr_model_c_state_slot_for_fused_slot(const cxpr_model_program* p
     return cxpr_model_c_state_slot_for_name(program, program->fused_slot_names[fused_slot]);
 }
 
-static size_t cxpr_model_c_history_base(const cxpr_model_program* program,
-                                        size_t history_index) {
+static size_t CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_c_history_base(const cxpr_model_program* program,
+                          size_t history_index) {
     (void)program;
     (void)history_index;
     return (size_t)-1;
@@ -1362,6 +1367,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
             .api_version = CXPR_C_TARGET_API_VERSION,
             .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
             .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+            .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
             .userdata = target,
         };
         if (ast->data.field_access.base) {
@@ -1401,6 +1407,7 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_ast* ast,
                     .api_version = CXPR_C_TARGET_API_VERSION,
                     .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
                     .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                    .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
                     .userdata = target,
                 };
                 char* expr = cxpr_model_ast_field_expr_to_c(
@@ -1562,6 +1569,7 @@ static bool cxpr_model_c_window_period_capacity(const cxpr_model_program* progra
                                                 cxpr_error* err) {
     double raw = 0.0;
     long period;
+    (void)err;
     if (!period_ast || !out_capacity) return false;
     if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
         const char* name = cxpr_ast_variable_name(period_ast);
@@ -2137,22 +2145,19 @@ static bool cxpr_model_c_emit_runtime_state_typedef(
     cxpr_model_c_puts(b, "    uint8_t init;\n");
     for (size_t i = 0u; i < program->state_default_count; ++i) {
         char* field_name = cxpr_model_c_prefixed_name("state_", program->state_defaults[i].name);
-        char* pending_name = cxpr_model_c_prefixed_name("pending_", program->state_defaults[i].name);
-        char* has_pending_name = cxpr_model_c_prefixed_name(
-            "has_pending_", program->state_defaults[i].name);
-        if (!field_name || !pending_name || !has_pending_name) {
+        if (!field_name) {
             free(field_name);
-            free(pending_name);
-            free(has_pending_name);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
-        cxpr_model_c_printf(b, "    double %s;\n", field_name);
-        cxpr_model_c_printf(b, "    double %s;\n", pending_name);
-        cxpr_model_c_printf(b, "    uint8_t %s;\n", has_pending_name);
+        cxpr_model_c_printf(
+            b,
+            "    %s %s;\n",
+            program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_BOOL
+                ? "uint8_t"
+                : "double",
+            field_name);
         free(field_name);
-        free(pending_name);
-        free(has_pending_name);
     }
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         size_t capacity;
@@ -2167,21 +2172,6 @@ static bool cxpr_model_c_emit_runtime_state_typedef(
             cxpr_model_c_printf(b, "    cxpr_window%zu window_%zu;\n",
                                 node->slot_count - 4u, i);
         }
-    }
-    for (size_t i = 0u; i < program->child_count; ++i) {
-        char* child_tick_name = cxpr_model_c_child_tick_name(safe_name, i);
-        if (!child_tick_name) {
-            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-            return false;
-        }
-        cxpr_model_c_printf(b, "    %s_state child_%zu_state;\n", child_tick_name, i);
-        cxpr_model_c_printf(b, "    uint8_t child_%zu_initialized;\n", i);
-        cxpr_model_c_printf(b, "    double child_%zu_outputs[%zu];\n",
-                            i,
-                            program->children[i].program && program->children[i].program->output_count
-                                ? program->children[i].program->output_count
-                                : 1u);
-        free(child_tick_name);
     }
     for (size_t i = 0u; i < child_call_count; ++i) {
         size_t child_index = child_call_child_indices ? child_call_child_indices[i] : (size_t)-1;
@@ -2233,17 +2223,30 @@ static bool cxpr_model_c_emit_state_typedefs(cxpr_model_c_buf* b,
             }
         }
         if (already_emitted) continue;
-        cxpr_model_c_printf(
-            b,
-            "#ifndef CXPR_HISTORY%zu_DEFINED\n"
-            "#define CXPR_HISTORY%zu_DEFINED\n"
-            "typedef struct { %s next; double values[%zu]; } cxpr_history%zu;\n"
-            "#endif\n",
-            capacity,
-            capacity,
-            counter_type,
-            capacity,
-            capacity);
+        if (cxpr_model_c_history_use_shift(depth)) {
+            cxpr_model_c_printf(
+                b,
+                "#ifndef CXPR_HISTORY%zu_DEFINED\n"
+                "#define CXPR_HISTORY%zu_DEFINED\n"
+                "typedef struct { double values[%zu]; } cxpr_history%zu;\n"
+                "#endif\n",
+                capacity,
+                capacity,
+                capacity,
+                capacity);
+        } else {
+            cxpr_model_c_printf(
+                b,
+                "#ifndef CXPR_HISTORY%zu_DEFINED\n"
+                "#define CXPR_HISTORY%zu_DEFINED\n"
+                "typedef struct { %s next; double values[%zu]; } cxpr_history%zu;\n"
+                "#endif\n",
+                capacity,
+                capacity,
+                counter_type,
+                capacity,
+                capacity);
+        }
     }
     if (window_plan) {
         for (size_t i = 0u; i < window_plan->node_count; ++i) {
@@ -2319,11 +2322,12 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
         if (depth == 0u) continue;
         cxpr_model_c_printf(
             b,
-            "    for (size_t _cx_init_i = 0u; _cx_init_i < %zuu; ++_cx_init_i) _cx_state->history_%zu.values[_cx_init_i] = NAN;\n"
-            "    _cx_state->history_%zu.next = 0u;\n",
+            "    for (size_t _cx_init_i = 0u; _cx_init_i < %zuu; ++_cx_init_i) _cx_state->history_%zu.values[_cx_init_i] = NAN;\n",
             capacity,
-            i,
             i);
+        if (!cxpr_model_c_history_use_shift(depth)) {
+            cxpr_model_c_printf(b, "    _cx_state->history_%zu.next = 0u;\n", i);
+        }
     }
     if (window_plan) {
         for (size_t i = 0u; i < window_plan->node_count; ++i) {
@@ -2347,14 +2351,24 @@ static bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
         }
     }
     for (size_t i = 0u; i < program->state_default_count; ++i) {
-        char* has_pending_name = cxpr_model_c_prefixed_name(
-            "has_pending_", program->state_defaults[i].name);
-        if (!has_pending_name) {
+        char* field_name = cxpr_model_c_prefixed_name(
+            "state_", program->state_defaults[i].name);
+        if (!field_name) {
+            free(field_name);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
-        cxpr_model_c_printf(b, "    _cx_state->%s = 0u;\n", has_pending_name);
-        free(has_pending_name);
+        cxpr_model_c_printf(
+            b,
+            "    _cx_state->%s = %s;\n",
+            field_name,
+            program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_BOOL
+                ? (cxpr_ast_type(program->state_defaults[i].ast) == CXPR_NODE_BOOL &&
+                           cxpr_ast_bool_value(program->state_defaults[i].ast)
+                       ? "1u"
+                       : "0u")
+                : "0.0");
+        free(field_name);
     }
     cxpr_model_c_puts(b, "    _cx_state->init = 1u;\n");
     cxpr_model_c_puts(b, "}\n\n");
@@ -3093,6 +3107,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
         .api_version = CXPR_C_TARGET_API_VERSION,
         .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
         .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+        .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = userdata,
     };
     cxpr_model_c_buf b = {0};
@@ -3217,6 +3232,7 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_ast* ast,
                     .api_version = CXPR_C_TARGET_API_VERSION,
                     .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
                     .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                    .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
                     .userdata = &inline_data,
                 };
                 char* expr;
@@ -3327,6 +3343,7 @@ static char* cxpr_model_ast_expr_to_c(const cxpr_model_program* program,
         .api_version = CXPR_C_TARGET_API_VERSION,
         .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
         .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+        .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = &userdata,
     };
     return cxpr_ast_to_c(ast, &target, err);
@@ -3550,6 +3567,7 @@ static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_program* program,
     cxpr_c_target target = {
         .api_version = CXPR_C_TARGET_API_VERSION,
         .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+        .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = &userdata,
     };
     if (!entry || !entry->defined_body) return NULL;
@@ -3675,15 +3693,37 @@ static bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_program* pr
     return true;
 }
 
-static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* program,
-                                                  const char* function_prefix,
-                                                  cxpr_model_c_buf* b,
-                                                  cxpr_error* err) {
+static bool cxpr_model_c_child_is_used(const size_t* child_call_child_indices,
+                                       size_t child_call_count,
+                                       size_t child_index) {
+    for (size_t i = 0u; i < child_call_count; ++i) {
+        if (child_call_child_indices[i] == child_index) return true;
+    }
+    return false;
+}
+
+static const char* cxpr_model_c_common_helpers_source(void) {
+    return "#include <cxpr/model/runtime.h>\n\n"
+           "#include <stdint.h>\n\n";
+}
+
+static bool cxpr_model_c_emit_child_model_helpers(
+    const cxpr_model_program* program,
+    const char* function_prefix,
+    const size_t* child_call_child_indices,
+    size_t child_call_count,
+    cxpr_model_c_buf* b,
+    cxpr_error* err) {
     if (!program || !function_prefix || !b) return true;
     for (size_t i = 0u; i < program->child_count; ++i) {
         const cxpr_model_program* child = program->children[i].program;
         char* tick_name;
         char* tick_source;
+        const char* nested_source;
+        if (!cxpr_model_c_child_is_used(
+                child_call_child_indices, child_call_count, i)) {
+            continue;
+        }
         if (!child) continue;
         tick_name = cxpr_model_c_child_tick_name(function_prefix, i);
         if (!tick_name) {
@@ -3698,7 +3738,13 @@ static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* prog
             free(tick_name);
             return false;
         }
-        cxpr_model_c_puts(b, tick_source);
+        nested_source = tick_source;
+        if (strncmp(nested_source,
+                    cxpr_model_c_common_helpers_source(),
+                    strlen(cxpr_model_c_common_helpers_source())) == 0) {
+            nested_source += strlen(cxpr_model_c_common_helpers_source());
+        }
+        cxpr_model_c_puts(b, nested_source);
         cxpr_model_c_puts(b, "\n");
         free(tick_source);
 
@@ -3780,16 +3826,7 @@ static bool cxpr_model_c_emit_child_model_helpers(const cxpr_model_program* prog
 }
 
 static void cxpr_model_c_emit_common_helpers(cxpr_model_c_buf* b) {
-    cxpr_model_c_puts(b,
-                      "#include <cxpr/model/runtime.h>\n\n"
-                      "#include <stdint.h>\n\n"
-                      "#ifndef CXPR_UNLIKELY\n"
-                      "#if defined(__GNUC__) || defined(__clang__)\n"
-                      "#define CXPR_UNLIKELY(x) __builtin_expect(!!(x), 0)\n"
-                      "#else\n"
-                      "#define CXPR_UNLIKELY(x) (x)\n"
-                      "#endif\n"
-                      "#endif\n\n");
+    cxpr_model_c_puts(b, cxpr_model_c_common_helpers_source());
 }
 
 bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program,
@@ -3899,7 +3936,15 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         goto fail;
     }
     cxpr_model_c_printf(&b, "typedef struct %s_state %s_state;\n\n", safe_name, safe_name);
-    if (!cxpr_model_c_emit_child_model_helpers(program, function_name, &b, err)) goto fail;
+    if (!cxpr_model_c_emit_child_model_helpers(
+            program,
+            function_name,
+            ast_target_data.child_call_child_indices,
+            ast_target_data.child_call_count,
+            &b,
+            err)) {
+        goto fail;
+    }
     if (!ast_target_data.inline_defined_functions &&
         !cxpr_model_c_emit_defined_functions_ast(program, function_name, &b, err)) goto fail;
     if (!cxpr_model_c_emit_state_typedefs(
@@ -3939,28 +3984,6 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                 safe_name);
         }
     }
-    for (size_t i = 0u; i < program->state_default_count; ++i) {
-        char* field_name = cxpr_model_c_prefixed_name("state_", program->state_defaults[i].name);
-        char* pending_name = cxpr_model_c_prefixed_name("pending_", program->state_defaults[i].name);
-        char* has_pending_name = cxpr_model_c_prefixed_name(
-            "has_pending_", program->state_defaults[i].name);
-        if (!field_name || !pending_name || !has_pending_name) {
-            free(field_name);
-            free(pending_name);
-            free(has_pending_name);
-            goto oom;
-        }
-        cxpr_model_c_printf(
-            &b,
-            "    if (_cx_state->%s) { _cx_state->%s = _cx_state->%s; _cx_state->%s = 0u; }\n",
-            has_pending_name,
-            field_name,
-            pending_name,
-            has_pending_name);
-        free(field_name);
-        free(pending_name);
-        free(has_pending_name);
-    }
     for (size_t i = 0u; i < program->fused_input_count; ++i) {
         char* name = cxpr_model_c_prefixed_name("_cx_input_", program->fused_inputs[i].name);
         if (!name) goto oom;
@@ -3970,22 +3993,32 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     if (!literal_param_values || literal_param_count < program->constant_count) {
         for (size_t i = 0u; i < program->constant_count; ++i) {
             const cxpr_model_compiled_binding* param = &program->constants[i];
+            char min_raw[64];
+            char max_raw[64];
+            cxpr_model_c_format_double(min_raw, sizeof(min_raw), param->min_value);
+            cxpr_model_c_format_double(max_raw, sizeof(max_raw), param->max_value);
             if (param->has_min_value && param->has_max_value) {
                 cxpr_model_c_printf(
                     &b,
-                    "    const double _cx_param_%zu = fmax(%.17g, fmin(%.17g, _cx_params[%zu]));\n",
-                    i, param->min_value, param->max_value, i);
+                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu]) ? "
+                    "fmax(%s, fmin(%s, _cx_params[%zu])) : _cx_params[%zu];\n",
+                    i, i, min_raw, max_raw, i, i);
             } else if (param->has_min_value) {
                 cxpr_model_c_printf(
-                    &b, "    const double _cx_param_%zu = fmax(%.17g, _cx_params[%zu]);\n",
-                    i, param->min_value, i);
+                    &b,
+                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu]) ? "
+                    "fmax(%s, _cx_params[%zu]) : _cx_params[%zu];\n",
+                    i, i, min_raw, i, i);
             } else if (param->has_max_value) {
                 cxpr_model_c_printf(
-                    &b, "    const double _cx_param_%zu = fmin(%.17g, _cx_params[%zu]);\n",
-                    i, param->max_value, i);
+                    &b,
+                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu]) ? "
+                    "fmin(%s, _cx_params[%zu]) : _cx_params[%zu];\n",
+                    i, i, max_raw, i, i);
             } else {
                 cxpr_model_c_printf(
-                    &b, "    const double _cx_param_%zu = _cx_params[%zu];\n", i, i);
+                    &b,
+                    "    const double _cx_param_%zu = _cx_params[%zu];\n", i, i);
             }
         }
     }
@@ -4010,11 +4043,62 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                                 i, i);
         }
     }
-    for (size_t i = 0u; i < program->child_count; ++i) {
-        cxpr_model_c_printf(&b, "    _cx_state->child_%zu_initialized = 0u;\n", i);
-    }
     for (size_t i = 0u; i < ast_target_data.child_call_count; ++i) {
         cxpr_model_c_printf(&b, "    _cx_state->child_call_%zu_initialized = 0u;\n", i);
+    }
+    if (program->invalid_input_guard) {
+        size_t guard_index = (size_t)-1;
+        char* guard_expr;
+        char* guard_name;
+        size_t emitted_output_count =
+            output_indices ? selected_output_count : program->fused_output_count;
+        for (size_t i = 0u; i < program->binding_count; ++i) {
+            if (program->bindings[i].kind != CXPR_MODEL_BINDING_STATE_UPDATE &&
+                cxpr_model_names_match(
+                    program->bindings[i].name, program->invalid_input_guard)) {
+                guard_index = i;
+                break;
+            }
+        }
+        if (guard_index == (size_t)-1) {
+            cxpr_model_set_error(
+                err, CXPR_ERR_SYNTAX,
+                "Model invalid_input_guard references unknown binding", 0, 0);
+            goto fail;
+        }
+        guard_expr = cxpr_ast_to_c(
+            program->bindings[guard_index].ast, &ast_target, err);
+        guard_name = cxpr_model_c_safe_name(program->invalid_input_guard);
+        if (!guard_expr || !guard_name) {
+            free(guard_expr);
+            free(guard_name);
+            goto fail;
+        }
+        cxpr_model_c_emit_source_comment(
+            &b, ".cxpr guard", program->bindings[guard_index].source);
+        cxpr_model_c_printf(&b, "    const bool %s =\n", guard_name);
+        for (size_t i = 0u; i < program->fused_input_count; ++i) {
+            cxpr_model_c_printf(
+                &b, "        isfinite(_cx_input_%zu) &&\n", i);
+        }
+        for (size_t i = 0u; i < program->constant_count; ++i) {
+            cxpr_model_c_printf(
+                &b, "        isfinite(_cx_params[%zu]) &&\n", i);
+        }
+        if (cxpr_ast_type(program->bindings[guard_index].ast) == CXPR_NODE_BOOL &&
+            cxpr_ast_bool_value(program->bindings[guard_index].ast)) {
+            cxpr_model_c_puts(&b, "        true;\n");
+        } else {
+            cxpr_model_c_printf(&b, "        ((%s) != 0);\n", guard_expr);
+        }
+        cxpr_model_c_printf(&b, "    if (CXPR_UNLIKELY(!%s)) {\n", guard_name);
+        for (size_t i = 0u; i < emitted_output_count; ++i) {
+            cxpr_model_c_printf(&b, "        _cx_outputs[%zu] = NAN;\n", i);
+        }
+        cxpr_model_c_puts(&b, "        return;\n    }\n");
+        skip_bindings[guard_index] = true;
+        free(guard_expr);
+        free(guard_name);
     }
     for (size_t i = 0u; i < program->binding_count; ++i) {
         char* expr;
@@ -4038,6 +4122,21 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             owns_name = true;
         }
         if (!name) goto oom;
+        if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE &&
+            cxpr_ast_type(program->bindings[i].ast) == CXPR_NODE_IDENTIFIER) {
+            size_t slot = cxpr_model_fused_slot_find(
+                program->fused_slot_names,
+                program->fused_slot_count,
+                program->bindings[i].name);
+            expr = cxpr_ast_to_c(program->bindings[i].ast, &ast_target, err);
+            if (!expr || slot == (size_t)-1) {
+                free(expr);
+                goto fail;
+            }
+            free(state_next_names[slot]);
+            state_next_names[slot] = expr;
+            continue;
+        }
         if (program->bindings[i].kind != CXPR_MODEL_BINDING_STATE_UPDATE) {
             const char* common = cxpr_model_c_find_common_binding_expr(
                 program, i, needed_bindings, skip_bindings, cse_names);
@@ -4048,7 +4147,12 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
                     goto oom;
                 }
                 cxpr_model_c_emit_source_comment(&b, ".cxpr", program->bindings[i].source);
-                cxpr_model_c_printf(&b, "    const double %s = %s;\n", name, common);
+                cxpr_model_c_printf(
+                    &b, "    const %s %s = %s;\n",
+                    program->bindings[i].result_kind == CXPR_MODEL_RESULT_BOOL
+                        ? "bool"
+                        : "double",
+                    name, common);
                 if (owns_name) free(name);
                 continue;
             }
@@ -4137,7 +4241,12 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
             goto fail;
         }
         cxpr_model_c_emit_source_comment(&b, ".cxpr", program->bindings[i].source);
-        cxpr_model_c_printf(&b, "    const double %s = %s;\n", name, expr);
+        cxpr_model_c_printf(
+            &b, "    const %s %s = %s;\n",
+            program->bindings[i].result_kind == CXPR_MODEL_RESULT_BOOL
+                ? "bool"
+                : "double",
+            name, expr);
         free(expr);
         cse_names[i] = cxpr_strdup(name);
         if (!cse_names[i]) {
@@ -4148,23 +4257,14 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
     }
     for (size_t i = 0u; i < program->fused_commit_count; ++i) {
         char* next_name = state_next_names[program->fused_commits[i].state_slot];
-        char* pending_name = cxpr_model_c_prefixed_name(
-            "pending_", program->fused_slot_names[program->fused_commits[i].state_slot]);
-        char* has_pending_name = cxpr_model_c_prefixed_name(
-            "has_pending_", program->fused_slot_names[program->fused_commits[i].state_slot]);
         char* field_name = cxpr_model_c_prefixed_name(
             "state_", program->fused_slot_names[program->fused_commits[i].state_slot]);
         if (!next_name) goto oom;
-        if (!pending_name || !has_pending_name || !field_name) {
-            free(pending_name);
-            free(has_pending_name);
+        if (!field_name) {
             free(field_name);
             goto oom;
         }
-        cxpr_model_c_printf(&b, "    _cx_state->%s = %s; _cx_state->%s = 1u;\n",
-                            pending_name, next_name, has_pending_name);
-        free(pending_name);
-        free(has_pending_name);
+        cxpr_model_c_printf(&b, "    _cx_state->%s = %s;\n", field_name, next_name);
         free(field_name);
     }
     for (size_t out_i = 0u; out_i < (output_indices ? selected_output_count : program->fused_output_count); ++out_i) {
@@ -4175,26 +4275,15 @@ bool cxpr_model_program_to_c_tick_function_ast(const cxpr_model_program* program
         name = program->fused_outputs[i].name;
         if (cxpr_model_c_symbol_is_state(program, name, &state_slot)) {
             char* field_name = cxpr_model_c_prefixed_name("state_", name);
-            char* pending_name = cxpr_model_c_prefixed_name("pending_", name);
-            char* has_pending_name = cxpr_model_c_prefixed_name("has_pending_", name);
             (void)state_slot;
-            if (!field_name || !pending_name || !has_pending_name) {
+            if (!field_name) {
                 free(field_name);
-                free(pending_name);
-                free(has_pending_name);
                 goto oom;
             }
             cxpr_model_c_emit_source_comment(&b, ".cxpr", cxpr_model_c_source_for_name(program, name));
-            cxpr_model_c_printf(
-                &b,
-                "    _cx_outputs[%zu] = _cx_state->%s ? _cx_state->%s : _cx_state->%s;\n",
-                out_i,
-                has_pending_name,
-                pending_name,
-                field_name);
+            cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = _cx_state->%s;\n",
+                                out_i, field_name);
             free(field_name);
-            free(pending_name);
-            free(has_pending_name);
         } else {
             char* local_name = cxpr_model_c_safe_name(name);
             if (!local_name) goto oom;

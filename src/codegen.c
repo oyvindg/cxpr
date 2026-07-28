@@ -60,7 +60,13 @@ static void cxpr_cg_format_double(char* out, size_t out_size, double value) {
     if (isfinite(value) && floor(value) == value) {
         snprintf(out, out_size, "%.1f", value);
     } else {
-        snprintf(out, out_size, "%.17g", value);
+        char shortest[64];
+        snprintf(shortest, sizeof(shortest), "%.15g", value);
+        if (strtod(shortest, NULL) == value) {
+            snprintf(out, out_size, "%.*s", (int)(out_size ? out_size - 1u : 0u), shortest);
+        } else {
+            snprintf(out, out_size, "%.17g", value);
+        }
     }
 }
 
@@ -242,6 +248,10 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_ast* ast, unsigned lookback_of
     if (strcmp(name, "repeat") == 0) {
         return cxpr_cg_emit_repeat_call(ast, lookback_offset, b, target, err);
     }
+    if (strcmp(name, "nan") == 0 && argc == 0u) {
+        cxpr_cg_puts(b, "NAN");
+        return 1;
+    }
 
     /* min/max: variadic -> nested fmin/fmax (right-folded). */
     if ((strcmp(name, "min") == 0 || strcmp(name, "max") == 0) && argc >= 1) {
@@ -392,8 +402,10 @@ static int cxpr_cg_emit_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
                 free(dynamic);
                 return !b->oom;
             }
-            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
-                               "C codegen requires constant integer lookback indexes");
+            return cxpr_cg_err(
+                err, CXPR_ERR_SYNTAX,
+                !target ? "C codegen dynamic lookback has no target"
+                        : "C codegen target does not support dynamic lookback indexes");
         }
         if (!cxpr_lookback_add_unsigned(
                 lookback_offset, offset, &next_offset, err, "C codegen lookback offset overflow")) return 0;

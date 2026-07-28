@@ -1,33 +1,16 @@
+/**
+ * @file ast/document/parser.c
+ * @brief Block-aware document AST parser and lifecycle.
+ */
+
 #include <cxpr/ast/document.h>
 
+#include "ast/document/internal.h"
 #include "core.h"
 
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct {
-    cxpr_document_ast_node** items;
-    size_t count;
-    size_t capacity;
-} cxpr_document_ast_node_list;
-
-struct cxpr_document_ast_node {
-    cxpr_document_ast_kind kind;
-    cxpr_source_span span;
-    char* name;
-    char* value;
-    char* text;
-    cxpr_ast* expression;
-    cxpr_document_ast_node_list children;
-};
-
-struct cxpr_document_ast {
-    char* source_name;
-    char* source_text;
-    unsigned extensions;
-    cxpr_document_ast_node* root;
-};
 
 typedef struct {
     const char* source;
@@ -1429,75 +1412,4 @@ void cxpr_document_ast_free(cxpr_document_ast* ast) {
     free(ast->source_name);
     free(ast->source_text);
     free(ast);
-}
-
-const cxpr_document_ast_node* cxpr_document_ast_root(const cxpr_document_ast* ast) {
-    return ast ? ast->root : NULL;
-}
-
-const char* cxpr_document_ast_source_name(const cxpr_document_ast* ast) {
-    return ast ? ast->source_name : NULL;
-}
-
-const char* cxpr_document_ast_source_text(const cxpr_document_ast* ast) {
-    return ast ? ast->source_text : NULL;
-}
-
-unsigned cxpr_document_ast_extensions(const cxpr_document_ast* ast) {
-    return ast ? ast->extensions : 0u;
-}
-
-cxpr_document_ast_kind cxpr_document_ast_node_kind(const cxpr_document_ast_node* node) {
-    return node ? node->kind : CXPR_DOCUMENT_AST_FILE;
-}
-
-cxpr_source_span cxpr_document_ast_node_span(const cxpr_document_ast_node* node) {
-    cxpr_source_span empty = {{0u, 0u, 0u}, {0u, 0u, 0u}};
-    return node ? node->span : empty;
-}
-
-const char* cxpr_document_ast_node_name(const cxpr_document_ast_node* node) {
-    return node ? node->name : NULL;
-}
-
-const char* cxpr_document_ast_node_value(const cxpr_document_ast_node* node) {
-    return node ? node->value : NULL;
-}
-
-const char* cxpr_document_ast_node_text(const cxpr_document_ast_node* node) {
-    return node ? node->text : NULL;
-}
-
-const cxpr_ast* cxpr_document_ast_node_expression(const cxpr_document_ast_node* node) {
-    return node ? node->expression : NULL;
-}
-
-size_t cxpr_document_ast_child_count(const cxpr_document_ast_node* node) {
-    return node ? node->children.count : 0u;
-}
-
-const cxpr_document_ast_node* cxpr_document_ast_child(const cxpr_document_ast_node* node,
-                                                      size_t index) {
-    if (!node || index >= node->children.count) return NULL;
-    return node->children.items[index];
-}
-
-static cxpr_visit_control cxpr_document_ast_visit_node(const cxpr_document_ast_node* node,
-                                                       cxpr_document_ast_visit_fn fn,
-                                                       void* userdata) {
-    cxpr_visit_control control;
-    if (!node || !fn) return CXPR_VISIT_CONTINUE;
-    control = fn(node, userdata);
-    if (control == CXPR_VISIT_STOP || control == CXPR_VISIT_SKIP_CHILDREN) return control;
-    for (size_t i = 0u; i < node->children.count; ++i) {
-        control = cxpr_document_ast_visit_node(node->children.items[i], fn, userdata);
-        if (control == CXPR_VISIT_STOP) return control;
-    }
-    return CXPR_VISIT_CONTINUE;
-}
-
-cxpr_visit_control cxpr_document_ast_visit(const cxpr_document_ast* ast,
-                                           cxpr_document_ast_visit_fn fn,
-                                           void* userdata) {
-    return cxpr_document_ast_visit_node(ast ? ast->root : NULL, fn, userdata);
 }

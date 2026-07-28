@@ -58,7 +58,13 @@ void cxpr_model_c_format_double(char* out, size_t out_size, double value) {
     if (isfinite(value) && floor(value) == value) {
         snprintf(out, out_size, "%.1f", value);
     } else {
-        snprintf(out, out_size, "%.17g", value);
+        char shortest[64];
+        snprintf(shortest, sizeof(shortest), "%.15g", value);
+        if (strtod(shortest, NULL) == value) {
+            snprintf(out, out_size, "%s", shortest);
+        } else {
+            snprintf(out, out_size, "%.17g", value);
+        }
     }
 }
 

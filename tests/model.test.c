@@ -10,10 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef CXPR_TEST_WITH_CXTA
-#include <cxta/cxta.h>
-#endif
-
 #ifndef CXPR_TEST_SOURCE_DIR
 #define CXPR_TEST_SOURCE_DIR "."
 #endif
@@ -1294,7 +1290,8 @@ static void test_update_state_supports_block_local_temporaries(void) {
         assert(code != NULL);
         assert(strstr(code, "const double next ="));
         assert(strstr(code, "const double doubled ="));
-        assert(strstr(code, "_cx_next_r = doubled"));
+        assert(strstr(code, "_cx_state->state_r = doubled;"));
+        assert(!strstr(code, "_cx_next_r"));
         free(code);
         cxpr_model_program_free(program);
     }
@@ -2332,6 +2329,69 @@ static void test_model_c_common_subexpression_eliminates_duplicate_bindings(void
     printf("  ✓ test_model_c_common_subexpression_eliminates_duplicate_bindings\n");
 }
 
+static void test_model_c_init_explicitly_zeros_state_storage(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model state_init\n"
+        "in { source }\n"
+        "state {\n"
+        "    initialized = 0\n"
+        "    value = 0\n"
+        "    ready = false\n"
+        "}\n"
+        "initialized := 1\n"
+        "value := source\n"
+        "ready := true\n"
+        "out value\n");
+    cxpr_model_program* program =
+        cxpr_compile_model_with_options(model, NULL, &options, &err);
+    char* code;
+
+    assert(program != NULL);
+    code = cxpr_model_program_to_c_tick_function(
+        program, "static inline", "state_init_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "_cx_state->state_initialized = 0.0;") != NULL);
+    assert(strstr(code, "_cx_state->state_value = 0.0;") != NULL);
+    assert(strstr(code, "uint8_t state_ready;") != NULL);
+    assert(strstr(code, "_cx_state->state_ready = 0u;") != NULL);
+    assert(strstr(code, "pending_") == NULL);
+    assert(strstr(code, "has_pending_") == NULL);
+
+    free(code);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_c_init_explicitly_zeros_state_storage\n");
+}
+
+static void test_model_c_single_value_history_has_no_cursor(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model previous_value\n"
+        "in { source }\n"
+        "value = source[1]\n"
+        "out value\n");
+    cxpr_model_program* program = cxpr_compile_model(model, NULL, &err);
+    char* code;
+
+    assert(program != NULL);
+    code = cxpr_model_program_to_c_tick_function(
+        program, "static inline", "previous_value_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "typedef struct { double values[1]; } cxpr_history1;") != NULL);
+    assert(strstr(code, "history_0.next") == NULL);
+
+    free(code);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_c_single_value_history_has_no_cursor\n");
+}
+
 static void test_compile_imported_producer_infers_missing_child_inputs(void) {
     cxpr_error err = {0};
     cxpr_model* child = parse_model_ok(
@@ -2436,6 +2496,7 @@ static void test_imported_producer_anonymous_out_expands_child_outputs(void) {
 
 static void test_compile_imported_functions_are_namespaced(void) {
     cxpr_error err = {0};
+    char* code;
     cxpr_model* ema = parse_model_ok(
         "model ema\n"
         "fn alpha(period) = 2 / (max(1, period) + 1)\n"
@@ -2467,6 +2528,13 @@ static void test_compile_imported_functions_are_namespaced(void) {
                 err.message ? err.message : "(null)");
     }
     assert(parent_program != NULL);
+    code = cxpr_model_program_to_c_tick_function(
+        parent_program, "static inline", "macd_uses_ema_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "ema_step") != NULL);
+    assert(strstr(code, "__cxpr_import_dummy") == NULL);
+    assert(strstr(code, "child_0_") == NULL);
+    free(code);
     cxpr_model_program_free(parent_program);
     cxpr_model_free(parent);
 
@@ -2725,6 +2793,57 @@ static void test_imported_producer_explicit_call_params_hide_internal_params(voi
     cxpr_model_program_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_explicit_call_params_hide_internal_params\n");
+}
+
+static void test_imported_producer_implicit_market_inputs_precede_no_params(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model market_indicator\n"
+        "in {\n"
+        "    high,\n"
+        "    low,\n"
+        "    close\n"
+        "    $period = 14 { min = 1, max = 512 }\n"
+        "}\n"
+        "value = high + low + close + $period\n"
+        "out value\n");
+    cxpr_model_program* child_program = cxpr_compile_model(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_program* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    assert(child_program != NULL);
+    imports[0].name = "market_indicator";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "model market_parent\n"
+        "use market_indicator\n"
+        "in high, low, close\n"
+        "positional = market_indicator(5).value\n"
+        "named = market_indicator(period=7).value\n"
+        "value = positional + named\n"
+        "out value\n");
+    parent_program = cxpr_compile_model_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+    cxpr_context_set(ctx, "high", 12.0);
+    cxpr_context_set(ctx, "low", 8.0);
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_output_number(session, "value", &value));
+    assert(value == 72.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_program_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_program_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_implicit_market_inputs_precede_no_params\n");
 }
 
 static void test_imported_producer_repeated_calls_cache_same_args(void) {
@@ -3714,11 +3833,109 @@ static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     printf("  ✓ test_window_param_bounds_drive_capacity_and_session_clamp\n");
 }
 
-static void test_cxta_signal_compat_functions(void) {
+static void test_dynamic_lookback_uses_parameter_max(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model dynamic_lookback\n"
+        "in { source, $period = 3 { min = 1, max = 7 } }\n"
+        "period = max(1, $period)\n"
+        "value = isnan(source[period]) ? 0 : source - source[period]\n"
+        "out value\n");
+    cxpr_model_program* program =
+        cxpr_compile_model_with_options(model, NULL, &options, &err);
+    char* code;
+
+    if (!program) {
+        fprintf(stderr, "dynamic lookback compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    assert(cxpr_model_program_history_spec_count(program) == 1u);
+    assert(cxpr_model_program_history_spec_depth(program, 0u) == 7u);
+
+    code = cxpr_model_program_to_c_tick_function(
+        program, "static inline", "dynamic_lookback_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_history8") != NULL);
+    assert(strstr(code, "(period) <= 7u") != NULL);
+    assert(strstr(code, "(size_t)(period)") != NULL);
+
+    free(code);
+    cxpr_model_program_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_dynamic_lookback_uses_parameter_max\n");
+}
+
+static void test_dynamic_lookback_requires_parameter_max(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model unbounded_dynamic_lookback\n"
+        "in { source, $period = 3 }\n"
+        "value = source[$period]\n"
+        "out value\n");
+    cxpr_model_program* program =
+        cxpr_compile_model_with_options(model, NULL, &options, &err);
+
+    assert(program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strstr(err.message, "requires min and max metadata") != NULL);
+    cxpr_model_free(model);
+    printf("  ✓ test_dynamic_lookback_requires_parameter_max\n");
+}
+
+static void assert_dynamic_lookback_compile_error(const char* declaration,
+                                                  const char* expected_message) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    char source[1024];
+    cxpr_model* model;
+    cxpr_model_program* program;
+
+    snprintf(source, sizeof(source),
+             "model invalid_dynamic_lookback\n"
+             "in { source, %s }\n"
+             "value = source[$period]\n"
+             "out value\n",
+             declaration);
+    model = parse_model_ok(source);
+    program = cxpr_compile_model_with_options(model, NULL, &options, &err);
+    assert(program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strstr(err.message, expected_message) != NULL);
+    cxpr_model_free(model);
+}
+
+static void test_dynamic_lookback_validates_bounds_and_default(void) {
+    assert_dynamic_lookback_compile_error(
+        "$period = 3 { max = 7 }", "requires min and max metadata");
+    assert_dynamic_lookback_compile_error(
+        "$period = 3 { min = 0, max = 7 }", "min must be an integer >= 1");
+    assert_dynamic_lookback_compile_error(
+        "$period = 3 { min = 1, max = 7.5 }", "max must be a finite integer");
+    assert_dynamic_lookback_compile_error(
+        "$period = 8 { min = 1, max = 7 }", "default must be within min and max");
+    printf("  ✓ test_dynamic_lookback_validates_bounds_and_default\n");
+}
+
+static void test_signal_helper_golden_values(void) {
     cxpr_error err = {0};
     bool found = false;
     cxpr_model* model = parse_model_ok(
-        "model cxta_signal_compat\n"
+        "model signal_helper_golden\n"
         "in { value, from, to, cur_left, cur_right, prev_left, prev_right }\n"
         "fn above(left, right) = left > right\n"
         "fn below(left, right) = left < right\n"
@@ -3744,7 +3961,6 @@ static void test_cxta_signal_compat_functions(void) {
     assert(program != NULL);
     assert(ctx != NULL);
 
-    /* Matches cxta_signal_score({5,0,10}) and cxta_signal_cross_above({3,2,1,2}). */
     cxpr_context_set(ctx, "value", 5.0);
     cxpr_context_set(ctx, "from", 0.0);
     cxpr_context_set(ctx, "to", 10.0);
@@ -3759,7 +3975,6 @@ static void test_cxta_signal_compat_functions(void) {
     assert(cxpr_context_get_bool(ctx, "cross_up", &found) && found);
     assert(!cxpr_context_get_bool(ctx, "cross_down", &found) && found);
 
-    /* Matches cxta_signal_score({5,10,0}) and cxta_signal_cross_below({1,2,3,2}). */
     cxpr_context_set(ctx, "from", 10.0);
     cxpr_context_set(ctx, "to", 0.0);
     cxpr_context_set(ctx, "cur_left", 1.0);
@@ -3776,7 +3991,7 @@ static void test_cxta_signal_compat_functions(void) {
     cxpr_context_free(ctx);
     cxpr_model_program_free(program);
     cxpr_model_free(model);
-    printf("  ✓ test_cxta_signal_compat_functions\n");
+    printf("  ✓ test_signal_helper_golden_values\n");
 }
 
 static void test_yaml_converted_ensemble_strategy_fixture(void) {
@@ -3946,11 +4161,24 @@ static void test_rsi_state_strategy_fixture_emits_c_tick(void) {
     printf("  ✓ test_rsi_state_strategy_fixture_emits_c_tick\n");
 }
 
-#ifdef CXPR_TEST_WITH_CXTA
-static void test_rsi_state_strategy_fixture_matches_cxta(void) {
-    const double closes[] = {100.0, 102.0, 101.0, 104.0, 103.0, 106.0, 105.0, 107.0};
-    const size_t close_count = sizeof(closes) / sizeof(closes[0]);
-    cxta_series_bar bars[sizeof(closes) / sizeof(closes[0])] = {{0}};
+static void test_rsi_state_strategy_fixture_matches_golden_values(void) {
+    typedef struct rsi_golden_sample {
+        double close;
+        double rsi;
+        double avg_gain;
+        double avg_loss;
+    } rsi_golden_sample;
+    static const rsi_golden_sample golden[] = {
+        {100.0, 50.0,                0.0,                0.0},
+        {102.0, 50.0,                0.0,                0.0},
+        {101.0, 50.0,                0.0,                0.0},
+        {104.0, 83.333333333333343,  1.6666666666666667, 0.33333333333333331},
+        {103.0, 66.666666666666671,  1.1111111111111112, 0.55555555555555547},
+        {106.0, 82.456140350877192,  1.7407407407407407, 0.37037037037037029},
+        {105.0, 66.666666666666671,  1.1604938271604939, 0.58024691358024683},
+        {107.0, 78.828828828828833,  1.4403292181069958, 0.38683127572016457},
+    };
+    double actual;
     cxpr_error err = {0};
     bool found = false;
     char* source = read_fixture("fixtures/strategies/rsi_state_model.cxpr");
@@ -3969,27 +4197,23 @@ static void test_rsi_state_strategy_fixture_matches_cxta(void) {
     assert(ctx != NULL);
     cxpr_context_set(ctx, "trend", 0.0);
 
-    for (size_t i = 0; i < close_count; ++i) {
-        cxta_series_bar_view view;
-        double cxpr_r;
-        double cxta_r;
-        bars[i].close = closes[i];
-        view = cxta_series_bar_view_make(bars, i + 1u, i);
-        cxpr_context_set(ctx, "close", closes[i]);
+    for (size_t i = 0; i < sizeof(golden) / sizeof(golden[0]); ++i) {
+        cxpr_context_set(ctx, "close", golden[i].close);
         assert(cxpr_model_session_tick(program, session, NULL, &err));
-        cxpr_r = cxpr_context_get(ctx, "r", &found);
-        assert(found);
-        cxta_r = cxta_rsi(&view, 3);
-        assert(fabs(cxpr_r - cxta_r) < 1e-9);
+        actual = cxpr_context_get(ctx, "r", &found);
+        assert(found && fabs(actual - golden[i].rsi) < 1e-12);
+        assert(cxpr_model_session_output_number(session, "avg_gain", &actual));
+        assert(fabs(actual - golden[i].avg_gain) < 1e-12);
+        assert(cxpr_model_session_output_number(session, "avg_loss", &actual));
+        assert(fabs(actual - golden[i].avg_loss) < 1e-12);
     }
 
     cxpr_model_session_free(session);
     cxpr_model_program_free(program);
     cxpr_model_free(model);
     free(source);
-    printf("  ✓ test_rsi_state_strategy_fixture_matches_cxta\n");
+    printf("  ✓ test_rsi_state_strategy_fixture_matches_golden_values\n");
 }
-#endif
 
 int main(void) {
     printf("Running cxpr model parser tests...\n");
@@ -4062,6 +4286,8 @@ int main(void) {
     test_session_record_field_lookback();
     test_session_direct_record_producer_lookback();
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
+    test_model_c_init_explicitly_zeros_state_storage();
+    test_model_c_single_value_history_has_no_cursor();
     test_compile_imported_producer_infers_missing_child_inputs();
     test_imported_producer_anonymous_out_expands_child_outputs();
     test_compile_imported_functions_are_namespaced();
@@ -4069,6 +4295,7 @@ int main(void) {
     test_compile_import_path_uses_leaf_namespace();
     test_imported_producer_source_arg_maps_call_source();
     test_imported_producer_explicit_call_params_hide_internal_params();
+    test_imported_producer_implicit_market_inputs_precede_no_params();
     test_imported_producer_repeated_calls_cache_same_args();
     test_imported_stateful_producer_calls_keep_independent_state();
     test_imported_producer_default_singleton_shares_state();
@@ -4085,13 +4312,14 @@ int main(void) {
     test_local_record_fields_can_reference_previous_fields();
     test_record_param_field_access_emits_c_tick();
     test_window_param_bounds_drive_capacity_and_session_clamp();
-    test_cxta_signal_compat_functions();
+    test_dynamic_lookback_uses_parameter_max();
+    test_dynamic_lookback_requires_parameter_max();
+    test_dynamic_lookback_validates_bounds_and_default();
+    test_signal_helper_golden_values();
     test_yaml_converted_ensemble_strategy_fixture();
     test_rsi_state_strategy_fixture();
     test_rsi_state_strategy_fixture_emits_c_tick();
-#ifdef CXPR_TEST_WITH_CXTA
-    test_rsi_state_strategy_fixture_matches_cxta();
-#endif
+    test_rsi_state_strategy_fixture_matches_golden_values();
     printf("All model parser tests passed.\n");
     return 0;
 }

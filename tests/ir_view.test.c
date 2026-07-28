@@ -135,10 +135,39 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     printf("  ok test_ir_view_lookback_uses_push_pop_opcodes\n");
 }
 
+static void test_ir_view_array_instruction(void) {
+    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_ast* ast = cxpr_parse(parser, "[1, 2, 3]", &err);
+    cxpr_program* program = cxpr_compile(ast, registry, &err);
+    bool found = false;
+
+    assert(program);
+    for (size_t i = 0u; i < cxpr_ir_view_count(program); ++i) {
+        cxpr_ir_view_instr instr;
+        assert(cxpr_ir_view_instr_at(program, i, &instr));
+        if (instr.op == CXPR_IR_VIEW_OP_BUILD_ARRAY) {
+            assert(instr.has_arg_count);
+            assert(instr.arg_count == 3u);
+            assert(strcmp(cxpr_ir_view_opcode_name(instr.op), "BUILD_ARRAY") == 0);
+            found = true;
+        }
+    }
+    assert(found);
+
+    cxpr_program_free(program);
+    cxpr_ast_free(ast);
+    cxpr_registry_free(registry);
+    cxpr_parser_free(parser);
+    printf("  ok test_ir_view_array_instruction\n");
+}
+
 int main(void) {
     test_ir_view_null_inputs();
     test_ir_view_compiled_expression();
     test_ir_view_lookback_uses_push_pop_opcodes();
+    test_ir_view_array_instruction();
     printf("ir_view tests passed\n");
     return 0;
 }

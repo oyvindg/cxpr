@@ -1,0 +1,35 @@
+# Snapshot of dyn/cxpr/indicators/true_range.cxpr used for standalone CXPR coverage.
+
+model true_range {
+    type = "indicator"
+    output_type = "scalar"
+}
+
+in {
+    high,
+    low,
+    close
+}
+
+state {
+    initialized = false
+}
+
+value = initialized
+    ? max(high - low, max(abs(high - close[1]), abs(low - close[1])))
+    : high - low
+
+initialized := true
+
+out value {
+    role = "primary"
+    label = "True Range"
+    description = "Single-bar true range volatility measurement."
+    hover = "Use as raw range input; ATR smooths this series for risk sizing."
+    plot {
+        pane = "volatility"
+        style = "line"
+        scale = "volatility"
+        color = "#fb7185"
+    }
+}

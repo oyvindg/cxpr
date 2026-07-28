@@ -9,21 +9,6 @@
 
 static cxpr_ast* cxpr_model_parse_expr(const char* expr, size_t line, size_t column,
                                        cxpr_error* err);
-static bool cxpr_model_parse_function_signature(char* header,
-                                                size_t line_no,
-                                                char** out_name,
-                                                char*** out_params,
-                                                size_t* out_param_count,
-                                                cxpr_error* err);
-static bool cxpr_model_parse_record_return_fields(char* rest,
-                                                  const cxpr_model_local_binding* locals,
-                                                  size_t local_count,
-                                                  cxpr_model_record_field** out_fields,
-                                                  size_t* out_count,
-                                                  size_t line_no,
-                                                  cxpr_error* err);
-static bool cxpr_model_has_top_level_comma(const char* text);
-static bool cxpr_model_statement_append(char** current, const char* text);
 
 typedef struct {
     char* name;
@@ -51,7 +36,8 @@ static bool cxpr_model_append_text_len(char** current, const char* text, size_t 
     return true;
 }
 
-static bool cxpr_model_append_text(char** current, const char* text) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_append_text(char** current, const char* text) {
     return cxpr_model_append_text_len(current, text, text ? strlen(text) : 0u);
 }
 
@@ -111,7 +97,8 @@ static bool cxpr_model_string_exists(char* const* values, size_t count, const ch
     return false;
 }
 
-static bool cxpr_model_state_exists(const cxpr_model* model, const char* name) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_state_exists(const cxpr_model* model, const char* name) {
     if (!model) return false;
     for (size_t i = 0; i < model->binding_count; ++i) {
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
@@ -122,8 +109,9 @@ static bool cxpr_model_state_exists(const cxpr_model* model, const char* name) {
     return false;
 }
 
-static bool cxpr_model_keyword_line(const char* line, const char* keyword,
-                                    const char** rest) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_keyword_line(const char* line, const char* keyword,
+                        const char** rest) {
     size_t n = strlen(keyword);
     if (strncmp(line, keyword, n) != 0) return false;
     if (line[n] != '\0' && !isspace((unsigned char)line[n])) return false;
@@ -149,12 +137,13 @@ static bool cxpr_model_is_reserved_host_block_kind(const char* kind) {
 static bool cxpr_model_host_ident_char(char ch);
 static bool cxpr_model_host_name_start(char ch);
 
-static bool cxpr_model_parse_host_block_start(const char* line,
-                                              char** out_kind,
-                                              char** out_name,
-                                              const char** out_body_start,
-                                              size_t line_no,
-                                              cxpr_error* err) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_parse_host_block_start(const char* line,
+                                  char** out_kind,
+                                  char** out_name,
+                                  const char** out_body_start,
+                                  size_t line_no,
+                                  cxpr_error* err) {
     const char* cursor = line;
     const char* kind_start;
     const char* kind_end;
@@ -283,9 +272,10 @@ static bool cxpr_model_append_use(cxpr_model* model, const char* path, const cha
     return true;
 }
 
-static bool cxpr_model_parse_use_clause(char* text,
-                                        const char** out_path,
-                                        const char** out_alias) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_parse_use_clause(char* text,
+                            const char** out_path,
+                            const char** out_alias) {
     char* cursor;
     char* as_kw;
     if (!text || !out_path || !out_alias) return false;
@@ -306,7 +296,8 @@ static bool cxpr_model_parse_use_clause(char* text,
     return true;
 }
 
-static bool cxpr_model_parse_use_group(cxpr_model* model, char* text) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_parse_use_group(cxpr_model* model, char* text) {
     char* cursor;
     char* close;
     char* after;
@@ -354,11 +345,12 @@ static bool cxpr_model_parse_use_group(cxpr_model* model, char* text) {
     return saw_item;
 }
 
-static bool cxpr_model_attach_metadatas(cxpr_model* model,
-                                         const cxpr_model_pending_metadata* pending,
-                                         size_t pending_count,
-                                         cxpr_model_metadata_target_kind target_kind,
-                                         const char* target_name) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_attach_metadatas(cxpr_model* model,
+                            const cxpr_model_pending_metadata* pending,
+                            size_t pending_count,
+                            cxpr_model_metadata_target_kind target_kind,
+                            const char* target_name) {
     cxpr_model_metadata* grown;
     if (!model || pending_count == 0u) return true;
     grown = (cxpr_model_metadata*)realloc(
@@ -379,8 +371,6 @@ static bool cxpr_model_attach_metadatas(cxpr_model* model,
     model->metadata_count += pending_count;
     return true;
 }
-
-static int cxpr_model_brace_delta(const char* text);
 
 static char* cxpr_model_dup_trimmed(const char* start, size_t len) {
     const char* end;
@@ -688,12 +678,13 @@ static bool cxpr_model_parse_host_block_tree(cxpr_model_host_block* root,
     return cxpr_model_parse_host_block_items(root, &cursor, false, line_no, err);
 }
 
-static bool cxpr_model_append_host_block(cxpr_model* model,
-                                         const char* kind,
-                                         const char* name,
-                                         const char* body,
-                                         size_t line_no,
-                                         cxpr_error* err) {
+static bool CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_append_host_block(cxpr_model* model,
+                             const char* kind,
+                             const char* name,
+                             const char* body,
+                             size_t line_no,
+                             cxpr_error* err) {
     cxpr_model_host_block* grown;
     if (!model || !kind) return false;
     if (cxpr_model_host_block_body_uses_yaml_mapping(body)) {

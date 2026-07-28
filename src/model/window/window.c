@@ -3,6 +3,7 @@
 #include "eval/internal.h"
 #include "lookback.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,7 @@ static bool cxpr_model_window_period_depth(const cxpr_model* model,
                                            cxpr_error* err) {
     double raw = 0.0;
     long period;
+    (void)err;
     if (!period_ast || !out_depth) return false;
     if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
         const char* param_name = cxpr_ast_variable_name(period_ast);
@@ -180,7 +182,18 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
         unsigned offset = 0u;
         if (!cxpr_lookback_literal_offset(cxpr_ast_lookback_index(ast), &offset, err,
                                           "window lookback requires constant integer index")) {
-            return false;
+            size_t dynamic_bound = 0u;
+            if (!cxpr_model_lookback_bound(
+                    model, cxpr_ast_lookback_index(ast), &dynamic_bound, err) ||
+                dynamic_bound > (size_t)(~0u)) {
+                if (err && err->code == CXPR_OK) {
+                    err->code = CXPR_ERR_SYNTAX;
+                    err->message = "window dynamic lookback requires bounded integer metadata";
+                }
+                return false;
+            }
+            offset = (unsigned)dynamic_bound;
+            if (err) *err = (cxpr_error){0};
         }
         return cxpr_model_window_collect_target(
             model, cxpr_ast_lookback_target(ast), base_depth + (size_t)offset,

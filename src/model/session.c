@@ -13,7 +13,6 @@ static CXPR_THREAD_LOCAL cxpr_model_session* g_model_active_session = NULL;
 cxpr_model_session* cxpr_model_active_session(void) {
     return g_model_active_session;
 }
-
 static char* cxpr_model_child_cache_key(const cxpr_ast* ast) {
     size_t len;
     char* out;
@@ -1173,49 +1172,4 @@ bool cxpr_model_session_tick_fast(const cxpr_model_program* program,
         g_model_active_session = previous_active_session;
         return ok;
     }
-}
-
-static const cxpr_model_output_state*
-cxpr_model_session_find_output(const cxpr_model_session* session, const char* name) {
-    if (!session || !name) return NULL;
-    for (size_t i = 0; i < session->output_count; ++i) {
-        if (cxpr_model_names_match(session->outputs[i].name, name)) return &session->outputs[i];
-    }
-    return NULL;
-}
-
-bool cxpr_model_session_output_bool(const cxpr_model_session* session,
-                                    const char* name,
-                                    bool* out_value) {
-    const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
-    if (!state || !state->has_current) return false;
-    if (out_value) *out_value = state->current;
-    return true;
-}
-
-bool cxpr_model_session_output_number(const cxpr_model_session* session,
-                                      const char* name,
-                                      double* out_value) {
-    const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
-    if (!state || !state->has_number_current) return false;
-    if (out_value) *out_value = state->number_current;
-    return true;
-}
-
-bool cxpr_model_session_output_rising(const cxpr_model_session* session, const char* name) {
-    const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
-    return state && state->has_current && state->current &&
-           (!state->has_previous || !state->previous);
-}
-
-bool cxpr_model_session_output_falling(const cxpr_model_session* session, const char* name) {
-    const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
-    return state && state->has_current && !state->current &&
-           state->has_previous && state->previous;
-}
-
-bool cxpr_model_session_output_changed(const cxpr_model_session* session, const char* name) {
-    const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
-    return state && state->has_current &&
-           (!state->has_previous || state->current != state->previous);
 }

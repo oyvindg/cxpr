@@ -721,6 +721,23 @@ static int emit_model_c(const char* model_path,
     }
 
     if (output_path) {
+        const size_t descriptor_input_count = cxpr_model_program_input_count(program);
+        const size_t descriptor_output_count =
+            output_count > 0u ? output_count : cxpr_model_program_output_count(program);
+        const size_t descriptor_param_count =
+            cxpr_model_program_call_param_count(program);
+        if (descriptor_input_count > CXPR_GENERATED_MODEL_MAX_INPUTS ||
+            descriptor_output_count > CXPR_GENERATED_MODEL_MAX_OUTPUTS ||
+            descriptor_param_count > CXPR_GENERATED_MODEL_MAX_PARAMS) {
+            fprintf(
+                stderr,
+                "cxpr_model_codegen: generated descriptor exceeds ABI limits "
+                "(inputs %zu/%u, outputs %zu/%u, params %zu/%u)\n",
+                descriptor_input_count, CXPR_GENERATED_MODEL_MAX_INPUTS,
+                descriptor_output_count, CXPR_GENERATED_MODEL_MAX_OUTPUTS,
+                descriptor_param_count, CXPR_GENERATED_MODEL_MAX_PARAMS);
+            goto cleanup;
+        }
         cxpr_plugin_host host;
         cxpr_plugin_model_event event = {0};
         cxpr_c_plugin_options c_options = {0};

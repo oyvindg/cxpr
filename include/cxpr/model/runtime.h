@@ -13,6 +13,14 @@ typedef unsigned long size_t;
 #define cxpr_model_runtime_isnan(x) isnan(x)
 #endif
 
+#ifndef CXPR_UNLIKELY
+#if defined(__GNUC__) || defined(__clang__)
+#define CXPR_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#define CXPR_UNLIKELY(x) (x)
+#endif
+#endif
+
 #ifndef CXPR_MODEL_RUNTIME_LINKAGE
 #if defined(DYN_CUDA_SOURCE_COMPOSED)
 #define CXPR_MODEL_RUNTIME_LINKAGE static __device__ inline

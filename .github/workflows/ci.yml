@@ -27,6 +27,17 @@ jobs:
       - name: Test
         run: ctest --preset default
 
+      - name: Install
+        run: cmake --install build --prefix "${{ runner.temp }}/cxpr-install"
+
+      - name: Test installed package
+        run: >
+          cmake -S tests/consumer -B build-consumer
+          -DCMAKE_PREFIX_PATH="${{ runner.temp }}/cxpr-install"
+          -DCMAKE_C_COMPILER="${{ matrix.cc }}"
+          && cmake --build build-consumer
+          && ./build-consumer/cxpr_consumer
+
   strict:
     runs-on: ubuntu-latest
     strategy:

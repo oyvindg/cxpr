@@ -470,7 +470,8 @@ char* cxpr_model_program_function_to_c_function(const cxpr_model_program* progra
  * `void fn(fn_state* state, const double* inputs, const double* params, double* outputs)`.
  * When model state needs eager setup, the generated source also includes
  * `void fn_init_state(fn_state* state)`. The tick function keeps a lazy
- * first-use init guard for zero-initialized state storage.
+ * first-use init guard. Callers must zero the complete state object before its
+ * first tick or call the generated init function explicitly.
  * Inputs and outputs use model declaration order. Params use model constant
  * order. The generated `state` object owns model scratch/state storage.
  */

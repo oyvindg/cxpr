@@ -250,7 +250,7 @@ typedef enum cxpr_expr_arg_kind {
  * Arrays are provider-owned and borrowed by the caller. `defaults` may be NULL,
  * or may contain NULL entries for parameters without defaults. `kinds` may be
  * NULL when all arguments are numeric. `has_timeframe_param` is retained for
- * compatibility with cxta-style timeframe selectors; generic providers should
+ * compatibility with host-style timeframe selectors; generic providers should
  * prefer @ref cxpr_provider_scope_spec for scope metadata.
  */
 typedef struct cxpr_expr_param_spec {

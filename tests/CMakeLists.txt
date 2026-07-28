@@ -37,10 +37,6 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     target_include_directories("${target_name}" PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions("${target_name}" PRIVATE
         CXPR_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-    if("${target_name}" STREQUAL "test_model" AND TARGET cxta)
-        target_link_libraries("${target_name}" PRIVATE cxta)
-        target_compile_definitions("${target_name}" PRIVATE CXPR_TEST_WITH_CXTA=1)
-    endif()
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         target_compile_options("${target_name}" PRIVATE
             -UNDEBUG

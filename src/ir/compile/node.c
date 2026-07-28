@@ -148,8 +148,7 @@ static bool cxpr_ir_defined_call_can_inline(const cxpr_func_entry* entry,
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
         if (entry->defined_param_fields[i] &&
             entry->defined_param_field_counts[i] > 0u) {
-            const cxpr_ast* arg = call_ast->data.function_call.args[i];
-            if (!arg || arg->type != CXPR_NODE_IDENTIFIER) return false;
+            return false;
         }
     }
     return true;

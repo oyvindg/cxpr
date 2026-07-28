@@ -12,6 +12,8 @@
 #include "registry/internal.h"
 #include <cxpr/source.h>
 #include <ctype.h>
+#include <limits.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,15 +31,6 @@ void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
     err->column = column;
 }
 
-
-static size_t cxpr_model_program_binding_index_for_name(const cxpr_model_program* program,
-                                                        const char* name) {
-    if (!program || !name) return (size_t)-1;
-    for (size_t i = 0u; i < program->binding_count; ++i) {
-        if (cxpr_model_names_match(program->bindings[i].name, name)) return i;
-    }
-    return (size_t)-1;
-}
 
 static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, const char* name) {
     if (!name) return false;
@@ -650,133 +643,6 @@ static bool cxpr_model_expand_anonymous_outputs(cxpr_model* model,
     return true;
 }
 
-static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* program,
-                                                    const char* name,
-                                                    bool* out_required,
-                                                    cxpr_error* err);
-
-static bool cxpr_model_program_mark_required_ast(const cxpr_model_program* program,
-                                                 const cxpr_ast* ast,
-                                                 bool* out_required,
-                                                 cxpr_error* err) {
-    if (!ast) return true;
-    switch (cxpr_ast_type(ast)) {
-    case CXPR_NODE_IDENTIFIER:
-        return cxpr_model_program_mark_required_symbol(
-            program, cxpr_ast_identifier_name(ast), out_required, err);
-    case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_model_program_mark_required_symbol(
-            program, cxpr_ast_field_object(ast), out_required, err);
-    case CXPR_NODE_CHAIN_ACCESS:
-        return cxpr_model_program_mark_required_symbol(
-            program, cxpr_ast_chain_segment(ast, 0u), out_required, err);
-    case CXPR_NODE_BINARY_OP:
-        return cxpr_model_program_mark_required_ast(program, cxpr_ast_left(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(program, cxpr_ast_right(ast), out_required, err);
-    case CXPR_NODE_UNARY_OP:
-        return cxpr_model_program_mark_required_ast(program, cxpr_ast_operand(ast), out_required, err);
-    case CXPR_NODE_FUNCTION_CALL:
-        for (size_t i = 0u; i < cxpr_ast_function_argc(ast); ++i) {
-            if (!cxpr_model_program_mark_required_ast(
-                    program, cxpr_ast_function_arg(ast, i), out_required, err)) {
-                return false;
-            }
-        }
-        return true;
-    case CXPR_NODE_PRODUCER_ACCESS:
-        for (size_t i = 0u; i < cxpr_ast_producer_argc(ast); ++i) {
-            if (!cxpr_model_program_mark_required_ast(
-                    program, cxpr_ast_producer_arg(ast, i), out_required, err)) {
-                return false;
-            }
-        }
-        return true;
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_lookback_target(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_lookback_index(ast), out_required, err);
-    case CXPR_NODE_TERNARY:
-        return cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_ternary_condition(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_ternary_true_branch(ast), out_required, err) &&
-               cxpr_model_program_mark_required_ast(
-                   program, cxpr_ast_ternary_false_branch(ast), out_required, err);
-    default:
-        return true;
-    }
-}
-
-static bool cxpr_model_program_mark_required_symbol(const cxpr_model_program* program,
-                                                    const char* name,
-                                                    bool* out_required,
-                                                    cxpr_error* err) {
-    size_t index = cxpr_model_program_binding_index_for_name(program, name);
-    if (index == (size_t)-1) return true;
-    if (out_required[index]) return true;
-    out_required[index] = true;
-    if (!program->bindings[index].ast) return true;
-    return cxpr_model_program_mark_required_ast(
-        program, program->bindings[index].ast, out_required, err);
-}
-
-bool cxpr_model_program_mark_required_bindings(const cxpr_model_program* program,
-                                               const size_t* output_indices,
-                                               size_t output_count,
-                                               bool include_all_outputs,
-                                               bool include_state_commits,
-                                               bool include_history_captures,
-                                               bool* out_required,
-                                               cxpr_error* err) {
-    if (!program || !out_required) return false;
-    if (include_all_outputs) {
-        for (size_t i = 0u; i < program->fused_output_count; ++i) {
-            if (!cxpr_model_program_mark_required_symbol(
-                    program, program->fused_outputs[i].name, out_required, err)) {
-                return false;
-            }
-        }
-    } else {
-        if (output_count > 0u && !output_indices) return false;
-        for (size_t out_i = 0u; out_i < output_count; ++out_i) {
-            size_t i = output_indices[out_i];
-            if (i >= program->fused_output_count) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                     "Model selected-output index out of range", 0, 0);
-                return false;
-            }
-            if (!cxpr_model_program_mark_required_symbol(
-                    program, program->fused_outputs[i].name, out_required, err)) {
-                return false;
-            }
-        }
-    }
-    if (include_state_commits) {
-        for (size_t i = 0u; i < program->fused_commit_count; ++i) {
-            size_t slot = program->fused_commits[i].state_slot;
-            if (slot >= program->fused_slot_count) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                     "Model state commit slot out of range", 0, 0);
-                return false;
-            }
-            if (!cxpr_model_program_mark_required_symbol(
-                    program, program->fused_slot_names[slot], out_required, err)) {
-                return false;
-            }
-        }
-    }
-    if (include_history_captures) {
-        for (size_t i = 0u; i < program->history_spec_count; ++i) {
-            if (!cxpr_model_program_mark_required_symbol(
-                    program, program->history_specs[i].name, out_required, err)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
 static void cxpr_model_slot_ref_free(cxpr_model_slot_ref* ref) {
     if (!ref) return;
     free(ref->name);
@@ -825,169 +691,6 @@ void cxpr_model_fused_program_clear(cxpr_model_program* program) {
 
 bool cxpr_model_names_match(const char* a, const char* b) {
     return a && b && strcmp(a, b) == 0;
-}
-
-
-static bool cxpr_model_history_spec_add(cxpr_model_history_spec** specs,
-                                        size_t* count,
-                                        const char* name,
-                                        const cxpr_ast* target,
-                                        size_t depth) {
-    cxpr_model_history_spec* grown;
-    if (!specs || !count || !name || depth == 0u) return true;
-    for (size_t i = 0; i < *count; ++i) {
-        if (cxpr_model_names_match((*specs)[i].name, name)) {
-            if ((*specs)[i].depth < depth) (*specs)[i].depth = depth;
-            if (!(*specs)[i].target && target) {
-                (*specs)[i].target = cxpr_ast_clone(target);
-                if (!(*specs)[i].target) return false;
-            }
-            return true;
-        }
-    }
-    grown = (cxpr_model_history_spec*)realloc(
-        *specs, (*count + 1u) * sizeof(cxpr_model_history_spec));
-    if (!grown) return false;
-    *specs = grown;
-    (*specs)[*count].name = cxpr_strdup(name);
-    (*specs)[*count].target = target ? cxpr_ast_clone(target) : NULL;
-    (*specs)[*count].depth = depth;
-    if (!(*specs)[*count].name || (target && !(*specs)[*count].target)) return false;
-    (*count)++;
-    return true;
-}
-
-bool cxpr_model_lookback_target_key(const cxpr_ast* target,
-                                    char** out_key,
-                                    cxpr_error* err) {
-    if (out_key) *out_key = NULL;
-    if (!target || !out_key) return false;
-    switch (cxpr_ast_type(target)) {
-    case CXPR_NODE_IDENTIFIER:
-    case CXPR_NODE_FIELD_ACCESS:
-    case CXPR_NODE_CHAIN_ACCESS:
-    case CXPR_NODE_PRODUCER_ACCESS:
-        *out_key = cxpr_ast_to_string(target);
-        if (!*out_key) {
-            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-            return false;
-        }
-        return true;
-    default:
-        return false;
-    }
-}
-
-static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
-                                                const cxpr_ast* ast,
-                                                cxpr_model_history_spec** specs,
-                                                size_t* count,
-                                                cxpr_error* err) {
-    if (!ast) return true;
-    switch (cxpr_ast_type(ast)) {
-    case CXPR_NODE_RECORD:
-        for (size_t i = 0u; i < cxpr_ast_record_field_count(ast); ++i) {
-            if (!cxpr_model_collect_lookbacks_in_ast(
-                    model, cxpr_ast_record_field_value(ast, i), specs, count, err)) {
-                return false;
-            }
-        }
-        return true;
-    case CXPR_NODE_LOOKBACK: {
-        const cxpr_ast* target = cxpr_ast_lookback_target(ast);
-        const cxpr_ast* index = cxpr_ast_lookback_index(ast);
-        unsigned offset = 0u;
-        if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) offset = 512u;
-        {
-            char* key = NULL;
-            bool supported = cxpr_model_lookback_target_key(target, &key, err);
-            if (supported &&
-                !cxpr_model_history_spec_add(specs, count, key, target, (size_t)offset)) {
-                free(key);
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-                return false;
-            }
-            free(key);
-        }
-        return cxpr_model_collect_lookbacks_in_ast(model, target, specs, count, err);
-    }
-    case CXPR_NODE_BINARY_OP:
-        return cxpr_model_collect_lookbacks_in_ast(model, cxpr_ast_left(ast), specs, count, err) &&
-               cxpr_model_collect_lookbacks_in_ast(model, cxpr_ast_right(ast), specs, count, err);
-    case CXPR_NODE_UNARY_OP:
-        return cxpr_model_collect_lookbacks_in_ast(model, cxpr_ast_operand(ast), specs, count, err);
-    case CXPR_NODE_FUNCTION_CALL:
-        if (cxpr_model_window_is_function(cxpr_ast_function_name(ast)) &&
-            !cxpr_model_window_collect_call(model, ast, specs, count, err)) {
-            return false;
-        }
-        if ((cxpr_model_names_match(cxpr_ast_function_name(ast), "cross_above") ||
-             cxpr_model_names_match(cxpr_ast_function_name(ast), "cross_below")) &&
-            cxpr_ast_function_argc(ast) == 2u) {
-            for (size_t i = 0u; i < 2u; ++i) {
-                const cxpr_ast* arg = cxpr_ast_function_arg(ast, i);
-                char* key = NULL;
-                bool supported = cxpr_model_lookback_target_key(arg, &key, err);
-                if (supported &&
-                    !cxpr_model_history_spec_add(specs, count, key, arg, 1u)) {
-                    free(key);
-                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-                    return false;
-                }
-                free(key);
-            }
-        }
-        for (size_t i = 0; i < cxpr_ast_function_argc(ast); ++i) {
-            if (!cxpr_model_collect_lookbacks_in_ast(
-                    model, cxpr_ast_function_arg(ast, i), specs, count, err)) {
-                return false;
-            }
-        }
-        return true;
-    case CXPR_NODE_PRODUCER_ACCESS:
-        for (size_t i = 0; i < cxpr_ast_producer_argc(ast); ++i) {
-            if (!cxpr_model_collect_lookbacks_in_ast(
-                    model, cxpr_ast_producer_arg(ast, i), specs, count, err)) {
-                return false;
-            }
-        }
-        return true;
-    case CXPR_NODE_TERNARY:
-        return cxpr_model_collect_lookbacks_in_ast(
-                   model, cxpr_ast_ternary_condition(ast), specs, count, err) &&
-               cxpr_model_collect_lookbacks_in_ast(
-                   model, cxpr_ast_ternary_true_branch(ast), specs, count, err) &&
-               cxpr_model_collect_lookbacks_in_ast(
-                   model, cxpr_ast_ternary_false_branch(ast), specs, count, err);
-    default:
-        return true;
-    }
-}
-
-static bool cxpr_model_collect_lookbacks(const cxpr_model* model,
-                                         cxpr_model_history_spec** specs,
-                                         size_t* count,
-                                         cxpr_error* err) {
-    if (!model || !specs || !count) return true;
-    for (size_t i = 0; i < model->constant_count; ++i) {
-        if (!cxpr_model_collect_lookbacks_in_ast(model, model->constants[i].expr, specs, count, err)) {
-            return false;
-        }
-    }
-    for (size_t i = 0; i < model->binding_count; ++i) {
-        if (!cxpr_model_collect_lookbacks_in_ast(model, model->bindings[i].expr, specs, count, err)) {
-            return false;
-        }
-    }
-    for (size_t i = 0; i < model->record_function_count; ++i) {
-        for (size_t f = 0; f < model->record_functions[i].field_count; ++f) {
-            if (!cxpr_model_collect_lookbacks_in_ast(
-                    model, model->record_functions[i].fields[f].expr, specs, count, err)) {
-                return false;
-            }
-        }
-    }
-    return true;
 }
 
 
@@ -1211,6 +914,23 @@ static bool cxpr_model_program_constant_is_exposed(const cxpr_model_program* pro
         if (program->constants[i].is_call_param) ++explicit_count;
     }
     return explicit_count == 0u || program->constants[index].is_call_param;
+}
+
+static bool cxpr_model_program_inputs_are_implicit_market(
+    const cxpr_model_program* program) {
+    if (!program || program->input_count == 0u || program->source_arg) return false;
+    for (size_t i = 0u; i < program->input_count; ++i) {
+        const char* input = program->inputs[i];
+        if (!input ||
+            (!cxpr_model_names_match(input, "open") &&
+             !cxpr_model_names_match(input, "high") &&
+             !cxpr_model_names_match(input, "low") &&
+             !cxpr_model_names_match(input, "close") &&
+             !cxpr_model_names_match(input, "volume"))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static char* cxpr_model_join_namespace(const char* ns, const char* name) {
@@ -1487,10 +1207,15 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
         const cxpr_model_program* child = imports[i].program;
         const char* namespace_name = cxpr_model_import_namespace_for(model, imports[i].name);
         cxpr_func_entry* entry;
+        size_t exposed_input_count;
+        size_t exposed_param_count;
         if (!imports[i].name || !child || child->output_count == 0u) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid model import", 0, 0);
             return false;
         }
+        exposed_input_count =
+            cxpr_model_program_inputs_are_implicit_market(child) ? 0u : child->input_count;
+        exposed_param_count = cxpr_model_program_exposed_param_count(child);
         for (size_t prev = 0u; prev < i; ++prev) {
             if (program->children[prev].name &&
                 cxpr_model_names_match(program->children[prev].name, namespace_name)) {
@@ -1538,7 +1263,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
         entry->model_producer = cxpr_model_eval_child_producer;
         entry->model_producer_userdata = &program->children[i];
         entry->min_args = 0u;
-        entry->max_args = child->input_count + cxpr_model_program_exposed_param_count(child);
+        entry->max_args = exposed_input_count + exposed_param_count;
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
         entry->defined_return_field_names = cxpr_registry_clone_param_names(
@@ -1551,7 +1276,7 @@ bool cxpr_model_program_register_imports(cxpr_model_program* program,
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
-            for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
+            for (size_t in_i = 0u; in_i < exposed_input_count; ++in_i) {
                 entry->defined_param_names[name_index++] = cxpr_strdup(child->inputs[in_i]);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -1682,6 +1407,27 @@ cxpr_model_program* cxpr_compile_model_with_imports_and_options(
         (void)saw_type;
     }
     program->source_arg = cxpr_model_parse_source_arg_metadata(model);
+    {
+        const char* guard = cxpr_model_model_field_value(model, "invalid_input_guard");
+        if (guard) {
+            program->invalid_input_guard =
+                cxpr_model_dup_trimmed_metadata_value(guard);
+            if (!program->invalid_input_guard) {
+                for (size_t d = 0; d < required_default_count; ++d) {
+                    free(required_defaults[d]);
+                }
+                free(required_defaults);
+                for (size_t d = 0u; d < inferred_input_count; ++d) {
+                    free(inferred_inputs[d]);
+                }
+                free(inferred_inputs);
+                cxpr_model_program_free(program);
+                cxpr_model_set_error(
+                    err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return NULL;
+            }
+        }
+    }
     if (model && cxpr_model_metadata_count(model) > 0u && !program->source_arg) {
         for (size_t i = 0u; i < model->metadata_count; ++i) {
             if (model->metadatas[i].target_kind == CXPR_MODEL_METADATA_TARGET_MODEL &&

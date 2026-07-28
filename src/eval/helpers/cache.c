@@ -70,6 +70,14 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
         }
         hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.array.count);
         break;
+    case CXPR_NODE_RECORD:
+        for (i = 0u; i < ast->data.record.field_count; ++i) {
+            hash = cxpr_eval_hash_string(hash, ast->data.record.field_names[i]);
+            hash = cxpr_eval_hash_mix(
+                hash, cxpr_eval_ast_hash(ast->data.record.field_values[i]));
+        }
+        hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.record.field_count);
+        break;
     case CXPR_NODE_STRING:
         hash = cxpr_eval_hash_string(hash, ast->data.string.value);
         break;
@@ -151,6 +159,17 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
             }
         }
         return true;
+    case CXPR_NODE_RECORD:
+        if (lhs->data.record.field_count != rhs->data.record.field_count) return false;
+        for (i = 0u; i < lhs->data.record.field_count; ++i) {
+            if (!cxpr_eval_opt_string_equal(
+                    lhs->data.record.field_names[i], rhs->data.record.field_names[i]) ||
+                !cxpr_eval_ast_equal(
+                    lhs->data.record.field_values[i], rhs->data.record.field_values[i])) {
+                return false;
+            }
+        }
+        return true;
     case CXPR_NODE_STRING:
         return cxpr_eval_opt_string_equal(lhs->data.string.value, rhs->data.string.value);
     case CXPR_NODE_IDENTIFIER:
@@ -223,6 +242,7 @@ bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
     case CXPR_NODE_VARIABLE:
     case CXPR_NODE_STRING:
     case CXPR_NODE_ARRAY:
+    case CXPR_NODE_RECORD:
     case CXPR_NODE_LOOKBACK:
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_FIELD_ACCESS:

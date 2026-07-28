@@ -85,6 +85,7 @@ void cxpr_model_program_free(cxpr_model_program* program) {
     for (size_t i = 0; i < program->input_count; ++i) free(program->inputs[i]);
     free(program->inputs);
     free(program->source_arg);
+    free(program->invalid_input_guard);
     for (size_t i = 0; i < program->child_count; ++i) {
         free(program->children[i].name);
         free(program->children[i].source_arg);
@@ -384,14 +385,16 @@ static bool cxpr_model_history_use_shift(size_t depth) {
     return depth <= 4u;
 }
 
-static size_t cxpr_model_history_capacity(size_t depth) {
+static size_t CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_history_capacity(size_t depth) {
     size_t capacity = 1u;
     if (cxpr_model_history_use_shift(depth)) return depth;
     while (capacity < depth && capacity <= ((size_t)-1) / 2u) capacity *= 2u;
     return capacity < depth ? depth : capacity;
 }
 
-static size_t cxpr_model_program_c_extra_slot_count(const cxpr_model_program* program) {
+static size_t CXPR_MODEL_MAYBE_UNUSED
+cxpr_model_program_c_extra_slot_count(const cxpr_model_program* program) {
     (void)program;
     return 0u;
 }

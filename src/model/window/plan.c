@@ -72,8 +72,20 @@ static bool cxpr_model_window_plan_period_capacity(const cxpr_model_program* pro
                                                    cxpr_error* err) {
     double raw = 0.0;
     long period;
+    (void)err;
     if (!period_ast || !out_capacity) return false;
+    if (cxpr_ast_type(period_ast) == CXPR_NODE_VARIABLE) {
+        size_t index = cxpr_model_window_plan_param_index(
+            program, cxpr_ast_variable_name(period_ast));
+        if (index != (size_t)-1 &&
+            program->constants[index].has_max_value &&
+            isfinite(program->constants[index].max_value)) {
+            raw = program->constants[index].max_value;
+            goto resolved;
+        }
+    }
     if (!cxpr_model_window_plan_constant_expr(program, period_ast, &raw)) raw = 512.0;
+resolved:
     if (!isfinite(raw) || raw < 1.0) raw = 1.0;
     period = lround(raw);
     if (period < 1) period = 1;

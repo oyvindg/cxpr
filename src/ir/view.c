@@ -12,6 +12,7 @@ static cxpr_ir_view_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
     case CXPR_OP_PUSH_CONST: return CXPR_IR_VIEW_OP_PUSH_CONST;
     case CXPR_OP_PUSH_BOOL: return CXPR_IR_VIEW_OP_PUSH_BOOL;
     case CXPR_OP_PUSH_STRING: return CXPR_IR_VIEW_OP_PUSH_STRING;
+    case CXPR_OP_BUILD_ARRAY: return CXPR_IR_VIEW_OP_BUILD_ARRAY;
     case CXPR_OP_LOAD_LOCAL: return CXPR_IR_VIEW_OP_LOAD_LOCAL;
     case CXPR_OP_LOAD_LOCAL_SQUARE: return CXPR_IR_VIEW_OP_LOAD_LOCAL_SQUARE;
     case CXPR_OP_LOAD_VAR: return CXPR_IR_VIEW_OP_LOAD_VAR;
@@ -101,6 +102,7 @@ static bool cxpr_ir_view_opcode_has_index(cxpr_opcode op) {
 
 static bool cxpr_ir_view_opcode_has_arg_count(cxpr_opcode op) {
     switch (op) {
+    case CXPR_OP_BUILD_ARRAY:
     case CXPR_OP_CALL_PRODUCER:
     case CXPR_OP_CALL_PRODUCER_CONST:
     case CXPR_OP_CALL_PRODUCER_CONST_FIELD:
@@ -174,6 +176,7 @@ const char* cxpr_ir_view_opcode_name(cxpr_ir_view_opcode op) {
     case CXPR_IR_VIEW_OP_PUSH_CONST: return "PUSH_CONST";
     case CXPR_IR_VIEW_OP_PUSH_BOOL: return "PUSH_BOOL";
     case CXPR_IR_VIEW_OP_PUSH_STRING: return "PUSH_STRING";
+    case CXPR_IR_VIEW_OP_BUILD_ARRAY: return "BUILD_ARRAY";
     case CXPR_IR_VIEW_OP_LOAD_LOCAL: return "LOAD_LOCAL";
     case CXPR_IR_VIEW_OP_LOAD_LOCAL_SQUARE: return "LOAD_LOCAL_SQUARE";
     case CXPR_IR_VIEW_OP_LOAD_VAR: return "LOAD_VAR";

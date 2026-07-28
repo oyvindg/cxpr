@@ -12,24 +12,35 @@
 extern "C" {
 #endif
 
+/** @brief Options controlling CUDA source generation for one model. */
 typedef struct cxpr_cuda_plugin_options {
-    const char* function_name;
-    const char* qualifiers;
+    const char* function_name; /**< Generated device function name. */
+    const char* qualifiers;    /**< Optional CUDA function qualifiers. */
 } cxpr_cuda_plugin_options;
 
+/**
+ * @brief Generate CUDA source for a plugin model event and emit it through the host.
+ * @return Non-zero on success, otherwise zero with @p err populated.
+ */
 int cxpr_cuda_plugin_emit_source(
     const cxpr_plugin_model_event* event,
     const cxpr_cuda_plugin_options* options,
     const cxpr_plugin_host* host,
     cxpr_error* err);
 
+/**
+ * @brief Generate an owned CUDA source string from a compiled model program.
+ * @return Owned source on success, or NULL on failure.
+ */
 char* cxpr_cuda_plugin_source_from_program(
     const cxpr_model_program* program,
     const cxpr_cuda_plugin_options* options,
     cxpr_error* err);
 
+/** @brief Free source returned by @ref cxpr_cuda_plugin_source_from_program. */
 void cxpr_cuda_plugin_source_free(char* source);
 
+/** @brief Return the static CUDA source plugin backend descriptor. */
 const cxpr_plugin_backend* cxpr_cuda_plugin_backend(void);
 
 #ifdef __cplusplus

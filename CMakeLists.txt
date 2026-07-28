@@ -88,8 +88,12 @@ target_include_directories(cxpr PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Determinism: no fast-math, no FP contraction
-target_compile_options(cxpr PRIVATE -ffp-contract=off -fno-fast-math)
+# Determinism: no fast-math, no FP contraction.
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(cxpr PRIVATE -ffp-contract=off -fno-fast-math)
+elseif(MSVC)
+    target_compile_options(cxpr PRIVATE /fp:strict)
+endif()
 
 if(CXPR_STRICT)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")

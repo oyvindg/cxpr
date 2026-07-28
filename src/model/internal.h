@@ -6,6 +6,12 @@
 #include <cxpr/model/model.h>
 #include <cxpr/source.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define CXPR_MODEL_MAYBE_UNUSED __attribute__((unused))
+#else
+#define CXPR_MODEL_MAYBE_UNUSED
+#endif
+
 typedef struct {
     char* name;
     char* source;
@@ -209,6 +215,7 @@ struct cxpr_model_program {
     char** inputs;
     size_t input_count;
     char* source_arg;
+    char* invalid_input_guard;
     cxpr_model_lifetime lifetime;
     cxpr_model_child_program* children;
     size_t child_count;
@@ -269,6 +276,15 @@ cxpr_ast* cxpr_model_inline_locals(const cxpr_ast* ast,
 bool cxpr_model_lookback_target_key(const cxpr_ast* target,
                                     char** out_key,
                                     cxpr_error* err);
+
+bool cxpr_model_lookback_bound(const cxpr_model* model,
+                               const cxpr_ast* index,
+                               size_t* out_bound,
+                               cxpr_error* err);
+bool cxpr_model_collect_lookbacks(const cxpr_model* model,
+                                  cxpr_model_history_spec** specs,
+                                  size_t* count,
+                                  cxpr_error* err);
 bool cxpr_model_lookback_resolver(const cxpr_ast* target,
                                   const cxpr_ast* index,
                                   const cxpr_context* ctx,

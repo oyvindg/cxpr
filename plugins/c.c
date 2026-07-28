@@ -73,7 +73,8 @@ char* cxpr_c_plugin_source_from_program(
     if (opts->include_headers) {
         if (!cxpr_c_append(&out,
                            "#include <math.h>\n"
-                           "#include <stddef.h>\n\n")) {
+                           "#include <stddef.h>\n"
+                           "#include <stdbool.h>\n\n")) {
             free(body);
             free(out.data);
             return NULL;

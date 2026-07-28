@@ -1,0 +1,41 @@
+# Snapshot of dyn/cxpr/indicators/ema.cxpr used for standalone CXPR coverage.
+
+model ema {
+    type = "indicator"
+    output_type = "scalar"
+    source_arg = "source"
+}
+
+in {
+    source
+    $period = 20 {
+        description = "EMA period. Higher values smooth the line more."
+    }
+}
+
+fn ema_step(prev, x, period) =
+    (2 / (max(1, period) + 1)) * x + (1 - (2 / (max(1, period) + 1))) * prev
+
+state {
+    initialized = false
+    value = 0
+}
+
+next_value = if(initialized, ema_step(value, source, $period), source)
+
+initialized := true
+value := next_value
+
+out value {
+    role = "primary"
+    label = "EMA"
+    description = "Exponential Moving Average of the selected source, weighted toward recent bars."
+    hover = "Use slope, price/EMA crosses, and fast/slow EMA relationships to read trend direction, pullbacks, and momentum shifts."
+    plot {
+        pane = "ema"
+        candles = true
+        style = "line"
+        scale = "price"
+        colors = ["#38bdf8", "#f59e0b", "#22c55e", "#f472b6", "#a78bfa", "#ef4444"]
+    }
+}

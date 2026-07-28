@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Array literals now compile to typed IR with `BUILD_ARRAY`, including
   top-level and nested array literals that evaluate to owned `CXPR_VALUE_ARRAY`
   results.
+- A versioned, read-only IR inspection contract in `<cxpr/ir.h>`. The public
+  view is diagnostic and must not be treated as serialized bytecode.
+- Installed-package consumer coverage in CI for both GCC and Clang.
+
+### Changed
+
+- Generated model descriptor ABI v3 supports up to 64 inputs, outputs, and
+  parameters, validates every count, and reports a codegen error before
+  emitting descriptors that exceed those limits.
+- Expression-defined functions with struct parameters retain overlay binding
+  instead of entering scalar-only AST/IR inlining.
+- Deterministic floating-point compiler flags are now selected per compiler,
+  including `/fp:strict` on MSVC.
+
+### Fixed
+
+- C literal formatting no longer triggers GCC `-Wformat-truncation` under the
+  strict build.
+- Model benchmarks with more than eight inputs now generate valid descriptors.
 
 ## [3.0.0] - 2026-06-30
 
