@@ -68,6 +68,7 @@ file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
 list(APPEND CXPR_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/c.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/cuda.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/debug_map.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/graph.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/meta.c")
 list(SORT CXPR_SOURCES)

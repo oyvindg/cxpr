@@ -357,7 +357,7 @@ static void test_defined_function_struct_arg_preserves_series_lookback(void) {
     assert(cxpr_registry_define_fn(
                reg,
                "peak_for_session(high, session, bars) => "
-               "session.bar_index == 1 ? window_highest(high, bars) : 0").code == CXPR_OK);
+               "session.bar_index == 1 ? max(window(high, bars)) : 0").code == CXPR_OK);
 
     ast = parse_or_die(parser, "prior_for_session(close, high, session)");
     expect_double_eq(eval_number_or_die(ast, ctx, reg), 53.0,

@@ -326,17 +326,28 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
 }
 
 bool cxpr_model_collect_lookbacks(const cxpr_model* model,
+                                  const cxpr_registry* registry,
                                   cxpr_model_history_spec** specs,
                                   size_t* count,
                                   cxpr_error* err) {
     if (!model || !specs || !count) return true;
     for (size_t i = 0; i < model->constant_count; ++i) {
-        if (!cxpr_model_collect_lookbacks_in_ast(model, model->constants[i].expr, specs, count, err)) {
+        cxpr_expr_ast* expanded =
+            cxpr_model_inline_defined_calls(model->constants[i].expr, registry, err);
+        bool ok = expanded &&
+            cxpr_model_collect_lookbacks_in_ast(model, expanded, specs, count, err);
+        cxpr_expr_ast_free(expanded);
+        if (!ok) {
             return false;
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
-        if (!cxpr_model_collect_lookbacks_in_ast(model, model->bindings[i].expr, specs, count, err)) {
+        cxpr_expr_ast* expanded =
+            cxpr_model_inline_defined_calls(model->bindings[i].expr, registry, err);
+        bool ok = expanded &&
+            cxpr_model_collect_lookbacks_in_ast(model, expanded, specs, count, err);
+        cxpr_expr_ast_free(expanded);
+        if (!ok) {
             return false;
         }
     }

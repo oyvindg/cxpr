@@ -1665,17 +1665,17 @@ static bool cxpr_model_c_match_high_low_midpoint(const cxpr_expr_ast* ast,
     left = cxpr_expr_ast_binary_left(ast);
     right = cxpr_expr_ast_binary_right(ast);
     if (left && cxpr_expr_ast_kind_of(left) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_names_match(cxpr_expr_ast_call_name(left), "window_highest")) {
+        cxpr_model_names_match(cxpr_expr_ast_call_name(left), "__cxpr_window_highest")) {
         high_call = left;
     } else if (left && cxpr_expr_ast_kind_of(left) == CXPR_NODE_FUNCTION_CALL &&
-               cxpr_model_names_match(cxpr_expr_ast_call_name(left), "window_lowest")) {
+               cxpr_model_names_match(cxpr_expr_ast_call_name(left), "__cxpr_window_lowest")) {
         low_call = left;
     }
     if (right && cxpr_expr_ast_kind_of(right) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_names_match(cxpr_expr_ast_call_name(right), "window_highest")) {
+        cxpr_model_names_match(cxpr_expr_ast_call_name(right), "__cxpr_window_highest")) {
         high_call = right;
     } else if (right && cxpr_expr_ast_kind_of(right) == CXPR_NODE_FUNCTION_CALL &&
-               cxpr_model_names_match(cxpr_expr_ast_call_name(right), "window_lowest")) {
+               cxpr_model_names_match(cxpr_expr_ast_call_name(right), "__cxpr_window_lowest")) {
         low_call = right;
     }
     if (!high_call || !low_call ||
@@ -1985,8 +1985,8 @@ static bool cxpr_model_c_match_mean_stddev_pair(const cxpr_expr_ast* mean_ast,
         cxpr_expr_ast_kind_of(stddev_ast) != CXPR_NODE_FUNCTION_CALL ||
         cxpr_expr_ast_call_arg_count(mean_ast) != 2u ||
         cxpr_expr_ast_call_arg_count(stddev_ast) != 2u ||
-        !cxpr_model_names_match(cxpr_expr_ast_call_name(mean_ast), "window_mean") ||
-        !cxpr_model_names_match(cxpr_expr_ast_call_name(stddev_ast), "window_stddev")) {
+        !cxpr_model_names_match(cxpr_expr_ast_call_name(mean_ast), "__cxpr_window_mean") ||
+        !cxpr_model_names_match(cxpr_expr_ast_call_name(stddev_ast), "__cxpr_window_stddev")) {
         return false;
     }
     return cxpr_model_c_ast_same_simple(cxpr_expr_ast_call_arg(mean_ast, 0u),
@@ -2867,9 +2867,9 @@ static char* cxpr_model_ast_c_emit_window_call(const cxpr_expr_ast* ast,
         }
         period_limit_expr = pb.data;
     }
-    if (cxpr_model_names_match(name, "window_mean") &&
+    if (cxpr_model_names_match(name, "__cxpr_window_mean") &&
         cxpr_expr_ast_kind_of(value_ast) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_model_names_match(cxpr_expr_ast_call_name(value_ast), "window_roc") &&
+        cxpr_model_names_match(cxpr_expr_ast_call_name(value_ast), "__cxpr_window_roc") &&
         cxpr_expr_ast_call_arg_count(value_ast) == 2u) {
         const cxpr_expr_ast* roc_value_ast = cxpr_expr_ast_call_arg(value_ast, 0u);
         const cxpr_expr_ast* roc_period_ast = cxpr_expr_ast_call_arg(value_ast, 1u);

@@ -124,25 +124,33 @@ static int file_exists(const char* path) {
     return 1;
 }
 
-static char* join_dyn_cxpr_import_path(const char* root, const char* use_name) {
+static char* join_dyn_cxpr_import_path(const char* root,
+                                       const char* namespace_prefix,
+                                       const char* use_name) {
     size_t root_len = strlen(root);
     size_t use_len = strlen(use_name);
     int need_slash = root_len > 0u && root[root_len - 1u] != '/';
     int has_suffix = use_len > 5u && strcmp(use_name + use_len - 5u, ".cxpr") == 0;
+    size_t prefix_len = namespace_prefix ? strlen(namespace_prefix) : 0u;
     size_t len = root_len + (need_slash ? 1u : 0u) +
-                 strlen("libs/dyn/cxpr/") + use_len + (has_suffix ? 0u : 5u) + 1u;
+                 strlen("libs/dyn/cxpr/") + prefix_len + use_len +
+                 (has_suffix ? 0u : 5u) + 1u;
     char* out = (char*)malloc(len);
     if (!out) return NULL;
-    snprintf(out, len, "%s%slibs/dyn/cxpr/%s%s",
-             root, need_slash ? "/" : "", use_name, has_suffix ? "" : ".cxpr");
+    snprintf(out, len, "%s%slibs/dyn/cxpr/%s%s%s",
+             root, need_slash ? "/" : "", namespace_prefix ? namespace_prefix : "",
+             use_name, has_suffix ? "" : ".cxpr");
     return out;
 }
 
-static char* resolve_dyn_cxpr_import_from_ancestors(const char* dir, const char* use_name) {
+static char* resolve_dyn_cxpr_import_from_ancestors(const char* dir,
+                                                    const char* namespace_prefix,
+                                                    const char* use_name) {
     char* cursor = xstrdup(dir ? dir : ".");
     if (!cursor) return NULL;
     for (;;) {
-        char* candidate = join_dyn_cxpr_import_path(cursor, use_name);
+        char* candidate =
+            join_dyn_cxpr_import_path(cursor, namespace_prefix, use_name);
         if (!candidate) {
             free(cursor);
             return NULL;
@@ -524,9 +532,11 @@ static char* resolve_import_path_for_model(const char* dir, const char* use_name
     }
     free(path);
     if (strncmp(use_name, "indicators/", strlen("indicators/")) == 0) {
-        path = resolve_dyn_cxpr_import_from_ancestors(dir, use_name);
+        path = resolve_dyn_cxpr_import_from_ancestors(dir, "", use_name);
         if (path) return path;
     }
+    path = resolve_dyn_cxpr_import_from_ancestors(dir, "indicators/", use_name);
+    if (path) return path;
     return join_import_path(dir, use_name);
 }
 
@@ -674,13 +684,15 @@ static int emit_model_c(const char* model_path,
     }
     model = cxpr_model_parse(combined_source, &err);
     if (!model) {
-        fprintf(stderr, "cxpr_model_codegen: parse failed: %s\n", err.message);
+        fprintf(stderr, "cxpr_model_codegen: parse failed at %zu:%zu: %s\n",
+                err.line, err.column, err.message);
         goto cleanup;
     }
     import_bundle = cxpr_model_import_bundle_build(
         model_path, model, model_codegen_load_import, NULL, &err);
     if (!import_bundle) {
-        fprintf(stderr, "cxpr_model_codegen: failed to compile model imports\n");
+        fprintf(stderr, "cxpr_model_codegen: failed to compile model imports: %s\n",
+                err.message ? err.message : "unknown import error");
         goto cleanup;
     }
     import_api = cxpr_model_import_bundle_root_imports(
@@ -764,87 +776,14 @@ static int emit_model_c(const char* model_path,
         c_options.output_indices = output_indices;
         c_options.output_count = output_count;
         c_options.include_headers = 1;
-        if (!cxpr_model_plugin_run(
-                &event, cxpr_c_plugin_backend(), &c_options, &host, &err)) {
+        if (!cxpr_c_plugin_emit_artifact(
+                &event, &c_options, &host, &err)) {
             print_model_backend_error("C emit", model_path, model, program, &compile_options, &err);
             if (c_sink.file) {
                 fclose(c_sink.file);
                 c_sink.file = NULL;
             }
             goto cleanup;
-        }
-        {
-            FILE* descriptor_out = fopen(output_path, "ab");
-            cxpr_context* defaults_ctx = NULL;
-            size_t call_param_count;
-            if (!descriptor_out) {
-                fprintf(stderr, "cxpr_model_codegen: failed to append descriptor to %s\n",
-                        output_path);
-                goto cleanup;
-            }
-            defaults_ctx = cxpr_context_new();
-            if (!defaults_ctx ||
-                !cxpr_model_compiled_seed_defaults(program, defaults_ctx, NULL, &err)) {
-                fprintf(stderr, "cxpr_model_codegen: descriptor defaults failed: %s\n",
-                        err.message ? err.message : "(null)");
-                cxpr_context_free(defaults_ctx);
-                fclose(descriptor_out);
-                goto cleanup;
-            }
-            call_param_count = cxpr_model_compiled_call_param_count(program);
-            fprintf(descriptor_out,
-                    "\n#include <cxpr/generated.h>\n"
-                    "static size_t %s_descriptor_state_size(void) {\n"
-                    "    return sizeof(%s_state);\n"
-                    "}\n"
-                    "static const cxpr_generated_model_descriptor %s_descriptor = {\n"
-                    "    .name = \"%s\",\n"
-                    "    .tick = (cxpr_generated_tick_fn)%s,\n"
-                    "    .state_size = %s_descriptor_state_size,\n"
-                    "    .param_count = %zu,\n",
-                    function_name, function_name,
-                    function_name, cxpr_model_name(model),
-                    function_name, function_name, call_param_count);
-            for (size_t i = 0u; i < call_param_count; ++i) {
-                const char* name = cxpr_model_compiled_call_param_name(program, i);
-                bool found = false;
-                double value = cxpr_context_get_param(defaults_ctx, name, &found);
-                fprintf(descriptor_out,
-                        "    .param_names[%zu] = \"%s\",\n"
-                        "    .param_defaults[%zu] = %.17g,\n"
-                        "    .param_has_default[%zu] = %uu,\n",
-                        i, name ? name : "", i, value, i, found ? 1u : 0u);
-            }
-            fprintf(descriptor_out, "    .input_count = %zu,\n",
-                    cxpr_model_compiled_input_count(program));
-            for (size_t i = 0u; i < cxpr_model_compiled_input_count(program); ++i) {
-                fprintf(descriptor_out, "    .input_names[%zu] = \"%s\",\n",
-                        i, cxpr_model_compiled_input_name(program, i));
-            }
-            fprintf(descriptor_out, "    .output_count = %zu,\n",
-                    output_count > 0u ? output_count
-                                      : cxpr_model_compiled_output_count(program));
-            if (output_count > 0u) {
-                for (size_t i = 0u; i < output_count; ++i) {
-                    fprintf(descriptor_out, "    .output_names[%zu] = \"%s\",\n",
-                            i,
-                            cxpr_model_compiled_output_name(program, output_indices[i]));
-                }
-            } else {
-                for (size_t i = 0u; i < cxpr_model_compiled_output_count(program); ++i) {
-                    fprintf(descriptor_out, "    .output_names[%zu] = \"%s\",\n",
-                            i, cxpr_model_compiled_output_name(program, i));
-                }
-            }
-            fprintf(descriptor_out,
-                    "    .abi_version = CXPR_GENERATED_MODEL_ABI_VERSION,\n"
-                    "};\n");
-            cxpr_context_free(defaults_ctx);
-            if (fclose(descriptor_out) != 0) {
-                fprintf(stderr, "cxpr_model_codegen: failed to finish descriptor %s\n",
-                        output_path);
-                goto cleanup;
-            }
         }
     }
 

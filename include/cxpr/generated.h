@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 /** @brief ABI version implemented by generated model descriptors. */
-#define CXPR_GENERATED_MODEL_ABI_VERSION 3u
+#define CXPR_GENERATED_MODEL_ABI_VERSION 4u
 /** @brief Maximum number of inputs represented by a descriptor. */
 #define CXPR_GENERATED_MODEL_MAX_INPUTS 64u
 /** @brief Maximum number of outputs represented by a descriptor. */
@@ -33,6 +33,13 @@ typedef void (*cxpr_generated_tick_fn)(
 typedef size_t (*cxpr_generated_state_size_fn)(void);
 /** @brief Reset a generated model state block. */
 typedef void (*cxpr_generated_reset_fn)(void* state);
+
+/** Scalar value types transported by the generated model ABI. */
+typedef enum cxpr_generated_value_type {
+    CXPR_GENERATED_VALUE_UNKNOWN = 0,
+    CXPR_GENERATED_VALUE_NUMBER = 1,
+    CXPR_GENERATED_VALUE_BOOL = 2
+} cxpr_generated_value_type;
 
 /**
  * Build-time descriptor for one generated model.
@@ -54,14 +61,20 @@ typedef struct cxpr_generated_model_descriptor {
     size_t param_count; /**< Number of entries in the parameter arrays. */
     /** Ordered input names consumed by @ref tick. */
     const char* input_names[CXPR_GENERATED_MODEL_MAX_INPUTS];
+    /** Scalar type for each ordered input. */
+    cxpr_generated_value_type input_types[CXPR_GENERATED_MODEL_MAX_INPUTS];
     size_t input_count; /**< Number of entries in @ref input_names. */
     /** Ordered output names produced by @ref tick. */
     const char* output_names[CXPR_GENERATED_MODEL_MAX_OUTPUTS];
+    /** Scalar type for each ordered output. */
+    cxpr_generated_value_type output_types[CXPR_GENERATED_MODEL_MAX_OUTPUTS];
     size_t output_count; /**< Number of entries in @ref output_names. */
     uint32_t abi_version; /**< Descriptor ABI version. */
     cxpr_generated_reset_fn reset; /**< Optional state reset callback. */
     /** Ordered parameter names consumed by @ref tick. */
     const char* param_names[CXPR_GENERATED_MODEL_MAX_PARAMS];
+    /** Scalar type for each ordered parameter. */
+    cxpr_generated_value_type param_types[CXPR_GENERATED_MODEL_MAX_PARAMS];
     /** Default value for each parameter that has a default. */
     double param_defaults[CXPR_GENERATED_MODEL_MAX_PARAMS];
     /** Non-zero for parameters with an entry in @ref param_defaults. */
@@ -75,13 +88,37 @@ typedef struct cxpr_generated_model_descriptor {
  */
 static inline int cxpr_generated_model_descriptor_abi_valid(
     const cxpr_generated_model_descriptor* descriptor) {
-    return descriptor &&
-           descriptor->abi_version == CXPR_GENERATED_MODEL_ABI_VERSION &&
-           descriptor->name &&
-           descriptor->tick &&
-           descriptor->input_count <= CXPR_GENERATED_MODEL_MAX_INPUTS &&
-           descriptor->output_count <= CXPR_GENERATED_MODEL_MAX_OUTPUTS &&
-           descriptor->param_count <= CXPR_GENERATED_MODEL_MAX_PARAMS;
+    size_t i;
+    if (!descriptor ||
+        descriptor->abi_version != CXPR_GENERATED_MODEL_ABI_VERSION ||
+        !descriptor->name || !descriptor->tick || !descriptor->state_size ||
+        descriptor->input_count > CXPR_GENERATED_MODEL_MAX_INPUTS ||
+        descriptor->output_count > CXPR_GENERATED_MODEL_MAX_OUTPUTS ||
+        descriptor->param_count > CXPR_GENERATED_MODEL_MAX_PARAMS) {
+        return 0;
+    }
+    for (i = 0u; i < descriptor->input_count; ++i) {
+        if (!descriptor->input_names[i] ||
+            (descriptor->input_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
+             descriptor->input_types[i] != CXPR_GENERATED_VALUE_BOOL)) {
+            return 0;
+        }
+    }
+    for (i = 0u; i < descriptor->output_count; ++i) {
+        if (!descriptor->output_names[i] ||
+            (descriptor->output_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
+             descriptor->output_types[i] != CXPR_GENERATED_VALUE_BOOL)) {
+            return 0;
+        }
+    }
+    for (i = 0u; i < descriptor->param_count; ++i) {
+        if (!descriptor->param_names[i] ||
+            (descriptor->param_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
+             descriptor->param_types[i] != CXPR_GENERATED_VALUE_BOOL)) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 #ifdef __cplusplus

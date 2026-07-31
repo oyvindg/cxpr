@@ -1,4 +1,5 @@
 #include "model/internal.h"
+#include "model/window/window.h"
 #include <stdlib.h>
 
 const cxpr_expr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
@@ -195,4 +196,199 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
     default:
         return cxpr_expr_ast_clone(ast);
     }
+}
+
+static bool cxpr_model_defined_body_is_series_aware(const cxpr_expr_ast* ast,
+                                                     const cxpr_registry* registry,
+                                                     size_t depth) {
+    if (!ast || depth > 64u) return false;
+    switch (cxpr_expr_ast_kind_of(ast)) {
+    case CXPR_NODE_LOOKBACK:
+        return true;
+    case CXPR_NODE_FUNCTION_CALL: {
+        const char* name = cxpr_expr_ast_call_name(ast);
+        cxpr_func_entry* entry;
+        if (cxpr_model_window_is_function(name)) return true;
+        entry = registry ? cxpr_registry_find(registry, name) : NULL;
+        if (entry && entry->defined_body &&
+            cxpr_model_defined_body_is_series_aware(
+                entry->defined_body, registry, depth + 1u)) {
+            return true;
+        }
+        for (size_t i = 0u; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
+            if (cxpr_model_defined_body_is_series_aware(
+                    cxpr_expr_ast_call_arg(ast, i), registry, depth)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(ast); ++i) {
+            if (cxpr_model_defined_body_is_series_aware(
+                    cxpr_expr_ast_record_field_value(ast, i), registry, depth)) {
+                return true;
+            }
+        }
+        return false;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_defined_body_is_series_aware(
+                   cxpr_expr_ast_binary_left(ast), registry, depth) ||
+               cxpr_model_defined_body_is_series_aware(
+                   cxpr_expr_ast_binary_right(ast), registry, depth);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_defined_body_is_series_aware(
+            cxpr_expr_ast_unary_operand(ast), registry, depth);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_defined_body_is_series_aware(
+                   cxpr_expr_ast_ternary_condition(ast), registry, depth) ||
+               cxpr_model_defined_body_is_series_aware(
+                   cxpr_expr_ast_ternary_true(ast), registry, depth) ||
+               cxpr_model_defined_body_is_series_aware(
+                   cxpr_expr_ast_ternary_false(ast), registry, depth);
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            if (cxpr_model_defined_body_is_series_aware(
+                    ast->data.array.elements[i], registry, depth)) {
+                return true;
+            }
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
+static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
+                                                       const cxpr_registry* registry,
+                                                       size_t depth,
+                                                       cxpr_error* err) {
+    if (!ast || !registry) return ast;
+    if (depth > 64u) {
+        cxpr_expr_ast_free(ast);
+        cxpr_model_set_error(
+            err, CXPR_ERR_SYNTAX, "Recursive model function expansion", 0u, 0u);
+        return NULL;
+    }
+    switch (cxpr_expr_ast_kind_of(ast)) {
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_func_entry* entry;
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+            ast->data.function_call.args[i] = cxpr_model_expand_defined_owned(
+                ast->data.function_call.args[i], registry, depth, err);
+            if (!ast->data.function_call.args[i]) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+        }
+        entry = cxpr_registry_find(registry, ast->data.function_call.name);
+        if (entry && entry->defined_body &&
+            cxpr_model_defined_body_is_series_aware(
+                entry->defined_body, registry, 0u) &&
+            entry->defined_return_field_count == 0u) {
+            cxpr_model_local_binding* locals;
+            cxpr_expr_ast* substituted;
+            if (entry->defined_param_count != ast->data.function_call.argc) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(
+                    err, CXPR_ERR_WRONG_ARITY, "Model function arity mismatch", 0u, 0u);
+                return NULL;
+            }
+            locals = (cxpr_model_local_binding*)calloc(
+                entry->defined_param_count ? entry->defined_param_count : 1u,
+                sizeof(*locals));
+            if (!locals) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(
+                    err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            for (size_t i = 0u; i < entry->defined_param_count; ++i) {
+                locals[i].name = entry->defined_param_names[i];
+                locals[i].expr = ast->data.function_call.args[i];
+            }
+            substituted = cxpr_model_inline_locals(
+                entry->defined_body, locals, entry->defined_param_count);
+            free(locals);
+            cxpr_expr_ast_free(ast);
+            if (!substituted) {
+                cxpr_model_set_error(
+                    err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            return cxpr_model_expand_defined_owned(
+                substituted, registry, depth + 1u, err);
+        }
+        return ast;
+    }
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            ast->data.record.field_values[i] = cxpr_model_expand_defined_owned(
+                ast->data.record.field_values[i], registry, depth, err);
+            if (!ast->data.record.field_values[i]) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+        }
+        return ast;
+    case CXPR_NODE_BINARY_OP:
+        ast->data.binary_op.left = cxpr_model_expand_defined_owned(
+            ast->data.binary_op.left, registry, depth, err);
+        ast->data.binary_op.right = cxpr_model_expand_defined_owned(
+            ast->data.binary_op.right, registry, depth, err);
+        break;
+    case CXPR_NODE_UNARY_OP:
+        ast->data.unary_op.operand = cxpr_model_expand_defined_owned(
+            ast->data.unary_op.operand, registry, depth, err);
+        break;
+    case CXPR_NODE_LOOKBACK:
+        ast->data.lookback.target = cxpr_model_expand_defined_owned(
+            ast->data.lookback.target, registry, depth, err);
+        ast->data.lookback.index = cxpr_model_expand_defined_owned(
+            ast->data.lookback.index, registry, depth, err);
+        break;
+    case CXPR_NODE_TERNARY:
+        ast->data.ternary.condition = cxpr_model_expand_defined_owned(
+            ast->data.ternary.condition, registry, depth, err);
+        ast->data.ternary.true_branch = cxpr_model_expand_defined_owned(
+            ast->data.ternary.true_branch, registry, depth, err);
+        ast->data.ternary.false_branch = cxpr_model_expand_defined_owned(
+            ast->data.ternary.false_branch, registry, depth, err);
+        break;
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            ast->data.array.elements[i] = cxpr_model_expand_defined_owned(
+                ast->data.array.elements[i], registry, depth, err);
+            if (!ast->data.array.elements[i]) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+        }
+        return ast;
+    default:
+        return ast;
+    }
+    if ((cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP &&
+         (!ast->data.binary_op.left || !ast->data.binary_op.right)) ||
+        (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_UNARY_OP &&
+         !ast->data.unary_op.operand) ||
+        (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK &&
+         (!ast->data.lookback.target || !ast->data.lookback.index)) ||
+        (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_TERNARY &&
+         (!ast->data.ternary.condition || !ast->data.ternary.true_branch ||
+          !ast->data.ternary.false_branch))) {
+        cxpr_expr_ast_free(ast);
+        return NULL;
+    }
+    return ast;
+}
+
+cxpr_expr_ast* cxpr_model_inline_defined_calls(const cxpr_expr_ast* ast,
+                                               const cxpr_registry* registry,
+                                               cxpr_error* err) {
+    cxpr_expr_ast* clone;
+    if (!ast) return NULL;
+    clone = cxpr_expr_ast_clone(ast);
+    if (!clone || !registry) return clone;
+    return cxpr_model_expand_defined_owned(clone, registry, 0u, err);
 }

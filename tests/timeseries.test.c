@@ -559,6 +559,76 @@ static void test_builtin_highest_and_lowest_use_window(void) {
     printf("  \xE2\x9C\x93 test_builtin_highest_and_lowest_use_window\n");
 }
 
+static void test_window_expression_reduction_syntax(void) {
+    static const double close_series[] = {8.0, 13.0, 9.0, 15.0, 11.0};
+    static const double base_series[] = {1.0, -2.0, 4.0, 3.0, 0.0};
+    const test_series_env env = {
+        .close = close_series,
+        .base = base_series,
+        .length = 5,
+        .current_index = 4,
+    };
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    double out = 0.0;
+
+    cxpr_register_defaults(reg);
+    cxpr_registry_set_lookback_resolver(
+        reg, test_series_lookback_resolver, (void*)&env, NULL);
+    cxpr_context_set(ctx, "close", close_series[env.current_index]);
+    cxpr_context_set(ctx, "base", base_series[env.current_index]);
+
+    cxpr_expr_ast* ast = parse_or_die(parser, "max(window(close, samples=3))");
+    assert(strcmp(cxpr_expr_ast_call_name(ast), "__cxpr_window_highest") == 0);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 15.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = parse_or_die(parser, "max(window(expr=close, samples=3))");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 15.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = parse_or_die(parser, "min(window(close + base, 4))");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 11.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = parse_or_die(parser, "sum(window(close * base, 3))");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 81.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = parse_or_die(parser, "mean(window(close - base, 3))");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 28.0 / 3.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = parse_or_die(parser, "mean(window(close / close[1] - 1, 3))");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 2.0 / 65.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = parse_or_die(parser, "stddev(window(close, 3))");
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, sqrt(56.0 / 9.0));
+    cxpr_expr_ast_free(ast);
+
+    /* Scalar reductions retain their existing behavior. */
+    ast = parse_or_die(parser, "max(close, base)");
+    assert(strcmp(cxpr_expr_ast_call_name(ast), "max") == 0);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    ASSERT_DOUBLE_EQ(out, 11.0);
+    cxpr_expr_ast_free(ast);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_expr_parser_free(parser);
+    printf("  \xE2\x9C\x93 test_window_expression_reduction_syntax\n");
+}
+
 static void test_builtin_bars_since_extreme_uses_window(void) {
     static const double close_series[] = {8.0, 13.0, 9.0, 15.0, 11.0};
     static const double base_series[] = {0.0, 0.0, 0.0, 0.0, 0.0};
@@ -617,7 +687,7 @@ static void test_builtin_window_mean_absdev_uses_center(void) {
     cxpr_registry_set_lookback_resolver(reg, test_series_lookback_resolver, (void*)&env, NULL);
     cxpr_context_set(ctx, "close", close_series[env.current_index]);
 
-    cxpr_expr_ast* ast = parse_or_die(parser, "window_mean_absdev(close, 3, 12)");
+    cxpr_expr_ast* ast = parse_or_die(parser, "mean_absdev(window(close, 3), 12)");
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     ASSERT_DOUBLE_EQ(out, (fabs(11.0 - 12.0) + fabs(15.0 - 12.0) + fabs(9.0 - 12.0)) / 3.0);
@@ -642,11 +712,13 @@ static void test_timeseries_builtin_name_introspection(void) {
     assert(cxpr_timeseries_is_builtin("highest"));
     assert(cxpr_timeseries_is_builtin("lowest"));
     assert(cxpr_timeseries_is_builtin("bars_since_extreme"));
-    assert(cxpr_timeseries_is_builtin("window_mean_absdev"));
+    assert(!cxpr_timeseries_is_builtin("window_mean_absdev"));
     assert(cxpr_window_ir_count() == 9u);
-    assert(cxpr_window_ir_find("window_highest")->op == CXPR_WINDOW_OP_HIGHEST);
-    assert(cxpr_window_ir_find("window_lowest")->reduction ==
+    assert(cxpr_window_ir_find("__cxpr_window_highest")->op ==
+           CXPR_WINDOW_OP_HIGHEST);
+    assert(cxpr_window_ir_find("__cxpr_window_lowest")->reduction ==
            CXPR_WINDOW_REDUCE_LOWEST);
+    assert(cxpr_window_ir_find("window_highest") == NULL);
     assert(cxpr_window_ir_find("not_a_window") == NULL);
     assert(!cxpr_timeseries_is_builtin("ema"));
     assert(!cxpr_timeseries_is_builtin(NULL));
@@ -664,6 +736,7 @@ int main(void) {
     test_builtin_cross_above_and_below_use_lookback();
     test_builtin_delta_and_roc_use_lookback();
     test_builtin_highest_and_lowest_use_window();
+    test_window_expression_reduction_syntax();
     test_builtin_bars_since_extreme_uses_window();
     test_builtin_window_mean_absdev_uses_center();
     test_timeseries_builtin_name_introspection();

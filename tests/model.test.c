@@ -1558,6 +1558,12 @@ static void test_compile_and_eval_model_program(void) {
     cxpr_context* ctx = cxpr_context_new();
 
     assert(program != NULL);
+    assert(cxpr_model_compiled_input_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_NUMBER);
+    assert(cxpr_model_compiled_output_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_BOOL);
+    assert(cxpr_model_compiled_output_result_kind(program, 1u) ==
+           CXPR_MODEL_RESULT_UNKNOWN);
     assert(ctx != NULL);
     assert(cxpr_model_compiled_binding_count(program) == 2);
     assert(strcmp(cxpr_model_compiled_binding_name(program, 0), "base") == 0);
@@ -1739,6 +1745,46 @@ static void test_compile_model_ir_backend_rejects_unsupported_model(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_compile_model_ir_backend_rejects_unsupported_model\n");
+}
+
+static void test_compile_series_aware_defined_function(void) {
+    cxpr_error err = {0};
+    cxpr_model_compile_options options = {CXPR_MODEL_BACKEND_C, true, false};
+    cxpr_model* model = parse_model_ok(
+        "model series_aware_fn\n"
+        "in a, b\n"
+        "$period = 20\n"
+        "fn population_variance(source, period) = "
+        "max(0, mean(window(source * source, period)) - "
+        "mean(window(source, period)) * mean(window(source, period)))\n"
+        "fn covariance(a, b, period) = "
+        "mean(window(a * b, period)) - "
+        "mean(window(a, period)) * mean(window(b, period))\n"
+        "variance_a = population_variance(a, $period)\n"
+        "covariance_ab = covariance(a, b, $period)\n"
+        "value = variance_a + covariance_ab\n"
+        "out value\n");
+    cxpr_model_compiled* program =
+        cxpr_model_compile_with_options(model, NULL, &options, &err);
+    char* code;
+
+    if (!program) {
+        fprintf(stderr, "series-aware fn compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "series_aware_fn_tick", &err);
+    if (!code) {
+        fprintf(stderr, "series-aware fn codegen failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_model_window_eval_c") != NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_compile_series_aware_defined_function\n");
 }
 
 static void test_compile_model_c_backend_rejects_unsupported_model(void) {
@@ -2084,14 +2130,16 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
         "model window_builtin\n"
         "in { close }\n"
         "$period = 3\n"
-        "sum = window_sum(close, $period)\n"
-        "mean = window_mean(close, $period)\n"
-        "wma = window_wma(close, $period)\n"
-        "hi = window_highest(close, $period)\n"
-        "lo = window_lowest(close, $period)\n"
-        "sd = window_stddev(close, $period)\n"
-        "rocv = window_roc(close, $period)\n"
-        "out { sum, mean, wma, hi, lo, sd, rocv }\n");
+        "sum = sum(window(close, $period))\n"
+        "mean = mean(window(close, $period))\n"
+        "wma = wma(window(close, $period))\n"
+        "hi = max(window(close, $period))\n"
+        "lo = min(window(close, $period))\n"
+        "sd = stddev(window(close, $period))\n"
+        "rocv = roc(window(close, $period))\n"
+        "syntax_hi = max(window(close * 2, samples=$period))\n"
+        "return_mean = mean(window(close / close[1] - 1, $period))\n"
+        "out { sum, mean, wma, hi, lo, sd, rocv, syntax_hi, return_mean }\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
     cxpr_model_session* session;
     cxpr_context* ctx;
@@ -2133,6 +2181,12 @@ static void test_session_window_builtin_autoregisters_and_emits_c(void) {
     assert(fabs(value - sqrt(8.0 / 3.0)) < 1e-12);
     assert(cxpr_model_session_get_number(session, "rocv", &value));
     assert(fabs(value - 60.0) < 1e-12);
+    assert(cxpr_model_session_get_number(session, "syntax_hi", &value));
+    assert(fabs(value - 32.0) < 1e-12);
+    assert(cxpr_model_session_get_number(session, "return_mean", &value));
+    assert(fabs(value - ((16.0 / 14.0 - 1.0) +
+                         (14.0 / 12.0 - 1.0) +
+                         (12.0 / 10.0 - 1.0)) / 3.0) < 1e-12);
 
     code = cxpr_model_compiled_generate_c(program, "static inline",
                                                  "window_builtin_tick", &err);
@@ -2157,7 +2211,7 @@ static void test_session_window_roc_accepts_max_period(void) {
         "model window_roc_max_period\n"
         "in { close }\n"
         "$period = 0\n"
-        "value = window_roc(close, max(1, $period))\n"
+        "value = roc(window(close, max(1, $period)))\n"
         "out value\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
     cxpr_model_session* session;
@@ -2306,8 +2360,8 @@ static void test_model_c_common_subexpression_eliminates_duplicate_bindings(void
         "$period = 3\n"
         "a = close + 1\n"
         "b = close + 1\n"
-        "ma1 = window_mean(close, $period)\n"
-        "ma2 = window_mean(close, $period)\n"
+        "ma1 = mean(window(close, $period))\n"
+        "ma2 = mean(window(close, $period))\n"
         "out { a, b, ma1, ma2 }\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
 
@@ -3802,7 +3856,7 @@ static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
         "model window_floor\n"
         "in { high }\n"
         "$period = 14 { min = 1, max = 32 }\n"
-        "value = window_highest(high, $period)\n"
+        "value = max(window(high, $period))\n"
         "out value\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
     cxpr_model_session* session;
@@ -4272,6 +4326,7 @@ int main(void) {
     test_compile_and_eval_model_program();
     test_compile_and_eval_struct_param_and_shorthand_record();
     test_compile_model_backend_options();
+    test_compile_series_aware_defined_function();
     test_compile_model_ir_backend_rejects_unsupported_model();
     test_compile_model_c_backend_rejects_unsupported_model();
     test_compile_model_defined_function_without_host_registration();

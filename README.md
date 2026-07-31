@@ -140,6 +140,41 @@ The umbrella header is:
 Focused headers such as `<cxpr/parser.h>`, `<cxpr/model/model.h>`, or
 `<cxpr/plugins/cuda.h>` may be included directly.
 
+## Engine and generated C
+
+Use `cxpr_model_session` or `cxpr_engine_session` as the dynamic/reference
+backend when source changes in-process, when watches and transition events are
+needed, or when comparing another backend for correctness.
+
+Use generated C for fixed models and production hot loops. The generated model
+descriptor exposes ordered inputs, parameters, outputs, state size, tick, and
+reset without requiring AST or IR execution in the consuming host. Descriptor
+ABI v4 also exposes and validates scalar input, parameter, and output types.
+`cxpr_c_plugin_emit_artifact` is the public path for emitting the evaluator and
+descriptor as one build artifact; `cxpr_model_codegen` is its CLI frontend.
+Hosts that require an explicit input contract can pass a complete
+`cxpr_model_host_binding` schema through `cxpr_model_compile_options`. The
+compiler rejects missing, duplicate, invalid, and undeclared bindings before
+publishing generated code.
+
+`cxpr_debug_map_plugin_emit` produces a separate versioned pure-C debug-map
+artifact. It contains deterministic node/output IDs, canonical source,
+available parser spans, dependency edges, result types, and public
+output-to-node mappings. Trace slots are reserved in ABI v1 and currently emit
+`CXPR_DEBUG_TRACE_SLOT_NONE`.
+
+The [compiled-strategy example](examples/compiled_strategy/README.md) generates
+and compiles a stateful four-output model, then proves every output against a
+model session for 512 deterministic ticks:
+
+```sh
+cmake --build build --target cxpr_compiled_strategy_example
+ctest --test-dir build -R cxpr_compiled_strategy_example --output-on-failure
+```
+
+Dynasty is a downstream integration and is not part of the CXPR API. Its
+market-data and strategy semantics remain in the downstream host.
+
 ## Expression language
 
 Expressions are the common calculation language used by the low-level API and

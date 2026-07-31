@@ -466,7 +466,9 @@ static const char* cxpr_model_host_parse_ident(const char* cursor,
     const char* start = cursor;
     if (out_start) *out_start = NULL;
     if (out_len) *out_len = 0u;
-    if (!cursor || !cxpr_model_host_ident_start(*cursor)) return NULL;
+    if (!cursor) return NULL;
+    if (*cursor == '$') cursor++;
+    if (!cxpr_model_host_ident_start(*cursor)) return NULL;
     cursor++;
     while (cxpr_model_host_ident_char(*cursor)) cursor++;
     if (out_start) *out_start = start;

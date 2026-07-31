@@ -42,6 +42,31 @@ char* cxpr_c_plugin_source_from_program(
     const cxpr_c_plugin_options* options,
     cxpr_error* err);
 
+/**
+ * @brief Generate an owned, complete C artifact from a compiled model program.
+ *
+ * The artifact contains the evaluator and a static
+ * `cxpr_generated_model_descriptor` named `<function_name>_descriptor`.
+ *
+ * @param model_name Stable model name stored in the descriptor.
+ * @return Owned source on success, or NULL on failure.
+ */
+char* cxpr_c_plugin_artifact_from_program(
+    const cxpr_model_compiled* program,
+    const char* model_name,
+    const cxpr_c_plugin_options* options,
+    cxpr_error* err);
+
+/**
+ * @brief Generate and emit a complete evaluator plus descriptor artifact.
+ * @return Non-zero on success, otherwise zero with @p err populated.
+ */
+int cxpr_c_plugin_emit_artifact(
+    const cxpr_model_plugin_event* event,
+    const cxpr_c_plugin_options* options,
+    const cxpr_model_plugin_host* host,
+    cxpr_error* err);
+
 /** @brief Free source returned by @ref cxpr_c_plugin_source_from_program. */
 void cxpr_c_plugin_source_free(char* source);
 

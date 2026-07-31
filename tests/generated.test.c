@@ -24,8 +24,10 @@ static cxpr_generated_model_descriptor valid_descriptor(void) {
     descriptor.tick = tick;
     descriptor.state_size = state_size;
     descriptor.input_names[0] = "value";
+    descriptor.input_types[0] = CXPR_GENERATED_VALUE_NUMBER;
     descriptor.input_count = 1u;
     descriptor.output_names[0] = "value";
+    descriptor.output_types[0] = CXPR_GENERATED_VALUE_NUMBER;
     descriptor.output_count = 1u;
     descriptor.abi_version = CXPR_GENERATED_MODEL_ABI_VERSION;
     return descriptor;
@@ -52,6 +54,14 @@ int main(void) {
 
     descriptor = valid_descriptor();
     descriptor.tick = NULL;
+    assert(!cxpr_generated_model_descriptor_abi_valid(&descriptor));
+
+    descriptor = valid_descriptor();
+    descriptor.output_types[0] = CXPR_GENERATED_VALUE_UNKNOWN;
+    assert(!cxpr_generated_model_descriptor_abi_valid(&descriptor));
+
+    descriptor = valid_descriptor();
+    descriptor.input_names[0] = NULL;
     assert(!cxpr_generated_model_descriptor_abi_valid(&descriptor));
     assert(!cxpr_generated_model_descriptor_abi_valid(NULL));
 

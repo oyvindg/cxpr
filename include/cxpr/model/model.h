@@ -45,11 +45,20 @@ typedef enum {
     CXPR_MODEL_BACKEND_C = 2,
 } cxpr_model_backend_kind;
 
+/** One typed external scalar supplied by a generated-model host. */
+typedef struct cxpr_model_host_binding {
+    const char* name;
+    cxpr_model_result_kind type;
+} cxpr_model_host_binding;
+
 /** @brief Options controlling model compilation and backend selection. */
 typedef struct {
     cxpr_model_backend_kind backend;
     bool fuse;
     bool enable_trace;
+    /** Optional complete schema for model inputs, matched by name. */
+    const cxpr_model_host_binding* host_bindings;
+    size_t host_binding_count;
 } cxpr_model_compile_options;
 
 /** @brief One precompiled model supplied as a direct import. */
@@ -348,11 +357,21 @@ size_t cxpr_model_compiled_output_count(const cxpr_model_compiled* program);
 /** @brief Return output name @p index, or NULL when out of range. */
 const char* cxpr_model_compiled_output_name(const cxpr_model_compiled* program, size_t index);
 
+/** @brief Return the inferred scalar result kind for output @p index. */
+cxpr_model_result_kind cxpr_model_compiled_output_result_kind(
+    const cxpr_model_compiled* program,
+    size_t index);
+
 /** @brief Return the number of declared model inputs. */
 size_t cxpr_model_compiled_input_count(const cxpr_model_compiled* program);
 
 /** @brief Return input name @p index, or NULL when out of range. */
 const char* cxpr_model_compiled_input_name(const cxpr_model_compiled* program, size_t index);
+
+/** @brief Return the inferred scalar result kind for input @p index. */
+cxpr_model_result_kind cxpr_model_compiled_input_result_kind(
+    const cxpr_model_compiled* program,
+    size_t index);
 
 /** @brief Return the number of resolved imported child model programs. */
 size_t cxpr_model_compiled_child_count(const cxpr_model_compiled* program);

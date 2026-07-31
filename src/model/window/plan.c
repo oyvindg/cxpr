@@ -154,7 +154,7 @@ static bool cxpr_model_window_plan_add_nested_roc_aggregate(
     }
     roc_ast = cxpr_expr_ast_call_arg(ast, 0u);
     if (!roc_ast || cxpr_expr_ast_kind_of(roc_ast) != CXPR_NODE_FUNCTION_CALL ||
-        !cxpr_model_names_match(cxpr_expr_ast_call_name(roc_ast), "window_roc") ||
+        !cxpr_model_names_match(cxpr_expr_ast_call_name(roc_ast), "__cxpr_window_roc") ||
         cxpr_expr_ast_call_arg_count(roc_ast) != 2u) {
         return true;
     }

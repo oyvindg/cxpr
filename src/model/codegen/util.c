@@ -70,10 +70,27 @@ void cxpr_model_c_format_double(char* out, size_t out_size, double value) {
 
 char* cxpr_model_c_safe_name(const char* name) {
     size_t len = name ? strlen(name) : 0u;
-    char* out = (char*)malloc(len + 4u);
+    static const char* const keywords[] = {
+        "auto", "break", "case", "char", "const", "continue", "default",
+        "do", "double", "else", "enum", "extern", "float", "for", "goto",
+        "if", "inline", "int", "long", "register", "restrict", "return",
+        "short", "signed", "sizeof", "static", "struct", "switch", "typedef",
+        "union", "unsigned", "void", "volatile", "while", "_Alignas",
+        "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary",
+        "_Noreturn", "_Static_assert", "_Thread_local",
+    };
+    bool keyword = false;
+    char* out;
     size_t pos = 0u;
+    for (size_t i = 0u; i < sizeof(keywords) / sizeof(keywords[0]); ++i) {
+        if (name && strcmp(name, keywords[i]) == 0) {
+            keyword = true;
+            break;
+        }
+    }
+    out = (char*)malloc(len + 4u);
     if (!out) return NULL;
-    if (len == 0u || (name[0] >= '0' && name[0] <= '9')) {
+    if (keyword || len == 0u || (name[0] >= '0' && name[0] <= '9')) {
         memcpy(out, "cx_", 3u);
         pos = 3u;
     }

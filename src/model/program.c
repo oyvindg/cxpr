@@ -369,6 +369,40 @@ cxpr_model_result_kind cxpr_model_compiled_fast_path_output_result_kind(
                : CXPR_MODEL_RESULT_UNKNOWN;
 }
 
+static cxpr_model_result_kind cxpr_model_slot_result_kind_by_name(
+    const cxpr_model_slot_ref* slots,
+    size_t count,
+    const char* name) {
+    size_t i;
+    if (!slots || !name) return CXPR_MODEL_RESULT_UNKNOWN;
+    for (i = 0u; i < count; ++i) {
+        if (slots[i].name && strcmp(slots[i].name, name) == 0) {
+            return slots[i].result_kind;
+        }
+    }
+    return CXPR_MODEL_RESULT_UNKNOWN;
+}
+
+cxpr_model_result_kind cxpr_model_compiled_output_result_kind(
+    const cxpr_model_compiled* program,
+    size_t index) {
+    const char* name = cxpr_model_compiled_output_name(program, index);
+    return program
+               ? cxpr_model_slot_result_kind_by_name(
+                     program->fused_outputs, program->fused_output_count, name)
+               : CXPR_MODEL_RESULT_UNKNOWN;
+}
+
+cxpr_model_result_kind cxpr_model_compiled_input_result_kind(
+    const cxpr_model_compiled* program,
+    size_t index) {
+    const char* name = cxpr_model_compiled_input_name(program, index);
+    return program
+               ? cxpr_model_slot_result_kind_by_name(
+                     program->fused_inputs, program->fused_input_count, name)
+               : CXPR_MODEL_RESULT_UNKNOWN;
+}
+
 size_t cxpr_model_compiled_fast_path_commit_count(const cxpr_model_compiled* program) {
     return program ? program->fused_commit_count : 0u;
 }

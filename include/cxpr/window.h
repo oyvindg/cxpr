@@ -12,7 +12,13 @@
 extern "C" {
 #endif
 
-/** @brief Supported built-in operations over a trailing value window. */
+/**
+ * @brief Supported built-in operations over a trailing expression window.
+ *
+ * Public expressions may use reduction syntax such as
+ * `mean(window(high - low, 14))`. Parsing lowers that form to the corresponding
+ * operation below; no runtime array or window object is created.
+ */
 typedef enum {
     CXPR_WINDOW_OP_NONE = 0,
     CXPR_WINDOW_OP_ROC,

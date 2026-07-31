@@ -7,6 +7,115 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const char* cxpr_window_reduction_name(const char* name) {
+    if (!name) return NULL;
+    if (strcmp(name, "max") == 0) return "__cxpr_window_highest";
+    if (strcmp(name, "min") == 0) return "__cxpr_window_lowest";
+    if (strcmp(name, "sum") == 0) return "__cxpr_window_sum";
+    if (strcmp(name, "mean") == 0) return "__cxpr_window_mean";
+    if (strcmp(name, "stddev") == 0) return "__cxpr_window_stddev";
+    if (strcmp(name, "wma") == 0) return "__cxpr_window_wma";
+    if (strcmp(name, "roc") == 0) return "__cxpr_window_roc";
+    return NULL;
+}
+
+/*
+ * A window is a compile-time expression view, not a runtime value. Lower the
+ * public reduction form to the established window builtin so every evaluator
+ * and code generator shares the same offset and history semantics.
+ */
+static cxpr_expr_ast* cxpr_parse_lower_window_reduction(cxpr_expr_ast* node) {
+    cxpr_expr_ast* window;
+    const char* lowered_name;
+    char* owned_name;
+
+    if (!node || node->type != CXPR_NODE_FUNCTION_CALL) {
+        return node;
+    }
+    if (strcmp(node->data.function_call.name, "mean_absdev") == 0 &&
+        node->data.function_call.argc == 2u) {
+        lowered_name = "__cxpr_window_mean_absdev";
+    } else {
+        if (node->data.function_call.argc != 1u) return node;
+        lowered_name = cxpr_window_reduction_name(
+            node->data.function_call.name);
+    }
+    window = node->data.function_call.args[0];
+    if (!lowered_name || !window || window->type != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(window->data.function_call.name, "window") != 0 ||
+        window->data.function_call.argc != 2u) {
+        return node;
+    }
+
+    owned_name = (char*)malloc(strlen(lowered_name) + 1u);
+    if (!owned_name) {
+        cxpr_expr_ast_free(node);
+        return NULL;
+    }
+    strcpy(owned_name, lowered_name);
+
+    free(node->data.function_call.name);
+    node->data.function_call.name = owned_name;
+    {
+        size_t tail_count = node->data.function_call.argc - 1u;
+        size_t lowered_argc = window->data.function_call.argc + tail_count;
+        cxpr_expr_ast** lowered_args =
+            (cxpr_expr_ast**)calloc(lowered_argc, sizeof(cxpr_expr_ast*));
+        char** lowered_names =
+            (char**)calloc(lowered_argc, sizeof(char*));
+        if (!lowered_args || !lowered_names) {
+            free(lowered_args);
+            free(lowered_names);
+            cxpr_expr_ast_free(node);
+            return NULL;
+        }
+        for (size_t i = 0u; i < window->data.function_call.argc; ++i) {
+            lowered_args[i] = window->data.function_call.args[i];
+            lowered_names[i] = window->data.function_call.arg_names
+                ? window->data.function_call.arg_names[i] : NULL;
+        }
+        for (size_t i = 0u; i < tail_count; ++i) {
+            lowered_args[window->data.function_call.argc + i] =
+                node->data.function_call.args[i + 1u];
+            lowered_names[window->data.function_call.argc + i] =
+                node->data.function_call.arg_names
+                    ? node->data.function_call.arg_names[i + 1u] : NULL;
+        }
+        if (node->data.function_call.arg_names) {
+            free(node->data.function_call.arg_names[0]);
+        }
+        free(node->data.function_call.args);
+        free(node->data.function_call.arg_names);
+        free(window->data.function_call.args);
+        free(window->data.function_call.arg_names);
+        node->data.function_call.args = lowered_args;
+        node->data.function_call.arg_names = lowered_names;
+        node->data.function_call.argc = lowered_argc;
+    }
+    if (node->data.function_call.arg_names &&
+        node->data.function_call.arg_names[0] &&
+        strcmp(node->data.function_call.arg_names[0], "expr") == 0) {
+        char* value_name = (char*)malloc(sizeof("value"));
+        if (!value_name) {
+            window->data.function_call.args = NULL;
+            window->data.function_call.arg_names = NULL;
+            window->data.function_call.argc = 0u;
+            cxpr_expr_ast_free(window);
+            cxpr_expr_ast_free(node);
+            return NULL;
+        }
+        memcpy(value_name, "value", sizeof("value"));
+        free(node->data.function_call.arg_names[0]);
+        node->data.function_call.arg_names[0] = value_name;
+    }
+
+    window->data.function_call.args = NULL;
+    window->data.function_call.arg_names = NULL;
+    window->data.function_call.argc = 0u;
+    cxpr_expr_ast_free(window);
+    return node;
+}
+
 static bool cxpr_parse_call_argument(cxpr_expr_parser* p, cxpr_expr_ast** out_arg, char** out_name) {
     cxpr_expr_ast* arg = NULL;
     char* name = NULL;
@@ -333,6 +442,7 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
             } else {
                 node = cxpr_expr_ast_call_named_new(name, args, arg_names, argc);
                 free(name);
+                if (node) node = cxpr_parse_lower_window_reduction(node);
             }
             if (!node) return NULL;
             goto primary_done;

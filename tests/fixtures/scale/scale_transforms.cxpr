@@ -1,0 +1,15 @@
+# Nested import layer used to exercise standalone import resolution.
+
+fn normalize(value, center, width) =
+    0.5 + (value - center) / (width > 0.000001 ? width : 0.000001) < 0 ? 0 :
+    0.5 + (value - center) / (width > 0.000001 ? width : 0.000001) > 1 ? 1 :
+    0.5 + (value - center) / (width > 0.000001 ? width : 0.000001)
+
+fn weighted_value(left, right, weight) =
+    left * (1 - (weight < 0 ? 0 : weight > 1 ? 1 : weight)) +
+    right * (weight < 0 ? 0 : weight > 1 ? 1 : weight)
+
+fn spread(left, right) = left - right
+
+fn bound(value) = value < 0 ? 0 : value > 1 ? 1 : value
+fn energy(value) = value < 0 ? 0 - value * value : value * value

@@ -287,6 +287,9 @@ void cxpr_model_context_set_compiled_typed(cxpr_context* ctx,
 cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
                                    const cxpr_model_local_binding* locals,
                                    size_t local_count);
+cxpr_expr_ast* cxpr_model_inline_defined_calls(const cxpr_expr_ast* ast,
+                                               const cxpr_registry* registry,
+                                               cxpr_error* err);
 bool cxpr_model_lookback_target_key(const cxpr_expr_ast* target,
                                     char** out_key,
                                     cxpr_error* err);
@@ -296,6 +299,7 @@ bool cxpr_model_lookback_bound(const cxpr_model* model,
                                size_t* out_bound,
                                cxpr_error* err);
 bool cxpr_model_collect_lookbacks(const cxpr_model* model,
+                                  const cxpr_registry* registry,
                                   cxpr_model_history_spec** specs,
                                   size_t* count,
                                   cxpr_error* err);

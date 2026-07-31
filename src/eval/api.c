@@ -38,6 +38,80 @@ static bool cxpr_eval_simple_lookback_target(const cxpr_expr_ast* ast) {
     }
 }
 
+static bool cxpr_eval_apply_literal_offset(cxpr_expr_ast** slot, double offset) {
+    cxpr_expr_ast* ast;
+    cxpr_expr_ast* index;
+
+    if (!slot || !(ast = *slot) || offset == 0.0) return true;
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+    case CXPR_NODE_BOOL:
+    case CXPR_NODE_STRING:
+    case CXPR_NODE_VARIABLE:
+        return true;
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+    case CXPR_NODE_PRODUCER_ACCESS:
+        index = cxpr_expr_ast_number_new(offset);
+        if (!index) return false;
+        *slot = cxpr_expr_ast_lookback_new(ast, index);
+        if (!*slot) {
+            cxpr_expr_ast_free(index);
+            *slot = ast;
+            return false;
+        }
+        return true;
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            if (!cxpr_eval_apply_literal_offset(
+                    &ast->data.array.elements[i], offset)) return false;
+        }
+        return true;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            if (!cxpr_eval_apply_literal_offset(
+                    &ast->data.record.field_values[i], offset)) return false;
+        }
+        return true;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_eval_apply_literal_offset(
+                   &ast->data.binary_op.left, offset) &&
+               cxpr_eval_apply_literal_offset(
+                   &ast->data.binary_op.right, offset);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_eval_apply_literal_offset(
+            &ast->data.unary_op.operand, offset);
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+            if (!cxpr_eval_apply_literal_offset(
+                    &ast->data.function_call.args[i], offset)) return false;
+        }
+        return true;
+    case CXPR_NODE_LOOKBACK: {
+        cxpr_expr_ast* added = cxpr_expr_ast_number_new(offset);
+        cxpr_expr_ast* combined;
+        if (!added) return false;
+        combined = cxpr_expr_ast_binary_new(
+            CXPR_TOK_PLUS, ast->data.lookback.index, added);
+        if (!combined) {
+            cxpr_expr_ast_free(added);
+            return false;
+        }
+        ast->data.lookback.index = combined;
+        return true;
+    }
+    case CXPR_NODE_TERNARY:
+        return cxpr_eval_apply_literal_offset(
+                   &ast->data.ternary.condition, offset) &&
+               cxpr_eval_apply_literal_offset(
+                   &ast->data.ternary.true_branch, offset) &&
+               cxpr_eval_apply_literal_offset(
+                   &ast->data.ternary.false_branch, offset);
+    }
+    return false;
+}
+
 static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, double* out, cxpr_error* err);
 
@@ -757,6 +831,23 @@ bool cxpr_eval_at_offset(const cxpr_expr_ast* ast,
             err->message = "Lookback offset must be a finite non-negative number";
         }
         return false;
+    }
+
+    if (lookback != 0.0 && !cxpr_eval_simple_lookback_target(ast)) {
+        cxpr_expr_ast* shifted = cxpr_expr_ast_clone(ast);
+        bool ok;
+        if (!shifted || !cxpr_eval_apply_literal_offset(&shifted, lookback)) {
+            cxpr_expr_ast_free(shifted);
+            if (err) {
+                *err = (cxpr_error){0};
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Failed to construct offset expression";
+            }
+            return false;
+        }
+        ok = cxpr_eval_ast(shifted, ctx, reg, out_value, err);
+        cxpr_expr_ast_free(shifted);
+        return ok;
     }
 
     index_ast.type = CXPR_NODE_NUMBER;

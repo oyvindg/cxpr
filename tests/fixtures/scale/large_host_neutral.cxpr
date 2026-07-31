@@ -1,0 +1,124 @@
+# Realistic standalone scale fixture derived from Dyn graph shapes, with all
+# host/domain concepts replaced by generic typed columns and model state.
+
+model large_host_neutral
+
+use scale_transforms
+use scale_math
+
+in { input_a, input_b, control, clock }
+
+$short_window = 4
+$long_window = 12
+$center = 50
+$width = 40
+$mix_weight = 0.35
+$trigger_high = 0.68
+$trigger_low = 0.32
+$decay = 0.85
+
+state {
+    initialized = false
+    sample_count = 0
+    accumulator_a = 0
+    accumulator_b = 0
+    previous_score = 0
+}
+
+fn make_pair(left, right, weight) {
+    bounded_weight = weight < 0 ? 0 : weight > 1 ? 1 : weight
+    mixed = left * (1 - bounded_weight) + right * bounded_weight
+    spread = left - right
+    energy = spread < 0 ? 0 - spread * spread : spread * spread
+    out { mixed, spread, energy }
+}
+
+# Window and lookback features.
+a_prev_1 = input_a[1]
+a_prev_2 = input_a[2]
+b_prev_1 = input_b[1]
+b_prev_3 = input_b[3]
+a_short_mean = mean(window(input_a, $short_window))
+b_short_mean = mean(window(input_b, $short_window))
+a_long_mean = mean(window(input_a, $long_window))
+b_long_mean = mean(window(input_b, $long_window))
+a_short_high = max(window(input_a, $short_window))
+a_short_low = min(window(input_a, $short_window))
+b_short_high = max(window(input_b, $short_window))
+b_short_low = min(window(input_b, $short_window))
+a_short_range = a_short_high - a_short_low
+b_short_range = b_short_high - b_short_low
+a_delta = input_a - a_prev_1
+b_delta = input_b - b_prev_1
+a_acceleration = a_delta - (a_prev_1 - a_prev_2)
+b_displacement = input_b - b_prev_3
+
+# Nested imported functions and structured intermediate output.
+pair = make_pair(input_a, input_b, $mix_weight)
+normalized_a = scale_transforms.normalize(input_a, $center, $width)
+normalized_b = scale_transforms.normalize(input_b, $center, $width)
+normalized_pair = scale_transforms.normalize(pair.mixed, $center, $width)
+normalized_control = scale_transforms.normalize(control, 0, 2)
+nested_normalized = scale_transforms.bound(scale_transforms.normalize(pair.spread, 0, $width))
+spread_abs = abs(pair.spread)
+spread_ratio = spread_abs / max(abs(pair.mixed), 0.000001)
+range_ratio = a_short_range / max(b_short_range, 0.000001)
+mean_spread_short = a_short_mean - b_short_mean
+mean_spread_long = a_long_mean - b_long_mean
+mean_convergence = abs(mean_spread_short) < abs(mean_spread_long)
+
+# Stateful smoothing and derived graph layers.
+next_sample_count = sample_count + 1
+next_accumulator_a = initialized ? accumulator_a * $decay + input_a * (1 - $decay) : input_a
+next_accumulator_b = initialized ? accumulator_b * $decay + input_b * (1 - $decay) : input_b
+smooth_spread = next_accumulator_a - next_accumulator_b
+smooth_midpoint = (next_accumulator_a + next_accumulator_b) / 2
+trend_a = input_a > a_short_mean
+trend_b = input_b > b_short_mean
+trend_agreement = trend_a == trend_b
+momentum_agreement = (a_delta > 0) == (b_delta > 0)
+positive_control = control >= 0
+clock_phase = clock - 4 * (clock / 4)
+phase_gate = clock_phase < 2
+quality_01 = normalized_pair * 0.30 + normalized_control * 0.20 + (mean_convergence ? 0.25 : 0) + (momentum_agreement ? 0.25 : 0)
+quality_02 = quality_01 * (1 - min(1, spread_ratio))
+quality_03 = quality_02 * (trend_agreement ? 1 : 0.75)
+quality_04 = quality_03 + (positive_control ? 0.05 : 0 - 0.05)
+quality_05 = min(1, max(0, quality_04))
+stability_01 = 1 / (1 + abs(a_acceleration))
+stability_02 = 1 / (1 + abs(b_displacement))
+stability_03 = (stability_01 + stability_02) / 2
+stability_04 = stability_03 * (range_ratio > 0.5 and range_ratio < 2 ? 1 : 0.7)
+stability_05 = stability_04 * (phase_gate ? 1 : 0.9)
+score_01 = quality_05 * 0.65 + stability_05 * 0.35
+score_02 = score_01 + scale_transforms.normalize(smooth_spread, 0, $width) * 0.05
+score_03 = score_02 * (smooth_midpoint > 0 ? 1 : 0.8)
+score_04 = min(1, max(0, score_03))
+score_change = score_04 - previous_score
+score_rising = score_change > 0
+score_cross_high = score_04 >= $trigger_high and previous_score < $trigger_high
+score_cross_low = score_04 <= $trigger_low and previous_score > $trigger_low
+enough_samples = next_sample_count >= $long_window
+active = enough_samples and score_cross_high and positive_control
+inactive = enough_samples and (score_cross_low or not positive_control)
+confidence = abs(score_04 - 0.5) * 2
+weighted_energy = pair.energy * confidence
+signed_energy = scale_transforms.energy(pair.spread)
+selected_value = active ? pair.mixed : smooth_midpoint
+
+initialized := true
+sample_count := next_sample_count
+accumulator_a := next_accumulator_a
+accumulator_b := next_accumulator_b
+previous_score := score_04
+
+out {
+    active,
+    inactive,
+    score_04,
+    confidence,
+    selected_value,
+    weighted_energy,
+    signed_energy,
+    pair
+}

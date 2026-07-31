@@ -40,13 +40,77 @@ static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, cons
     return false;
 }
 
-static cxpr_model_result_kind cxpr_model_infer_result_kind(const cxpr_expr_ast* ast,
-                                                             const cxpr_registry* reg) {
-    switch (cxpr_ir_infer_fast_result_kind(ast, reg, 0u)) {
+static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
+    const cxpr_expr_ast* ast,
+    const cxpr_registry* reg,
+    size_t depth) {
+    cxpr_model_result_kind left;
+    cxpr_model_result_kind right;
+
+    if (!ast || depth > CXPR_IR_INFER_DEPTH_LIMIT) {
+        return CXPR_MODEL_RESULT_UNKNOWN;
+    }
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS && reg) {
+        cxpr_func_entry* entry =
+            cxpr_registry_find(reg, ast->data.producer_access.name);
+        const cxpr_model_child_program* child_ref =
+            entry && entry->model_producer_userdata
+                ? (const cxpr_model_child_program*)entry->model_producer_userdata
+                : NULL;
+        if (child_ref && child_ref->program) {
+            for (size_t i = 0u;
+                 i < cxpr_model_compiled_output_count(child_ref->program);
+                 ++i) {
+                const char* name =
+                    cxpr_model_compiled_output_name(child_ref->program, i);
+                if (name &&
+                    cxpr_model_names_match(
+                        name, ast->data.producer_access.field)) {
+                    return cxpr_model_compiled_output_result_kind(
+                        child_ref->program, i);
+                }
+            }
+        }
+    }
+    if (ast->type == CXPR_NODE_LOOKBACK) {
+        return cxpr_model_infer_result_kind_depth(
+            ast->data.lookback.target, reg, depth + 1u);
+    }
+    if (ast->type == CXPR_NODE_BINARY_OP) {
+        left = cxpr_model_infer_result_kind_depth(
+            ast->data.binary_op.left, reg, depth + 1u);
+        right = cxpr_model_infer_result_kind_depth(
+            ast->data.binary_op.right, reg, depth + 1u);
+        switch (ast->data.binary_op.op) {
+        case CXPR_TOK_LT:
+        case CXPR_TOK_LTE:
+        case CXPR_TOK_GT:
+        case CXPR_TOK_GTE:
+            return left == CXPR_MODEL_RESULT_NUMBER &&
+                           right == CXPR_MODEL_RESULT_NUMBER
+                       ? CXPR_MODEL_RESULT_BOOL
+                       : CXPR_MODEL_RESULT_UNKNOWN;
+        case CXPR_TOK_AND:
+        case CXPR_TOK_OR:
+            return left == CXPR_MODEL_RESULT_BOOL &&
+                           right == CXPR_MODEL_RESULT_BOOL
+                       ? CXPR_MODEL_RESULT_BOOL
+                       : CXPR_MODEL_RESULT_UNKNOWN;
+        default:
+            break;
+        }
+    }
+    switch (cxpr_ir_infer_fast_result_kind(ast, reg, depth)) {
     case CXPR_IR_RESULT_DOUBLE: return CXPR_MODEL_RESULT_NUMBER;
     case CXPR_IR_RESULT_BOOL: return CXPR_MODEL_RESULT_BOOL;
     default: return CXPR_MODEL_RESULT_UNKNOWN;
     }
+}
+
+static cxpr_model_result_kind cxpr_model_infer_result_kind(
+    const cxpr_expr_ast* ast,
+    const cxpr_registry* reg) {
+    return cxpr_model_infer_result_kind_depth(ast, reg, 0u);
 }
 
 static bool cxpr_model_append_inferred_input(char*** inputs,
@@ -768,6 +832,8 @@ static const cxpr_model_compile_options cxpr_model_default_compile_options = {
     CXPR_MODEL_BACKEND_AUTO,
     true,
     false,
+    NULL,
+    0u,
 };
 
 static bool cxpr_model_compile_options_resolve(
@@ -795,6 +861,75 @@ static bool cxpr_model_compile_options_resolve(
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
                              "Model backend tracing is not supported for explicit backends", 0, 0);
         return false;
+    }
+    if (out->host_binding_count > 0u && !out->host_bindings) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Model host binding schema is missing", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+static bool cxpr_model_apply_host_binding_schema(
+    cxpr_model_compiled* program,
+    const cxpr_model_compile_options* options,
+    cxpr_error* err) {
+    size_t i;
+    size_t j;
+
+    if (!program || !options || options->host_binding_count == 0u) return true;
+    if (options->host_binding_count != program->input_count) {
+        cxpr_model_set_error(
+            err, CXPR_ERR_SYNTAX,
+            "Model host binding schema must declare every input", 0, 0);
+        return false;
+    }
+    for (i = 0u; i < options->host_binding_count; ++i) {
+        const cxpr_model_host_binding* binding = &options->host_bindings[i];
+        cxpr_model_slot_ref* slot = NULL;
+        int input_found = 0;
+        if (!binding->name || binding->name[0] == '\0' ||
+            (binding->type != CXPR_MODEL_RESULT_NUMBER &&
+             binding->type != CXPR_MODEL_RESULT_BOOL)) {
+            cxpr_model_set_error(
+                err, CXPR_ERR_SYNTAX,
+                "Model host binding has an invalid name or scalar type", 0, 0);
+            return false;
+        }
+        for (j = 0u; j < i; ++j) {
+            if (strcmp(options->host_bindings[j].name, binding->name) == 0) {
+                cxpr_model_set_error(
+                    err, CXPR_ERR_SYNTAX,
+                    "Model host binding schema contains a duplicate name", 0, 0);
+                return false;
+            }
+        }
+        for (j = 0u; j < program->input_count; ++j) {
+            if (strcmp(program->inputs[j], binding->name) == 0) {
+                input_found = 1;
+                break;
+            }
+        }
+        if (!input_found) {
+            cxpr_model_set_error(
+                err, CXPR_ERR_SYNTAX,
+                "Model host binding does not match a declared input", 0, 0);
+            return false;
+        }
+        for (j = 0u; j < program->fused_input_count; ++j) {
+            if (program->fused_inputs[j].name &&
+                strcmp(program->fused_inputs[j].name, binding->name) == 0) {
+                slot = &program->fused_inputs[j];
+                break;
+            }
+        }
+        if (!slot) {
+            cxpr_model_set_error(
+                err, CXPR_ERR_SYNTAX,
+                "Model host binding is unavailable in generated-C layout", 0, 0);
+            return false;
+        }
+        slot->result_kind = binding->type;
     }
     return true;
 }
@@ -1442,7 +1577,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
             }
         }
     }
-    if (!cxpr_model_collect_lookbacks(model,
+    if (!cxpr_model_collect_lookbacks(model, NULL,
                                       &program->history_specs,
                                       &program->history_spec_count,
                                       err)) {
@@ -1477,10 +1612,6 @@ cxpr_model_compiled* cxpr_model_compile_full(
             cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
-        }
-        if (program->history_spec_count > 0u) {
-            cxpr_registry_set_lookback_resolver(
-                program->registry, cxpr_model_lookback_resolver, NULL, NULL);
         }
         if (!cxpr_model_compiled_register_imports(program, model, imports, import_count, err)) {
             for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
@@ -1559,6 +1690,36 @@ cxpr_model_compiled* cxpr_model_compile_full(
                 return NULL;
             }
         }
+        if (program->registry) {
+            for (size_t i = 0u; i < program->history_spec_count; ++i) {
+                free(program->history_specs[i].name);
+                cxpr_expr_ast_free(program->history_specs[i].target);
+            }
+            free(program->history_specs);
+            program->history_specs = NULL;
+            program->history_spec_count = 0u;
+            if (!cxpr_model_collect_lookbacks(
+                    model,
+                    program->registry,
+                    &program->history_specs,
+                    &program->history_spec_count,
+                    err)) {
+                for (size_t j = 0; j < required_default_count; ++j) {
+                    free(required_defaults[j]);
+                }
+                free(required_defaults);
+                for (size_t j = 0u; j < inferred_input_count; ++j) {
+                    free(inferred_inputs[j]);
+                }
+                free(inferred_inputs);
+                cxpr_model_compiled_free(program);
+                return NULL;
+            }
+            if (program->history_spec_count > 0u) {
+                cxpr_registry_set_lookback_resolver(
+                    program->registry, cxpr_model_lookback_resolver, NULL, NULL);
+            }
+        }
         compile_reg = program->registry;
     }
 
@@ -1579,7 +1740,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
             program->constants[i].name = cxpr_strdup(model->constants[i].name);
             program->constants[i].source = cxpr_strdup(model->constants[i].source);
             program->constants[i].name_hash = cxpr_hash_string(model->constants[i].name);
-            program->constants[i].ast = cxpr_expr_ast_clone(model->constants[i].expr);
+            program->constants[i].ast = cxpr_model_inline_defined_calls(
+                model->constants[i].expr, compile_reg, err);
             program->constants[i].result_kind =
                 cxpr_model_infer_result_kind(program->constants[i].ast, compile_reg);
             program->constants[i].is_call_param = model->constants[i].is_call_param;
@@ -1633,7 +1795,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
                 program->state_defaults[out_i].name = cxpr_strdup(model->bindings[i].name);
                 program->state_defaults[out_i].source = cxpr_strdup(model->bindings[i].source);
                 program->state_defaults[out_i].name_hash = cxpr_hash_string(model->bindings[i].name);
-                program->state_defaults[out_i].ast = cxpr_expr_ast_clone(model->bindings[i].expr);
+                program->state_defaults[out_i].ast = cxpr_model_inline_defined_calls(
+                    model->bindings[i].expr, compile_reg, err);
                 program->state_defaults[out_i].result_kind =
                     cxpr_model_infer_result_kind(program->state_defaults[out_i].ast, compile_reg);
                 if (!program->state_defaults[out_i].name ||
@@ -1673,7 +1836,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
             program->bindings[out_i].name = cxpr_strdup(model->bindings[src_i].name);
             program->bindings[out_i].source = cxpr_strdup(model->bindings[src_i].source);
             program->bindings[out_i].name_hash = cxpr_hash_string(model->bindings[src_i].name);
-            program->bindings[out_i].ast = cxpr_expr_ast_clone(model->bindings[src_i].expr);
+            program->bindings[out_i].ast = cxpr_model_inline_defined_calls(
+                model->bindings[src_i].expr, compile_reg, err);
             program->bindings[out_i].result_kind =
                 cxpr_model_infer_result_kind(program->bindings[out_i].ast, compile_reg);
             if (program->bindings[out_i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
@@ -1731,6 +1895,12 @@ compile_outputs:
     }
 
     if (!cxpr_model_compiled_select_backend(program, model, compile_reg, &compile_options, err)) {
+        cxpr_model_compiled_free(program);
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
+        return NULL;
+    }
+    if (!cxpr_model_apply_host_binding_schema(program, &compile_options, err)) {
         cxpr_model_compiled_free(program);
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
         free(inferred_inputs);
