@@ -104,11 +104,11 @@ bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right)
         }
         return true;
     }
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_model_ast_equal(cxpr_expr_ast_lookback_target(left),
-                                    cxpr_expr_ast_lookback_target(right)) &&
-               cxpr_model_ast_equal(cxpr_expr_ast_lookback_index(left),
-                                    cxpr_expr_ast_lookback_index(right));
+    case CXPR_NODE_INDEX:
+        return cxpr_model_ast_equal(cxpr_expr_ast_index_target(left),
+                                    cxpr_expr_ast_index_target(right)) &&
+               cxpr_model_ast_equal(cxpr_expr_ast_index_expression(left),
+                                    cxpr_expr_ast_index_expression(right));
     case CXPR_NODE_TERNARY:
         return cxpr_model_ast_equal(cxpr_expr_ast_ternary_condition(left),
                                     cxpr_expr_ast_ternary_condition(right)) &&

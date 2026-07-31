@@ -1,0 +1,95 @@
+# Fictional game-units projectile simulation. The host supplies observed motion,
+# a target, and several obstacles as Vec2 objects. All steering and future-path
+# calculations are performed here; no real-world weapon parameters are used.
+
+model fictional_projectile_avoidance
+
+in {
+    motion,
+    targets,
+    obstacles,
+    obstacle_count,
+    dt,
+    speed,
+    avoid_radius,
+    avoid_strength,
+    reset
+}
+
+$epsilon = 0.000000001
+
+state initialized = 0
+state velocity_x = 0
+state velocity_y = 0
+
+# Neutral index capabilities supplied by the host:
+# motion[1] is the previous observation and motion[0] is the present one.
+past = motion[1]
+present = motion[0]
+target = targets[0]
+
+obstacle_0 = obstacles[0]
+obstacle_1 = obstacles[1]
+obstacle_2 = obstacles[2]
+
+first_tick = initialized <= 0 or reset > 0
+base_x = present.x
+base_y = present.y
+observed_vx = (present.x - past.x) / max(dt, $epsilon)
+observed_vy = (present.y - past.y) / max(dt, $epsilon)
+
+target_dx = target.x - base_x
+target_dy = target.y - base_y
+target_distance = sqrt(target_dx * target_dx + target_dy * target_dy)
+desired_x = target_distance > $epsilon ? target_dx / target_distance : 0
+desired_y = target_distance > $epsilon ? target_dy / target_distance : 0
+
+o0_dx = base_x - obstacle_0.x
+o0_dy = base_y - obstacle_0.y
+o0_distance = sqrt(o0_dx * o0_dx + o0_dy * o0_dy)
+o0_weight = obstacle_count > 0 and o0_distance < avoid_radius ? (avoid_radius - o0_distance) / max(o0_distance, $epsilon) : 0
+
+o1_dx = base_x - obstacle_1.x
+o1_dy = base_y - obstacle_1.y
+o1_distance = sqrt(o1_dx * o1_dx + o1_dy * o1_dy)
+o1_weight = obstacle_count > 1 and o1_distance < avoid_radius ? (avoid_radius - o1_distance) / max(o1_distance, $epsilon) : 0
+
+o2_dx = base_x - obstacle_2.x
+o2_dy = base_y - obstacle_2.y
+o2_distance = sqrt(o2_dx * o2_dx + o2_dy * o2_dy)
+o2_weight = obstacle_count > 2 and o2_distance < avoid_radius ? (avoid_radius - o2_distance) / max(o2_distance, $epsilon) : 0
+
+avoid_x = o0_dx * o0_weight + o1_dx * o1_weight + o2_dx * o2_weight
+avoid_y = o0_dy * o0_weight + o1_dy * o1_weight + o2_dy * o2_weight
+steer_x = desired_x + avoid_x * avoid_strength
+steer_y = desired_y + avoid_y * avoid_strength
+steer_length = sqrt(steer_x * steer_x + steer_y * steer_y)
+
+command_vx = steer_length > $epsilon ? steer_x / steer_length * speed : first_tick ? observed_vx : velocity_x
+command_vy = steer_length > $epsilon ? steer_y / steer_length * speed : first_tick ? observed_vy : velocity_y
+next_x = base_x + command_vx * dt
+next_y = base_y + command_vy * dt
+
+# Predicted future points are recalculated from current inputs on every tick.
+future_1 = { x = next_x, y = next_y }
+future_2 = { x = next_x + command_vx * dt, y = next_y + command_vy * dt }
+future_3 = { x = next_x + command_vx * dt * 2, y = next_y + command_vy * dt * 2 }
+past_position = { x = past.x, y = past.y }
+present_position = { x = present.x, y = present.y }
+simulated_position = { x = next_x, y = next_y }
+avoiding = o0_weight > 0 or o1_weight > 0 or o2_weight > 0
+
+initialized := 1
+velocity_x := command_vx
+velocity_y := command_vy
+
+out past_position { timeline = "past" unit = "game_units" }
+out present_position { timeline = "present" unit = "game_units" }
+out simulated_position { timeline = "state" simulation_only = true }
+out future_1 { timeline = "predicted_future" step = 1 simulation_only = true }
+out future_2 { timeline = "predicted_future" step = 2 simulation_only = true }
+out future_3 { timeline = "predicted_future" step = 3 simulation_only = true }
+out avoiding { role = "obstacle_avoidance" }
+out target_distance { unit = "game_units" }
+out command_vx { unit = "game_units_per_tick" }
+out command_vy { unit = "game_units_per_tick" }

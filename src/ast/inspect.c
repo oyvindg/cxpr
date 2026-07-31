@@ -144,12 +144,20 @@ bool cxpr_expr_ast_call_has_named_args(const cxpr_expr_ast* ast) {
     return ast && ast->type == CXPR_NODE_FUNCTION_CALL && cxpr_expr_ast_call_uses_named_args(ast);
 }
 
+const cxpr_expr_ast* cxpr_expr_ast_index_target(const cxpr_expr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_INDEX) ? ast->data.index.target : NULL;
+}
+
+const cxpr_expr_ast* cxpr_expr_ast_index_expression(const cxpr_expr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_INDEX) ? ast->data.index.index : NULL;
+}
+
 const cxpr_expr_ast* cxpr_expr_ast_lookback_target(const cxpr_expr_ast* ast) {
-    return (ast && ast->type == CXPR_NODE_LOOKBACK) ? ast->data.lookback.target : NULL;
+    return cxpr_expr_ast_index_target(ast);
 }
 
 const cxpr_expr_ast* cxpr_expr_ast_lookback_index(const cxpr_expr_ast* ast) {
-    return (ast && ast->type == CXPR_NODE_LOOKBACK) ? ast->data.lookback.index : NULL;
+    return cxpr_expr_ast_index_expression(ast);
 }
 
 const char* cxpr_expr_ast_producer_name(const cxpr_expr_ast* ast) {

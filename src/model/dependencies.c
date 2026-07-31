@@ -59,11 +59,11 @@ static bool cxpr_model_compiled_mark_required_ast(const cxpr_model_compiled* pro
             }
         }
         return true;
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return cxpr_model_compiled_mark_required_ast(
-                   program, cxpr_expr_ast_lookback_target(ast), out_required, err) &&
+                   program, cxpr_expr_ast_index_target(ast), out_required, err) &&
                cxpr_model_compiled_mark_required_ast(
-                   program, cxpr_expr_ast_lookback_index(ast), out_required, err);
+                   program, cxpr_expr_ast_index_expression(ast), out_required, err);
     case CXPR_NODE_TERNARY:
         return cxpr_model_compiled_mark_required_ast(
                    program, cxpr_expr_ast_ternary_condition(ast), out_required, err) &&

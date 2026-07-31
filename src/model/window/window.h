@@ -26,6 +26,7 @@ bool cxpr_model_window_is_function(const char* name);
  *
  * @param model Model used to resolve parameter bounds and constant defaults.
  * @param call Candidate window-function call AST.
+ * @param enclosing_depth History offset already applied around the call.
  * @param specs In/out history-spec array, grown as required.
  * @param count In/out number of entries in @p specs.
  * @param err Optional error output for invalid calls or allocation failures.
@@ -33,6 +34,7 @@ bool cxpr_model_window_is_function(const char* name);
  */
 bool cxpr_model_window_collect_call(const cxpr_model* model,
                                     const cxpr_expr_ast* call,
+                                    size_t enclosing_depth,
                                     cxpr_model_history_spec** specs,
                                     size_t* count,
                                     cxpr_error* err);

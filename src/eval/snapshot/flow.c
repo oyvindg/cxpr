@@ -117,7 +117,7 @@ static bool cxpr_snapshot_flow_add_lookback_sources(cxpr_eval_snapshot_flow* flo
                                                     cxpr_error* err) {
     if (!ast) return true;
 
-    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK) {
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX) {
         char* name = cxpr_expr_ast_to_string(ast);
         char* value_text = NULL;
         cxpr_value value = cxpr_null();
@@ -182,11 +182,11 @@ static bool cxpr_snapshot_flow_add_lookback_sources(cxpr_eval_snapshot_flow* flo
                 }
             }
             return true;
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
             return cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_expr_ast_lookback_target(ast), ctx, reg, target_flow, err) &&
+                       flow, cxpr_expr_ast_index_target(ast), ctx, reg, target_flow, err) &&
                    cxpr_snapshot_flow_add_lookback_sources(
-                       flow, cxpr_expr_ast_lookback_index(ast), ctx, reg, target_flow, err);
+                       flow, cxpr_expr_ast_index_expression(ast), ctx, reg, target_flow, err);
         case CXPR_NODE_TERNARY:
             return cxpr_snapshot_flow_add_lookback_sources(
                        flow, cxpr_expr_ast_ternary_condition(ast), ctx, reg, target_flow, err) &&

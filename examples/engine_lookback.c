@@ -91,7 +91,11 @@ int main(void) {
             { "v0", "view_px" }, { "v1", "view_px[1]" }, { "v2", "view_px[2]" },
         };
         const cxpr_engine_view_source_def views[] = {
-            { "view_px", view_cb, (void*)view_values },
+            {
+                .name = "view_px",
+                .fn = view_cb,
+                .userdata = (void*)view_values,
+            },
         };
         cxpr_engine_config vcfg = {0};
         vcfg.expressions = vx; vcfg.expression_count = 3;

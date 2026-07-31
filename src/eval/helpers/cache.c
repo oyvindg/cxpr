@@ -128,9 +128,9 @@ unsigned long cxpr_eval_ast_hash(const cxpr_expr_ast* ast) {
         }
         hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.function_call.argc);
         break;
-    case CXPR_NODE_LOOKBACK:
-        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.lookback.target));
-        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.lookback.index));
+    case CXPR_NODE_INDEX:
+        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.index.target));
+        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.index.index));
         break;
     case CXPR_NODE_TERNARY:
         hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.ternary.condition));
@@ -222,9 +222,9 @@ bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
                     rhs->data.function_call.args[i])) return false;
         }
         return true;
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_eval_ast_equal(lhs->data.lookback.target, rhs->data.lookback.target) &&
-               cxpr_eval_ast_equal(lhs->data.lookback.index, rhs->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_eval_ast_equal(lhs->data.index.target, rhs->data.index.target) &&
+               cxpr_eval_ast_equal(lhs->data.index.index, rhs->data.index.index);
     case CXPR_NODE_TERNARY:
         return cxpr_eval_ast_equal(lhs->data.ternary.condition, rhs->data.ternary.condition) &&
                cxpr_eval_ast_equal(lhs->data.ternary.true_branch, rhs->data.ternary.true_branch) &&
@@ -243,7 +243,7 @@ bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg) 
     case CXPR_NODE_STRING:
     case CXPR_NODE_ARRAY:
     case CXPR_NODE_RECORD:
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_FIELD_ACCESS:
     case CXPR_NODE_CHAIN_ACCESS:
@@ -515,9 +515,9 @@ bool cxpr_eval_ast_contains_string_literal(const cxpr_expr_ast* ast) {
         }
         return false;
 
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_eval_ast_contains_string_literal(ast->data.lookback.target) ||
-               cxpr_eval_ast_contains_string_literal(ast->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_eval_ast_contains_string_literal(ast->data.index.target) ||
+               cxpr_eval_ast_contains_string_literal(ast->data.index.index);
 
     case CXPR_NODE_TERNARY:
         return cxpr_eval_ast_contains_string_literal(ast->data.ternary.condition) ||

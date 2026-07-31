@@ -428,3 +428,27 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     entry->fields_per_arg = field_count;
     reg->version++;
 }
+
+bool cxpr_registry_set_struct_codegen(cxpr_registry* reg, const char* name,
+                                      cxpr_struct_codegen_ptr codegen,
+                                      void* userdata,
+                                      cxpr_userdata_free_fn free_userdata) {
+    cxpr_func_entry* entry;
+    if (!reg || !name || !codegen) return false;
+    entry = cxpr_registry_find(reg, name);
+    if (!entry || !entry->struct_producer) return false;
+    if (entry->struct_codegen_userdata == userdata) {
+        entry->struct_codegen = codegen;
+        if (free_userdata) entry->struct_codegen_userdata_free = free_userdata;
+        reg->version++;
+        return true;
+    }
+    if (entry->struct_codegen_userdata_free && entry->struct_codegen_userdata) {
+        entry->struct_codegen_userdata_free(entry->struct_codegen_userdata);
+    }
+    entry->struct_codegen = codegen;
+    entry->struct_codegen_userdata = userdata;
+    entry->struct_codegen_userdata_free = free_userdata;
+    reg->version++;
+    return true;
+}

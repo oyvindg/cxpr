@@ -121,11 +121,11 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     assert(cxpr_expr_compiled_ir_instruction(program, 0u, &instr));
     assert(instr.op == CXPR_IR_OP_LOOKBACK_PUSH);
     assert(instr.has_index);
-    assert(instr.index == 2u);
+    assert(instr.index == 3u);
     assert(cxpr_expr_compiled_ir_instruction(program, 1u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOOKBACK_PUSH);
-    assert(instr.has_index);
-    assert(instr.index == 1u);
+    assert(instr.op == CXPR_IR_OP_LOAD_VAR);
+    assert(cxpr_expr_compiled_ir_instruction(program, 2u, &instr));
+    assert(instr.op == CXPR_IR_OP_LOOKBACK_POP);
 
     cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);

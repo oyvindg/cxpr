@@ -278,9 +278,9 @@ static bool cxpr_model_window_plan_visit(const cxpr_model_compiled* program,
         return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_ternary_condition(ast), err) &&
                cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_ternary_true(ast), err) &&
                cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_ternary_false(ast), err);
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_lookback_target(ast), err) &&
-               cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_lookback_index(ast), err);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_index_target(ast), err) &&
+               cxpr_model_window_plan_visit(program, plan, cxpr_expr_ast_index_expression(ast), err);
     default:
         return true;
     }

@@ -1,5 +1,7 @@
 add_executable(cxpr_bench_ir ir_bench.c)
 target_link_libraries(cxpr_bench_ir PRIVATE cxpr)
+target_compile_definitions(cxpr_bench_ir PRIVATE
+    CXPR_BENCH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 set(CXPR_BENCH_IR_MODELS
     simple_arith
     nested_expr
@@ -8,6 +10,9 @@ set(CXPR_BENCH_IR_MODELS
     defined_chain
     deep_defined
     complex_signal
+    large_arith
+    large_branch
+    large_math
     mixed_expr
     mixed_pipe
     context_churn
@@ -45,6 +50,51 @@ target_sources(cxpr_bench_ir PRIVATE ${CXPR_BENCH_IR_MODEL_INCLUDES})
 
 add_executable(cxpr_bench_engine engine_bench.c)
 target_link_libraries(cxpr_bench_engine PRIVATE cxpr)
+
+set(CXPR_BENCH_INDEX_HISTORY_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/index_history_generated.h")
+set(CXPR_BENCH_PRODUCER_HISTORY_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/producer_history_generated.h")
+set(CXPR_BENCH_INDEX_ARRAY_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/index_array_generated.h")
+add_custom_command(
+    OUTPUT "${CXPR_BENCH_INDEX_HISTORY_HEADER}"
+    COMMAND cxpr_model_codegen
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/index_history_generated.cxpr"
+            --output "${CXPR_BENCH_INDEX_HISTORY_HEADER}"
+            --qualifiers "static inline"
+            --function cxpr_bench_generated_close1
+    DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/index_history_generated.cxpr"
+    VERBATIM)
+add_executable(cxpr_bench_model_codegen_tool model_c_codegen_tool.c)
+target_link_libraries(cxpr_bench_model_codegen_tool PRIVATE cxpr)
+add_custom_command(
+    OUTPUT "${CXPR_BENCH_PRODUCER_HISTORY_HEADER}"
+    COMMAND cxpr_bench_model_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/producer_history_generated.cxpr"
+            "${CXPR_BENCH_PRODUCER_HISTORY_HEADER}"
+            "static inline"
+            cxpr_bench_generated_producer_history
+    DEPENDS cxpr_bench_model_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/producer_history_generated.cxpr"
+    VERBATIM)
+add_executable(cxpr_bench_array_codegen_tool
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tests/generated_array_codegen_tool.c")
+target_link_libraries(cxpr_bench_array_codegen_tool PRIVATE cxpr)
+add_custom_command(
+    OUTPUT "${CXPR_BENCH_INDEX_ARRAY_HEADER}"
+    COMMAND cxpr_bench_array_codegen_tool "${CXPR_BENCH_INDEX_ARRAY_HEADER}"
+    DEPENDS cxpr_bench_array_codegen_tool
+    VERBATIM)
+add_executable(cxpr_bench_index_history
+    index_history_bench.c
+    "${CXPR_BENCH_INDEX_ARRAY_HEADER}"
+    "${CXPR_BENCH_INDEX_HISTORY_HEADER}"
+    "${CXPR_BENCH_PRODUCER_HISTORY_HEADER}")
+target_link_libraries(cxpr_bench_index_history PRIVATE cxpr)
+target_include_directories(cxpr_bench_index_history PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(CXPR_BENCH_RSI_MODEL_C "${CMAKE_CURRENT_BINARY_DIR}/rsi_state_model.gen.c")
 set(CXPR_BENCH_RSI_MODEL_INLINE "${CMAKE_CURRENT_BINARY_DIR}/rsi_state_model.inline.inc")

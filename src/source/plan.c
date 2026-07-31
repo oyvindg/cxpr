@@ -203,8 +203,8 @@ static int cxpr_source_plan_ast_has_series_reference(const cxpr_provider* provid
                    cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_binary_right(ast));
         case CXPR_NODE_UNARY_OP:
             return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_unary_operand(ast));
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_lookback_target(ast));
+        case CXPR_NODE_INDEX:
+            return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_index_target(ast));
         case CXPR_NODE_TERNARY:
             return cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_ternary_condition(ast)) ||
                    cxpr_source_plan_ast_has_series_reference(provider, cxpr_expr_ast_ternary_true(ast)) ||
@@ -380,9 +380,9 @@ static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
             out->name = cxpr_source_plan_strdup(name);
             if (!out->name) return 0;
             return cxpr_source_plan_finalize_node_canonical(plan, out);
-        case CXPR_NODE_LOOKBACK: {
-            const cxpr_expr_ast* target = cxpr_expr_ast_lookback_target(ast);
-            const cxpr_expr_ast* index = cxpr_expr_ast_lookback_index(ast);
+        case CXPR_NODE_INDEX: {
+            const cxpr_expr_ast* target = cxpr_expr_ast_index_target(ast);
+            const cxpr_expr_ast* index = cxpr_expr_ast_index_expression(ast);
 
             if (!target || !index) return 0;
             if (!cxpr_source_plan_node_parse(provider, target, plan, out)) return 0;
@@ -595,7 +595,7 @@ static int cxpr_source_plan_should_parse_at_node(const cxpr_expr_ast* ast) {
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_FUNCTION_CALL:
     case CXPR_NODE_PRODUCER_ACCESS:
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return 1;
     default:
         return 0;
@@ -667,9 +667,9 @@ static int cxpr_plan_bind_sources_walk(
             }
         }
         return 1;
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_lookback_target(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_lookback_index(ast), ctx, reg, bind, userdata, out, err);
+    case CXPR_NODE_INDEX:
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_index_target(ast), ctx, reg, bind, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_index_expression(ast), ctx, reg, bind, userdata, out, err);
     case CXPR_NODE_TERNARY:
         return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_condition(ast), ctx, reg, bind, userdata, out, err) &&
                cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_true(ast), ctx, reg, bind, userdata, out, err) &&

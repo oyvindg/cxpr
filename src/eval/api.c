@@ -55,7 +55,7 @@ static bool cxpr_eval_apply_literal_offset(cxpr_expr_ast** slot, double offset) 
     case CXPR_NODE_PRODUCER_ACCESS:
         index = cxpr_expr_ast_number_new(offset);
         if (!index) return false;
-        *slot = cxpr_expr_ast_lookback_new(ast, index);
+        *slot = cxpr_expr_ast_index_new(ast, index);
         if (!*slot) {
             cxpr_expr_ast_free(index);
             *slot = ast;
@@ -88,17 +88,17 @@ static bool cxpr_eval_apply_literal_offset(cxpr_expr_ast** slot, double offset) 
                     &ast->data.function_call.args[i], offset)) return false;
         }
         return true;
-    case CXPR_NODE_LOOKBACK: {
+    case CXPR_NODE_INDEX: {
         cxpr_expr_ast* added = cxpr_expr_ast_number_new(offset);
         cxpr_expr_ast* combined;
         if (!added) return false;
         combined = cxpr_expr_ast_binary_new(
-            CXPR_TOK_PLUS, ast->data.lookback.index, added);
+            CXPR_TOK_PLUS, ast->data.index.index, added);
         if (!combined) {
             cxpr_expr_ast_free(added);
             return false;
         }
-        ast->data.lookback.index = combined;
+        ast->data.index.index = combined;
         return true;
     }
     case CXPR_NODE_TERNARY:
@@ -772,6 +772,29 @@ bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
         resolver_index_ast = &adjusted_index_ast;
     }
 
+    if (reg && ast->type == CXPR_NODE_IDENTIFIER &&
+        cxpr_registry_find_index_capability(
+            reg, cxpr_expr_ast_identifier_name(ast))) {
+        double raw_index = 0.0;
+        bool handled = false;
+        if (!cxpr_eval_ast_number(
+                resolver_index_ast, ctx, reg, &raw_index, err)) return false;
+        if (!isfinite(raw_index) || raw_index < 0.0 ||
+            floor(raw_index) != raw_index || raw_index > (double)INT64_MAX) {
+            if (err) {
+                err->code = CXPR_ERR_INVALID_INDEX;
+                err->message = "Index must be a finite non-negative integer";
+            }
+            return false;
+        }
+        *out_value = cxpr_num(NAN);
+        if (cxpr_registry_resolve_index_capability(
+                reg, ast, (int64_t)raw_index, ctx, out_value, err, &handled)) {
+            return true;
+        }
+        if (handled || (err && err->code != CXPR_OK)) return false;
+    }
+
     if (reg && reg->lookback_resolver) {
         *out_value = cxpr_num(NAN);
         if (reg->lookback_resolver(ast, resolver_index_ast, ctx, reg, reg->lookback_userdata,
@@ -779,6 +802,21 @@ bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
             return !(err && err->code != CXPR_OK);
         }
         if (err && err->code != CXPR_OK) return false;
+    }
+
+    if (reg && ast->type != CXPR_NODE_IDENTIFIER) {
+        double raw_index = 0.0;
+        bool handled = false;
+        if (!cxpr_eval_ast_number(
+                resolver_index_ast, ctx, reg, &raw_index, err)) return false;
+        if (isfinite(raw_index) && raw_index >= 0.0 &&
+            floor(raw_index) == raw_index && raw_index <= (double)INT64_MAX) {
+            *out_value = cxpr_num(NAN);
+            if (cxpr_registry_resolve_index_capability(
+                    reg, ast, (int64_t)raw_index, ctx, out_value, err,
+                    &handled)) return true;
+            if (handled || (err && err->code != CXPR_OK)) return false;
+        }
     }
 
     if (!cxpr_eval_simple_lookback_target(ast)) {
@@ -803,7 +841,9 @@ bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
     if (err) {
         *err = (cxpr_error){0};
         err->code = CXPR_ERR_SYNTAX;
-        err->message = "Native lookback requires a registry lookback resolver";
+        err->message = reg
+                           ? "Native lookback requires a registry lookback resolver"
+                           : "Native lookback evaluation received no registry";
     }
     return false;
 }
@@ -833,7 +873,12 @@ bool cxpr_eval_at_offset(const cxpr_expr_ast* ast,
         return false;
     }
 
-    if (lookback != 0.0 && !cxpr_eval_simple_lookback_target(ast)) {
+    /* A host resolver may own the history of a function result (for example,
+     * an explicit-timeframe source call). Preserve that target as a unit;
+     * generic compound expressions still use structural offset composition. */
+    if (lookback != 0.0 && !cxpr_eval_simple_lookback_target(ast) &&
+        !(reg && reg->lookback_resolver &&
+          ast->type == CXPR_NODE_FUNCTION_CALL)) {
         cxpr_expr_ast* shifted = cxpr_expr_ast_clone(ast);
         bool ok;
         if (!shifted || !cxpr_eval_apply_literal_offset(&shifted, lookback)) {

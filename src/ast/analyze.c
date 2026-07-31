@@ -219,16 +219,16 @@ static cxpr_expr_type cxpr_expr_ast_analyze_node(const cxpr_expr_ast* ast,
             }
             return CXPR_EXPR_UNKNOWN;
         }
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
             out->is_constant = false;
-            if (ast->data.lookback.index &&
-                ast->data.lookback.index->type == CXPR_NODE_NUMBER &&
-                isfinite(ast->data.lookback.index->data.number.value) &&
-                ast->data.lookback.index->data.number.value >= 0.0 &&
-                floor(ast->data.lookback.index->data.number.value) ==
-                    ast->data.lookback.index->data.number.value) {
+            if (ast->data.index.index &&
+                ast->data.index.index->type == CXPR_NODE_NUMBER &&
+                isfinite(ast->data.index.index->data.number.value) &&
+                ast->data.index.index->data.number.value >= 0.0 &&
+                floor(ast->data.index.index->data.number.value) ==
+                    ast->data.index.index->data.number.value) {
                 const unsigned max_unsigned = ~0u;
-                double value = ast->data.lookback.index->data.number.value;
+                double value = ast->data.index.index->data.number.value;
                 if (value <= (double)(max_unsigned - lookback_depth)) {
                     lookback_depth += (unsigned)value;
                     if (lookback_depth > out->max_lookback_depth) {
@@ -240,10 +240,10 @@ static cxpr_expr_type cxpr_expr_ast_analyze_node(const cxpr_expr_ast* ast,
                 if (out->max_lookback_depth < 512u) out->max_lookback_depth = 512u;
             }
             (void)cxpr_expr_ast_analyze_node(
-                ast->data.lookback.target, state, depth + 1, lookback_depth, ok);
+                ast->data.index.target, state, depth + 1, lookback_depth, ok);
             if (!*ok) return CXPR_EXPR_UNKNOWN;
             (void)cxpr_expr_ast_analyze_node(
-                ast->data.lookback.index, state, depth + 1, 0u, ok);
+                ast->data.index.index, state, depth + 1, 0u, ok);
             return CXPR_EXPR_UNKNOWN;
         case CXPR_NODE_TERNARY:
             out->can_short_circuit = true;

@@ -64,6 +64,7 @@ static cxpr_ir_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
     case CXPR_OP_LOOKBACK_RESOLVE: return CXPR_IR_OP_LOOKBACK_RESOLVE;
     case CXPR_OP_STORE_LOCAL: return CXPR_IR_OP_STORE_LOCAL;
     case CXPR_OP_RETURN: return CXPR_IR_OP_RETURN;
+    case CXPR_OP_INDEX: return CXPR_IR_OP_INDEX;
     default: return CXPR_IR_OP_UNKNOWN;
     }
 }
@@ -228,6 +229,7 @@ const char* cxpr_ir_opcode_name(cxpr_ir_opcode op) {
     case CXPR_IR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
     case CXPR_IR_OP_STORE_LOCAL: return "STORE_LOCAL";
     case CXPR_IR_OP_RETURN: return "RETURN";
+    case CXPR_IR_OP_INDEX: return "INDEX";
     case CXPR_IR_OP_UNKNOWN:
     default:
         return "UNKNOWN";

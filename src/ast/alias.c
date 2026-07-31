@@ -387,16 +387,16 @@ static cxpr_expr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cx
                 arg_names,
                 ast->data.producer_access.argc,
                 ast->data.producer_access.field);
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
         {
-            cxpr_expr_ast* target = cxpr_alias_expand_ast(ctx, ast->data.lookback.target);
-            cxpr_expr_ast* index = target ? cxpr_alias_expand_ast(ctx, ast->data.lookback.index) : NULL;
+            cxpr_expr_ast* target = cxpr_alias_expand_ast(ctx, ast->data.index.target);
+            cxpr_expr_ast* index = target ? cxpr_alias_expand_ast(ctx, ast->data.index.index) : NULL;
             if (!target || !index) {
                 cxpr_expr_ast_free(target);
                 cxpr_expr_ast_free(index);
                 return NULL;
             }
-            return cxpr_expr_ast_lookback_new(target, index);
+            return cxpr_expr_ast_index_new(target, index);
         }
         case CXPR_NODE_TERNARY:
         {

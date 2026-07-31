@@ -46,7 +46,11 @@ bool cxpr_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
 bool cxpr_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                         const cxpr_registry* reg, bool* out_value, cxpr_error* err);
 /**
- * @brief Evaluate an AST at a lookback expression (`ast[index_ast]`).
+ * @brief Compatibility helper for evaluating history at `ast[index_ast]`.
+ *
+ * This retains the legacy lookback name. It does not perform ordinary array
+ * indexing; parse and evaluate a `CXPR_NODE_INDEX` expression for neutral
+ * target-based dispatch.
  * @param ast Target AST to evaluate.
  * @param index_ast AST that evaluates to the desired lookback index.
  * @param ctx Runtime context providing variables and params.
@@ -62,7 +66,7 @@ bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
                                cxpr_value* out_value,
                                cxpr_error* err);
 /**
- * @brief Evaluate an AST at one numeric lookback offset (`ast[offset]`).
+ * @brief Compatibility helper for evaluating history at `ast[offset]`.
  * @param ast Target AST to evaluate.
  * @param lookback Non-negative lookback offset.
  * @param ctx Runtime context providing variables and params.

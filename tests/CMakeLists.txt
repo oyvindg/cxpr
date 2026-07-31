@@ -59,6 +59,41 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     list(APPEND CXPR_C_TEST_NAMES "${test_base}")
 endforeach()
 
+add_executable(cxpr_generated_array_codegen_tool generated_array_codegen_tool.c)
+target_link_libraries(cxpr_generated_array_codegen_tool PRIVATE cxpr)
+set(CXPR_GENERATED_ARRAY_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_array_functions.h")
+add_custom_command(
+    OUTPUT "${CXPR_GENERATED_ARRAY_HEADER}"
+    COMMAND $<TARGET_FILE:cxpr_generated_array_codegen_tool>
+            "${CXPR_GENERATED_ARRAY_HEADER}"
+    DEPENDS cxpr_generated_array_codegen_tool
+    VERBATIM)
+add_custom_target(generate_cxpr_array_functions
+    DEPENDS "${CXPR_GENERATED_ARRAY_HEADER}")
+add_dependencies(test_generated_array_parity generate_cxpr_array_functions)
+target_include_directories(test_generated_array_parity PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
+
+add_executable(cxpr_generated_history_codegen_tool generated_history_codegen_tool.c)
+target_link_libraries(cxpr_generated_history_codegen_tool PRIVATE cxpr)
+set(CXPR_GENERATED_HISTORY_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_history_function.h")
+add_custom_command(
+    OUTPUT "${CXPR_GENERATED_HISTORY_HEADER}"
+    COMMAND $<TARGET_FILE:cxpr_generated_history_codegen_tool>
+            "${CXPR_GENERATED_HISTORY_HEADER}"
+    DEPENDS cxpr_generated_history_codegen_tool
+    VERBATIM)
+add_custom_target(generate_cxpr_history_function
+    DEPENDS "${CXPR_GENERATED_HISTORY_HEADER}")
+add_dependencies(test_generated_history_parity generate_cxpr_history_function)
+target_include_directories(test_generated_history_parity PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
+
+find_package(Threads REQUIRED)
+target_link_libraries(test_history PRIVATE Threads::Threads)
+
 if(TARGET cxpr_model_codegen)
     set(CXPR_SCALE_FIXTURE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/scale")

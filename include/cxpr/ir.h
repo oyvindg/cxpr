@@ -79,7 +79,8 @@ typedef enum {
     CXPR_IR_OP_LOOKBACK_POP,
     CXPR_IR_OP_LOOKBACK_RESOLVE,
     CXPR_IR_OP_STORE_LOCAL,
-    CXPR_IR_OP_RETURN
+    CXPR_IR_OP_RETURN,
+    CXPR_IR_OP_INDEX
 } cxpr_ir_opcode;
 
 /** @brief Best-effort scalar result kind inferred for fast execution. */

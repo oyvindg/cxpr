@@ -136,10 +136,18 @@ cxpr_expr_ast* cxpr_expr_ast_call_new(const char* name, cxpr_expr_ast** args, si
 cxpr_expr_ast* cxpr_expr_ast_call_named_new(const char* name, cxpr_expr_ast** args,
                                            char** arg_names, size_t argc);
 /**
- * @brief Construct a postfix lookback node.
+ * @brief Construct a neutral postfix index node.
+ * @param target Expression being indexed.
+ * @param index Index expression.
+ * @return Newly allocated AST node taking ownership of both children, or NULL on allocation failure.
+ */
+cxpr_expr_ast* cxpr_expr_ast_index_new(cxpr_expr_ast* target, cxpr_expr_ast* index);
+/**
+ * @brief Construct a postfix index node using the legacy lookback API name.
  * @param target Expression being indexed.
  * @param index Lookback/index expression.
  * @return Newly allocated AST node taking ownership of both children, or NULL on allocation failure.
+ * @deprecated Use cxpr_expr_ast_index_new().
  */
 cxpr_expr_ast* cxpr_expr_ast_lookback_new(cxpr_expr_ast* target, cxpr_expr_ast* index);
 /**
@@ -166,8 +174,9 @@ typedef enum {
     CXPR_NODE_BINARY_OP,
     CXPR_NODE_UNARY_OP,
     CXPR_NODE_FUNCTION_CALL,
-    CXPR_NODE_LOOKBACK,
-    CXPR_NODE_TERNARY
+    CXPR_NODE_INDEX,
+    CXPR_NODE_LOOKBACK = CXPR_NODE_INDEX, /**< Deprecated compatibility alias. */
+    CXPR_NODE_TERNARY = CXPR_NODE_INDEX + 1
 } cxpr_expr_ast_kind;
 
 /** @brief Source location associated with one expression AST node. */
@@ -320,15 +329,29 @@ const char* cxpr_expr_ast_call_arg_name(const cxpr_expr_ast* ast, size_t index);
  */
 bool cxpr_expr_ast_call_has_named_args(const cxpr_expr_ast* ast);
 /**
- * @brief Return the target child of a lookback node.
- * @param ast Lookback node.
+ * @brief Return the target child of an index node.
+ * @param ast Index node.
  * @return Borrowed target child, or NULL when not applicable.
+ */
+const cxpr_expr_ast* cxpr_expr_ast_index_target(const cxpr_expr_ast* ast);
+/**
+ * @brief Return the index-expression child of an index node.
+ * @param ast Index node.
+ * @return Borrowed index child, or NULL when not applicable.
+ */
+const cxpr_expr_ast* cxpr_expr_ast_index_expression(const cxpr_expr_ast* ast);
+/**
+ * @brief Return the target child using the legacy lookback API name.
+ * @param ast Index node.
+ * @return Borrowed target child, or NULL when not applicable.
+ * @deprecated Use cxpr_expr_ast_index_target().
  */
 const cxpr_expr_ast* cxpr_expr_ast_lookback_target(const cxpr_expr_ast* ast);
 /**
- * @brief Return the index child of a lookback node.
- * @param ast Lookback node.
+ * @brief Return the index child using the legacy lookback API name.
+ * @param ast Index node.
  * @return Borrowed index child, or NULL when not applicable.
+ * @deprecated Use cxpr_expr_ast_index_expression().
  */
 const cxpr_expr_ast* cxpr_expr_ast_lookback_index(const cxpr_expr_ast* ast);
 /**

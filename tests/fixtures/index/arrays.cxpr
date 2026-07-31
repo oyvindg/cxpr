@@ -1,0 +1,36 @@
+# Built-in zero-based array indexing contract for plan 71.
+# This remains parse-only until model compilation can distinguish context
+# arrays from historical sources before lowering target[index].
+
+model array_index_examples
+
+in {
+    context_values,
+    selected_index
+}
+
+numbers = [10, 20, 30]
+labels = ["idle", "moving", "blocked"]
+flags = [true, false]
+point_a = { x = 1, y = 2 }
+point_b = { x = 3, y = 4 }
+points = [point_a, point_b]
+matrix = [[1, 2], [3, 4]]
+
+first_number = numbers[0]
+last_label = labels[2]
+selected_flag = flags[selected_index]
+selected_point = points[selected_index]
+selected_x = (points[selected_index]).x
+nested_value = matrix[1][0]
+context_value = context_values[selected_index]
+
+out {
+    first_number,
+    last_label,
+    selected_flag,
+    selected_point,
+    selected_x,
+    nested_value,
+    context_value
+}

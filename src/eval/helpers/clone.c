@@ -151,15 +151,15 @@ cxpr_expr_ast* cxpr_eval_clone_ast(const cxpr_expr_ast* ast) {
                                                   arg_names, ast->data.producer_access.argc,
                                                   ast->data.producer_access.field);
     }
-    case CXPR_NODE_LOOKBACK: {
-        cxpr_expr_ast* target = cxpr_eval_clone_ast(ast->data.lookback.target);
-        cxpr_expr_ast* index = cxpr_eval_clone_ast(ast->data.lookback.index);
+    case CXPR_NODE_INDEX: {
+        cxpr_expr_ast* target = cxpr_eval_clone_ast(ast->data.index.target);
+        cxpr_expr_ast* index = cxpr_eval_clone_ast(ast->data.index.index);
         if (!target || !index) {
             cxpr_expr_ast_free(target);
             cxpr_expr_ast_free(index);
             return NULL;
         }
-        return cxpr_expr_ast_lookback_new(target, index);
+        return cxpr_expr_ast_index_new(target, index);
     }
     case CXPR_NODE_TERNARY: {
         cxpr_expr_ast* condition = cxpr_eval_clone_ast(ast->data.ternary.condition);

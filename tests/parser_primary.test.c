@@ -25,7 +25,7 @@ static void test_parser_primary_forms(void) {
     err = (cxpr_error){0};
     ast = cxpr_expr_ast_parse(p, "body.velocity.x[2]", &err);
     assert(ast);
-    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(ast)) == CXPR_NODE_CHAIN_ACCESS);
     cxpr_expr_ast_free(ast);
     cxpr_expr_parser_free(p);

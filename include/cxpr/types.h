@@ -50,7 +50,9 @@ typedef enum {
     CXPR_ERR_DIVISION_BY_ZERO,
     CXPR_ERR_CIRCULAR_DEPENDENCY,
     CXPR_ERR_TYPE_MISMATCH,
-    CXPR_ERR_OUT_OF_MEMORY
+    CXPR_ERR_OUT_OF_MEMORY,
+    CXPR_ERR_INVALID_INDEX,
+    CXPR_ERR_INDEX_OUT_OF_RANGE
 } cxpr_error_code;
 
 /** @brief Runtime type tags for `cxpr_value`. */

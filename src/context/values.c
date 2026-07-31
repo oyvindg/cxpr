@@ -5,6 +5,28 @@
 
 #include "internal.h"
 
+#include <math.h>
+
+static const char* const CXPR_CONTEXT_HISTORY_OFFSET_KEY =
+    "__cxpr_engine_lookback_offset";
+
+void cxpr_context_set_history_offset(cxpr_context* ctx, size_t offset) {
+    if (!ctx || (double)offset > 9007199254740992.0) return;
+    cxpr_context_set(ctx, CXPR_CONTEXT_HISTORY_OFFSET_KEY, (double)offset);
+}
+
+bool cxpr_context_history_offset(const cxpr_context* ctx, size_t* out_offset) {
+    bool found = false;
+    double value;
+    if (out_offset) *out_offset = 0u;
+    if (!ctx) return false;
+    value = cxpr_context_get(ctx, CXPR_CONTEXT_HISTORY_OFFSET_KEY, &found);
+    if (!found || value < 0.0 || !isfinite(value) || floor(value) != value ||
+        value > (double)SIZE_MAX) return false;
+    if (out_offset) *out_offset = (size_t)value;
+    return true;
+}
+
 static cxpr_bool_map_entry* cxpr_bool_map_find(cxpr_bool_map* map, const char* name) {
     if (!map || !name) return NULL;
     for (size_t i = 0u; i < map->count; ++i) {

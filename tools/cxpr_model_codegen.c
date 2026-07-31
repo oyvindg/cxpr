@@ -666,9 +666,9 @@ static int emit_model_c(const char* model_path,
     artifact_file_sink meta_sink = {0};
     artifact_file_sink graph_sink = {0};
     const cxpr_model_compile_options compile_options = {
-        CXPR_MODEL_BACKEND_C,
-        true,
-        false,
+        .backend = CXPR_MODEL_BACKEND_C,
+        .fuse = true,
+        .enable_trace = false,
     };
     int rc = 1;
 

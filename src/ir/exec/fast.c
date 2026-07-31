@@ -202,7 +202,8 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         [CXPR_OP_LOOKBACK_POP] = &&op_unsupported,
         [CXPR_OP_LOOKBACK_RESOLVE] = &&op_unsupported,
         [CXPR_OP_STORE_LOCAL] = &&op_store_local,
-        [CXPR_OP_RETURN] = &&op_return
+        [CXPR_OP_RETURN] = &&op_return,
+        [CXPR_OP_INDEX] = &&op_unsupported
     };
     const cxpr_ir_instr* instr;
     double a, b, value;
@@ -215,7 +216,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
             return cxpr_ir_runtime_error(err, "IR program fell off end without return").d; \
         }                                                                           \
         instr = &program->code[ip];                                                 \
-        if ((unsigned)instr->op > (unsigned)CXPR_OP_RETURN) {                       \
+        if ((unsigned)instr->op > (unsigned)CXPR_OP_INDEX) {                        \
             goto op_unsupported;                                                    \
         }                                                                           \
         goto *dispatch[instr->op];                                                  \
@@ -616,7 +617,8 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         [CXPR_OP_LOOKBACK_POP] = &&opb_unsupported,
         [CXPR_OP_LOOKBACK_RESOLVE] = &&opb_unsupported,
         [CXPR_OP_STORE_LOCAL] = &&opb_unsupported,
-        [CXPR_OP_RETURN] = &&opb_return
+        [CXPR_OP_RETURN] = &&opb_return,
+        [CXPR_OP_INDEX] = &&opb_unsupported
     };
     const cxpr_ir_instr* instr;
     double a, b, value;
@@ -631,7 +633,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
             return false;                                                           \
         }                                                                           \
         instr = &program->code[ip];                                                 \
-        if ((unsigned)instr->op > (unsigned)CXPR_OP_RETURN) {                       \
+        if ((unsigned)instr->op > (unsigned)CXPR_OP_INDEX) {                        \
             goto opb_unsupported;                                                   \
         }                                                                           \
         goto *dispatch[instr->op];                                                  \

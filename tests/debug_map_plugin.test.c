@@ -15,11 +15,16 @@ static void test_debug_map_metadata_contract(void) {
         "scaled = close * 2\n"
         "out { above, scaled }\n";
     const cxpr_model_compile_options compile_options = {
-        CXPR_MODEL_BACKEND_C, true, false
+        .backend = CXPR_MODEL_BACKEND_C,
+        .fuse = true,
+        .enable_trace = false,
     };
     const size_t selected[] = {0u};
     const cxpr_debug_map_plugin_options options = {
-        "test_debug_map", "const", selected, 1u
+        .symbol_name = "test_debug_map",
+        .qualifiers = "const",
+        .output_indices = selected,
+        .output_count = 1u,
     };
     cxpr_error err = {0};
     cxpr_model* model = cxpr_model_parse(source, &err);

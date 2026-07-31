@@ -126,6 +126,7 @@ const char* cxpr_ir_internal_opcode_name(cxpr_opcode op) {
     case CXPR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
     case CXPR_OP_STORE_LOCAL: return "STORE_LOCAL";
     case CXPR_OP_RETURN: return "RETURN";
+    case CXPR_OP_INDEX: return "INDEX";
     default: return "UNKNOWN";
     }
 }
@@ -137,6 +138,29 @@ size_t cxpr_ir_next_index(const cxpr_ir_program* program) {
 void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target) {
     if (!program || at >= program->count) return;
     program->code[at].index = target;
+}
+
+static const cxpr_expr_ast* cxpr_ir_constant_array_value_ast(
+    const cxpr_expr_ast* ast,
+    const cxpr_registry* reg) {
+    const cxpr_expr_ast* target;
+    cxpr_value index_value;
+    size_t index;
+
+    if (!ast) return NULL;
+    if (ast->type == CXPR_NODE_ARRAY) return ast;
+    if (ast->type != CXPR_NODE_INDEX) return NULL;
+    target = cxpr_ir_constant_array_value_ast(ast->data.index.target, reg);
+    if (!target || target->type != CXPR_NODE_ARRAY ||
+        !cxpr_ir_constant_typed_value(ast->data.index.index, reg, &index_value) ||
+        index_value.type != CXPR_VALUE_NUMBER || !isfinite(index_value.d) ||
+        index_value.d < 0.0 || floor(index_value.d) != index_value.d ||
+        index_value.d > (double)SIZE_MAX) {
+        return NULL;
+    }
+    index = (size_t)index_value.d;
+    if (index >= target->data.array.count) return NULL;
+    return target->data.array.elements[index];
 }
 
 bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry* reg,
@@ -159,14 +183,30 @@ bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry*
         *out = cxpr_string(ast->data.string.value);
         return true;
 
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
     {
-        unsigned offset;
-        if (!cxpr_lookback_literal_offset(ast->data.lookback.index, &offset, NULL, NULL)) {
+        const cxpr_expr_ast* target =
+            cxpr_ir_constant_array_value_ast(ast->data.index.target, reg);
+        cxpr_value selected;
+        if (target && target->type == CXPR_NODE_ARRAY) {
+            if (!cxpr_ir_constant_typed_value(ast->data.index.index, reg, &right) ||
+                right.type != CXPR_VALUE_NUMBER || !isfinite(right.d) || right.d < 0.0 ||
+                floor(right.d) != right.d || right.d > (double)SIZE_MAX ||
+                (size_t)right.d >= target->data.array.count) {
+                return false;
+            }
+            if (!cxpr_ir_constant_typed_value(
+                    target->data.array.elements[(size_t)right.d], reg, &selected) ||
+                (selected.type != CXPR_VALUE_NUMBER && selected.type != CXPR_VALUE_BOOL)) {
+                return false;
+            }
+            *out = selected;
+            return true;
+        }
+        if (!cxpr_lookback_literal_offset(ast->data.index.index, NULL, NULL, NULL)) {
             return false;
         }
-        (void)offset;
-        return cxpr_ir_constant_typed_value(ast->data.lookback.target, reg, out);
+        return cxpr_ir_constant_typed_value(ast->data.index.target, reg, out);
     }
 
     case CXPR_NODE_CHAIN_ACCESS:
@@ -407,9 +447,9 @@ bool cxpr_ir_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right) {
         }
         return true;
 
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_ir_ast_equal(left->data.lookback.target, right->data.lookback.target) &&
-               cxpr_ir_ast_equal(left->data.lookback.index, right->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_ir_ast_equal(left->data.index.target, right->data.index.target) &&
+               cxpr_ir_ast_equal(left->data.index.index, right->data.index.index);
 
     case CXPR_NODE_TERNARY:
         return cxpr_ir_ast_equal(left->data.ternary.condition,

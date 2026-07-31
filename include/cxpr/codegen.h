@@ -145,6 +145,32 @@ char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
                                  size_t arg_count,
                                  cxpr_error* err);
 
+/** Stable status values emitted by checked scalar C functions. */
+typedef enum cxpr_c_eval_status {
+    CXPR_C_EVAL_OK = 0,
+    CXPR_C_EVAL_INVALID_INDEX = 1,
+    CXPR_C_EVAL_INDEX_OUT_OF_RANGE = 2,
+    CXPR_C_EVAL_UNSUPPORTED_RESULT = 3
+} cxpr_c_eval_status;
+
+#ifndef CXPR_C_CHECKED_RESULT_DEFINED
+#define CXPR_C_CHECKED_RESULT_DEFINED 1
+typedef struct cxpr_c_checked_result {
+    double value;
+    unsigned status; /**< One of @ref cxpr_c_eval_status. */
+} cxpr_c_checked_result;
+#endif
+
+/**
+ * Emit an array-capable scalar function returning `{ value, status }`.
+ * Existing scalar codegen remains ABI-compatible. Aggregate results are
+ * reported as `CXPR_C_EVAL_UNSUPPORTED_RESULT` rather than coerced silently.
+ */
+char* cxpr_expr_compiled_to_c_checked_function(
+    const cxpr_expr_compiled* prog, const char* qualifiers,
+    const char* function_name, const cxpr_c_program_arg* args,
+    size_t arg_count, cxpr_error* err);
+
 /**
  * @brief Transpile a single AST into a C expression string at a lookback offset.
  *

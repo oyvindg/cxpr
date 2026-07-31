@@ -96,11 +96,11 @@ static bool cxpr_visit_static_named_string_args_node(
             ast->data.function_call.argc,
             visitor,
             userdata);
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return cxpr_visit_static_named_string_args_node(
-                   ast->data.lookback.target, visitor, userdata) &&
+                   ast->data.index.target, visitor, userdata) &&
                cxpr_visit_static_named_string_args_node(
-                   ast->data.lookback.index, visitor, userdata);
+                   ast->data.index.index, visitor, userdata);
     case CXPR_NODE_TERNARY:
         return cxpr_visit_static_named_string_args_node(
                    ast->data.ternary.condition, visitor, userdata) &&

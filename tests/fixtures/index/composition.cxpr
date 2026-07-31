@@ -1,0 +1,34 @@
+# Cross-capability index syntax contract for plan 71.
+# `samples` is a built-in array, `sensor` is a bound history source, and
+# `path` is an opaque host extension whose index result is a `{ x, y }` point.
+
+model index_composition_examples
+
+in {
+    sensor,
+    sample_index,
+    history_offset,
+    path,
+    distance
+}
+
+samples = [10, 20, 30]
+array_value = samples[sample_index]
+history_value = sensor[history_offset]
+path_point = path[distance]
+path_x = (path[distance]).x
+combined = array_value + history_value + path_x
+
+out array_value {
+    index { capability = "array", bounds = "ERROR" }
+}
+out history_value {
+    index { capability = "history", bounds = "ERROR", future = "REJECT" }
+}
+out path_point {
+    index { capability = "extension", provider = "path" }
+}
+out {
+    path_x,
+    combined
+}

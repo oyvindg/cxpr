@@ -11,6 +11,7 @@
 #include "limits.h"
 #include "lookback.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,50 @@ static cxpr_value cxpr_eval_struct_field_value(const cxpr_struct_value* record,
     }
     return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                            cxpr_eval_unknown_field_message(field));
+}
+
+static bool cxpr_eval_value_clone_failed(const cxpr_value* source,
+                                         const cxpr_value* clone) {
+    if (!source || !clone) return false;
+    if (source->type == CXPR_VALUE_STRUCT) return source->s && !clone->s;
+    if (source->type == CXPR_VALUE_STRING) return source->str && !clone->str;
+    if (source->type == CXPR_VALUE_ARRAY) return source->a && !clone->a;
+    return false;
+}
+
+static cxpr_value cxpr_eval_array_index(const cxpr_value* array,
+                                        const cxpr_expr_ast* index_ast,
+                                        const cxpr_context* ctx,
+                                        const cxpr_registry* reg,
+                                        cxpr_error* err) {
+    cxpr_value index_value;
+    cxpr_value result;
+    size_t index;
+
+    if (!array || array->type != CXPR_VALUE_ARRAY || !array->a) {
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "Index target is not an array");
+    }
+    index_value = cxpr_eval_node(index_ast, ctx, reg, err);
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (index_value.type != CXPR_VALUE_NUMBER || !isfinite(index_value.d) ||
+        index_value.d < 0.0 || floor(index_value.d) != index_value.d ||
+        index_value.d > (double)SIZE_MAX) {
+        cxpr_value_free(&index_value);
+        return cxpr_eval_error(err, CXPR_ERR_INVALID_INDEX,
+                               "Array index must be a finite non-negative integer");
+    }
+    index = (size_t)index_value.d;
+    cxpr_value_free(&index_value);
+    if (index >= array->a->count) {
+        return cxpr_eval_error(err, CXPR_ERR_INDEX_OUT_OF_RANGE,
+                               "Array index is out of range");
+    }
+    result = cxpr_value_clone(&array->a->values[index]);
+    if (cxpr_eval_value_clone_failed(&array->a->values[index], &result)) {
+        return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+    }
+    return result;
 }
 
 cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
@@ -581,22 +626,111 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
     case CXPR_NODE_CHAIN_ACCESS:
         return cxpr_eval_chain_access(ast, ctx, err);
 
-    case CXPR_NODE_LOOKBACK: {
+    case CXPR_NODE_INDEX: {
+        const cxpr_index_capability_entry* capability = NULL;
+        const cxpr_expr_ast* capability_target = ast->data.index.target;
+        const cxpr_expr_ast* capability_index = ast->data.index.index;
+        cxpr_expr_ast flattened_index = {0};
+        bool capability_handled = false;
+        /* A runtime array is a core value and takes precedence over a host
+         * capability registered for the same identifier. */
+        if (ast->data.index.target->type == CXPR_NODE_IDENTIFIER) {
+            bool found = false;
+            cxpr_value runtime_target = cxpr_context_get_typed(
+                ctx, ast->data.index.target->data.identifier.name, &found);
+            if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
+                cxpr_value indexed = cxpr_eval_array_index(
+                    &runtime_target, ast->data.index.index, ctx, reg, err);
+                cxpr_value_free(&runtime_target);
+                return indexed;
+            }
+            cxpr_value_free(&runtime_target);
+        }
+        {
+            unsigned offset;
+            if (cxpr_lookback_literal_offset(capability_index, &offset, NULL, NULL)) {
+                while (capability_target && capability_target->type == CXPR_NODE_INDEX) {
+                    unsigned inner_offset;
+                    unsigned summed;
+                    if (!cxpr_lookback_literal_offset(
+                            capability_target->data.index.index, &inner_offset,
+                            NULL, NULL) ||
+                        !cxpr_lookback_add_unsigned(
+                            offset, inner_offset, &summed, NULL, NULL)) {
+                        break;
+                    }
+                    offset = summed;
+                    capability_target = capability_target->data.index.target;
+                }
+                if (capability_target != ast->data.index.target) {
+                    flattened_index.type = CXPR_NODE_NUMBER;
+                    flattened_index.data.number.value = (double)offset;
+                    capability_index = &flattened_index;
+                }
+            }
+        }
+        /* Compound expressions may be owned by an engine resolver even when
+         * they reference exact-name capabilities. Give that owner first
+         * refusal; neutral capabilities remain the fallback. */
+        if (capability_target->type == CXPR_NODE_IDENTIFIER ||
+            !reg || !reg->lookback_resolver) {
+            capability = cxpr_registry_select_index_capability(
+                reg, capability_target, err, &capability_handled);
+        }
+        if (!capability && capability_handled) return cxpr_num(NAN);
+        if (capability) {
+            cxpr_value index_value =
+                cxpr_eval_node(capability_index, ctx, reg, err);
+            cxpr_value resolved = cxpr_num(NAN);
+            if (err && err->code != CXPR_OK) return resolved;
+            if (index_value.type != CXPR_VALUE_NUMBER ||
+                !isfinite(index_value.d) || index_value.d < 0.0 ||
+                floor(index_value.d) != index_value.d ||
+                index_value.d > (double)INT64_MAX) {
+                cxpr_value_free(&index_value);
+                return cxpr_eval_error(
+                    err, CXPR_ERR_INVALID_INDEX,
+                    "Index must be a finite non-negative integer");
+            }
+            if (!cxpr_registry_resolve_index_capability(
+                    reg, capability_target, (int64_t)index_value.d,
+                    ctx, &resolved, err, &capability_handled)) {
+                cxpr_value_free(&index_value);
+                return cxpr_num(NAN);
+            }
+            cxpr_value_free(&index_value);
+            return resolved;
+        }
+        cxpr_value target_value = cxpr_eval_node(ast->data.index.target, ctx, reg, err);
         cxpr_value value;
+        if (!err || err->code == CXPR_OK) {
+            if (target_value.type == CXPR_VALUE_ARRAY) {
+                value = cxpr_eval_array_index(
+                    &target_value, ast->data.index.index, ctx, reg, err);
+                cxpr_value_free(&target_value);
+                return value;
+            }
+            cxpr_value_free(&target_value);
+        } else if (!reg || !reg->lookback_resolver) {
+            return cxpr_num(NAN);
+        } else {
+            err->code = CXPR_OK;
+            err->message = NULL;
+        }
         if (reg && reg->lookback_resolver) {
-            const cxpr_expr_ast* target = ast->data.lookback.target;
+            const cxpr_expr_ast* target = ast->data.index.target;
             cxpr_expr_ast index_ast = {0};
             unsigned offset;
             bool flattened = false;
             value = cxpr_num(NAN);
-            if (cxpr_lookback_literal_offset(ast->data.lookback.index,
+            if (cxpr_lookback_literal_offset(ast->data.index.index,
                                              &offset,
                                              NULL,
                                              NULL)) {
-                while (target && target->type == CXPR_NODE_LOOKBACK) {
+                while (target && target->type == CXPR_NODE_INDEX) {
                     unsigned inner_offset;
                     unsigned summed;
-                    if (!cxpr_lookback_literal_offset(target->data.lookback.index,
+                    if (!cxpr_lookback_literal_offset(target->data.index.index,
                                                       &inner_offset,
                                                       NULL,
                                                       NULL) ||
@@ -605,20 +739,20 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
                                                     &summed,
                                                     NULL,
                                                     NULL)) {
-                        target = ast->data.lookback.target;
+                        target = ast->data.index.target;
                         break;
                     }
                     offset = summed;
-                    target = target->data.lookback.target;
+                    target = target->data.index.target;
                 }
-                if (target != ast->data.lookback.target) {
+                if (target != ast->data.index.target) {
                     index_ast.type = CXPR_NODE_NUMBER;
                     index_ast.data.number.value = (double)offset;
                     flattened = true;
                 }
             }
             if (reg->lookback_resolver(target,
-                                       flattened ? &index_ast : ast->data.lookback.index,
+                                       flattened ? &index_ast : ast->data.index.index,
                                        ctx,
                                        reg,
                                        reg->lookback_userdata,
@@ -628,8 +762,36 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
         }
-        return cxpr_eval_error(err, CXPR_ERR_SYNTAX,
-                               "Native lookback requires a registry lookback resolver");
+        if (capability_target->type != CXPR_NODE_IDENTIFIER) {
+            capability = cxpr_registry_select_index_capability(
+                reg, capability_target, err, &capability_handled);
+            if (!capability && capability_handled) return cxpr_num(NAN);
+            if (capability) {
+                cxpr_value index_value =
+                    cxpr_eval_node(capability_index, ctx, reg, err);
+                value = cxpr_num(NAN);
+                if (err && err->code != CXPR_OK) return value;
+                if (index_value.type != CXPR_VALUE_NUMBER ||
+                    !isfinite(index_value.d) || index_value.d < 0.0 ||
+                    floor(index_value.d) != index_value.d ||
+                    index_value.d > (double)INT64_MAX) {
+                    cxpr_value_free(&index_value);
+                    return cxpr_eval_error(
+                        err, CXPR_ERR_INVALID_INDEX,
+                        "Index must be a finite non-negative integer");
+                }
+                if (!cxpr_registry_resolve_index_capability(
+                        reg, capability_target, (int64_t)index_value.d,
+                        ctx, &value, err, &capability_handled)) {
+                    cxpr_value_free(&index_value);
+                    return cxpr_num(NAN);
+                }
+                cxpr_value_free(&index_value);
+                return value;
+            }
+        }
+        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "Index target is not indexable");
     }
 
     case CXPR_NODE_BINARY_OP:

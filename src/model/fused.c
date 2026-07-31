@@ -213,10 +213,6 @@ static bool cxpr_model_fused_ast_supported(const cxpr_expr_ast* ast,
     case CXPR_NODE_UNARY_OP:
         return cxpr_model_fused_ast_supported(ast->data.unary_op.operand, reg);
     case CXPR_NODE_FUNCTION_CALL: {
-        cxpr_func_entry* entry = reg ? cxpr_registry_find(reg, ast->data.function_call.name) : NULL;
-        if (entry && entry->model_producer && entry->return_type == CXPR_VALUE_STRUCT) {
-            return false;
-        }
         for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
             if (!cxpr_model_fused_ast_supported(ast->data.function_call.args[i], reg)) return false;
         }
@@ -227,9 +223,9 @@ static bool cxpr_model_fused_ast_supported(const cxpr_expr_ast* ast,
             if (!cxpr_model_fused_ast_supported(ast->data.producer_access.args[i], reg)) return false;
         }
         return true;
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_model_fused_ast_supported(ast->data.lookback.target, reg) &&
-               cxpr_model_fused_ast_supported(ast->data.lookback.index, reg);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_fused_ast_supported(ast->data.index.target, reg) &&
+               cxpr_model_fused_ast_supported(ast->data.index.index, reg);
     case CXPR_NODE_TERNARY:
         return cxpr_model_fused_ast_supported(ast->data.ternary.condition, reg) &&
                cxpr_model_fused_ast_supported(ast->data.ternary.true_branch, reg) &&

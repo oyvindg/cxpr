@@ -9,6 +9,7 @@
 #include "core.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -131,6 +132,44 @@ static bool cxpr_doc_ast_is_ident(const char* s) {
         if (!(isalnum((unsigned char)*s) || *s == '_')) return false;
     }
     return true;
+}
+
+static char* cxpr_doc_ast_trim_in_place(char* s);
+
+static bool cxpr_doc_ast_split_output_role(char* text,
+                                           char** out_name,
+                                           char** out_role) {
+    char* as_kw;
+    if (!text || !out_name || !out_role) return false;
+    *out_name = cxpr_doc_ast_trim_in_place(text);
+    *out_role = NULL;
+    as_kw = strstr(*out_name, " as ");
+    if (!as_kw) return true;
+    *as_kw = '\0';
+    *out_name = cxpr_doc_ast_trim_in_place(*out_name);
+    *out_role = cxpr_doc_ast_trim_in_place(as_kw + 4);
+    return cxpr_doc_ast_is_ident(*out_name) &&
+           cxpr_doc_ast_is_ident(*out_role) &&
+           strstr(*out_role, " as ") == NULL;
+}
+
+static char* cxpr_doc_ast_output_metadata_text(const char* role,
+                                               const char* body) {
+    size_t role_len;
+    size_t body_len;
+    char* text;
+    if (!role) return cxpr_strdup(body ? body : "");
+    role_len = strlen(role);
+    body_len = body ? strlen(body) : 0u;
+    text = (char*)malloc(role_len + body_len + 13u);
+    if (!text) return NULL;
+    if (body_len > 0u) {
+        (void)snprintf(text, role_len + body_len + 13u,
+                       "role = \"%s\"\n%s", role, body);
+    } else {
+        (void)snprintf(text, role_len + 13u, "role = \"%s\"", role);
+    }
+    return text;
 }
 
 static char* cxpr_doc_ast_trim_in_place(char* s) {
@@ -1090,13 +1129,20 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         } else if (strchr(rest, '{') && *rest != '{') {
             char* open = strchr((char*)rest, '{');
             char* close = strrchr((char*)rest, '}');
+            char* output_name;
+            char* output_role;
+            char* metadata_body;
             cxpr_doc_ast_node* metadata;
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_OUTPUT_DECL, span);
             if (!node) goto oom;
             if (!close || close < open) goto syntax;
             *open = '\0';
             *close = '\0';
-            node->name = cxpr_strdup(cxpr_doc_ast_trim_in_place((char*)rest));
+            if (!cxpr_doc_ast_split_output_role(
+                    (char*)rest, &output_name, &output_role)) goto syntax;
+            metadata_body = cxpr_doc_ast_trim_in_place(open + 1);
+            if (output_role && strstr(metadata_body, "role") != NULL) goto syntax;
+            node->name = cxpr_strdup(output_name);
             metadata = cxpr_doc_ast_node_new(
                 CXPR_DOC_AST_METADATA,
                 cxpr_doc_ast_span(parser,
@@ -1104,7 +1150,8 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
                                        start_offset + (size_t)(close - statement) + 1u));
             if (!metadata) goto oom;
             metadata->name = cxpr_strdup("metadata");
-            metadata->text = cxpr_strdup(cxpr_doc_ast_trim_in_place(open + 1));
+            metadata->text = cxpr_doc_ast_output_metadata_text(
+                output_role, metadata_body);
             ok = node->name != NULL && metadata->name && metadata->text &&
                  cxpr_doc_ast_append_child(node, metadata);
             if (!ok) cxpr_doc_ast_node_free(metadata);
@@ -1125,10 +1172,24 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
                 node, parser, (char*)rest, false, start_offset + (size_t)(rest - statement),
                 span.start.line, span.start.column + 1u, parser->err);
         } else {
+            char* output_name;
+            char* output_role;
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_OUTPUT_DECL, span);
             if (!node) goto oom;
-            node->name = cxpr_strdup(rest);
+            if (!cxpr_doc_ast_split_output_role(
+                    (char*)rest, &output_name, &output_role)) goto syntax;
+            node->name = cxpr_strdup(output_name);
             ok = node->name != NULL;
+            if (ok && output_role) {
+                cxpr_doc_ast_node* metadata = cxpr_doc_ast_node_new(
+                    CXPR_DOC_AST_METADATA, span);
+                if (!metadata) goto oom;
+                metadata->name = cxpr_strdup("metadata");
+                metadata->text = cxpr_doc_ast_output_metadata_text(output_role, NULL);
+                ok = metadata->name && metadata->text &&
+                     cxpr_doc_ast_append_child(node, metadata);
+                if (!ok) cxpr_doc_ast_node_free(metadata);
+            }
         }
     } else if (cxpr_doc_ast_keyword(statement, "fn", &rest)) {
         char* open = strchr(statement, '{');

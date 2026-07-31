@@ -218,9 +218,9 @@ char* cxpr_model_compiled_generate_c_outputs(
     cxpr_error ast_err = {0};
 
     if (err) *err = (cxpr_error){0};
-    if (!program || (!program->has_fused_ir && !program->has_fused_layout) || !function_name) {
+    if (!program || !function_name) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "Model C backend requires fused scalar IR", 0, 0);
+                             "Model C backend requires a compiled program and function name", 0, 0);
         return NULL;
     }
     if (!cxpr_model_c_validate_selected_outputs(program, output_indices, output_count, err)) {
@@ -546,9 +546,9 @@ char* cxpr_model_compiled_generate_c_specialized(
     cxpr_error ast_err = {0};
 
     if (err) *err = (cxpr_error){0};
-    if (!program || (!program->has_fused_ir && !program->has_fused_layout) || !function_name) {
+    if (!program || !function_name) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                             "Model C backend requires fused scalar IR", 0, 0);
+                             "Model C backend requires a compiled program and function name", 0, 0);
         return NULL;
     }
     if (!param_values || param_count < program->constant_count) {

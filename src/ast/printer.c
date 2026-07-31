@@ -347,10 +347,10 @@ static int cxpr_print_node(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, i
                                         ast->data.function_call.arg_names,
                                         ast->data.function_call.argc) &&
                    cxpr_printer_append_char(p, ')');
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_print_node(p, ast->data.lookback.target, cxpr_expr_ast_precedence(ast)) &&
+        case CXPR_NODE_INDEX:
+            return cxpr_print_node(p, ast->data.index.target, cxpr_expr_ast_precedence(ast)) &&
                    cxpr_printer_append_char(p, '[') &&
-                   cxpr_print_node(p, ast->data.lookback.index, 0) &&
+                   cxpr_print_node(p, ast->data.index.index, 0) &&
                    cxpr_printer_append_char(p, ']');
         case CXPR_NODE_TERNARY:
             return cxpr_print_ternary(p, ast, parent_prec);

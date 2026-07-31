@@ -33,7 +33,7 @@ static void test_series_lookback_parses_as_native_node(void) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "close[1]", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(ast)) == CXPR_NODE_IDENTIFIER);
     assert(strcmp(cxpr_expr_ast_identifier_name(cxpr_expr_ast_lookback_target(ast)), "close") == 0);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_index(ast)) == CXPR_NODE_NUMBER);
@@ -48,7 +48,7 @@ static void test_indicator_field_lookback_parses_as_native_node(void) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "macd(12, 26, 9).signal[2]", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(ast)) == CXPR_NODE_PRODUCER_ACCESS);
     assert(strcmp(cxpr_expr_ast_producer_name(cxpr_expr_ast_lookback_target(ast)), "macd") == 0);
     assert(strcmp(cxpr_expr_ast_producer_field(cxpr_expr_ast_lookback_target(ast)), "signal") == 0);
@@ -65,7 +65,7 @@ static void test_named_arg_indicator_field_lookback_parses_as_native_node(void) 
     cxpr_expr_ast* ast =
         cxpr_expr_ast_parse(parser, "macd(fast=$f, slow=$s, signal=$sig).signal[2]", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(ast)) == CXPR_NODE_PRODUCER_ACCESS);
     assert(strcmp(cxpr_expr_ast_producer_name(cxpr_expr_ast_lookback_target(ast)), "macd") == 0);
     assert(strcmp(cxpr_expr_ast_producer_arg_name(cxpr_expr_ast_lookback_target(ast), 0), "fast") == 0);
@@ -84,7 +84,7 @@ static void test_aggregate_lookback_wraps_aggregate_call(void) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "avg(zscore($primary, $pair, 60))[1]", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(ast)) == CXPR_NODE_FUNCTION_CALL);
     assert(strcmp(cxpr_expr_ast_call_name(cxpr_expr_ast_lookback_target(ast)), "avg") == 0);
     assert(cxpr_expr_ast_call_arg_count(cxpr_expr_ast_lookback_target(ast)) == 1);
@@ -100,8 +100,8 @@ static void test_nested_lookback_stacks_as_ast_nodes(void) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "close[1][2]", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK);
-    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(ast)) == CXPR_NODE_LOOKBACK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
+    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_index_target(ast)) == CXPR_NODE_INDEX);
     assert(cxpr_expr_ast_number_value(cxpr_expr_ast_lookback_index(ast)) == 2.0);
     assert(cxpr_expr_ast_number_value(cxpr_expr_ast_lookback_index(cxpr_expr_ast_lookback_target(ast))) == 1.0);
     cxpr_expr_ast_free(ast);

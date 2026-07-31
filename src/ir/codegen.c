@@ -261,6 +261,167 @@ static bool cxpr_ir_c_emit_args(cxpr_ir_c_buf* b,
     return true;
 }
 
+static bool cxpr_ir_c_has_array_ops(const cxpr_ir_program* ir) {
+    if (!ir) return false;
+    for (size_t i = 0u; i < ir->count; ++i) {
+        if (ir->code[i].op == CXPR_OP_BUILD_ARRAY ||
+            ir->code[i].op == CXPR_OP_INDEX) return true;
+    }
+    return false;
+}
+
+/* Array-capable generated C keeps values in a small stack-local arena. This
+ * avoids heap ownership in generated hot paths while preserving nested array
+ * values until the function returns. The public scalar codegen ABI means the
+ * selected result must still be numeric or boolean. */
+static char* cxpr_ir_c_emit_array_function(const cxpr_ir_program* ir,
+                                           const char* qualifiers,
+                                           const char* scalar_type,
+                                           const char* function_name,
+                                           const cxpr_c_program_arg* args,
+                                           size_t arg_count,
+                                           bool checked,
+                                           cxpr_error* err) {
+    cxpr_ir_c_buf b = {0};
+    char* safe_function_name = cxpr_ir_c_safe_name(NULL, function_name, 0u);
+    if (!safe_function_name) {
+        cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return NULL;
+    }
+    if (checked) {
+        cxpr_ir_c_puts(&b,
+            "#ifndef CXPR_C_CHECKED_RESULT_DEFINED\n"
+            "#define CXPR_C_CHECKED_RESULT_DEFINED 1\n"
+            "typedef struct cxpr_c_checked_result { double value; unsigned status; } cxpr_c_checked_result;\n"
+            "#endif\n");
+    }
+    if (qualifiers && qualifiers[0]) cxpr_ir_c_printf(&b, "%s ", qualifiers);
+    cxpr_ir_c_printf(&b, "%s %s(", checked ? "cxpr_c_checked_result" : scalar_type,
+                     safe_function_name);
+    free(safe_function_name);
+    if (!cxpr_ir_c_emit_args(&b, "double", args, arg_count, err)) goto fail;
+    cxpr_ir_c_puts(&b, ") {\n");
+    cxpr_ir_c_puts(&b,
+        "    typedef struct { unsigned kind; double d; size_t start; size_t count; } _cx_value;\n");
+    cxpr_ir_c_printf(&b, "    _cx_value _cx_s[%zu];\n", ir->count + 1u);
+    cxpr_ir_c_printf(&b, "    _cx_value _cx_e[%zu];\n", ir->count + 1u);
+    cxpr_ir_c_puts(&b, "    size_t _cx_sp = 0u, _cx_ep = 0u;\n");
+
+    for (size_t i = 0u; i < ir->count; ++i) {
+        const cxpr_ir_instr* instr = &ir->code[i];
+        const cxpr_c_program_arg* arg;
+        char* c_name;
+        const char* op;
+        cxpr_ir_c_printf(&b, "L%zu:\n", i);
+        switch (instr->op) {
+        case CXPR_OP_PUSH_CONST:
+            cxpr_ir_c_printf(&b,
+                "    _cx_s[_cx_sp++] = (_cx_value){0u, %.17g, 0u, 0u};\n",
+                instr->value);
+            break;
+        case CXPR_OP_PUSH_BOOL:
+            cxpr_ir_c_printf(&b,
+                "    _cx_s[_cx_sp++] = (_cx_value){0u, %.1f, 0u, 0u};\n",
+                instr->value != 0.0 ? 1.0 : 0.0);
+            break;
+        case CXPR_OP_LOAD_VAR:
+        case CXPR_OP_LOAD_PARAM:
+            arg = cxpr_ir_c_find_arg(
+                args, arg_count,
+                instr->op == CXPR_OP_LOAD_VAR ? CXPR_C_PROGRAM_ARG_VAR
+                                               : CXPR_C_PROGRAM_ARG_PARAM,
+                instr->name, 0u);
+            if (!arg) {
+                cxpr_ir_c_fail(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                               "C backend missing explicit argument binding");
+                goto fail;
+            }
+            c_name = cxpr_ir_c_arg_name(arg, (size_t)(arg - args));
+            if (!c_name) {
+                cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                goto fail;
+            }
+            cxpr_ir_c_printf(&b,
+                "    _cx_s[_cx_sp++] = (_cx_value){0u, %s, 0u, 0u};\n", c_name);
+            free(c_name);
+            break;
+        case CXPR_OP_BUILD_ARRAY:
+            cxpr_ir_c_printf(&b,
+                "    { const size_t _cx_n = %zuu; const size_t _cx_start = _cx_ep; "
+                "for (size_t _cx_i = 0u; _cx_i < _cx_n; ++_cx_i) "
+                "_cx_e[_cx_ep++] = _cx_s[_cx_sp - _cx_n + _cx_i]; "
+                "_cx_sp -= _cx_n; _cx_s[_cx_sp++] = "
+                "(_cx_value){1u, 0.0, _cx_start, _cx_n}; }\n",
+                instr->index);
+            break;
+        case CXPR_OP_INDEX:
+            if (checked) cxpr_ir_c_puts(&b,
+                "    { _cx_value _cx_i = _cx_s[--_cx_sp]; "
+                "_cx_value _cx_a = _cx_s[--_cx_sp]; "
+                "if (_cx_i.kind != 0u || !isfinite(_cx_i.d) || "
+                "_cx_i.d < 0.0 || trunc(_cx_i.d) != _cx_i.d || "
+                "_cx_i.d > (double)SIZE_MAX || _cx_a.kind != 1u) "
+                "return (cxpr_c_checked_result){NAN, 1u}; "
+                "if ((size_t)_cx_i.d >= _cx_a.count) "
+                "return (cxpr_c_checked_result){NAN, 2u}; "
+                "_cx_s[_cx_sp++] = _cx_e[_cx_a.start + (size_t)_cx_i.d]; }\n");
+            else cxpr_ir_c_puts(&b,
+                "    { _cx_value _cx_i = _cx_s[--_cx_sp]; "
+                "_cx_value _cx_a = _cx_s[--_cx_sp]; "
+                "if (_cx_i.kind != 0u || !isfinite(_cx_i.d) || "
+                "_cx_i.d < 0.0 || trunc(_cx_i.d) != _cx_i.d || "
+                "_cx_i.d > (double)SIZE_MAX || _cx_a.kind != 1u || "
+                "(size_t)_cx_i.d >= _cx_a.count) return NAN; "
+                "_cx_s[_cx_sp++] = _cx_e[_cx_a.start + (size_t)_cx_i.d]; }\n");
+            break;
+        case CXPR_OP_ADD: case CXPR_OP_SUB: case CXPR_OP_MUL: case CXPR_OP_DIV:
+        case CXPR_OP_CMP_EQ: case CXPR_OP_CMP_NEQ: case CXPR_OP_CMP_LT:
+        case CXPR_OP_CMP_LTE: case CXPR_OP_CMP_GT: case CXPR_OP_CMP_GTE:
+            op = cxpr_ir_c_binary_op(instr->op);
+            cxpr_ir_c_printf(&b,
+                "    { const double _cx_b = _cx_s[--_cx_sp].d; "
+                "const double _cx_a = _cx_s[--_cx_sp].d; "
+                "_cx_s[_cx_sp++] = (_cx_value){0u, (double)(_cx_a %s _cx_b), 0u, 0u}; }\n",
+                op);
+            break;
+        case CXPR_OP_NEG:
+            cxpr_ir_c_puts(&b, "    _cx_s[_cx_sp - 1u].d = -_cx_s[_cx_sp - 1u].d;\n");
+            break;
+        case CXPR_OP_NOT:
+            cxpr_ir_c_puts(&b,
+                "    _cx_s[_cx_sp - 1u].d = (_cx_s[_cx_sp - 1u].d == 0.0) ? 1.0 : 0.0;\n");
+            break;
+        case CXPR_OP_RETURN:
+            if (checked) cxpr_ir_c_puts(&b,
+                "    { const _cx_value _cx_r = _cx_s[--_cx_sp]; "
+                "return _cx_r.kind == 0u ? (cxpr_c_checked_result){_cx_r.d, 0u} "
+                ": (cxpr_c_checked_result){NAN, 3u}; }\n");
+            else cxpr_ir_c_puts(&b,
+                "    { const _cx_value _cx_r = _cx_s[--_cx_sp]; "
+                "return _cx_r.kind == 0u ? _cx_r.d : NAN; }\n");
+            break;
+        default:
+            cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX,
+                           "Unsupported IR opcode in array-capable C backend");
+            goto fail;
+        }
+        if (b.oom) {
+            cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            goto fail;
+        }
+    }
+    cxpr_ir_c_puts(&b, "}\n");
+    if (b.oom) {
+        cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        goto fail;
+    }
+    if (err) err->code = CXPR_OK;
+    return b.data;
+fail:
+    free(b.data);
+    return NULL;
+}
+
 char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
                                  const char* qualifiers,
                                  const char* return_type,
@@ -284,6 +445,11 @@ char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
     if (!safe_function_name) {
         cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         return NULL;
+    }
+    if (cxpr_ir_c_has_array_ops(ir)) {
+        free(safe_function_name);
+        return cxpr_ir_c_emit_array_function(
+            ir, qualifiers, scalar_type, function_name, args, arg_count, false, err);
     }
 
     if (qualifiers && qualifiers[0]) cxpr_ir_c_printf(&b, "%s ", qualifiers);
@@ -491,4 +657,22 @@ char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
 fail:
     free(b.data);
     return NULL;
+}
+
+char* cxpr_expr_compiled_to_c_checked_function(
+    const cxpr_expr_compiled* prog, const char* qualifiers,
+    const char* function_name, const cxpr_c_program_arg* args,
+    size_t arg_count, cxpr_error* err) {
+    if (err) *err = (cxpr_error){0};
+    if (!prog || !function_name) {
+        cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX, "Invalid checked C backend arguments");
+        return NULL;
+    }
+    if (!cxpr_ir_c_has_array_ops(&prog->ir)) {
+        cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX,
+                       "Checked C backend currently requires array/index IR");
+        return NULL;
+    }
+    return cxpr_ir_c_emit_array_function(
+        &prog->ir, qualifiers, "double", function_name, args, arg_count, true, err);
 }

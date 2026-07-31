@@ -95,7 +95,8 @@ typedef enum {
     CXPR_OP_LOOKBACK_POP,
     CXPR_OP_LOOKBACK_RESOLVE,
     CXPR_OP_STORE_LOCAL,
-    CXPR_OP_RETURN
+    CXPR_OP_RETURN,
+    CXPR_OP_INDEX
 } cxpr_opcode;
 
 struct cxpr_func_entry;

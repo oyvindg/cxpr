@@ -97,7 +97,7 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     free(program->history_specs);
     for (size_t i = 0; i < program->output_count; ++i) free(program->outputs[i]);
     free(program->outputs);
-    cxpr_registry_free(program->registry);
+    if (program->owns_registry) cxpr_registry_free(program->registry);
     free(program);
 }
 

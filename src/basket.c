@@ -137,9 +137,9 @@ static bool cxpr_basket_collect_free_roles(const cxpr_expr_ast* node,
                    cxpr_basket_collect_free_roles(cxpr_expr_ast_binary_right(node), ctx, names, count);
         case CXPR_NODE_UNARY_OP:
             return cxpr_basket_collect_free_roles(cxpr_expr_ast_unary_operand(node), ctx, names, count);
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_basket_collect_free_roles(cxpr_expr_ast_lookback_target(node), ctx, names, count) &&
-                   cxpr_basket_collect_free_roles(cxpr_expr_ast_lookback_index(node), ctx, names, count);
+        case CXPR_NODE_INDEX:
+            return cxpr_basket_collect_free_roles(cxpr_expr_ast_index_target(node), ctx, names, count) &&
+                   cxpr_basket_collect_free_roles(cxpr_expr_ast_index_expression(node), ctx, names, count);
         case CXPR_NODE_TERNARY:
             return cxpr_basket_collect_free_roles(cxpr_expr_ast_ternary_condition(node), ctx, names, count) &&
                    cxpr_basket_collect_free_roles(cxpr_expr_ast_ternary_true(node), ctx, names, count) &&
@@ -306,9 +306,9 @@ static bool cxpr_basket_ast_uses_aggregates_impl(const cxpr_expr_ast* ast) {
                    cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_binary_right(ast));
         case CXPR_NODE_UNARY_OP:
             return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_unary_operand(ast));
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_lookback_target(ast)) ||
-                   cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_lookback_index(ast));
+        case CXPR_NODE_INDEX:
+            return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_index_target(ast)) ||
+                   cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_index_expression(ast));
         case CXPR_NODE_TERNARY:
             return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_ternary_condition(ast)) ||
                    cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_ternary_true(ast)) ||

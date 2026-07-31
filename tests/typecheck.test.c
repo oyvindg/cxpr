@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <cxpr/cxpr.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -41,6 +42,21 @@ static void expect_accept(cxpr_registry* reg, const char* expr) {
     cxpr_expr_ast* ast = parse_expr(expr);
     assert(cxpr_typecheck(ast, reg, NULL, &err));
     assert(err.code == CXPR_OK);
+    cxpr_expr_ast_free(ast);
+}
+
+static void expect_type(cxpr_registry* reg, const char* expr,
+                        cxpr_value_type expected) {
+    cxpr_error err = {0};
+    cxpr_value_type actual = CXPR_VALUE_NULL;
+    cxpr_expr_ast* ast = parse_expr(expr);
+    assert(cxpr_typecheck(ast, reg, &actual, &err));
+    assert(err.code == CXPR_OK);
+    if (actual != expected) {
+        fprintf(stderr, "typecheck '%s': expected %d, got %d\n",
+                expr, (int)expected, (int)actual);
+    }
+    assert(actual == expected);
     cxpr_expr_ast_free(ast);
 }
 
@@ -92,6 +108,8 @@ int main(void) {
     expect_reject(reg, "any(atr(14))");
     expect_reject(reg, "(close + 1) and x");
     expect_reject(reg, "cond ? 1 : true");
+    expect_reject(reg, "[1, 2][true]");
+    expect_reject(reg, "close[\"previous\"]");
     expect_backend_rejects(reg, "1 and 2");
 
     expect_accept(reg, "close > 5 and rsi < 30");
@@ -99,6 +117,16 @@ int main(void) {
     expect_accept(reg, "any(x > 0)");
     expect_accept(reg, "$flag and y");
     expect_accept(reg, "ind() ? a : b");
+    expect_accept(reg, "[true, false][0] and true");
+    expect_accept(reg, "[[1, 2], [3, 4]][1][0] > 0");
+    expect_accept(reg, "[1, true][i]");
+    expect_accept(reg, "(close + high)[1]");
+
+    expect_type(reg, "[1, 2][0]", CXPR_VALUE_NUMBER);
+    expect_type(reg, "[true, false][1]", CXPR_VALUE_BOOL);
+    expect_type(reg, "[\"a\", \"b\"][0]", CXPR_VALUE_STRING);
+    expect_type(reg, "[[1], [2]][0]", CXPR_VALUE_ARRAY);
+    expect_type(reg, "[[1], [2]][0][0]", CXPR_VALUE_NUMBER);
 
     cxpr_registry_free(reg);
     return 0;

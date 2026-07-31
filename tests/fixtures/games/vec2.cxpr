@@ -1,0 +1,26 @@
+# Host-neutral Vec2 helpers implemented entirely with native cxpr expressions.
+# Struct arithmetic matches fields by name, so `a - b` yields `{x, y}`.
+
+fn vec2(x, y) = x, y
+
+fn length(v) = sqrt(v.x * v.x + v.y * v.y)
+
+fn normalize(v) {
+    magnitude = length(v)
+    return magnitude > 0 ? v / magnitude : vec2(0, 0)
+}
+
+fn distance(left, right) {
+    delta = left - right
+    return sqrt(delta.x * delta.x + delta.y * delta.y)
+}
+
+fn dot(left, right) = left.x * right.x + left.y * right.y
+
+fn reflect(direction, normal) = direction - normal * (2 * (direction.x * normal.x + direction.y * normal.y))
+
+fn move_towards(current, target, max_delta) {
+    delta = target - current
+    remaining = sqrt((target.x - current.x) * (target.x - current.x) + (target.y - current.y) * (target.y - current.y))
+    return remaining <= max_delta ? target : current + delta / remaining * max_delta
+}

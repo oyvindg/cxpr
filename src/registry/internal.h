@@ -18,6 +18,9 @@ typedef struct cxpr_func_entry {
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
     cxpr_expr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
+    cxpr_struct_codegen_ptr struct_codegen; /**< Optional generated-C field emitter */
+    void* struct_codegen_userdata;
+    cxpr_userdata_free_fn struct_codegen_userdata_free;
     cxpr_expr_ast_func_ptr model_producer; /**< AST-aware stateful model producer */
     void* model_producer_userdata;
     /* AST handler: coexists with sync_func/struct_producer for TF string dispatch */
@@ -64,6 +67,15 @@ typedef struct cxpr_func_entry {
     size_t     defined_return_field_count; /**< Number of struct-return fields */
 } cxpr_func_entry;
 
+typedef struct {
+    char* capability_name;
+    char* target_name;
+    cxpr_value_type result_type;
+    cxpr_index_capability_fn resolve;
+    void* userdata;
+    cxpr_userdata_free_fn free_userdata;
+} cxpr_index_capability_entry;
+
 /** @brief Initial owned entry capacity for new registries. */
 #define CXPR_REGISTRY_INITIAL_CAPACITY 64
 
@@ -76,7 +88,20 @@ struct cxpr_registry {
     cxpr_lookback_resolver_ptr lookback_resolver;
     void* lookback_userdata;
     cxpr_userdata_free_fn free_lookback_userdata;
+    cxpr_index_capability_entry* index_capabilities;
+    size_t index_capability_count;
+    size_t index_capability_capacity;
 };
+
+const cxpr_index_capability_entry* cxpr_registry_find_index_capability(
+    const cxpr_registry* reg, const char* target_name);
+const cxpr_index_capability_entry* cxpr_registry_select_index_capability(
+    const cxpr_registry* reg, const cxpr_expr_ast* target,
+    cxpr_error* err, bool* handled);
+bool cxpr_registry_resolve_index_capability(
+    const cxpr_registry* reg, const cxpr_expr_ast* target, int64_t index,
+    const cxpr_context* ctx, cxpr_value* out, cxpr_error* err,
+    bool* handled);
 
 /** @brief Userdata wrapper for native unary scalar adapters. */
 typedef struct {

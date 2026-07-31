@@ -175,10 +175,10 @@ int cxpr_source_plan_render_ast_canonical(const cxpr_expr_ast* ast, char** out_t
             if (!cxpr_source_canonical_text_append(out_text, ").")) return 0;
             return field ? cxpr_source_canonical_text_append(out_text, field) : 0;
         }
-        case CXPR_NODE_LOOKBACK:
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_lookback_target(ast))) return 0;
+        case CXPR_NODE_INDEX:
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_index_target(ast))) return 0;
             if (!cxpr_source_canonical_text_append(out_text, "[")) return 0;
-            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_lookback_index(ast))) return 0;
+            if (!cxpr_source_canonical_rendered_append(out_text, cxpr_expr_ast_index_expression(ast))) return 0;
             return cxpr_source_canonical_text_append(out_text, "]");
         case CXPR_NODE_TERNARY:
             if (!cxpr_source_canonical_text_append(out_text, "(")) return 0;

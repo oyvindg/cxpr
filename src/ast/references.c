@@ -91,9 +91,9 @@ static size_t cxpr_collect_references(const cxpr_expr_ast* ast, const char** nam
                 count = cxpr_collect_references(ast->data.producer_access.args[i], names, count, max_names);
             }
             return count;
-        case CXPR_NODE_LOOKBACK:
-            count = cxpr_collect_references(ast->data.lookback.target, names, count, max_names);
-            return cxpr_collect_references(ast->data.lookback.index, names, count, max_names);
+        case CXPR_NODE_INDEX:
+            count = cxpr_collect_references(ast->data.index.target, names, count, max_names);
+            return cxpr_collect_references(ast->data.index.index, names, count, max_names);
         case CXPR_NODE_TERNARY:
             count = cxpr_collect_references(ast->data.ternary.condition, names, count, max_names);
             count = cxpr_collect_references(ast->data.ternary.true_branch, names, count, max_names);
@@ -135,9 +135,9 @@ static size_t cxpr_collect_functions(const cxpr_expr_ast* ast, const char** name
             return cxpr_collect_functions(ast->data.binary_op.right, names, count, max_names);
         case CXPR_NODE_UNARY_OP:
             return cxpr_collect_functions(ast->data.unary_op.operand, names, count, max_names);
-        case CXPR_NODE_LOOKBACK:
-            count = cxpr_collect_functions(ast->data.lookback.target, names, count, max_names);
-            return cxpr_collect_functions(ast->data.lookback.index, names, count, max_names);
+        case CXPR_NODE_INDEX:
+            count = cxpr_collect_functions(ast->data.index.target, names, count, max_names);
+            return cxpr_collect_functions(ast->data.index.index, names, count, max_names);
         case CXPR_NODE_TERNARY:
             count = cxpr_collect_functions(ast->data.ternary.condition, names, count, max_names);
             count = cxpr_collect_functions(ast->data.ternary.true_branch, names, count, max_names);
@@ -179,9 +179,9 @@ static size_t cxpr_collect_variables(const cxpr_expr_ast* ast, const char** name
                 count = cxpr_collect_variables(ast->data.producer_access.args[i], names, count, max_names);
             }
             return count;
-        case CXPR_NODE_LOOKBACK:
-            count = cxpr_collect_variables(ast->data.lookback.target, names, count, max_names);
-            return cxpr_collect_variables(ast->data.lookback.index, names, count, max_names);
+        case CXPR_NODE_INDEX:
+            count = cxpr_collect_variables(ast->data.index.target, names, count, max_names);
+            return cxpr_collect_variables(ast->data.index.index, names, count, max_names);
         case CXPR_NODE_TERNARY:
             count = cxpr_collect_variables(ast->data.ternary.condition, names, count, max_names);
             count = cxpr_collect_variables(ast->data.ternary.true_branch, names, count, max_names);
@@ -245,9 +245,9 @@ static size_t cxpr_collect_producer_fields(const cxpr_expr_ast* ast,
             return cxpr_collect_producer_fields(ast->data.binary_op.right, refs, count, max_refs);
         case CXPR_NODE_UNARY_OP:
             return cxpr_collect_producer_fields(ast->data.unary_op.operand, refs, count, max_refs);
-        case CXPR_NODE_LOOKBACK:
-            count = cxpr_collect_producer_fields(ast->data.lookback.target, refs, count, max_refs);
-            return cxpr_collect_producer_fields(ast->data.lookback.index, refs, count, max_refs);
+        case CXPR_NODE_INDEX:
+            count = cxpr_collect_producer_fields(ast->data.index.target, refs, count, max_refs);
+            return cxpr_collect_producer_fields(ast->data.index.index, refs, count, max_refs);
         case CXPR_NODE_TERNARY:
             count = cxpr_collect_producer_fields(ast->data.ternary.condition, refs, count, max_refs);
             count = cxpr_collect_producer_fields(ast->data.ternary.true_branch, refs, count, max_refs);
@@ -300,9 +300,9 @@ static bool cxpr_expr_ast_contains_reference_impl(const cxpr_expr_ast* ast, cons
                 }
             }
             return false;
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_expr_ast_contains_reference_impl(ast->data.lookback.target, name) ||
-                   cxpr_expr_ast_contains_reference_impl(ast->data.lookback.index, name);
+        case CXPR_NODE_INDEX:
+            return cxpr_expr_ast_contains_reference_impl(ast->data.index.target, name) ||
+                   cxpr_expr_ast_contains_reference_impl(ast->data.index.index, name);
         case CXPR_NODE_TERNARY:
             return cxpr_expr_ast_contains_reference_impl(ast->data.ternary.condition, name) ||
                    cxpr_expr_ast_contains_reference_impl(ast->data.ternary.true_branch, name) ||
@@ -351,9 +351,9 @@ static bool cxpr_expr_ast_contains_variable_impl(const cxpr_expr_ast* ast, const
                 }
             }
             return false;
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_expr_ast_contains_variable_impl(ast->data.lookback.target, name) ||
-                   cxpr_expr_ast_contains_variable_impl(ast->data.lookback.index, name);
+        case CXPR_NODE_INDEX:
+            return cxpr_expr_ast_contains_variable_impl(ast->data.index.target, name) ||
+                   cxpr_expr_ast_contains_variable_impl(ast->data.index.index, name);
         case CXPR_NODE_TERNARY:
             return cxpr_expr_ast_contains_variable_impl(ast->data.ternary.condition, name) ||
                    cxpr_expr_ast_contains_variable_impl(ast->data.ternary.true_branch, name) ||
@@ -419,11 +419,11 @@ static size_t cxpr_collect_call_arg_contexts(
         case CXPR_NODE_UNARY_OP:
             return cxpr_collect_call_arg_contexts(
                 ast->data.unary_op.operand, name, variable, names, count, max_names);
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
             count = cxpr_collect_call_arg_contexts(
-                ast->data.lookback.target, name, variable, names, count, max_names);
+                ast->data.index.target, name, variable, names, count, max_names);
             return cxpr_collect_call_arg_contexts(
-                ast->data.lookback.index, name, variable, names, count, max_names);
+                ast->data.index.index, name, variable, names, count, max_names);
         case CXPR_NODE_TERNARY:
             count = cxpr_collect_call_arg_contexts(
                 ast->data.ternary.condition, name, variable, names, count, max_names);

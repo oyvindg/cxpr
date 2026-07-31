@@ -60,12 +60,18 @@ static void test_nested_boolean_expression(void) {
     assert_round_trips("not (a > 0 and b < 1)");
 }
 
-static void test_named_args_and_lookback(void) {
+static void test_named_args_and_indexing(void) {
     assert_renders("ema(period=14)", "ema(period=14)");
     assert_renders("close[1]", "close[1]");
+    assert_renders("[10, 20, 30][1]", "[10, 20, 30][1]");
+    assert_renders("values[selected_index]", "values[selected_index]");
+    assert_renders("[[1, 2], [3, 4]][1][0]", "[[1, 2], [3, 4]][1][0]");
+    assert_renders("(points[i]).x", "(points[i]).x");
     assert_renders("macd(12, 26, 9).signal[2]", "macd(12, 26, 9).signal[2]");
     assert_renders("macd(fast=12, slow=26, signal=9).signal[2]",
                    "macd(fast=12, slow=26, signal=9).signal[2]");
+    assert_round_trips("[left, right][side ? 1 : 0]");
+    assert_round_trips("matrix[row][column]");
 }
 
 static void test_ternary(void) {
@@ -126,7 +132,7 @@ int main(void) {
     test_literals_round_trip();
     test_operator_precedence();
     test_nested_boolean_expression();
-    test_named_args_and_lookback();
+    test_named_args_and_indexing();
     test_ternary();
     test_pipe_round_trip_desugars();
     test_special_numbers();

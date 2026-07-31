@@ -78,7 +78,8 @@ typedef cxpr_value (*cxpr_timeseries_func_ptr)(const cxpr_expr_ast* call_ast,
  * @return True when the lookback was resolved, false to fall back to default cxpr handling.
  *
  * `cxpr` parses postfix lookbacks such as `close[1]` and `macd(12,26,9).signal[2]`
- * into `CXPR_NODE_LOOKBACK` AST nodes. Runtime evaluation of those nodes depends on
+ * into neutral `CXPR_NODE_INDEX` AST nodes. Legacy runtime evaluation of
+ * history-backed targets depends on
  * this callback; there is no built-in `lag_*` fallback in the evaluator.
  */
 typedef bool (*cxpr_lookback_resolver_ptr)(const cxpr_expr_ast* target,
@@ -100,10 +101,28 @@ typedef void (*cxpr_struct_producer_ptr)(const double* args, size_t argc,
                                          cxpr_value* out, size_t field_count,
                                          void* userdata);
 /**
+ * @brief Emit an owned C expression for one field of a struct producer.
+ *
+ * Argument expressions are already translated for the requested historical
+ * offset. The returned string is freed by cxpr and must be valid standalone C.
+ */
+typedef char* (*cxpr_struct_codegen_ptr)(const char* field,
+                                         const char* const* args, size_t argc,
+                                         void* userdata, cxpr_error* err);
+/**
  * @brief Optional cleanup callback for registry user data.
  * @param userdata User pointer to destroy.
  */
 typedef void (*cxpr_userdata_free_fn)(void* userdata);
+
+/** Callback for one exact-name index capability after core index validation. */
+typedef bool (*cxpr_index_capability_fn)(const cxpr_expr_ast* target,
+                                         int64_t index,
+                                         const cxpr_context* ctx,
+                                         const cxpr_registry* reg,
+                                         void* userdata,
+                                         cxpr_value* out_value,
+                                         cxpr_error* err);
 
 /**
  * @brief Create a new registry.
@@ -122,8 +141,14 @@ void cxpr_registry_free(cxpr_registry* reg);
  * @param userdata User pointer passed to `resolver`.
  * @param free_userdata Optional cleanup callback for `userdata`.
  *
- * Install this when expressions may contain postfix lookbacks (`expr[n]`).
- * Without a resolver, evaluating `CXPR_NODE_LOOKBACK` fails with a syntax error.
+ * Compatibility API for hosts that still implement postfix history through a
+ * single callback. New exact-name extension targets should use
+ * @ref cxpr_registry_add_index_capability; numeric history should use the
+ * adapters in `<cxpr/history.h>`. Built-in array indexing needs no resolver.
+ * Replacing userdata frees the previous userdata immediately. Re-registering
+ * the same userdata never frees it during the call; passing a NULL cleanup in
+ * that case preserves the existing cleanup ownership until replacement or
+ * registry destruction.
  */
 void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
                                          cxpr_lookback_resolver_ptr resolver,
@@ -144,6 +169,62 @@ void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
 void cxpr_registry_lookback_resolver(const cxpr_registry* reg,
                                      cxpr_lookback_resolver_ptr* out_resolver,
                                      void** out_userdata);
+
+/**
+ * Register a neutral index capability for one exact identifier target.
+ * Capability and target names are copied. Duplicate target ownership is
+ * rejected, making selection independent of registration order.
+ */
+bool cxpr_registry_add_index_capability(
+    cxpr_registry* reg,
+    const char* capability_name,
+    const char* target_name,
+    cxpr_value_type result_type,
+    cxpr_index_capability_fn resolve,
+    void* userdata,
+    cxpr_userdata_free_fn free_userdata);
+
+/** Atomically register one capability instance for multiple exact targets. */
+bool cxpr_registry_add_index_capability_targets(
+    cxpr_registry* reg,
+    const char* capability_name,
+    const char* const* target_names,
+    size_t target_count,
+    cxpr_value_type result_type,
+    cxpr_index_capability_fn resolve,
+    void* userdata,
+    cxpr_userdata_free_fn free_userdata);
+
+/** Return the number of neutral index capabilities in a registry. */
+size_t cxpr_registry_index_capability_count(const cxpr_registry* reg);
+
+/**
+ * Query borrowed neutral index metadata by registration index.
+ * This enumeration API lets typecheck/codegen/plugin frontends discover
+ * targets without depending on a host-specific inventory or resolver type.
+ */
+bool cxpr_registry_index_capability_at(
+    const cxpr_registry* reg, size_t index,
+    const char** target_name, const char** capability_name,
+    cxpr_value_type* result_type);
+
+/** Query borrowed capability metadata for one exact target name. */
+bool cxpr_registry_index_capability_info(
+    const cxpr_registry* reg, const char* target_name,
+    const char** capability_name, cxpr_value_type* result_type);
+
+/**
+ * Query capability metadata for an arbitrary index target AST.
+ *
+ * Exact identifiers select their registered owner. Compound targets select a
+ * capability only when every registered reference belongs to the same
+ * capability instance; ambiguous ownership is reported through @p err.
+ * Returned strings are borrowed from @p reg.
+ */
+bool cxpr_registry_index_target_info(
+    const cxpr_registry* reg, const cxpr_expr_ast* target,
+    const char** capability_name, cxpr_value_type* result_type,
+    cxpr_error* err);
 
 /**
  * @brief One column binding for the built-in column lookback resolver.
@@ -422,6 +503,17 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
                               const char* const* fields, size_t field_count,
                               void* userdata,
                               cxpr_userdata_free_fn free_userdata);
+
+/**
+ * @brief Attach generated-C support to a registered struct producer.
+ *
+ * The callback is used only while generating source. Runtime evaluation keeps
+ * using the producer registered with @ref cxpr_registry_add_struct.
+ */
+bool cxpr_registry_set_struct_codegen(cxpr_registry* reg, const char* name,
+                                      cxpr_struct_codegen_ptr codegen,
+                                      void* userdata,
+                                      cxpr_userdata_free_fn free_userdata);
 
 /**
  * @brief Register cxpr's built-in numeric/math function set into a registry.

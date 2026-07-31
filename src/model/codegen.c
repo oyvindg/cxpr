@@ -461,9 +461,32 @@ static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_compiled*
             }
         }
         return true;
-    case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_model_c_collect_child_calls_from_ast(
-            program, ast->data.field_access.base, keys, child_indices, count, capacity, err);
+    case CXPR_NODE_FIELD_ACCESS: {
+        const cxpr_model_compiled_binding* binding = NULL;
+        if (ast->data.field_access.base) {
+            return cxpr_model_c_collect_child_calls_from_ast(
+                program, ast->data.field_access.base,
+                keys, child_indices, count, capacity, err);
+        }
+        if (ast->data.field_access.object) {
+            binding = cxpr_model_c_binding_for_name(
+                program, ast->data.field_access.object);
+        }
+        if (binding &&
+            cxpr_expr_ast_kind_of(binding->ast) == CXPR_NODE_FUNCTION_CALL) {
+            cxpr_expr_ast producer = {0};
+            producer.type = CXPR_NODE_PRODUCER_ACCESS;
+            producer.data.producer_access.name = binding->ast->data.function_call.name;
+            producer.data.producer_access.args = binding->ast->data.function_call.args;
+            producer.data.producer_access.arg_names = binding->ast->data.function_call.arg_names;
+            producer.data.producer_access.argc = binding->ast->data.function_call.argc;
+            producer.data.producer_access.field = ast->data.field_access.field;
+            return cxpr_model_c_collect_child_calls_from_ast(
+                program, &producer, keys, child_indices, count, capacity, err);
+        }
+        return !binding || cxpr_model_c_collect_child_calls_from_ast(
+            program, binding->ast, keys, child_indices, count, capacity, err);
+    }
     case CXPR_NODE_PRODUCER_ACCESS: {
         cxpr_func_entry* entry = cxpr_registry_find(program->registry, ast->data.producer_access.name);
         if (entry && entry->model_producer) {
@@ -499,6 +522,32 @@ static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_compiled*
         return cxpr_model_c_collect_child_calls_from_ast(
             program, ast->data.unary_op.operand, keys, child_indices, count, capacity, err);
     case CXPR_NODE_FUNCTION_CALL:
+        {
+            cxpr_func_entry* entry = program->registry
+                ? cxpr_registry_find(program->registry, ast->data.function_call.name)
+                : NULL;
+            if (entry && entry->model_producer) {
+                cxpr_expr_ast producer = {0};
+                size_t child_index = cxpr_model_c_child_index_for_entry(program, entry);
+                char* key;
+                producer.type = CXPR_NODE_PRODUCER_ACCESS;
+                producer.data.producer_access.name = ast->data.function_call.name;
+                producer.data.producer_access.args = ast->data.function_call.args;
+                producer.data.producer_access.arg_names = ast->data.function_call.arg_names;
+                producer.data.producer_access.argc = ast->data.function_call.argc;
+                key = cxpr_model_c_child_call_key(&producer);
+                if (!key) {
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    return false;
+                }
+                if (child_index != (size_t)-1 &&
+                    !cxpr_model_c_child_call_collect_append(
+                        keys, child_indices, count, capacity, child_index, key, err)) {
+                    return false;
+                }
+                if (child_index == (size_t)-1) free(key);
+            }
+        }
         for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
             if (!cxpr_model_c_collect_child_calls_from_ast(
                     program, ast->data.function_call.args[i], keys, child_indices, count, capacity, err)) {
@@ -506,11 +555,11 @@ static bool cxpr_model_c_collect_child_calls_from_ast(const cxpr_model_compiled*
             }
         }
         return true;
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return cxpr_model_c_collect_child_calls_from_ast(
-                   program, ast->data.lookback.target, keys, child_indices, count, capacity, err) &&
+                   program, ast->data.index.target, keys, child_indices, count, capacity, err) &&
                cxpr_model_c_collect_child_calls_from_ast(
-                   program, ast->data.lookback.index, keys, child_indices, count, capacity, err);
+                   program, ast->data.index.index, keys, child_indices, count, capacity, err);
     case CXPR_NODE_TERNARY:
         return cxpr_model_c_collect_child_calls_from_ast(
                    program, ast->data.ternary.condition, keys, child_indices, count, capacity, err) &&
@@ -548,14 +597,32 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* prog
     producer = cxpr_expr_ast_producer_name(ast);
     field = cxpr_expr_ast_producer_field(ast);
     entry = cxpr_registry_find(program->registry, producer);
-    if (!entry || (!entry->model_producer && entry->defined_return_field_count == 0u) ||
-        (!entry->model_producer && entry->defined_param_count != cxpr_expr_ast_producer_arg_count(ast)) ||
+    if (!entry || (!entry->model_producer && entry->defined_return_field_count == 0u &&
+                   !entry->struct_codegen) ||
+        (!entry->model_producer && !entry->struct_codegen &&
+         entry->defined_param_count != cxpr_expr_ast_producer_arg_count(ast)) ||
         (entry->model_producer &&
          (cxpr_expr_ast_producer_arg_count(ast) < entry->min_args ||
-          cxpr_expr_ast_producer_arg_count(ast) > entry->max_args))) {
+          cxpr_expr_ast_producer_arg_count(ast) >
+              entry->max_args +
+                  (((const cxpr_model_child_program*)entry->model_producer_userdata)->program
+                       ? ((const cxpr_model_child_program*)entry->model_producer_userdata)->program->input_count
+                       : 0u)))) {
         if (err) {
+            static CXPR_THREAD_LOCAL char message[256];
+            const cxpr_model_child_program* child_ref =
+                entry && entry->model_producer_userdata
+                    ? (const cxpr_model_child_program*)entry->model_producer_userdata
+                    : NULL;
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-            err->message = "Unsupported model C producer access";
+            snprintf(message, sizeof(message),
+                     "Unsupported model C producer access '%s.%s' (child=%s argc=%lu min=%lu max=%lu)",
+                     producer ? producer : "?", field ? field : "?",
+                     child_ref && child_ref->name ? child_ref->name : "none",
+                     (unsigned long)cxpr_expr_ast_producer_arg_count(ast),
+                     (unsigned long)(entry ? entry->min_args : 0u),
+                     (unsigned long)(entry ? entry->max_args : 0u));
+            err->message = message;
         }
         return NULL;
     }
@@ -567,12 +634,80 @@ static char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* prog
             break;
         }
     }
+    if (selected_field == (size_t)-1 && entry->struct_codegen) {
+        for (size_t i = 0u; i < entry->fields_per_arg; ++i) {
+            if (entry->struct_fields[i] && field &&
+                cxpr_model_names_match(entry->struct_fields[i], field)) {
+                selected_field = i;
+                break;
+            }
+        }
+    }
+    if (selected_field == (size_t)-1 && field && producer &&
+        cxpr_model_names_match(producer, "swing_pivots")) {
+        const char* canonical = cxpr_model_names_match(field, "high")
+            ? "pivot_high"
+            : (cxpr_model_names_match(field, "low")
+                   ? "pivot_low"
+                   : (cxpr_model_names_match(field, "line") ? "swing_line" : NULL));
+        for (size_t i = 0u; canonical && i < entry->defined_return_field_count; ++i) {
+            if (entry->defined_return_field_names[i] &&
+                cxpr_model_names_match(entry->defined_return_field_names[i], canonical)) {
+                selected_field = i;
+                break;
+            }
+        }
+    }
     if (selected_field == (size_t)-1) {
         if (err) {
+            static CXPR_THREAD_LOCAL char message[256];
             err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-            err->message = "Unknown producer field";
+            snprintf(message, sizeof(message), "Unknown producer field '%s.%s'",
+                     producer ? producer : "?", field ? field : "?");
+            err->message = message;
         }
         return NULL;
+    }
+
+    if (entry->struct_codegen) {
+        const size_t argc = cxpr_expr_ast_producer_arg_count(ast);
+        char* expression;
+        arg_exprs = (char**)calloc(argc ? argc : 1u, sizeof(char*));
+        if (!arg_exprs) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        target_data = (cxpr_model_ast_c_target){
+            .program = program,
+            .function_prefix = function_prefix,
+            .literal_param_values = literal_param_values,
+            .literal_param_count = literal_param_count,
+            .child_call_keys = child_call_keys,
+            .child_call_child_indices = child_call_child_indices,
+            .child_call_count = child_call_count,
+        };
+        target = (cxpr_c_target){
+            .api_version = CXPR_C_TARGET_API_VERSION,
+            .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+            .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+            .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
+            .userdata = &target_data,
+        };
+        for (size_t i = 0u; i < argc; ++i) {
+            arg_exprs[i] = cxpr_expr_ast_to_c_at_offset(
+                cxpr_expr_ast_producer_arg(ast, i), 0u, &target, err);
+            if (!arg_exprs[i]) {
+                for (size_t j = 0u; j < i; ++j) free(arg_exprs[j]);
+                free(arg_exprs);
+                return NULL;
+            }
+        }
+        expression = entry->struct_codegen(
+            field, (const char* const*)arg_exprs, argc,
+            entry->struct_codegen_userdata, err);
+        for (size_t i = 0u; i < argc; ++i) free(arg_exprs[i]);
+        free(arg_exprs);
+        return expression;
     }
 
     if (entry->model_producer) {
@@ -815,9 +950,43 @@ cxpr_model_c_history_base(const cxpr_model_compiled* program,
 
 static size_t cxpr_model_c_history_find(const cxpr_model_compiled* program,
                                         const char* name) {
+    const char* dot;
     if (!program || !name) return (size_t)-1;
     for (size_t i = 0u; i < program->history_spec_count; ++i) {
         if (cxpr_model_names_match(program->history_specs[i].name, name)) return i;
+    }
+    dot = strchr(name, '.');
+    if (dot && dot != name) {
+        char root[128];
+        size_t root_len = (size_t)(dot - name);
+        if (root_len < sizeof(root)) {
+            const cxpr_model_compiled_binding* binding;
+            char* expression;
+            char* expanded;
+            size_t expression_len;
+            memcpy(root, name, root_len);
+            root[root_len] = '\0';
+            binding = cxpr_model_c_binding_for_name(program, root);
+            expression = binding && binding->ast
+                ? cxpr_expr_ast_to_string(binding->ast) : NULL;
+            expression_len = expression ? strlen(expression) : 0u;
+            expanded = expression
+                ? (char*)malloc(expression_len + strlen(dot) + 1u) : NULL;
+            if (expanded) {
+                memcpy(expanded, expression, expression_len);
+                strcpy(expanded + expression_len, dot);
+                for (size_t i = 0u; i < program->history_spec_count; ++i) {
+                    if (cxpr_model_names_match(
+                            program->history_specs[i].name, expanded)) {
+                        free(expanded);
+                        free(expression);
+                        return i;
+                    }
+                }
+                free(expanded);
+            }
+            free(expression);
+        }
     }
     return (size_t)-1;
 }
@@ -845,8 +1014,11 @@ static char* cxpr_model_c_current_symbol_expr(const cxpr_model_compiled* program
         return cxpr_model_c_safe_name(name);
     }
     if (err) {
+        static CXPR_THREAD_LOCAL char message[256];
         err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-        err->message = "Unknown model C history target";
+        snprintf(message, sizeof(message),
+                 "Unknown model C history target '%s'", name);
+        err->message = message;
     }
     return NULL;
 }
@@ -954,10 +1126,7 @@ static bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
         entry = program->registry
                     ? cxpr_registry_find(program->registry, cxpr_expr_ast_call_name(ast))
                     : NULL;
-        return entry && entry->defined_return_field_count > 0u;
-    case CXPR_NODE_BINARY_OP:
-        return cxpr_model_ast_is_record_like(program, cxpr_expr_ast_binary_left(ast), depth + 1u) ||
-               cxpr_model_ast_is_record_like(program, cxpr_expr_ast_binary_right(ast), depth + 1u);
+        return entry && entry->defined_return_field_count > 1u;
     default:
         return false;
     }
@@ -993,7 +1162,8 @@ static char* cxpr_model_ast_record_function_field_to_c(
     }
     entry = cxpr_registry_find(program->registry, cxpr_expr_ast_call_name(ast));
     if (!entry || entry->defined_return_field_count == 0u ||
-        entry->defined_param_count != cxpr_expr_ast_call_arg_count(ast)) {
+        (!entry->model_producer &&
+         entry->defined_param_count != cxpr_expr_ast_call_arg_count(ast))) {
         return NULL;
     }
     for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
@@ -1004,6 +1174,26 @@ static char* cxpr_model_ast_record_function_field_to_c(
         }
     }
     if (selected_field == (size_t)-1) return NULL;
+
+    if (entry->model_producer) {
+        cxpr_expr_ast producer = {0};
+        producer.type = CXPR_NODE_PRODUCER_ACCESS;
+        producer.data.producer_access.name = ast->data.function_call.name;
+        producer.data.producer_access.args = ast->data.function_call.args;
+        producer.data.producer_access.arg_names = ast->data.function_call.arg_names;
+        producer.data.producer_access.argc = ast->data.function_call.argc;
+        producer.data.producer_access.field = (char*)field;
+        return cxpr_model_ast_producer_access_to_c(
+            program,
+            &producer,
+            target_data ? target_data->function_prefix : NULL,
+            target_data ? target_data->literal_param_values : NULL,
+            target_data ? target_data->literal_param_count : 0u,
+            target_data ? target_data->child_call_keys : NULL,
+            target_data ? target_data->child_call_child_indices : NULL,
+            target_data ? target_data->child_call_count : 0u,
+            err);
+    }
 
     arg_exprs = (char**)calloc(entry->defined_param_count ? entry->defined_param_count : 1u,
                                sizeof(char*));
@@ -1211,9 +1401,29 @@ static char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                          program, constant->ast, field, target, err, depth + 1u)
                    : NULL;
     }
-    case CXPR_NODE_FUNCTION_CALL:
-        return cxpr_model_ast_record_function_field_to_c(
+    case CXPR_NODE_FUNCTION_CALL: {
+        char* expression = cxpr_model_ast_record_function_field_to_c(
             program, ast, field, target, err, depth + 1u);
+        cxpr_model_ast_c_target* target_data;
+        cxpr_expr_ast producer = {0};
+        if (expression) return expression;
+        target_data = (cxpr_model_ast_c_target*)target->userdata;
+        producer.type = CXPR_NODE_PRODUCER_ACCESS;
+        producer.data.producer_access.name = ast->data.function_call.name;
+        producer.data.producer_access.args = ast->data.function_call.args;
+        producer.data.producer_access.arg_names = ast->data.function_call.arg_names;
+        producer.data.producer_access.argc = ast->data.function_call.argc;
+        producer.data.producer_access.field = (char*)field;
+        return cxpr_model_ast_producer_access_to_c(
+            program, &producer,
+            target_data ? target_data->function_prefix : NULL,
+            target_data ? target_data->literal_param_values : NULL,
+            target_data ? target_data->literal_param_count : 0u,
+            target_data ? target_data->child_call_keys : NULL,
+            target_data ? target_data->child_call_child_indices : NULL,
+            target_data ? target_data->child_call_count : 0u,
+            err);
+    }
     case CXPR_NODE_BINARY_OP: {
         const char* op = cxpr_model_c_ast_binary_op(cxpr_expr_ast_operator(ast));
         char* left_field;
@@ -1276,11 +1486,23 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
         name = key;
         hist_index = cxpr_model_c_history_find(program, name);
         if (hist_index == (size_t)-1) {
-            free(key);
             if (err) {
+                static CXPR_THREAD_LOCAL char message[256];
+                size_t used;
                 err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-                err->message = "Unknown model C history target";
+                used = (size_t)snprintf(message, sizeof(message),
+                    "Unknown model C history target '%s' (available:", name);
+                for (size_t i = 0u; i < program->history_spec_count &&
+                     used + 4u < sizeof(message); ++i) {
+                    int n = snprintf(message + used, sizeof(message) - used,
+                        "%s%s", i ? "," : "", program->history_specs[i].name);
+                    if (n < 0 || (size_t)n >= sizeof(message) - used) break;
+                    used += (size_t)n;
+                }
+                if (used + 2u < sizeof(message)) strcpy(message + used, ")");
+                err->message = message;
             }
+            free(key);
             return NULL;
         }
         depth = program->history_specs[hist_index].depth;
@@ -1345,8 +1567,11 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
             return cxpr_model_c_safe_name(name);
         }
         if (err) {
+            static CXPR_THREAD_LOCAL char message[256];
             err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
-            err->message = "Unknown model C identifier";
+            snprintf(message, sizeof(message),
+                     "Unknown model C identifier '%s'", name ? name : "?");
+            err->message = message;
         }
         return NULL;
     }
@@ -1388,6 +1613,19 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
             char* expr = cxpr_model_ast_field_expr_to_c(
                 program, constant->ast, ast->data.field_access.field, &field_target, err, 0u);
             if (expr) return expr;
+        }
+        if (!ast->data.field_access.base && ast->data.field_access.object &&
+            ast->data.field_access.field) {
+            char qualified[256];
+            int written = snprintf(qualified, sizeof(qualified), "%s.%s",
+                                   ast->data.field_access.object,
+                                   ast->data.field_access.field);
+            if (written > 0 && (size_t)written < sizeof(qualified) &&
+                cxpr_model_c_symbol_is_input(program, qualified, &index)) {
+                char raw[64];
+                snprintf(raw, sizeof(raw), "_cx_input_%zu", index);
+                return cxpr_strdup(raw);
+            }
         }
     }
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_VARIABLE) {
@@ -1438,8 +1676,18 @@ static char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
         }
     }
     if (err) {
+        static CXPR_THREAD_LOCAL char message[256];
         err->code = CXPR_ERR_SYNTAX;
-        err->message = "Unsupported model C leaf";
+        if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
+            snprintf(message, sizeof(message),
+                     "Unsupported model C field '%s.%s'",
+                     ast->data.field_access.object ? ast->data.field_access.object : "?",
+                     ast->data.field_access.field ? ast->data.field_access.field : "?");
+        } else {
+            snprintf(message, sizeof(message), "Unsupported model C leaf kind %d",
+                     (int)cxpr_expr_ast_kind_of(ast));
+        }
+        err->message = message;
     }
     return NULL;
 }
@@ -1461,9 +1709,9 @@ static char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
     size_t capacity;
     char out[1024];
 
-    if (!data || !program || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_LOOKBACK) return NULL;
-    target_ast = cxpr_expr_ast_lookback_target(ast);
-    index_ast = cxpr_expr_ast_lookback_index(ast);
+    if (!data || !program || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_INDEX) return NULL;
+    target_ast = cxpr_expr_ast_index_target(ast);
+    index_ast = cxpr_expr_ast_index_expression(ast);
     if (!cxpr_model_lookback_target_key(target_ast, &key, err)) return NULL;
     hist_index = cxpr_model_c_history_find(program, key);
     free(key);
@@ -3116,12 +3364,85 @@ static char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
     if (handled) *handled = false;
     if (!name) return NULL;
 
+    if (target_data && target_data->program &&
+        target_data->program->registry) {
+        cxpr_func_entry* entry = cxpr_registry_find(
+            target_data->program->registry, name);
+        if (entry && entry->model_producer &&
+            !cxpr_model_names_match(name, "abs") &&
+            entry->defined_return_field_count == 1u) {
+            cxpr_expr_ast producer = {0};
+            producer.type = CXPR_NODE_PRODUCER_ACCESS;
+            producer.data.producer_access.name = ast->data.function_call.name;
+            producer.data.producer_access.args = ast->data.function_call.args;
+            producer.data.producer_access.arg_names = ast->data.function_call.arg_names;
+            producer.data.producer_access.argc = ast->data.function_call.argc;
+            producer.data.producer_access.field =
+                entry->defined_return_field_names[0];
+            if (handled) *handled = true;
+            return cxpr_model_ast_producer_access_to_c(
+                target_data->program,
+                &producer,
+                target_data->function_prefix,
+                target_data->literal_param_values,
+                target_data->literal_param_count,
+                target_data->child_call_keys,
+                target_data->child_call_child_indices,
+                target_data->child_call_count,
+                err);
+        }
+    }
+
     if (cxpr_model_window_is_function(name)) {
         if (handled) *handled = true;
         return cxpr_model_ast_c_emit_window_call(
             ast, lookback_offset, &target,
             target_data ? target_data->program : NULL,
             err);
+    }
+
+    if (cxpr_model_names_match(name, "roc") && argc == 2u) {
+        char* current;
+        char* previous;
+        const cxpr_expr_ast* period = cxpr_expr_ast_call_arg(ast, 1u);
+        double raw_period;
+        unsigned period_offset;
+        if (handled) *handled = true;
+        if (!period || cxpr_expr_ast_kind_of(period) != CXPR_NODE_NUMBER) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "roc C codegen requires a constant period", 0, 0);
+            return NULL;
+        }
+        raw_period = cxpr_expr_ast_number_value(period);
+        period_offset = raw_period > 0.0 ? (unsigned)(raw_period + 0.5) : 0u;
+        if (!isfinite(raw_period) || period_offset == 0u ||
+            fabs(raw_period - (double)period_offset) > 1e-9) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "roc period must be a positive integer", 0, 0);
+            return NULL;
+        }
+        current = cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, 0u), lookback_offset, &target, err);
+        previous = current ? cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, 0u), lookback_offset + period_offset,
+            &target, err) : NULL;
+        if (!current || !previous) {
+            free(current);
+            free(previous);
+            return NULL;
+        }
+        cxpr_model_c_printf(
+            &b,
+            "((isnan(%s) || isnan(%s) || fabs(%s) <= 1e-12) ? 0.0 : (((%s) - (%s)) / (%s)) * 100.0)",
+            current, previous, previous, current, previous, previous);
+        free(current);
+        free(previous);
+        if (b.oom) {
+            free(b.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        return b.data;
     }
 
     if ((cxpr_model_names_match(name, "min") || cxpr_model_names_match(name, "max")) &&
@@ -3540,11 +3861,11 @@ static bool cxpr_model_c_collect_defined_function_refs(const cxpr_model_compiled
             }
         }
         return true;
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_expr_ast_lookback_target(ast), used, err) &&
+                   program, cxpr_expr_ast_index_target(ast), used, err) &&
                cxpr_model_c_collect_defined_function_refs(
-                   program, cxpr_expr_ast_lookback_index(ast), used, err);
+                   program, cxpr_expr_ast_index_expression(ast), used, err);
     case CXPR_NODE_TERNARY:
         return cxpr_model_c_collect_defined_function_refs(
                    program, cxpr_expr_ast_ternary_condition(ast), used, err) &&
@@ -3902,6 +4223,15 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             needed_bindings,
             err)) {
         goto fail;
+    }
+    /*
+     * The AST backend emits identifier references between canonical bindings.
+     * Keep every binding materialized: imported producer fields, history
+     * captures and selected outputs can retain such references even when the
+     * fused-slot dependency walk cannot see through their lowered form.
+     */
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        needed_bindings[i] = true;
     }
     if (!cxpr_model_window_plan_build(program, &window_plan, err)) goto fail;
     for (size_t i = 0u; i < program->binding_count; ++i) {
@@ -4296,8 +4626,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         size_t depth = program->history_specs[i].depth;
         size_t capacity = cxpr_model_c_history_capacity(depth);
         char* current = NULL;
-        if (program->history_specs[i].target &&
-            cxpr_expr_ast_kind_of(program->history_specs[i].target) == CXPR_NODE_PRODUCER_ACCESS) {
+        if (program->history_specs[i].target) {
             current = cxpr_model_ast_expr_to_c(program,
                                                program->history_specs[i].target,
                                                function_name,

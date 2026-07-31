@@ -80,9 +80,9 @@ static bool collect_fields_in_ast(const cxpr_expr_ast* node,
                collect_fields_in_ast(node->data.binary_op.right, param_names, param_count, sets);
     case CXPR_NODE_UNARY_OP:
         return collect_fields_in_ast(node->data.unary_op.operand, param_names, param_count, sets);
-    case CXPR_NODE_LOOKBACK:
-        return collect_fields_in_ast(node->data.lookback.target, param_names, param_count, sets) &&
-               collect_fields_in_ast(node->data.lookback.index, param_names, param_count, sets);
+    case CXPR_NODE_INDEX:
+        return collect_fields_in_ast(node->data.index.target, param_names, param_count, sets) &&
+               collect_fields_in_ast(node->data.index.index, param_names, param_count, sets);
     case CXPR_NODE_FUNCTION_CALL:
         for (size_t i = 0; i < node->data.function_call.argc; i++) {
             if (!collect_fields_in_ast(node->data.function_call.args[i],
@@ -147,10 +147,10 @@ static bool collect_transitive_fields_in_ast(const cxpr_expr_ast* node, const cx
     case CXPR_NODE_UNARY_OP:
         return collect_transitive_fields_in_ast(node->data.unary_op.operand, reg,
                                                 param_names, param_count, sets);
-    case CXPR_NODE_LOOKBACK:
-        return collect_transitive_fields_in_ast(node->data.lookback.target, reg,
+    case CXPR_NODE_INDEX:
+        return collect_transitive_fields_in_ast(node->data.index.target, reg,
                                                 param_names, param_count, sets) &&
-               collect_transitive_fields_in_ast(node->data.lookback.index, reg,
+               collect_transitive_fields_in_ast(node->data.index.index, reg,
                                                 param_names, param_count, sets);
     case CXPR_NODE_TERNARY:
         return collect_transitive_fields_in_ast(node->data.ternary.condition, reg,

@@ -32,6 +32,18 @@ static cxpr_expr_ast* cxpr_parse_lower_window_reduction(cxpr_expr_ast* node) {
     if (!node || node->type != CXPR_NODE_FUNCTION_CALL) {
         return node;
     }
+    if (strcmp(node->data.function_call.name, "roc") == 0 &&
+        node->data.function_call.argc == 2u) {
+        owned_name = (char*)malloc(sizeof("__cxpr_window_roc"));
+        if (!owned_name) {
+            cxpr_expr_ast_free(node);
+            return NULL;
+        }
+        strcpy(owned_name, "__cxpr_window_roc");
+        free(node->data.function_call.name);
+        node->data.function_call.name = owned_name;
+        return node;
+    }
     if (strcmp(node->data.function_call.name, "mean_absdev") == 0 &&
         node->data.function_call.argc == 2u) {
         lowered_name = "__cxpr_window_mean_absdev";
@@ -601,12 +613,12 @@ primary_done:
             cxpr_expr_ast_free(index_expr);
             return NULL;
         }
-        if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after lookback expression")) {
+        if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after index expression")) {
             cxpr_expr_ast_free(node);
             cxpr_expr_ast_free(index_expr);
             return NULL;
         }
-        node = cxpr_expr_ast_lookback_new(node, index_expr);
+        node = cxpr_expr_ast_index_new(node, index_expr);
         if (!node) {
             p->had_error = true;
             p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;

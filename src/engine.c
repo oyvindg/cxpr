@@ -357,18 +357,7 @@ static ENGINE_TLS size_t g_engine_tls_lookback_offset = 0;
 const char* const CXPR_ENGINE_LOOKBACK_OFFSET_KEY = "__cxpr_engine_lookback_offset";
 
 bool cxpr_engine_context_lookback_offset(const cxpr_context* ctx, size_t* out_offset) {
-    bool found = false;
-    double raw;
-    long long rounded;
-
-    if (out_offset) *out_offset = 0u;
-    if (!ctx) return false;
-    raw = cxpr_context_get(ctx, CXPR_ENGINE_LOOKBACK_OFFSET_KEY, &found);
-    if (!found || !isfinite(raw) || raw <= 0.0) return false;
-    rounded = llround(raw);
-    if (rounded < 0ll || fabs(raw - (double)rounded) > 1e-9) return false;
-    if (out_offset) *out_offset = (size_t)rounded;
-    return true;
+    return cxpr_context_history_offset(ctx, out_offset);
 }
 
 static engine_source* engine_find_source_in(engine_source* sources, size_t count,
@@ -486,18 +475,22 @@ static void engine_scan_ast_with_offset(const cxpr_expr_ast* ast,
     if (!ast) return;
     switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_IDENTIFIER: {
+            const char* identifier = cxpr_expr_ast_identifier_name(ast);
             engine_source* s = engine_find_source_in(prog->sources, prog->source_count,
-                                                     cxpr_expr_ast_identifier_name(ast));
+                                                     identifier);
             if (s) {
                 s->referenced = true;
                 s->hydrate_bare = true;
                 if (inherited_lookback > s->max_lookback) s->max_lookback = inherited_lookback;
+            } else if (inherited_lookback > 0u &&
+                       engine_is_expr_name(prog, identifier)) {
+                engine_track_expr(prog, identifier, inherited_lookback);
             }
             break;
         }
-        case CXPR_NODE_LOOKBACK: {
-            const cxpr_expr_ast* target = cxpr_expr_ast_lookback_target(ast);
-            const cxpr_expr_ast* index = cxpr_expr_ast_lookback_index(ast);
+        case CXPR_NODE_INDEX: {
+            const cxpr_expr_ast* target = cxpr_expr_ast_index_target(ast);
+            const cxpr_expr_ast* index = cxpr_expr_ast_index_expression(ast);
             size_t lookback = inherited_lookback;
             if (target && cxpr_expr_ast_kind_of(target) == CXPR_NODE_IDENTIFIER &&
                 index && cxpr_expr_ast_kind_of(index) == CXPR_NODE_NUMBER) {
@@ -553,14 +546,45 @@ static void engine_scan_ast_with_offset(const cxpr_expr_ast* ast,
             engine_scan_ast_with_offset(cxpr_expr_ast_ternary_false(ast), prog, inherited_lookback);
             break;
         case CXPR_NODE_FUNCTION_CALL: {
+            const char* call_name = cxpr_expr_ast_call_name(ast);
             engine_source* s = engine_find_source_in(prog->sources, prog->source_count,
-                                                     cxpr_expr_ast_call_name(ast));
+                                                     call_name);
             if (s) {
                 s->referenced = true;
                 if (inherited_lookback > s->max_lookback) s->max_lookback = inherited_lookback;
             }
+            if (call_name && strcmp(call_name, "repeat") == 0 &&
+                cxpr_expr_ast_call_arg_count(ast) == 2u) {
+                const cxpr_expr_ast* condition = NULL;
+                const cxpr_expr_ast* samples = NULL;
+                for (i = 0u; i < 2u; ++i) {
+                    const char* arg_name = cxpr_expr_ast_call_arg_name(ast, i);
+                    if (!arg_name || strcmp(arg_name, "condition") == 0 ||
+                        strcmp(arg_name, "value") == 0) {
+                        if (!condition) condition = cxpr_expr_ast_call_arg(ast, i);
+                    }
+                    if ((arg_name && (strcmp(arg_name, "bars") == 0 ||
+                                      strcmp(arg_name, "samples") == 0)) ||
+                        (!arg_name && i == 1u)) {
+                        samples = cxpr_expr_ast_call_arg(ast, i);
+                    }
+                }
+                if (condition && samples &&
+                    cxpr_expr_ast_kind_of(samples) == CXPR_NODE_NUMBER) {
+                    const double count = cxpr_expr_ast_number_value(samples);
+                    size_t depth = inherited_lookback;
+                    if (count >= 1.0 && floor(count) == count &&
+                        count - 1.0 <= (double)(SIZE_MAX - depth)) {
+                        depth += (size_t)(count - 1.0);
+                    }
+                    engine_scan_ast_with_offset(condition, prog, depth);
+                    engine_scan_ast_with_offset(samples, prog, inherited_lookback);
+                    break;
+                }
+            }
             for (i = 0; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
-                engine_scan_ast_with_offset(cxpr_expr_ast_call_arg(ast, i), prog, inherited_lookback);
+                engine_scan_ast_with_offset(
+                    cxpr_expr_ast_call_arg(ast, i), prog, inherited_lookback);
             }
             break;
         }

@@ -332,7 +332,7 @@ static int expr_provider_expr_param_spec_for(
         .kinds = ema_kinds,
         .count = CXPR_ARRAY_COUNT(ema_names),
         .min_count = 2u,
-        .lookback_sugar_name = NULL,
+        .lookback_sugar_name = "legacy-index",
         .has_timeframe_param = 0,
     };
     return 1;
@@ -408,6 +408,8 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(expr_spec.count == 2u);
     assert(expr_spec.kinds[0] == CXPR_EXPR_ARG_SCALAR_SOURCE);
     assert(expr_spec.kinds[1] == CXPR_EXPR_ARG_NUMERIC);
+    assert(strcmp(expr_spec.index_sugar_name, "legacy-index") == 0);
+    assert(expr_spec.lookback_sugar_name == expr_spec.index_sugar_name);
 
     assert(cxpr_register_provider_fn_spec(reg, ema, NULL) != 0);
     assert(cxpr_registry_lookup(reg, "ema", &min_args, &max_args) != 0);

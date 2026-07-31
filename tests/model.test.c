@@ -88,6 +88,36 @@ static cxpr_value model_test_host_runtime_value(const cxpr_value* args,
     return cxpr_num(args[0].d + 1.0);
 }
 
+static void model_test_struct_producer(const double* args, size_t argc,
+                                       cxpr_value* out, size_t field_count,
+                                       void* userdata) {
+    (void)userdata;
+    assert(argc == 1u);
+    assert(field_count == 1u);
+    out[0] = cxpr_num(args[0] * 2.0);
+}
+
+static char* model_test_struct_codegen(const char* field,
+                                       const char* const* args, size_t argc,
+                                       void* userdata, cxpr_error* err) {
+    size_t size;
+    char* expression;
+    (void)userdata;
+    assert(strcmp(field, "signal") == 0);
+    assert(argc == 1u);
+    size = strlen(args[0]) + 16u;
+    expression = (char*)malloc(size);
+    if (!expression) {
+        if (err) {
+            err->code = CXPR_ERR_OUT_OF_MEMORY;
+            err->message = "Out of memory";
+        }
+        return NULL;
+    }
+    snprintf(expression, size, "((%s) * 2.0)", args[0]);
+    return expression;
+}
+
 static const cxpr_provider_scope_spec model_timeframe_scope = {"timeframe", true};
 static const cxpr_provider_source_spec model_close_source = {
     "close", 0u, 1u, &model_timeframe_scope};
@@ -2351,6 +2381,45 @@ static void test_session_direct_record_producer_lookback(void) {
     printf("  ✓ test_session_direct_record_producer_lookback\n");
 }
 
+static void test_external_struct_producer_lookback_emits_c(void) {
+    static const char* fields[] = {"signal"};
+    cxpr_error err = {0};
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_model* model = parse_model_ok(
+        "model external_struct_codegen\n"
+        "in close\n"
+        "out result = sample(close).signal[1]\n");
+    cxpr_model_compiled* program;
+    char* code;
+
+    assert(registry != NULL);
+    cxpr_registry_add_struct(registry, "sample", model_test_struct_producer,
+                             1u, 1u, fields, 1u, NULL, NULL);
+    assert(cxpr_registry_set_struct_codegen(
+        registry, "sample", model_test_struct_codegen, NULL, NULL));
+    program = cxpr_model_compile(model, registry, &err);
+    if (!program) {
+        fprintf(stderr, "external struct producer codegen compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "external_struct_codegen_tick", &err);
+    if (!code) {
+        fprintf(stderr, "external struct producer C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "* 2.0") != NULL);
+    assert(strstr(code, "history_") != NULL);
+
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    cxpr_registry_free(registry);
+    printf("  \xE2\x9C\x93 test_external_struct_producer_lookback_emits_c\n");
+}
+
 static void test_model_c_common_subexpression_eliminates_duplicate_bindings(void) {
     cxpr_error err = {0};
     char* code = NULL;
@@ -2444,6 +2513,39 @@ static void test_model_c_single_value_history_has_no_cursor(void) {
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     printf("  ✓ test_model_c_single_value_history_has_no_cursor\n");
+}
+
+static void test_model_c_history_ring_layout_and_initialization(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model history_layout\n"
+        "in { one, four, five, large }\n"
+        "value = one[1] + four[4] + five[5] + large[257]\n"
+        "out value\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "history_layout_tick", &err);
+    assert(code != NULL);
+
+    assert(strstr(code, "typedef struct { double values[1]; } cxpr_history1;") != NULL);
+    assert(strstr(code, "typedef struct { double values[4]; } cxpr_history4;") != NULL);
+    assert(strstr(code, "typedef struct { uint8_t next; double values[8]; } cxpr_history8;") != NULL);
+    assert(strstr(code, "typedef struct { size_t next; double values[512]; } cxpr_history512;") != NULL);
+    assert(strstr(code, "_cx_state->history_0.next") == NULL);
+    assert(strstr(code, "_cx_state->history_1.next") == NULL);
+    assert(strstr(code, "_cx_state->history_2.next = 0u;") != NULL);
+    assert(strstr(code, "_cx_state->history_3.next = 0u;") != NULL);
+    assert(strstr(code, "_cx_init_i < 512u") != NULL);
+    assert(strstr(code, "& 7u") != NULL);
+    assert(strstr(code, "& 511u") != NULL);
+
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_c_history_ring_layout_and_initialization\n");
 }
 
 static void test_compile_imported_producer_infers_missing_child_inputs(void) {
@@ -3043,6 +3145,68 @@ static void test_imported_stateful_producer_calls_keep_independent_state(void) {
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_stateful_producer_calls_keep_independent_state\n");
+}
+
+static void test_stateful_producer_history_queries_do_not_replay(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model counter {\n"
+        "    source_arg = \"source\"\n"
+        "    lifecycle = \"scoped\"\n"
+        "}\n"
+        "in source\n"
+        "state count = 0\n"
+        "value = source + count\n"
+        "count := count + 1\n"
+        "out value\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import imports[1];
+    cxpr_model* parent;
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    const double offsets[] = {2.0, 1.0, 2.0, 1.0};
+    const double expected_current[] = {10.0, 11.0, 12.0, 13.0};
+    const double expected_past[] = {NAN, 10.0, 10.0, 12.0};
+
+    assert(child_program != NULL);
+    imports[0].name = "indicators/counter";
+    imports[0].program = child_program;
+    parent = parse_model_ok(
+        "model producer_history_queries\n"
+        "use indicators/counter\n"
+        "in { source, $offset = 1 { min = 0, max = 2 } }\n"
+        "current = counter(source).value\n"
+        "past = counter(source).value[$offset]\n"
+        "out { current, past }\n");
+    program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
+    if (!program) {
+        fprintf(stderr, "stateful producer history compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    for (size_t i = 0u; i < 4u; ++i) {
+        cxpr_context_set(ctx, "source", 10.0);
+        cxpr_context_set_param(ctx, "offset", offsets[i]);
+        assert(cxpr_model_session_tick(program, session, NULL, &err));
+        assert(cxpr_model_session_get_number(session, "current", &value));
+        assert(value == expected_current[i]);
+        assert(cxpr_model_session_get_number(session, "past", &value));
+        if (isnan(expected_past[i])) assert(isnan(value));
+        else assert(value == expected_past[i]);
+    }
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_stateful_producer_history_queries_do_not_replay\n");
 }
 
 static void test_imported_producer_default_singleton_shares_state(void) {
@@ -3925,6 +4089,44 @@ static void test_dynamic_lookback_uses_parameter_max(void) {
     printf("  ✓ test_dynamic_lookback_uses_parameter_max\n");
 }
 
+static void test_history_depth_composes_index_offsets(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model composed_history_depth\n"
+        "in { source, other, $extra = 0 { min = 0, max = 4 } }\n"
+        "fixed = source[2 + 3]\n"
+        "dynamic = source[2 + $extra]\n"
+        "windowed = mean(window(other, 3))[2]\n"
+        "out { fixed, dynamic, windowed }\n");
+    cxpr_model_compiled* program =
+        cxpr_model_compile_with_options(model, NULL, &options, &err);
+
+    if (!program) {
+        fprintf(stderr, "composed history depth compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    assert(cxpr_model_compiled_history_count(program) == 2u);
+    for (size_t i = 0u; i < cxpr_model_compiled_history_count(program); ++i) {
+        const char* name = cxpr_model_compiled_history_name(program, i);
+        if (strcmp(name, "source") == 0) {
+            assert(cxpr_model_compiled_history_depth(program, i) == 6u);
+        } else {
+            assert(strcmp(name, "other") == 0);
+            assert(cxpr_model_compiled_history_depth(program, i) == 4u);
+        }
+    }
+
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_history_depth_composes_index_offsets\n");
+}
+
 static void test_dynamic_lookback_requires_parameter_max(void) {
     cxpr_error err = {0};
     const cxpr_model_compile_options options = {
@@ -3977,7 +4179,7 @@ static void test_dynamic_lookback_validates_bounds_and_default(void) {
     assert_dynamic_lookback_compile_error(
         "$period = 3 { max = 7 }", "requires min and max metadata");
     assert_dynamic_lookback_compile_error(
-        "$period = 3 { min = 0, max = 7 }", "min must be an integer >= 1");
+        "$period = 3 { min = -1, max = 7 }", "min must be a non-negative integer");
     assert_dynamic_lookback_compile_error(
         "$period = 3 { min = 1, max = 7.5 }", "max must be a finite integer");
     assert_dynamic_lookback_compile_error(
@@ -4270,6 +4472,7 @@ static void test_rsi_state_strategy_fixture_matches_golden_values(void) {
 }
 
 int main(void) {
+    test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
     test_parse_minimal_strategy_model();
     test_parse_model_with_declaration_metadata_blocks();
@@ -4343,6 +4546,7 @@ int main(void) {
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
     test_model_c_init_explicitly_zeros_state_storage();
     test_model_c_single_value_history_has_no_cursor();
+    test_model_c_history_ring_layout_and_initialization();
     test_compile_imported_producer_infers_missing_child_inputs();
     test_imported_producer_anonymous_out_expands_child_outputs();
     test_compile_imported_functions_are_namespaced();
@@ -4353,6 +4557,7 @@ int main(void) {
     test_imported_producer_implicit_market_inputs_precede_no_params();
     test_imported_producer_repeated_calls_cache_same_args();
     test_imported_stateful_producer_calls_keep_independent_state();
+    test_stateful_producer_history_queries_do_not_replay();
     test_imported_producer_default_singleton_shares_state();
     test_imported_producer_explicit_singleton_shares_state();
     test_imported_producer_transient_resets_each_parent_tick();
@@ -4368,6 +4573,7 @@ int main(void) {
     test_record_param_field_access_emits_c_tick();
     test_window_param_bounds_drive_capacity_and_session_clamp();
     test_dynamic_lookback_uses_parameter_max();
+    test_history_depth_composes_index_offsets();
     test_dynamic_lookback_requires_parameter_max();
     test_dynamic_lookback_validates_bounds_and_default();
     test_signal_helper_golden_values();

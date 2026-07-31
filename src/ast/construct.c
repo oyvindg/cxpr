@@ -250,13 +250,17 @@ cxpr_expr_ast* cxpr_expr_ast_call_new(const char* name, cxpr_expr_ast** args, si
     return cxpr_expr_ast_call_named_new(name, args, NULL, argc);
 }
 
-cxpr_expr_ast* cxpr_expr_ast_lookback_new(cxpr_expr_ast* target, cxpr_expr_ast* index) {
+cxpr_expr_ast* cxpr_expr_ast_index_new(cxpr_expr_ast* target, cxpr_expr_ast* index) {
     cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
-    node->type = CXPR_NODE_LOOKBACK;
-    node->data.lookback.target = target;
-    node->data.lookback.index = index;
+    node->type = CXPR_NODE_INDEX;
+    node->data.index.target = target;
+    node->data.index.index = index;
     return node;
+}
+
+cxpr_expr_ast* cxpr_expr_ast_lookback_new(cxpr_expr_ast* target, cxpr_expr_ast* index) {
+    return cxpr_expr_ast_index_new(target, index);
 }
 
 cxpr_expr_ast* cxpr_expr_ast_ternary_new(cxpr_expr_ast* condition, cxpr_expr_ast* true_branch, cxpr_expr_ast* false_branch) {

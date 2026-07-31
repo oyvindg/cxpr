@@ -415,6 +415,30 @@ static void test_program_to_c_function(void) {
     printf("  program_to_c_function OK\n");
 }
 
+static void test_program_array_index_to_c_function(void) {
+    cxpr_c_program_arg dynamic_args[] = {
+        {.kind = CXPR_C_PROGRAM_ARG_PARAM, .name = "index"},
+    };
+    cxpr_c_program_arg nested_args[] = {
+        {.kind = CXPR_C_PROGRAM_ARG_PARAM, .name = "outer"},
+        {.kind = CXPR_C_PROGRAM_ARG_PARAM, .name = "inner"},
+    };
+    char* code = program_to_c("[10, 20, 30][$index]", dynamic_args, 1u);
+    assert(strstr(code, "typedef struct { unsigned kind; double d; size_t start; size_t count; }"));
+    assert(strstr(code, "_cx_value _cx_e["));
+    assert(strstr(code, "!isfinite(_cx_i.d)"));
+    assert(strstr(code, "trunc(_cx_i.d) != _cx_i.d"));
+    assert(strstr(code, "(size_t)_cx_i.d >= _cx_a.count"));
+    free(code);
+
+    code = program_to_c("[[1, 2], [3, 4]][$outer][$inner] + 5", nested_args, 2u);
+    assert(strstr(code, "const size_t _cx_n = 2u"));
+    assert(strstr(code, "_cx_e[_cx_a.start + (size_t)_cx_i.d]"));
+    assert(strstr(code, "return _cx_r.kind == 0u ? _cx_r.d : NAN"));
+    free(code);
+    printf("  program array index to C function OK\n");
+}
+
 static void test_program_to_c_function_requires_explicit_bindings(void) {
     cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
@@ -526,6 +550,7 @@ int main(void) {
     test_exprset_cycle();
     test_exprset_to_c_function();
     test_program_to_c_function();
+    test_program_array_index_to_c_function();
     test_program_to_c_function_requires_explicit_bindings();
     test_defined_fn_to_c_function();
     test_defined_fn_to_c_function_builtin_calls();

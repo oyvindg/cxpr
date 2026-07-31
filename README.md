@@ -172,6 +172,13 @@ cmake --build build --target cxpr_compiled_strategy_example
 ctest --test-dir build -R cxpr_compiled_strategy_example --output-on-failure
 ```
 
+For a realistic standalone graph, the
+[host-neutral scale fixture](tests/fixtures/scale/README.md) publishes exact
+Release build commands, engine/generated-C parity over 8,192 deterministic
+ticks, and reproducible ns/tick metrics. The benchmark output is a single
+key/value record suitable for CI artifact capture; timing remains
+informational rather than a pass/fail threshold.
+
 Dynasty is a downstream integration and is not part of the CXPR API. Its
 market-data and strategy semantics remain in the downstream host.
 
@@ -216,7 +223,7 @@ From lowest to highest precedence:
 | multiplicative | `*`, `/`, `%` |
 | power | `^`, `**` |
 | unary | `not`, unary `-` |
-| postfix | function call, field access, lookback |
+| postfix | function call, field access, indexing |
 
 Boolean positions require boolean values. Numeric truthiness is not supported:
 
@@ -260,7 +267,7 @@ or explicit opt-in registration. Function availability is therefore a
 property of the registry used for compilation and evaluation, not just of the
 grammar.
 
-### Sets, arrays, structs, and lookback
+### Sets, arrays, structs, and indexing
 
 `in` means set membership:
 
@@ -284,8 +291,24 @@ pose.position.x
 bands.lower
 ```
 
-Lookback syntax asks the installed resolver or model/engine history layer for a
-prior value:
+Square brackets have one syntax shape and dispatch according to the target:
+
+```cxpr
+[10, 20, 30][1]          # built-in, zero-based array lookup
+vertices[vertex_index]    # computed array lookup
+temperature[1]            # history when temperature is a history source
+ray[sample_distance]      # host-defined procedural provider
+(ray[4]).x                # field access on an indexed struct result
+```
+
+Array indices must be finite, non-negative integers in range. Arrays can contain
+numbers, bools, strings, structs, or nested arrays. Evaluation returns an owned
+clone of the selected value, so it remains valid after the source context is
+released.
+
+History is a capability of a registered source, not a property of brackets in
+general. A historical source interprets a non-negative index as a relative
+offset, where `0` is current and `1` is previous:
 
 ```cxpr
 temperature[1]
@@ -293,9 +316,11 @@ bands.lower[2]
 price($instrument)[1]
 ```
 
-A bare expression evaluator does not invent history. The host must install a
-lookback resolver, use the reusable column lookback helper, or use a model or
-engine session that owns the required history.
+A bare expression evaluator does not invent history or procedural targets. Use
+`cxpr_register_history_numeric_sources` (or its contiguous/strided helpers) for
+numeric history, or `cxpr_registry_add_index_capability` for a custom exact-name
+target. The older lookback resolver and column helper remain compatibility APIs
+for incremental migration.
 
 ### Custom functions
 
@@ -456,6 +481,34 @@ out score
 out { score, accepted }
 ```
 
+An output may declare a semantic role with native `as` syntax:
+
+```cxpr
+out delta as vector_difference
+out distance_value as euclidean_distance
+```
+
+The parser lowers this shorthand to ordinary output metadata. For example,
+`out delta as vector_difference` is equivalent to:
+
+```cxpr
+out delta {
+    role = "vector_difference"
+}
+```
+
+The role is descriptive metadata, not a type or a CXPR reference. It does not
+change evaluation. Hosts can inspect the `role` metadata field and dispatch on
+semantics without depending on model-specific output names. Both the output
+name and role must be identifiers. The shorthand also supports additional
+metadata:
+
+```cxpr
+out delta as vector_difference {
+    unit = "world_units"
+}
+```
+
 State can also be declared and updated locally:
 
 ```cxpr
@@ -584,7 +637,8 @@ path.
 
 There are two public syntax-tree views:
 
-- The expression AST represents operators, calls, values, fields, and lookback
+- The expression AST represents operators, calls, values, fields, and neutral
+  `target[index]` nodes
   within one expression. It can be parsed, deep-cloned, or constructed
   programmatically through the public `cxpr_expr_ast_new_*` functions.
 - The document AST preserves the complete `.cxpr` file structure, statement
@@ -1019,6 +1073,14 @@ cmake --build build --target cxpr_bench_ir cxpr_bench_model
 ./build/benchmarks/cxpr_bench_ir
 ./build/benchmarks/cxpr_bench_model
 ```
+
+`cxpr_bench_ir` uses the models in `benchmarks/fixtures/*.cxpr` as the single
+source for all three measured paths. It parses each model's `result` binding
+for direct AST evaluation, compiles that AST to IR, and builds generated C from
+the same file. Before reporting timings it checks result parity between the
+paths. The cases cover scalar arithmetic, branching, built-in and defined
+functions, deep expression graphs, context updates, typed structs, and
+lookback/history access.
 
 ## Compatibility
 

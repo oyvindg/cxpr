@@ -21,6 +21,7 @@ static void test_public_constructors_cover_split_ast_nodes(void) {
     cxpr_expr_ast* producer_named;
     cxpr_expr_ast* variable;
     cxpr_expr_ast* chain;
+    cxpr_expr_ast* index;
     cxpr_expr_ast* lookback;
     cxpr_expr_ast* ternary;
 
@@ -105,7 +106,16 @@ static void test_public_constructors_cover_split_ast_nodes(void) {
         cxpr_expr_ast_free(producer_plain);
     }
 
-    lookback = cxpr_expr_ast_lookback_new(cxpr_expr_ast_identifier_new("close"), cxpr_expr_ast_number_new(1.0));
+    index = cxpr_expr_ast_index_new(
+        cxpr_expr_ast_identifier_new("values"), cxpr_expr_ast_number_new(2.0));
+    assert(index);
+    assert(cxpr_expr_ast_kind_of(index) == CXPR_NODE_INDEX);
+    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_index_target(index)) == CXPR_NODE_IDENTIFIER);
+    assert(cxpr_expr_ast_number_value(cxpr_expr_ast_index_expression(index)) == 2.0);
+    assert(CXPR_NODE_LOOKBACK == CXPR_NODE_INDEX);
+
+    lookback = cxpr_expr_ast_lookback_new(
+        cxpr_expr_ast_identifier_new("close"), cxpr_expr_ast_number_new(1.0));
     assert(lookback);
     assert(cxpr_expr_ast_kind_of(lookback) == CXPR_NODE_LOOKBACK);
     assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_lookback_target(lookback)) == CXPR_NODE_IDENTIFIER);
@@ -119,6 +129,7 @@ static void test_public_constructors_cover_split_ast_nodes(void) {
 
     cxpr_expr_ast_free(ternary);
     cxpr_expr_ast_free(lookback);
+    cxpr_expr_ast_free(index);
     cxpr_expr_ast_free(producer_named);
     cxpr_expr_ast_free(producer);
     cxpr_expr_ast_free(chain);

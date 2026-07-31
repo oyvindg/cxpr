@@ -121,9 +121,9 @@ bool cxpr_ir_ast_contains_string_literal(const cxpr_expr_ast* ast) {
         }
         return false;
 
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_ir_ast_contains_string_literal(ast->data.lookback.target) ||
-               cxpr_ir_ast_contains_string_literal(ast->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_ir_ast_contains_string_literal(ast->data.index.target) ||
+               cxpr_ir_ast_contains_string_literal(ast->data.index.index);
 
     case CXPR_NODE_TERNARY:
         return cxpr_ir_ast_contains_string_literal(ast->data.ternary.condition) ||
@@ -144,7 +144,7 @@ bool cxpr_ir_arg_needs_catchor_passthrough(const cxpr_expr_ast* ast) {
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_FUNCTION_CALL:
     case CXPR_NODE_PRODUCER_ACCESS:
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return true;
     case CXPR_NODE_BINARY_OP:
         return cxpr_ir_arg_needs_catchor_passthrough(ast->data.binary_op.left) ||

@@ -6,9 +6,9 @@
 
 int main(void) {
     cxpr_model_compile_options options = {
-        CXPR_MODEL_BACKEND_AUTO,
-        true,
-        false,
+        .backend = CXPR_MODEL_BACKEND_AUTO,
+        .fuse = true,
+        .enable_trace = false,
     };
 
     assert(options.backend == CXPR_MODEL_BACKEND_AUTO);

@@ -259,7 +259,8 @@ typedef struct cxpr_expr_param_spec {
     const cxpr_expr_arg_kind* kinds; /**< Parallel argument kinds, or NULL for all-numeric. */
     size_t count;                    /**< Number of named parameters. */
     size_t min_count;                /**< Minimum required named parameters. */
-    const char* lookback_sugar_name; /**< Optional subscript sugar target, such as `obv()[n]`. */
+    const char* index_sugar_name;    /**< Optional neutral subscript target, such as `obv()[n]`. */
+    const char* lookback_sugar_name; /**< Deprecated alias for index_sugar_name; providers may set either. */
     int has_timeframe_param;         /**< Non-zero when a trailing timeframe selector is supported. */
 } cxpr_expr_param_spec;
 

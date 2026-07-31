@@ -178,13 +178,13 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
             }
         }
         return true;
-    case CXPR_NODE_LOOKBACK: {
+    case CXPR_NODE_INDEX: {
         unsigned offset = 0u;
-        if (!cxpr_lookback_literal_offset(cxpr_expr_ast_lookback_index(ast), &offset, err,
+        if (!cxpr_lookback_literal_offset(cxpr_expr_ast_index_expression(ast), &offset, err,
                                           "window lookback requires constant integer index")) {
             size_t dynamic_bound = 0u;
             if (!cxpr_model_lookback_bound(
-                    model, cxpr_expr_ast_lookback_index(ast), &dynamic_bound, err) ||
+                    model, cxpr_expr_ast_index_expression(ast), &dynamic_bound, err) ||
                 dynamic_bound > (size_t)(~0u)) {
                 if (err && err->code == CXPR_OK) {
                     err->code = CXPR_ERR_SYNTAX;
@@ -196,7 +196,7 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
             if (err) *err = (cxpr_error){0};
         }
         return cxpr_model_window_collect_target(
-            model, cxpr_expr_ast_lookback_target(ast), base_depth + (size_t)offset,
+            model, cxpr_expr_ast_index_target(ast), base_depth + (size_t)offset,
             specs, count, err);
     }
     case CXPR_NODE_BINARY_OP:
@@ -244,12 +244,14 @@ static bool cxpr_model_window_collect_target(const cxpr_model* model,
 
 bool cxpr_model_window_collect_call(const cxpr_model* model,
                                     const cxpr_expr_ast* call,
+                                    size_t enclosing_depth,
                                     cxpr_model_history_spec** specs,
                                     size_t* count,
                                     cxpr_error* err) {
     const char* name;
     const cxpr_window_ir* window;
     size_t period_depth = 0u;
+    size_t required_depth;
     if (!call || cxpr_expr_ast_kind_of(call) != CXPR_NODE_FUNCTION_CALL) return true;
     name = cxpr_expr_ast_call_name(call);
     if (!cxpr_model_window_is_function(name)) return true;
@@ -264,8 +266,14 @@ bool cxpr_model_window_collect_call(const cxpr_model* model,
         return false;
     }
     if (period_depth == 0u) return true;
+    if (window->history_tail > SIZE_MAX - period_depth ||
+        enclosing_depth > SIZE_MAX - (period_depth + window->history_tail - 1u)) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "window history depth exceeds supported range", 0, 0);
+        return false;
+    }
+    required_depth = enclosing_depth + period_depth + window->history_tail - 1u;
     return cxpr_model_window_collect_target(
         model, cxpr_expr_ast_call_arg(call, 0u),
-        period_depth + window->history_tail - 1u,
-        specs, count, err);
+        required_depth, specs, count, err);
 }

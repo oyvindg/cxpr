@@ -177,12 +177,12 @@ static bool cxpr_model_expr_accepts_record_root_ref(
             }
         }
         return false;
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_expr_ast_lookback_target(expr), function_registry,
+                   model, cxpr_expr_ast_index_target(expr), function_registry,
                    external_refs, external_ref_count, reference) ||
                cxpr_model_expr_accepts_record_root_ref(
-                   model, cxpr_expr_ast_lookback_index(expr), function_registry,
+                   model, cxpr_expr_ast_index_expression(expr), function_registry,
                    external_refs, external_ref_count, reference);
     case CXPR_NODE_TERNARY:
         return cxpr_model_expr_accepts_record_root_ref(
@@ -403,11 +403,14 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
             (!cxpr_model_reference_exists(model, refs[i]) &&
              !cxpr_model_external_reference_exists(
                  external_refs, external_ref_count, refs[i]))) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 constant_expr
-                                     ? "Constant expression references runtime symbol"
-                                     : "Expression references unknown symbol",
-                                 0, 0);
+            static CXPR_THREAD_LOCAL char message[256];
+            snprintf(message, sizeof(message), "%s '%s'",
+                     constant_expr
+                         ? "Constant expression references runtime symbol"
+                         : "Expression references unknown symbol",
+                     refs[i] ? refs[i] : "");
+            cxpr_model_set_error(
+                err, CXPR_ERR_UNKNOWN_IDENTIFIER, message, 0, 0);
             return false;
         }
     }

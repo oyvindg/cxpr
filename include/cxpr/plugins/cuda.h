@@ -30,6 +30,11 @@ int cxpr_cuda_plugin_emit_source(
 
 /**
  * @brief Generate an owned CUDA source string from a compiled model program.
+ *
+ * Supports the host-neutral scalar/history subset accepted by cxpr model C
+ * codegen. Aggregate array values and runtime extension-index capabilities are
+ * not part of the CUDA ABI; programs containing an unsupported dynamic index
+ * return NULL with a populated error instead of silently changing semantics.
  * @return Owned source on success, or NULL on failure.
  */
 char* cxpr_cuda_plugin_source_from_program(

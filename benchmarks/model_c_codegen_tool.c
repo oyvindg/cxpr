@@ -1,6 +1,31 @@
 #include <cxpr/cxpr.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+static void sample(const double* args, size_t argc, cxpr_value* out,
+                   size_t field_count, void* userdata) {
+    (void)userdata;
+    if (argc == 1u && field_count == 1u) out[0] = cxpr_num(args[0] * 2.0);
+}
+
+static char* sample_codegen(const char* field, const char* const* args,
+                            size_t argc, void* userdata, cxpr_error* err) {
+    size_t size;
+    char* expression;
+    (void)userdata;
+    if (!field || strcmp(field, "signal") != 0 || argc != 1u) {
+        if (err) {
+            err->code = CXPR_ERR_SYNTAX;
+            err->message = "unsupported sample field";
+        }
+        return NULL;
+    }
+    size = strlen(args[0]) + 16u;
+    expression = (char*)malloc(size);
+    if (expression) snprintf(expression, size, "((%s) * 2.0)", args[0]);
+    return expression;
+}
 
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
@@ -38,6 +63,7 @@ int main(int argc, char** argv) {
     char* code;
     cxpr_model* model;
     cxpr_model_compiled* program;
+    cxpr_registry* registry = NULL;
     cxpr_context* ctx = NULL;
     double* param_values = NULL;
     size_t param_count = 0u;
@@ -60,7 +86,18 @@ int main(int argc, char** argv) {
         free(source);
         return 1;
     }
-    program = cxpr_model_compile(model, NULL, &err);
+    registry = cxpr_registry_new();
+    if (registry) {
+        static const char* fields[] = {"signal"};
+        cxpr_registry_add_struct(registry, "sample", sample, 1u, 1u,
+                                 fields, 1u, NULL, NULL);
+        if (!cxpr_registry_set_struct_codegen(
+                registry, "sample", sample_codegen, NULL, NULL)) {
+            cxpr_registry_free(registry);
+            registry = NULL;
+        }
+    }
+    program = registry ? cxpr_model_compile(model, registry, &err) : NULL;
     if (!program) {
         fprintf(stderr, "compile failed: %s\n", err.message);
         cxpr_model_free(model);
@@ -138,6 +175,7 @@ int main(int argc, char** argv) {
     cxpr_context_free(ctx);
     free(param_values);
     cxpr_model_compiled_free(program);
+    cxpr_registry_free(registry);
     cxpr_model_free(model);
     free(source);
     return 0;

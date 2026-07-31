@@ -33,7 +33,7 @@ static bool cxpr_expr_parser_is_subject_node(const cxpr_expr_ast* ast) {
         case CXPR_NODE_VARIABLE:
         case CXPR_NODE_FIELD_ACCESS:
         case CXPR_NODE_CHAIN_ACCESS:
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
         case CXPR_NODE_PRODUCER_ACCESS:
             return true;
         default:

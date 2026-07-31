@@ -114,7 +114,7 @@ struct cxpr_expr_ast {
         struct {
             struct cxpr_expr_ast* target;
             struct cxpr_expr_ast* index;
-        } lookback;
+        } index;
         struct {
             struct cxpr_expr_ast* condition;
             struct cxpr_expr_ast* true_branch;
@@ -241,12 +241,13 @@ cxpr_expr_ast* cxpr_expr_ast_call_new(const char* name, cxpr_expr_ast** args, si
 cxpr_expr_ast* cxpr_expr_ast_call_named_new(const char* name, cxpr_expr_ast** args,
                                            char** arg_names, size_t argc);
 /**
- * @brief Internal constructor for a lookback node.
+ * @brief Internal constructor for a neutral index node.
  * @param target Owned target child.
  * @param index Owned index child.
  * @return Newly allocated AST node taking ownership of both children, or NULL on allocation failure.
  */
 cxpr_expr_ast* cxpr_expr_ast_lookback_new(cxpr_expr_ast* target, cxpr_expr_ast* index);
+cxpr_expr_ast* cxpr_expr_ast_index_new(cxpr_expr_ast* target, cxpr_expr_ast* index);
 /**
  * @brief Internal constructor for a ternary node.
  * @param condition Owned condition child.

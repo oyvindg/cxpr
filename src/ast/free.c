@@ -99,9 +99,9 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
             cxpr_expr_ast_free_arg_names(ast->data.function_call.arg_names,
                                     ast->data.function_call.argc);
             break;
-        case CXPR_NODE_LOOKBACK:
-            cxpr_expr_ast_free(ast->data.lookback.target);
-            cxpr_expr_ast_free(ast->data.lookback.index);
+        case CXPR_NODE_INDEX:
+            cxpr_expr_ast_free(ast->data.index.target);
+            cxpr_expr_ast_free(ast->data.index.index);
             break;
         case CXPR_NODE_TERNARY:
             cxpr_expr_ast_free(ast->data.ternary.condition);

@@ -171,15 +171,15 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
         return cxpr_expr_ast_producer_field_named_new(cxpr_expr_ast_producer_name(ast), args, arg_names,
                                                   argc, cxpr_expr_ast_producer_field(ast));
     }
-    case CXPR_NODE_LOOKBACK: {
-        cxpr_expr_ast* target = cxpr_model_inline_locals(cxpr_expr_ast_lookback_target(ast), locals, local_count);
-        cxpr_expr_ast* index = cxpr_model_inline_locals(cxpr_expr_ast_lookback_index(ast), locals, local_count);
+    case CXPR_NODE_INDEX: {
+        cxpr_expr_ast* target = cxpr_model_inline_locals(cxpr_expr_ast_index_target(ast), locals, local_count);
+        cxpr_expr_ast* index = cxpr_model_inline_locals(cxpr_expr_ast_index_expression(ast), locals, local_count);
         if (!target || !index) {
             cxpr_expr_ast_free(target);
             cxpr_expr_ast_free(index);
             return NULL;
         }
-        return cxpr_expr_ast_lookback_new(target, index);
+        return cxpr_expr_ast_index_new(target, index);
     }
     case CXPR_NODE_TERNARY: {
         cxpr_expr_ast* condition = cxpr_model_inline_locals(cxpr_expr_ast_ternary_condition(ast), locals, local_count);
@@ -203,7 +203,7 @@ static bool cxpr_model_defined_body_is_series_aware(const cxpr_expr_ast* ast,
                                                      size_t depth) {
     if (!ast || depth > 64u) return false;
     switch (cxpr_expr_ast_kind_of(ast)) {
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return true;
     case CXPR_NODE_FUNCTION_CALL: {
         const char* name = cxpr_expr_ast_call_name(ast);
@@ -341,11 +341,11 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
         ast->data.unary_op.operand = cxpr_model_expand_defined_owned(
             ast->data.unary_op.operand, registry, depth, err);
         break;
-    case CXPR_NODE_LOOKBACK:
-        ast->data.lookback.target = cxpr_model_expand_defined_owned(
-            ast->data.lookback.target, registry, depth, err);
-        ast->data.lookback.index = cxpr_model_expand_defined_owned(
-            ast->data.lookback.index, registry, depth, err);
+    case CXPR_NODE_INDEX:
+        ast->data.index.target = cxpr_model_expand_defined_owned(
+            ast->data.index.target, registry, depth, err);
+        ast->data.index.index = cxpr_model_expand_defined_owned(
+            ast->data.index.index, registry, depth, err);
         break;
     case CXPR_NODE_TERNARY:
         ast->data.ternary.condition = cxpr_model_expand_defined_owned(
@@ -372,8 +372,8 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
          (!ast->data.binary_op.left || !ast->data.binary_op.right)) ||
         (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_UNARY_OP &&
          !ast->data.unary_op.operand) ||
-        (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_LOOKBACK &&
-         (!ast->data.lookback.target || !ast->data.lookback.index)) ||
+        (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX &&
+         (!ast->data.index.target || !ast->data.index.index)) ||
         (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_TERNARY &&
          (!ast->data.ternary.condition || !ast->data.ternary.true_branch ||
           !ast->data.ternary.false_branch))) {

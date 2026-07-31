@@ -367,17 +367,17 @@ int cxpr_resolve_expression_scope(
                 return 1;
             }
             break;
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_expr_ast_lookback_target(root),
+                    cxpr_expr_ast_index_target(root),
                     &nested)) {
                 *out = nested;
                 return 1;
             }
             if (cxpr_resolve_expression_scope(
                     provider,
-                    cxpr_expr_ast_lookback_index(root),
+                    cxpr_expr_ast_index_expression(root),
                     &nested)) {
                 *out = nested;
                 return 1;

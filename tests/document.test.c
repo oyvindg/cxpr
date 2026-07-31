@@ -341,6 +341,39 @@ static void test_parse_document_ast_preserves_block_shapes(void) {
     printf("  ✓ test_parse_document_ast_preserves_block_shapes\n");
 }
 
+static void test_output_role_sugar_lowers_to_metadata(void) {
+    const char* source =
+        "model roles\n"
+        "value = 1\n"
+        "out value as vector_difference\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "roles.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* output;
+    const cxpr_doc_ast_node* metadata;
+    cxpr_model* model;
+    const char* role;
+
+    assert(syntax != NULL && err.code == CXPR_OK);
+    root = cxpr_doc_ast_root(syntax);
+    output = cxpr_doc_ast_node_child(root, 2u);
+    assert(cxpr_doc_ast_node_kind(output) == CXPR_DOC_AST_OUTPUT_DECL);
+    assert(strcmp(cxpr_doc_ast_node_name(output), "value") == 0);
+    assert(cxpr_doc_ast_node_child_count(output) == 1u);
+    metadata = cxpr_doc_ast_node_child(output, 0u);
+    assert(strcmp(cxpr_doc_ast_node_text(metadata),
+                  "role = \"vector_difference\"") == 0);
+
+    model = cxpr_model_parse(source, &err);
+    assert(model != NULL && cxpr_model_metadata_count(model) == 1u);
+    role = cxpr_model_metadata_field_value(model, 0u, "role");
+    assert(role != NULL && strncmp(role, "\"vector_difference\"", 19u) == 0);
+    cxpr_model_free(model);
+    cxpr_doc_ast_free(syntax);
+    printf("  ✓ test_output_role_sugar_lowers_to_metadata\n");
+}
+
 static void test_document_ast_lowers_to_independent_document(void) {
     const char* source =
         "model strategy\n"
@@ -888,6 +921,7 @@ int main(void) {
     test_document_exposes_owned_syntax_tree();
     test_document_ast_exposes_compact_initial_state_update();
     test_parse_document_ast_preserves_block_shapes();
+    test_output_role_sugar_lowers_to_metadata();
     test_document_ast_lowers_to_independent_document();
     test_document_ast_lowering_equivalent_block_and_shorthand_forms();
     test_document_ast_lowering_rejects_state_output_assignment();

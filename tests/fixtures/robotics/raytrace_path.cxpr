@@ -1,0 +1,91 @@
+# Predict a 2D ray path and its first intersection with a vertical obstacle.
+# This is host-neutral and can represent a robot sensor ray, planned motion,
+# projectile path, or any other straight-line trajectory.
+
+model raytrace_path
+
+in {
+    origin_x,
+    origin_y,
+    direction_x,
+    direction_y,
+    obstacle_x,
+    max_distance,
+    advance_distance,
+    reset,
+    ray
+}
+
+$epsilon = 0.000000001
+
+state traced_distance = 0
+
+direction_length = sqrt(direction_x * direction_x + direction_y * direction_y)
+valid_direction = direction_length > $epsilon
+unit_x = valid_direction ? direction_x / direction_length : 0
+unit_y = valid_direction ? direction_y / direction_length : 0
+
+parallel = abs(unit_x) <= $epsilon
+intersection_distance = parallel ? 0 : (obstacle_x - origin_x) / unit_x
+hit = valid_direction and not parallel and intersection_distance >= 0 and intersection_distance <= max_distance
+travel_distance = hit ? intersection_distance : max_distance
+
+path_origin = ray[0]
+waypoint_25 = ray[round(travel_distance * 0.25)]
+waypoint_50 = ray[round(travel_distance * 0.50)]
+endpoint = ray[round(travel_distance)]
+
+# Stateful simulation cursor. Each tick advances along the predicted path and
+# clamps at the collision point or configured maximum distance.
+requested_distance = reset > 0 ? 0 : traced_distance + max(0, advance_distance)
+simulated_distance = min(travel_distance, requested_distance)
+simulated_point = ray[round(simulated_distance)]
+simulation_complete = valid_direction and simulated_distance >= travel_distance
+
+traced_distance := simulated_distance
+
+# Output metadata is intentionally host-defined. A simulator or editor can
+# group matching path.id values, order the points, and pair x/y coordinates.
+out path_origin {
+    role = "path_point"
+    path { id = "predicted_ray", fields = ["x", "y"], order = 0 }
+}
+out waypoint_25 {
+    role = "path_point"
+    path { id = "predicted_ray", fields = ["x", "y"], order = 1 }
+}
+out waypoint_50 {
+    role = "path_point"
+    path { id = "predicted_ray", fields = ["x", "y"], order = 2 }
+}
+out endpoint {
+    role = "path_point"
+    path { id = "predicted_ray", fields = ["x", "y"], order = 3 }
+}
+out simulated_point {
+    role = "simulation_cursor"
+    path { id = "predicted_ray", fields = ["x", "y"] }
+    simulation { stateful = true, distance = "simulated_distance" }
+}
+out simulated_distance {
+    role = "simulation_progress"
+    unit = "distance"
+}
+out simulation_complete {
+    role = "simulation_status"
+}
+out valid_direction {
+    role = "simulation_status"
+}
+out hit {
+    role = "collision"
+    path { id = "predicted_ray", event = "hit" }
+}
+out intersection_distance {
+    role = "collision_distance"
+    unit = "distance"
+}
+out travel_distance {
+    role = "path_length"
+    unit = "distance"
+}

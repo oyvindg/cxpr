@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Neutral `target[index]` AST/IR semantics with built-in zero-based array
+  indexing, numeric history adapters, and exact-name extension capabilities.
+- Host-neutral history registration for contiguous and strided numeric sources,
+  with explicit error, clamp-first, and legacy-NaN bounds policies.
 - Array literals now compile to typed IR with `BUILD_ARRAY`, including
   top-level and nested array literals that evaluate to owned `CXPR_VALUE_ARRAY`
   results.
@@ -18,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `CXPR_NODE_INDEX` is now the canonical public AST kind. The
+  `CXPR_NODE_LOOKBACK`, resolver, column-lookback, and `at_lookback` names remain
+  compatibility APIs while hosts migrate to history adapters/capabilities.
 - Generated model descriptor ABI v3 supports up to 64 inputs, outputs, and
   parameters, validates every count, and reports a codegen error before
   emitting descriptors that exceed those limits.

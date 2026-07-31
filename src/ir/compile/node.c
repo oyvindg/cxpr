@@ -17,6 +17,26 @@ static const char* cxpr_ir_unknown_function_message(const char* name) {
     return message;
 }
 
+static bool cxpr_ir_index_has_literal_array_base(const cxpr_expr_ast* target) {
+    while (target && target->type == CXPR_NODE_INDEX) {
+        target = target->data.index.target;
+    }
+    return target && target->type == CXPR_NODE_ARRAY;
+}
+
+static bool cxpr_ir_simple_lookback_target(const cxpr_expr_ast* ast) {
+    if (!ast) return false;
+    switch (ast->type) {
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+    case CXPR_NODE_PRODUCER_ACCESS:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
                                                    const cxpr_expr_ast* call_ast,
                                                    cxpr_ir_program* program,
@@ -98,9 +118,9 @@ static bool cxpr_ir_defined_body_needs_ast_eval(const cxpr_expr_ast* ast,
             }
         }
         return false;
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_ir_defined_body_needs_ast_eval(ast->data.lookback.target, reg, depth) ||
-               cxpr_ir_defined_body_needs_ast_eval(ast->data.lookback.index, reg, depth);
+    case CXPR_NODE_INDEX:
+        return cxpr_ir_defined_body_needs_ast_eval(ast->data.index.target, reg, depth) ||
+               cxpr_ir_defined_body_needs_ast_eval(ast->data.index.index, reg, depth);
     case CXPR_NODE_BINARY_OP:
         return cxpr_ir_defined_body_needs_ast_eval(ast->data.binary_op.left, reg, depth) ||
                cxpr_ir_defined_body_needs_ast_eval(ast->data.binary_op.right, reg, depth);
@@ -450,12 +470,42 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                             err);
     }
 
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
     {
         unsigned offset;
-        const cxpr_expr_ast* target = ast->data.lookback.target;
+        const cxpr_expr_ast* target = ast->data.index.target;
+        if (cxpr_ir_index_has_literal_array_base(target)) {
+            if (!cxpr_ir_compile_node(target, program, reg,
+                                      local_names, local_count, subst, inline_depth, err) ||
+                !cxpr_ir_compile_node(ast->data.index.index, program, reg,
+                                      local_names, local_count, subst, inline_depth, err)) {
+                return false;
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_INDEX }, err);
+        }
         if (cxpr_lookback_literal_offset(
-                ast->data.lookback.index, &offset, NULL, NULL)) {
+                ast->data.index.index, &offset, NULL, NULL)) {
+            while (target && target->type == CXPR_NODE_INDEX) {
+                unsigned inner_offset;
+                unsigned summed;
+                if (!cxpr_lookback_literal_offset(target->data.index.index,
+                                                  &inner_offset, NULL, NULL) ||
+                    !cxpr_lookback_add_unsigned(offset, inner_offset, &summed,
+                                                NULL, NULL)) {
+                    break;
+                }
+                offset = summed;
+                target = target->data.index.target;
+            }
+            if (!cxpr_ir_simple_lookback_target(target)) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_LOOKBACK_RESOLVE,
+                                        .index = offset,
+                                        .payload = target,
+                                    },
+                                    err);
+            }
             if (!cxpr_ir_emit(program,
                               (cxpr_ir_instr){
                                   .op = CXPR_OP_LOOKBACK_PUSH,

@@ -388,8 +388,8 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
         return 1;
     case CXPR_NODE_FUNCTION_CALL:
         return cxpr_cg_emit_call_at_offset(ast, lookback_offset, b, target, err);
-    case CXPR_NODE_LOOKBACK: {
-        const cxpr_expr_ast* index = cxpr_expr_ast_lookback_index(ast);
+    case CXPR_NODE_INDEX: {
+        const cxpr_expr_ast* index = cxpr_expr_ast_index_expression(ast);
         unsigned offset;
         unsigned next_offset;
         if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) {
@@ -410,7 +410,7 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
         if (!cxpr_lookback_add_unsigned(
                 lookback_offset, offset, &next_offset, err, "C codegen lookback offset overflow")) return 0;
         return cxpr_cg_emit_at_offset(
-            cxpr_expr_ast_lookback_target(ast), next_offset, b, target, err);
+            cxpr_expr_ast_index_target(ast), next_offset, b, target, err);
     }
     case CXPR_NODE_FIELD_ACCESS:
         if (cxpr_cg_target_has_offset_leaf(target)) {
@@ -455,16 +455,16 @@ bool cxpr_codegen_emit_lookback_offset(const cxpr_expr_ast* ast,
     int next_offset;
 
     if (err) *err = (cxpr_error){0};
-    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_LOOKBACK || !emit) {
+    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_INDEX || !emit) {
         cxpr_cg_err(err, CXPR_ERR_SYNTAX, "invalid lookback codegen arguments");
         return false;
     }
-    index_ast = cxpr_expr_ast_lookback_index(ast);
+    index_ast = cxpr_expr_ast_index_expression(ast);
     if (!cxpr_lookback_literal_offset(
             index_ast, &offset, err, "codegen requires constant integer lookback indexes")) return false;
     if (!cxpr_lookback_add_int(
             current_offset, offset, &next_offset, err, "codegen lookback offset overflow")) return false;
-    return emit(userdata, cxpr_expr_ast_lookback_target(ast), next_offset, err);
+    return emit(userdata, cxpr_expr_ast_index_target(ast), next_offset, err);
 }
 
 char* cxpr_expr_ast_to_c(const cxpr_expr_ast* ast, const cxpr_c_target* target, cxpr_error* err) {

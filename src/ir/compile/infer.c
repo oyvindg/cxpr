@@ -27,7 +27,7 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxp
     case CXPR_NODE_FIELD_ACCESS:
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_PRODUCER_ACCESS:
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
     case CXPR_NODE_RECORD:
         return CXPR_IR_RESULT_UNKNOWN;
 

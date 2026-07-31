@@ -6,6 +6,7 @@
 #include "ast/internal.h"
 #include "registry/internal.h"
 #include <cxpr/typecheck.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -155,6 +156,54 @@ static cxpr_typecheck_static_type cxpr_typecheck_join(cxpr_typecheck_static_type
 static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
                                         const cxpr_registry* reg,
                                         cxpr_error* err);
+
+static const cxpr_expr_ast* cxpr_typecheck_resolve_static_index_value(
+    const cxpr_expr_ast* ast) {
+    const cxpr_expr_ast* target;
+    double index;
+
+    if (!ast || ast->type != CXPR_NODE_INDEX) return ast;
+    target = cxpr_typecheck_resolve_static_index_value(ast->data.index.target);
+    if (!target || target->type != CXPR_NODE_ARRAY ||
+        !ast->data.index.index || ast->data.index.index->type != CXPR_NODE_NUMBER) {
+        return ast;
+    }
+    index = ast->data.index.index->data.number.value;
+    if (!isfinite(index) || index < 0.0 || floor(index) != index ||
+        index >= (double)target->data.array.count) {
+        return ast;
+    }
+    return target->data.array.elements[(size_t)index];
+}
+
+static cxpr_typecheck_static_type cxpr_typecheck_infer_array_element(
+    const cxpr_expr_ast* array,
+    const cxpr_expr_ast* index,
+    const cxpr_registry* reg,
+    cxpr_error* err) {
+    cxpr_typecheck_static_type element_type = CXPR_STATIC_UNKNOWN;
+
+    if (!array || array->type != CXPR_NODE_ARRAY) return CXPR_STATIC_UNKNOWN;
+    if (index && index->type == CXPR_NODE_NUMBER && isfinite(index->data.number.value) &&
+        index->data.number.value >= 0.0 &&
+        floor(index->data.number.value) == index->data.number.value &&
+        index->data.number.value < (double)array->data.array.count) {
+        return cxpr_typecheck_infer(
+            array->data.array.elements[(size_t)index->data.number.value], reg, err);
+    }
+    for (size_t i = 0u; i < array->data.array.count; ++i) {
+        cxpr_typecheck_static_type current =
+            cxpr_typecheck_infer(array->data.array.elements[i], reg, err);
+        if (current == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        if (current == CXPR_STATIC_UNKNOWN) continue;
+        if (element_type == CXPR_STATIC_UNKNOWN) {
+            element_type = current;
+        } else if (element_type != current) {
+            return CXPR_STATIC_UNKNOWN;
+        }
+    }
+    return element_type;
+}
 
 static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_expr_ast* ast,
                                                const cxpr_registry* reg,
@@ -331,8 +380,36 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
         return CXPR_STATIC_UNKNOWN;
     case CXPR_NODE_FUNCTION_CALL:
         return cxpr_typecheck_infer_call(ast, reg, err);
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_typecheck_infer(ast->data.lookback.target, reg, err);
+    case CXPR_NODE_INDEX:
+    {
+        const cxpr_expr_ast* resolved_target;
+        operand_type = cxpr_typecheck_infer(ast->data.index.index, reg, err);
+        if (operand_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        if (!cxpr_typecheck_is_numeric(operand_type)) {
+            cxpr_typecheck_error(err, "[]", "number index", "index expression",
+                                 ast->data.index.index, operand_type);
+            return CXPR_STATIC_ERROR;
+        }
+        resolved_target =
+            cxpr_typecheck_resolve_static_index_value(ast->data.index.target);
+        if (resolved_target && resolved_target->type == CXPR_NODE_ARRAY) {
+            return cxpr_typecheck_infer_array_element(
+                resolved_target, ast->data.index.index, reg, err);
+        }
+        {
+            const cxpr_index_capability_entry* capability;
+            bool handled = false;
+            capability = cxpr_registry_select_index_capability(
+                reg, ast->data.index.target, err, &handled);
+            if (!capability && handled) return CXPR_STATIC_ERROR;
+            if (capability) {
+                return (cxpr_typecheck_static_type)capability->result_type;
+            }
+        }
+        operand_type = cxpr_typecheck_infer(ast->data.index.target, reg, err);
+        if (operand_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        return CXPR_STATIC_UNKNOWN;
+    }
     case CXPR_NODE_TERNARY:
         operand_type = cxpr_typecheck_infer(ast->data.ternary.condition, reg, err);
         if (operand_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;

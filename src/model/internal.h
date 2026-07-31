@@ -201,6 +201,7 @@ typedef struct {
 
 struct cxpr_model_compiled {
     cxpr_registry* registry;
+    bool owns_registry;
     cxpr_model_backend_kind requested_backend;
     cxpr_model_backend_kind selected_backend;
     bool compile_fuse;

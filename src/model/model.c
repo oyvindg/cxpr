@@ -72,9 +72,17 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
             }
         }
     }
-    if (ast->type == CXPR_NODE_LOOKBACK) {
+    if (ast->type == CXPR_NODE_INDEX) {
+        cxpr_value_type result_type = CXPR_VALUE_NULL;
+        if (reg && cxpr_registry_index_target_info(
+                       reg, ast->data.index.target, NULL,
+                       &result_type, NULL)) {
+            if (result_type == CXPR_VALUE_NUMBER) return CXPR_MODEL_RESULT_NUMBER;
+            if (result_type == CXPR_VALUE_BOOL) return CXPR_MODEL_RESULT_BOOL;
+            return CXPR_MODEL_RESULT_UNKNOWN;
+        }
         return cxpr_model_infer_result_kind_depth(
-            ast->data.lookback.target, reg, depth + 1u);
+            ast->data.index.target, reg, depth + 1u);
     }
     if (ast->type == CXPR_NODE_BINARY_OP) {
         left = cxpr_model_infer_result_kind_depth(
@@ -578,11 +586,11 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
             }
             return true;
         }
-        case CXPR_NODE_LOOKBACK:
+        case CXPR_NODE_INDEX:
             return cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.lookback.target, model, imports, import_count, inputs, input_count, err) &&
+                       ast->data.index.target, model, imports, import_count, inputs, input_count, err) &&
                    cxpr_model_infer_child_inputs_from_ast(
-                       ast->data.lookback.index, model, imports, import_count, inputs, input_count, err);
+                       ast->data.index.index, model, imports, import_count, inputs, input_count, err);
         case CXPR_NODE_TERNARY:
             return cxpr_model_infer_child_inputs_from_ast(
                        ast->data.ternary.condition, model, imports, import_count, inputs, input_count, err) &&
@@ -1086,7 +1094,7 @@ static char* cxpr_model_join_namespace(const char* ns, const char* name) {
 
 static bool cxpr_model_import_entry_is_namespaced(const cxpr_func_entry* entry) {
     return entry && !entry->model_producer &&
-           (entry->defined_body || entry->defined_return_field_count > 0u);
+           (entry->defined_body || entry->defined_return_field_bodies);
 }
 
 static bool cxpr_model_import_name_should_namespace(const cxpr_registry* source_registry,
@@ -1185,11 +1193,11 @@ static bool cxpr_model_namespace_imported_ast(cxpr_expr_ast* ast,
         }
         return true;
     }
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
         return cxpr_model_namespace_imported_ast(
-                   ast->data.lookback.target, namespace_name, source_registry, err) &&
+                   ast->data.index.target, namespace_name, source_registry, err) &&
                cxpr_model_namespace_imported_ast(
-                   ast->data.lookback.index, namespace_name, source_registry, err);
+                   ast->data.index.index, namespace_name, source_registry, err);
     case CXPR_NODE_TERNARY:
         return cxpr_model_namespace_imported_ast(
                    ast->data.ternary.condition, namespace_name, source_registry, err) &&
@@ -1577,7 +1585,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
             }
         }
     }
-    if (!cxpr_model_collect_lookbacks(model, NULL,
+    if (!cxpr_model_collect_lookbacks(model, reg,
                                       &program->history_specs,
                                       &program->history_spec_count,
                                       err)) {
@@ -1588,21 +1596,17 @@ cxpr_model_compiled* cxpr_model_compile_full(
         cxpr_model_compiled_free(program);
         return NULL;
     }
-    if (model->function_count > 0 || model->record_function_count > 0u ||
+    if (reg && program->history_spec_count > 0u &&
+        model->function_count == 0u && model->record_function_count == 0u &&
+        import_count == 0u) {
+        /* Borrow external producer/codegen metadata through source generation. */
+        program->registry = (cxpr_registry*)reg;
+        program->owns_registry = false;
+        compile_reg = reg;
+    } else if (model->function_count > 0 || model->record_function_count > 0u ||
         import_count > 0u ||
         (!reg && required_default_count > 0u) ||
         program->history_spec_count > 0u) {
-        if (reg && program->history_spec_count > 0u) {
-            for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
-            free(required_defaults);
-            for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
-            free(inferred_inputs);
-            cxpr_model_compiled_free(program);
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "model lookback with external registry is not supported yet",
-                                 0, 0);
-            return NULL;
-        }
         program->registry = cxpr_registry_new();
         if (!program->registry) {
             for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
@@ -1613,6 +1617,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
+        program->owns_registry = true;
         if (!cxpr_model_compiled_register_imports(program, model, imports, import_count, err)) {
             for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
             free(required_defaults);
@@ -1624,8 +1629,11 @@ cxpr_model_compiled* cxpr_model_compile_full(
         for (size_t i = 0; i < required_default_count; ++i) {
             if (!cxpr_register_default_named(program->registry, required_defaults[i])) {
                 if (err) {
+                    static CXPR_THREAD_LOCAL char message[256];
                     err->code = CXPR_ERR_UNKNOWN_FUNCTION;
-                    err->message = "Unknown function";
+                    snprintf(message, sizeof(message), "Unknown function '%s'",
+                             required_defaults[i]);
+                    err->message = message;
                 }
                 for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
                 free(required_defaults);

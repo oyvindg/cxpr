@@ -1,0 +1,29 @@
+# Demonstrates the reusable Vec2 library with game-neutral coordinates.
+
+model vec2_math_demo
+
+use vec2
+
+in {
+    point_a,
+    point_b,
+    direction,
+    normal,
+    max_delta
+}
+
+delta = point_a - point_b
+distance_value = distance(point_a, point_b)
+dot_value = dot(point_a, point_b)
+normalized = normalize(delta)
+reflected = reflect(direction, normal)
+moved = move_towards(point_a, point_b, max_delta)
+constructed = vec2(7, 9)
+
+out delta as vector_difference
+out distance_value as euclidean_distance
+out dot_value as dot_product
+out normalized as unit_vector
+out reflected as reflection
+out moved as bounded_motion
+out constructed as vec2_constructor

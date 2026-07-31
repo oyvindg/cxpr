@@ -1,0 +1,3 @@
+model index_history_generated
+in close
+out result = close[1]
