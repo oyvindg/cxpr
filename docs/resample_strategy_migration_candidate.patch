@@ -1,0 +1,28 @@
+Subject: [DEFERRED] migrate 5m/30m breakaway fixture to resample
+
+Do not apply until Dynasty CUDA manifest parity is green. This candidate keeps
+the provider-owned 30m materialization and changes expression syntax only.
+
+--- a/tests/configs/strategies/bollinger_kst_adx_confirmed_breakaway_5m.yaml
++++ b/tests/configs/strategies/bollinger_kst_adx_confirmed_breakaway_5m.yaml
+@@
+-  htf_open: open("30m")
+-  htf_high: high("30m")
+-  htf_low: low("30m")
+-  htf_close: close("30m")
+-  htf_volume: volume("30m")
++  htf_open: resample(open, every="30m")
++  htf_high: resample(high, every="30m")
++  htf_low: resample(low, every="30m")
++  htf_close: resample(close, every="30m")
++  htf_volume: resample(volume, every="30m")
+@@
+-  trend_ema: ema(source=close, period=$trend_ema_period, timeframe="30m")
+-  atrv: atr($atr_period, "30m")
++  trend_ema: ema(source=resample(close, every="30m"), period=$trend_ema_period)
++  atrv: atr(source=resample(bars, every="30m"), period=$atr_period)
+
+The remaining Bollinger, KST, and ADX expressions must be migrated in the same
+activation commit after their generated-C/CUDA record and producer-field paths
+pass parity. Partial activation would mix legacy and manifest requirements and
+is intentionally prohibited.

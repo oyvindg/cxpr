@@ -156,6 +156,12 @@ typedef struct {
     size_t depth;
 } cxpr_model_history_spec;
 
+typedef struct {
+    char* source_name;
+    int64_t duration_ns;
+    char* canonical;
+} cxpr_model_resample_requirement;
+
 /** @brief Atomic mapping from a pending update slot to a state slot. */
 typedef struct {
     char* name;
@@ -236,6 +242,8 @@ struct cxpr_model_compiled {
     size_t child_count;
     cxpr_model_history_spec* history_specs;
     size_t history_spec_count;
+    cxpr_model_resample_requirement* resample_requirements;
+    size_t resample_requirement_count;
     char** outputs;
     size_t output_count;
 };

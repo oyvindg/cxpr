@@ -40,6 +40,7 @@ void cxpr_source_plan_node_clear(cxpr_source_plan_node* node) {
     free(node->name);
     free(node->field_name);
     free(node->scope_value);
+    free(node->interval_value);
     free(node->arg_slots);
     if (node->source) {
         cxpr_source_plan_node_clear(node->source);
@@ -302,10 +303,22 @@ static int cxpr_source_plan_node_canonical_build(
 int cxpr_source_plan_finalize_node_canonical(
     cxpr_source_plan_ast* plan,
     cxpr_source_plan_node* node) {
+    char* requirement = NULL;
+    size_t lookback_slot;
+
     if (!plan || !node) return 0;
     free(plan->canonical);
     plan->canonical = NULL;
     if (!cxpr_source_plan_node_canonical_build(node, &plan->canonical)) return 0;
     node->node_id = cxpr_source_plan_stable_hash(plan->canonical);
-    return node->node_id != 0ULL;
+    lookback_slot = node->lookback_slot;
+    node->lookback_slot = SIZE_MAX;
+    if (!cxpr_source_plan_node_canonical_build(node, &requirement)) {
+        node->lookback_slot = lookback_slot;
+        return 0;
+    }
+    node->lookback_slot = lookback_slot;
+    node->requirement_id = cxpr_source_plan_stable_hash(requirement);
+    free(requirement);
+    return node->node_id != 0ULL && node->requirement_id != 0ULL;
 }

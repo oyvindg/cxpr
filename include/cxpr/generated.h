@@ -29,6 +29,70 @@ typedef void (*cxpr_generated_tick_fn)(
     const double* params,
     double* outputs);
 
+/** Pre-materialized temporal series consumed by generated resample models. */
+#ifndef CXPR_RESAMPLE_VIEW_ABI_VERSION
+#define CXPR_RESAMPLE_VIEW_ABI_VERSION 1u
+#endif
+#ifndef CXPR_RESAMPLE_VIEW_VALUE_TYPE
+#define CXPR_RESAMPLE_VIEW_VALUE_TYPE CXPR_GENERATED_VALUE_NUMBER
+#endif
+#ifndef CXPR_RESAMPLE_ALIGNMENT_MISSING
+#define CXPR_RESAMPLE_ALIGNMENT_MISSING ((size_t)-1)
+#endif
+#ifndef CXPR_RESAMPLE_VIEW_DEFINED
+#define CXPR_RESAMPLE_VIEW_DEFINED 1
+typedef struct cxpr_resample_view {
+    const double* values;
+    const size_t* alignment;
+    size_t value_count;
+    size_t primary_count;
+} cxpr_resample_view;
+#endif
+
+typedef enum cxpr_resample_view_status {
+    CXPR_RESAMPLE_VIEW_OK = 0,
+    CXPR_RESAMPLE_VIEW_NULL,
+    CXPR_RESAMPLE_VIEW_VALUES_REQUIRED,
+    CXPR_RESAMPLE_VIEW_ALIGNMENT_REQUIRED
+} cxpr_resample_view_status;
+
+/** Return a stable diagnostic string suitable for host error reporting. */
+static inline const char* cxpr_resample_view_status_message(
+    cxpr_resample_view_status status) {
+    switch (status) {
+    case CXPR_RESAMPLE_VIEW_OK: return "resample view is valid";
+    case CXPR_RESAMPLE_VIEW_NULL: return "resample view is NULL";
+    case CXPR_RESAMPLE_VIEW_VALUES_REQUIRED:
+        return "numeric resample view requires a values buffer";
+    case CXPR_RESAMPLE_VIEW_ALIGNMENT_REQUIRED:
+        return "resample view with primary rows requires an alignment map";
+    default: return "unknown resample view error";
+    }
+}
+
+static inline cxpr_resample_view_status cxpr_resample_view_validate(
+    const cxpr_resample_view* view) {
+    if (!view) return CXPR_RESAMPLE_VIEW_NULL;
+    if (!view->values) return CXPR_RESAMPLE_VIEW_VALUES_REQUIRED;
+    if (view->primary_count > 0u && !view->alignment)
+        return CXPR_RESAMPLE_VIEW_ALIGNMENT_REQUIRED;
+    return CXPR_RESAMPLE_VIEW_OK;
+}
+
+/** Validate one numeric resample view before a host uploads or evaluates it. */
+static inline int cxpr_resample_view_valid(const cxpr_resample_view* view) {
+    return cxpr_resample_view_validate(view) == CXPR_RESAMPLE_VIEW_OK;
+}
+
+/** @brief Evaluate one generated-model tick with pre-bound temporal series. */
+typedef void (*cxpr_generated_resample_tick_fn)(
+    void* state,
+    const double* inputs,
+    const double* params,
+    double* outputs,
+    const cxpr_resample_view* views,
+    size_t primary_cursor);
+
 /** @brief Return the state-block size required by a generated model. */
 typedef size_t (*cxpr_generated_state_size_fn)(void);
 /** @brief Reset a generated model state block. */

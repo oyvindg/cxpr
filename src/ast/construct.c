@@ -25,6 +25,15 @@ static char* cxpr_expr_ast_join_with_dot(const char* left, const char* right) {
     return out;
 }
 
+static void cxpr_expr_ast_inherit_range(cxpr_expr_ast* node,
+                                        const cxpr_expr_ast* first,
+                                        const cxpr_expr_ast* last) {
+    if (!node || !first || !last || !first->has_source_span || !last->has_source_span) return;
+    node->source_span.start = first->source_span.start;
+    node->source_span.end = last->source_span.end;
+    node->has_source_span = true;
+}
+
 cxpr_expr_ast* cxpr_expr_ast_number_new(double value) {
     cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
@@ -218,6 +227,7 @@ cxpr_expr_ast* cxpr_expr_ast_binary_new(int op, cxpr_expr_ast* left, cxpr_expr_a
     node->data.binary_op.op = op;
     node->data.binary_op.left = left;
     node->data.binary_op.right = right;
+    cxpr_expr_ast_inherit_range(node, left, right);
     return node;
 }
 
@@ -227,6 +237,10 @@ cxpr_expr_ast* cxpr_expr_ast_unary_new(int op, cxpr_expr_ast* operand) {
     node->type = CXPR_NODE_UNARY_OP;
     node->data.unary_op.op = op;
     node->data.unary_op.operand = operand;
+    if (operand && operand->has_source_span) {
+        node->source_span = operand->source_span;
+        node->has_source_span = true;
+    }
     return node;
 }
 
@@ -256,6 +270,7 @@ cxpr_expr_ast* cxpr_expr_ast_index_new(cxpr_expr_ast* target, cxpr_expr_ast* ind
     node->type = CXPR_NODE_INDEX;
     node->data.index.target = target;
     node->data.index.index = index;
+    cxpr_expr_ast_inherit_range(node, target, index);
     return node;
 }
 
@@ -270,5 +285,6 @@ cxpr_expr_ast* cxpr_expr_ast_ternary_new(cxpr_expr_ast* condition, cxpr_expr_ast
     node->data.ternary.condition = condition;
     node->data.ternary.true_branch = true_branch;
     node->data.ternary.false_branch = false_branch;
+    cxpr_expr_ast_inherit_range(node, condition, false_branch);
     return node;
 }

@@ -43,6 +43,18 @@ cxpr_expr_ast_kind cxpr_expr_ast_kind_of(const cxpr_expr_ast* ast) {
     return ast ? ast->type : CXPR_NODE_NUMBER;
 }
 
+bool cxpr_expr_ast_source_span(const cxpr_expr_ast* ast, cxpr_source_span* out_span) {
+    if (!ast || !out_span || !ast->has_source_span) return false;
+    *out_span = ast->source_span;
+    return true;
+}
+
+void cxpr_expr_ast_set_source_span(cxpr_expr_ast* ast, cxpr_source_span span) {
+    if (!ast) return;
+    ast->source_span = span;
+    ast->has_source_span = true;
+}
+
 double cxpr_expr_ast_number_value(const cxpr_expr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_NUMBER) ? ast->data.number.value : 0.0;
 }

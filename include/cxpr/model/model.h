@@ -488,9 +488,13 @@ char* cxpr_model_compiled_generate_function_c(const cxpr_model_compiled* program
 /**
  * @brief Emit a fast-path scalar model as a standalone C tick function.
  *
- * Generated ABI:
+ * Generated ABI for models without `resample`:
  * `typedef struct fn_state fn_state;`
  * `void fn(fn_state* state, const double* inputs, const double* params, double* outputs)`.
+ * Models with resample requirements use the additive suffix
+ * `, const cxpr_resample_view* views, size_t primary_cursor`. Requirement
+ * accessors below define the stable view-slot order. Existing models retain
+ * the original function type and ABI.
  * When model state needs eager setup, the generated source also includes
  * `void fn_init_state(fn_state* state)`. The tick function keeps a lazy
  * first-use init guard. Callers must zero the complete state object before its
@@ -551,6 +555,14 @@ char* cxpr_model_compiled_generate_c_specialized(
 size_t cxpr_model_compiled_c_slot_count(const cxpr_model_compiled* program);
 size_t cxpr_model_compiled_c_param_count(const cxpr_model_compiled* program);
 const char* cxpr_model_compiled_c_param_name(const cxpr_model_compiled* program, size_t index);
+/** Ordered pre-materialized series required by the additive resample C ABI. */
+size_t cxpr_model_compiled_resample_requirement_count(const cxpr_model_compiled* program);
+const char* cxpr_model_compiled_resample_requirement_source(
+    const cxpr_model_compiled* program, size_t index);
+int64_t cxpr_model_compiled_resample_requirement_duration_ns(
+    const cxpr_model_compiled* program, size_t index);
+const char* cxpr_model_compiled_resample_requirement_interval(
+    const cxpr_model_compiled* program, size_t index);
 size_t cxpr_model_compiled_call_param_count(const cxpr_model_compiled* program);
 const char* cxpr_model_compiled_call_param_name(const cxpr_model_compiled* program, size_t index);
 

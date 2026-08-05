@@ -44,5 +44,6 @@
 #include <cxpr/thread.h>
 #include <cxpr/typecheck.h>
 #include <cxpr/window.h>
+#include <cxpr/resample.h>
 
 #endif /* CXPR_H */

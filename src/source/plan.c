@@ -7,8 +7,10 @@
 
 #include <cxpr/runtime.h>
 #include <cxpr/scope.h>
+#include <cxpr/resample.h>
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 static int cxpr_source_plan_is_direct_source_name(const cxpr_provider* provider, const char* name) {
@@ -145,8 +147,15 @@ void cxpr_free_source_plan_ast(cxpr_source_plan_ast* plan) {
 }
 
 void cxpr_free_source_plan_bindings(cxpr_source_plan_bindings* bindings) {
+    size_t i;
     if (!bindings) return;
+    for (i = 0u; bindings->requirements && i < bindings->count; ++i) {
+        free(bindings->requirements[i].provider_name);
+        free(bindings->requirements[i].source_name);
+    }
     free(bindings->handles);
+    free(bindings->requirement_ids);
+    free(bindings->requirements);
     memset(bindings, 0, sizeof(*bindings));
 }
 
@@ -174,10 +183,89 @@ static int cxpr_source_plan_node_set_scope_value(cxpr_source_plan_node* node, co
     return node->scope_value != NULL;
 }
 
+static int cxpr_source_plan_node_set_resample_interval(
+    cxpr_source_plan_node* node,
+    const cxpr_resample_interval* interval) {
+    if (!node || !interval || interval->duration_ns <= 0 || interval->canonical[0] == '\0') return 0;
+    node->scope_value = cxpr_source_plan_strdup(interval->canonical);
+    node->interval_value = cxpr_source_plan_strdup(interval->canonical);
+    if (!node->scope_value || !node->interval_value) return 0;
+    node->interval_duration_ns = interval->duration_ns;
+    return 1;
+}
+
+static int cxpr_source_plan_node_set_timeframe(
+    cxpr_source_plan_node* node,
+    const char* text) {
+    cxpr_resample_interval interval = {0};
+
+    if (!node || !text) return 0;
+    if (!cxpr_parse_fixed_duration(text, &interval, NULL)) {
+        return cxpr_source_plan_node_set_scope_value(node, text);
+    }
+    return cxpr_source_plan_node_set_resample_interval(node, &interval);
+}
+
 static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
                                        const cxpr_expr_ast* ast,
                                        cxpr_source_plan_ast* plan,
                                        cxpr_source_plan_node* out);
+
+static uint64_t cxpr_source_plan_requirement_mix(
+    uint64_t hash,
+    const void* bytes,
+    size_t size) {
+    const unsigned char* cursor = (const unsigned char*)bytes;
+    size_t i;
+    for (i = 0u; i < size; ++i) {
+        hash ^= (uint64_t)cursor[i];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static void cxpr_source_plan_apply_provider_identity(
+    const cxpr_provider* provider,
+    cxpr_source_plan_node* node) {
+    const cxpr_provider_source_spec* source_spec;
+    const cxpr_provider_fn_spec* fn_spec;
+    const char* provider_name;
+
+    if (!provider || !node) return;
+    if (node->source) {
+        cxpr_source_plan_apply_provider_identity(provider, node->source);
+        return;
+    }
+    source_spec = cxpr_provider_source_spec_find(provider, node->name);
+    fn_spec = cxpr_provider_fn_spec_find(provider, node->name);
+    node->value_type = source_spec ? source_spec->value_type
+                                  : (fn_spec ? fn_spec->return_type : CXPR_VALUE_NUMBER);
+    provider_name = provider->name ? provider->name : "";
+    node->requirement_id = cxpr_source_plan_requirement_mix(
+        node->requirement_id, provider_name, strlen(provider_name) + 1u);
+    node->requirement_id = cxpr_source_plan_requirement_mix(
+        node->requirement_id, &node->value_type, sizeof(node->value_type));
+    node->requirement_id = cxpr_source_plan_requirement_mix(
+        node->requirement_id, &node->interval_duration_ns,
+        sizeof(node->interval_duration_ns));
+}
+
+static int cxpr_source_plan_parse_resample(
+    const cxpr_provider* provider,
+    const cxpr_expr_ast* ast,
+    cxpr_source_plan_ast* plan,
+    cxpr_source_plan_node* out) {
+    cxpr_resample_call call = {0};
+    cxpr_error err = {0};
+
+    if (!cxpr_resample_call_parse(ast, &call, &err) || !call.source) return 0;
+    if (!cxpr_source_plan_node_parse(provider, call.source, plan, out)) return 0;
+    if (out->scope_value != NULL ||
+        !cxpr_source_plan_node_set_resample_interval(out, &call.every)) {
+        return 0;
+    }
+    return 1;
+}
 
 /**
  * @brief Check whether an AST subtree references a source field or indicator.
@@ -250,10 +338,16 @@ static int cxpr_source_plan_parse_function_source(const char* name,
     }
 
     if (cxpr_source_plan_is_direct_source_name(provider, name) && bound_arg_count == 0u) {
+        const cxpr_provider_source_spec* source_spec =
+            cxpr_provider_source_spec_find(provider, name);
         out->kind = CXPR_SOURCE_PLAN_FIELD;
         out->name = cxpr_source_plan_strdup(name);
         if (!out->name) return 0;
-        if (timeframe && !cxpr_source_plan_node_set_scope_value(out, timeframe)) return 0;
+        if (timeframe &&
+            (!(source_spec && source_spec->scope && source_spec->scope->param_name &&
+               strcmp(source_spec->scope->param_name, "timeframe") == 0)
+                 ? !cxpr_source_plan_node_set_scope_value(out, timeframe)
+                 : !cxpr_source_plan_node_set_timeframe(out, timeframe))) return 0;
         return 1;
     }
 
@@ -283,7 +377,11 @@ static int cxpr_source_plan_parse_function_source(const char* name,
                 child->scope_value == NULL &&
                 (child->kind == CXPR_SOURCE_PLAN_FIELD ||
                  child->kind == CXPR_SOURCE_PLAN_INDICATOR)) {
-                if (!cxpr_source_plan_node_set_scope_value(child, timeframe) ||
+                int is_timeframe = fn_spec && fn_spec->scope && fn_spec->scope->param_name &&
+                    strcmp(fn_spec->scope->param_name, "timeframe") == 0;
+                if ((is_timeframe
+                         ? !cxpr_source_plan_node_set_timeframe(child, timeframe)
+                         : !cxpr_source_plan_node_set_scope_value(child, timeframe)) ||
                     !cxpr_source_plan_finalize_node_canonical(plan, child)) {
                     cxpr_source_plan_node_clear(child);
                     free(child);
@@ -346,7 +444,11 @@ static int cxpr_source_plan_parse_function_source(const char* name,
         if (!out->field_name) return 0;
     }
     if (timeframe) {
-        if (!cxpr_source_plan_node_set_scope_value(out, timeframe)) return 0;
+        int is_timeframe = fn_spec && fn_spec->scope && fn_spec->scope->param_name &&
+            strcmp(fn_spec->scope->param_name, "timeframe") == 0;
+        if (is_timeframe
+                ? !cxpr_source_plan_node_set_timeframe(out, timeframe)
+                : !cxpr_source_plan_node_set_scope_value(out, timeframe)) return 0;
     }
     out->arg_count = bound_arg_count;
     if (bound_arg_count > 0u) {
@@ -390,8 +492,13 @@ static int cxpr_source_plan_node_parse(const cxpr_provider* provider,
             return cxpr_source_plan_finalize_node_canonical(plan, out);
         }
         case CXPR_NODE_FUNCTION_CALL: {
+            const char* call_name = cxpr_expr_ast_call_name(ast);
+            if (call_name && strcmp(call_name, "resample") == 0) {
+                if (!cxpr_source_plan_parse_resample(provider, ast, plan, out)) return 0;
+                return cxpr_source_plan_finalize_node_canonical(plan, out);
+            }
             int parsed = cxpr_source_plan_parse_function_source(
-                cxpr_expr_ast_call_name(ast),
+                call_name,
                 cxpr_expr_ast_call_arg_count(ast),
                 provider,
                 ast,
@@ -439,6 +546,7 @@ int cxpr_parse_provider_source_plan_ast(const cxpr_provider* provider,
         cxpr_free_source_plan_ast(out);
         return 0;
     }
+    cxpr_source_plan_apply_provider_identity(provider, &out->root);
     return 1;
 }
 
@@ -469,18 +577,51 @@ int cxpr_eval_source_plan_bound_args(
 
 static int cxpr_source_plan_bindings_append(
     cxpr_source_plan_bindings* out,
+    const cxpr_series_requirement* requirement,
     uint64_t handle) {
     uint64_t* grown;
+    uint64_t* grown_ids;
+    cxpr_series_requirement* grown_requirements;
     size_t next_count;
+    size_t i;
 
     if (!out) return 0;
+    for (i = 0u; i < out->count; ++i) {
+        if (out->requirement_ids[i] == requirement->requirement_id) return 1;
+    }
     next_count = out->count + 1u;
     grown = (uint64_t*)realloc(out->handles, next_count * sizeof(*grown));
     if (!grown) return 0;
     out->handles = grown;
+    grown_ids = (uint64_t*)realloc(out->requirement_ids, next_count * sizeof(*grown_ids));
+    if (!grown_ids) return 0;
+    out->requirement_ids = grown_ids;
+    grown_requirements = (cxpr_series_requirement*)realloc(
+        out->requirements, next_count * sizeof(*grown_requirements));
+    if (!grown_requirements) return 0;
+    out->requirements = grown_requirements;
     out->handles[out->count] = handle;
+    out->requirement_ids[out->count] = requirement->requirement_id;
+    out->requirements[out->count] = *requirement;
+    out->requirements[out->count].provider_name =
+        cxpr_source_plan_strdup(requirement->provider_name);
+    out->requirements[out->count].source_name =
+        cxpr_source_plan_strdup(requirement->source_name);
+    if (!out->requirements[out->count].provider_name ||
+        !out->requirements[out->count].source_name) return 0;
     out->count = next_count;
     return 1;
+}
+
+static int cxpr_source_plan_bindings_contains(
+    const cxpr_source_plan_bindings* bindings,
+    uint64_t requirement_id) {
+    size_t i;
+    if (!bindings) return 0;
+    for (i = 0u; i < bindings->count; ++i) {
+        if (bindings->requirement_ids[i] == requirement_id) return 1;
+    }
+    return 0;
 }
 
 static int cxpr_source_plan_collect_node_args(
@@ -514,30 +655,58 @@ static int cxpr_source_plan_collect_node_args(
 }
 
 static int cxpr_source_plan_bind_leaf_nodes(
+    const cxpr_provider* provider,
     const cxpr_source_plan_node* node,
     const double* plan_args,
     size_t plan_arg_count,
     cxpr_source_plan_bind_fn bind,
+    cxpr_series_requirement_bind_fn bind_requirement,
     void* userdata,
     cxpr_source_plan_bindings* out) {
     double* node_args = NULL;
     size_t node_arg_count = 0u;
     uint64_t handle = 0u;
     int ok;
+    const cxpr_provider_source_spec* source_spec;
+    cxpr_series_requirement requirement = {0};
 
-    if (!node || !bind || !out) return 0;
+    if (!provider || !node || (!bind && !bind_requirement) || !out) return 0;
     /* Source-input wrappers such as ema(close, 14) materialize from their
        child source; bind the leaf that actually selects the host series. */
     if (node->source) {
         return cxpr_source_plan_bind_leaf_nodes(
+            provider,
             node->source,
             plan_args,
             plan_arg_count,
             bind,
+            bind_requirement,
             userdata,
             out);
     }
     if (node->kind == CXPR_SOURCE_PLAN_INVALID) return 0;
+    if (cxpr_source_plan_bindings_contains(out, node->requirement_id)) return 1;
+
+    source_spec = cxpr_provider_source_spec_find(provider, node->name);
+    requirement.requirement_id = node->requirement_id;
+    requirement.provider_name = (char*)(provider->name ? provider->name : "");
+    requirement.source_name = node->name;
+    requirement.every.duration_ns = node->interval_duration_ns;
+    if (node->interval_value) {
+        snprintf(requirement.every.canonical, sizeof(requirement.every.canonical),
+                 "%s", node->interval_value);
+    }
+    requirement.value_type = node->value_type;
+    requirement.source_flags = source_spec ? source_spec->flags : 0u;
+    requirement.materialization = source_spec
+        ? source_spec->materialization
+        : CXPR_PROVIDER_MATERIALIZE_UNSPECIFIED;
+
+    if (bind_requirement) {
+        ok = bind_requirement(&requirement, &handle, userdata);
+        if (!ok) return 0;
+        return cxpr_source_plan_bindings_append(out, &requirement, handle);
+    }
 
     if (!cxpr_source_plan_collect_node_args(
             node,
@@ -550,21 +719,23 @@ static int cxpr_source_plan_bind_leaf_nodes(
     ok = bind(node, node_args, node_arg_count, &handle, userdata);
     free(node_args);
     if (!ok) return 0;
-    return cxpr_source_plan_bindings_append(out, handle);
+    return cxpr_source_plan_bindings_append(out, &requirement, handle);
 }
 
 static int cxpr_source_plan_bind_parsed_plan(
+    const cxpr_provider* provider,
     const cxpr_source_plan_ast* plan,
     const cxpr_context* ctx,
     const cxpr_registry* reg,
     cxpr_source_plan_bind_fn bind,
+    cxpr_series_requirement_bind_fn bind_requirement,
     void* userdata,
     cxpr_source_plan_bindings* out,
     cxpr_error* err) {
     double* plan_args = NULL;
     int ok;
 
-    if (!plan || !bind || !out) return 0;
+    if (!plan || (!bind && !bind_requirement) || !out) return 0;
     if (plan->arg_count > 0u) {
         plan_args = (double*)calloc(plan->arg_count, sizeof(*plan_args));
         if (!plan_args) return 0;
@@ -578,10 +749,12 @@ static int cxpr_source_plan_bind_parsed_plan(
         err);
     if (ok) {
         ok = cxpr_source_plan_bind_leaf_nodes(
+            provider,
             &plan->root,
             plan_args,
             plan->arg_count,
             bind,
+            bind_requirement,
             userdata,
             out);
     }
@@ -608,6 +781,7 @@ static int cxpr_plan_bind_sources_walk(
     const cxpr_context* ctx,
     const cxpr_registry* reg,
     cxpr_source_plan_bind_fn bind,
+    cxpr_series_requirement_bind_fn bind_requirement,
     void* userdata,
     cxpr_source_plan_bindings* out,
     cxpr_error* err) {
@@ -620,10 +794,12 @@ static int cxpr_plan_bind_sources_walk(
     if (cxpr_source_plan_should_parse_at_node(ast) &&
         cxpr_parse_provider_source_plan_ast(provider, ast, &plan)) {
         int ok = cxpr_source_plan_bind_parsed_plan(
+            provider,
             &plan,
             ctx,
             reg,
             bind,
+            bind_requirement,
             userdata,
             out,
             err);
@@ -633,10 +809,10 @@ static int cxpr_plan_bind_sources_walk(
 
     switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_BINARY_OP:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_binary_left(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_binary_right(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_binary_left(ast), ctx, reg, bind, bind_requirement, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_binary_right(ast), ctx, reg, bind, bind_requirement, userdata, out, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_unary_operand(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_unary_operand(ast), ctx, reg, bind, bind_requirement, userdata, out, err);
     case CXPR_NODE_FUNCTION_CALL:
         for (i = 0u; i < cxpr_expr_ast_call_arg_count(ast); ++i) {
             if (!cxpr_plan_bind_sources_walk(
@@ -645,6 +821,7 @@ static int cxpr_plan_bind_sources_walk(
                     ctx,
                     reg,
                     bind,
+                    bind_requirement,
                     userdata,
                     out,
                     err)) {
@@ -660,6 +837,7 @@ static int cxpr_plan_bind_sources_walk(
                     ctx,
                     reg,
                     bind,
+                    bind_requirement,
                     userdata,
                     out,
                     err)) {
@@ -668,12 +846,12 @@ static int cxpr_plan_bind_sources_walk(
         }
         return 1;
     case CXPR_NODE_INDEX:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_index_target(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_index_expression(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_index_target(ast), ctx, reg, bind, bind_requirement, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_index_expression(ast), ctx, reg, bind, bind_requirement, userdata, out, err);
     case CXPR_NODE_TERNARY:
-        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_condition(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_true(ast), ctx, reg, bind, userdata, out, err) &&
-               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_false(ast), ctx, reg, bind, userdata, out, err);
+        return cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_condition(ast), ctx, reg, bind, bind_requirement, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_true(ast), ctx, reg, bind, bind_requirement, userdata, out, err) &&
+               cxpr_plan_bind_sources_walk(provider, cxpr_expr_ast_ternary_false(ast), ctx, reg, bind, bind_requirement, userdata, out, err);
     default:
         return 1;
     }
@@ -696,7 +874,7 @@ int cxpr_plan_bind_sources(
     size_t i;
 
     if (out) memset(out, 0, sizeof(*out));
-    if (!provider || !expr || !config || !config->bind || !out) return 0;
+    if (!provider || !expr || !config || (!config->bind && !config->bind_requirement) || !out) return 0;
 
     if (reg && config->resolve) {
         source_specs = cxpr_provider_source_specs(provider, &source_count);
@@ -732,6 +910,7 @@ int cxpr_plan_bind_sources(
             ctx,
             reg,
             config->bind,
+            config->bind_requirement,
             config->userdata,
             &tmp,
             err)) {

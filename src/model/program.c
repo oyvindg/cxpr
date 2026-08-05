@@ -95,10 +95,38 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
         cxpr_model_history_spec_free(&program->history_specs[i]);
     }
     free(program->history_specs);
+    for (size_t i = 0; i < program->resample_requirement_count; ++i) {
+        free(program->resample_requirements[i].source_name);
+        free(program->resample_requirements[i].canonical);
+    }
+    free(program->resample_requirements);
     for (size_t i = 0; i < program->output_count; ++i) free(program->outputs[i]);
     free(program->outputs);
     if (program->owns_registry) cxpr_registry_free(program->registry);
     free(program);
+}
+
+size_t cxpr_model_compiled_resample_requirement_count(
+    const cxpr_model_compiled* program) {
+    return program ? program->resample_requirement_count : 0u;
+}
+
+const char* cxpr_model_compiled_resample_requirement_source(
+    const cxpr_model_compiled* program, size_t index) {
+    return program && index < program->resample_requirement_count
+        ? program->resample_requirements[index].source_name : NULL;
+}
+
+int64_t cxpr_model_compiled_resample_requirement_duration_ns(
+    const cxpr_model_compiled* program, size_t index) {
+    return program && index < program->resample_requirement_count
+        ? program->resample_requirements[index].duration_ns : 0;
+}
+
+const char* cxpr_model_compiled_resample_requirement_interval(
+    const cxpr_model_compiled* program, size_t index) {
+    return program && index < program->resample_requirement_count
+        ? program->resample_requirements[index].canonical : NULL;
 }
 
 bool cxpr_model_compiled_seed_defaults(const cxpr_model_compiled* program,

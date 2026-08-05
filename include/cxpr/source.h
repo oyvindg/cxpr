@@ -16,33 +16,13 @@
 #pragma once
 
 #include <cxpr/provider.h>
+#include <cxpr/resample.h>
+#include <cxpr/source_location.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * @brief Source position in a parsed cxpr document.
- *
- * Offsets and columns are zero-based. Lines are one-based so they match
- * existing cxpr diagnostics.
- */
-typedef struct {
-    size_t offset;
-    size_t line;
-    size_t column;
-} cxpr_source_pos;
-
-/**
- * @brief Half-open source span.
- *
- * `end` points one byte past the represented source range.
- */
-typedef struct {
-    cxpr_source_pos start;
-    cxpr_source_pos end;
-} cxpr_source_span;
 
 /**
  * @brief Kind of source-plan node parsed from an expression AST.
@@ -65,9 +45,13 @@ typedef enum {
 typedef struct cxpr_source_plan_node {
     cxpr_source_plan_kind kind; /**< Node kind. */
     uint64_t node_id;           /**< Stable hash derived from canonical node content. */
+    uint64_t requirement_id;    /**< Stable materialization id, excluding lookback. */
     char* name;                 /**< Source or provider function name, when applicable. */
     char* field_name;           /**< Selected record field, when applicable. */
     char* scope_value;          /**< Optional scope value, such as timeframe `1d` or warehouse `warehouse-a`. */
+    char* interval_value;       /**< Normalized resample interval, or NULL for non-temporal scopes. */
+    int64_t interval_duration_ns; /**< Fixed interval in nanoseconds, or zero when absent. */
+    cxpr_value_type value_type; /**< Materialized element type. */
     size_t arg_count;           /**< Number of numeric bound argument slots. */
     size_t* arg_slots;          /**< Slots into @ref cxpr_source_plan_ast::bound_arg_asts. */
     size_t lookback_slot;       /**< Bound lookback slot, or `SIZE_MAX` when absent. */
@@ -90,8 +74,10 @@ typedef struct {
  * materializable source-plan leaf to a concrete runtime handle.
  *
  * `node` is a parsed source-plan leaf owned by the temporary plan being walked.
- * Its structured fields (`name`, `field_name`, `scope_value`, `node_id`, kind)
- * are already separated by cxpr. `bound_args` contains this node's numeric
+ * Its structured fields (`name`, `field_name`, `scope_value`, interval metadata,
+ * `requirement_id`, `node_id`, and kind) are already separated by cxpr.
+ * `requirement_id` identifies the pre-bound generated input independently of
+ * expression lookbacks. `bound_args` contains this node's numeric
  * arguments after evaluating the node's bound argument ASTs against `ctx` and
  * `reg`; the array is borrowed and valid only for the duration of the call.
  *
@@ -105,6 +91,52 @@ typedef int (*cxpr_source_plan_bind_fn)(
     size_t arg_count,
     uint64_t* out_handle,
     void* userdata);
+
+/** @brief One owned, normalized provider series requirement. */
+typedef struct {
+    uint64_t requirement_id;        /**< Stable identity including provider, source, interval, and type. */
+    char* provider_name;            /**< Owned provider identity. */
+    char* source_name;              /**< Owned expression-visible source identity. */
+    cxpr_resample_interval every;   /**< Normalized interval; zeroed for unscoped sources. */
+    cxpr_value_type value_type;     /**< Required materialized element type. */
+    unsigned source_flags;          /**< Provider source capabilities captured during planning. */
+    cxpr_provider_materialization materialization; /**< Provider-declared materialization policy. */
+} cxpr_series_requirement;
+
+/* Requirement pointers passed to bind callbacks are borrowed and valid only
+ * for that call. Manifest entries returned in cxpr_source_plan_bindings own
+ * their strings and are immutable, so separate threads may inspect them after
+ * planning completes. Hosts own handle lifetime and synchronization. Provider
+ * metadata must remain alive and immutable for the entire planning call. */
+
+/** @brief Bind a normalized requirement during planning, never on the runtime hot path. */
+typedef int (*cxpr_series_requirement_bind_fn)(
+    const cxpr_series_requirement* requirement,
+    uint64_t* out_handle,
+    void* userdata);
+
+/**
+ * @brief Reference/fallback resolver for one pre-bound materialized series.
+ *
+ * `evaluation_time_ns` is event time. `evaluation_cursor` identifies the host
+ * evaluation row and is provided for hosts with precomputed alignment maps.
+ * `lookback` is relative to the selected materialized series, never the host
+ * evaluation stream. The callback is intended for tests and reference
+ * evaluation; generated C uses pre-bound arrays/slots instead.
+ */
+typedef int (*cxpr_series_value_resolve_fn)(
+    uint64_t handle,
+    const cxpr_series_requirement* requirement,
+    int64_t evaluation_time_ns,
+    size_t evaluation_cursor,
+    size_t lookback,
+    cxpr_value* out_value,
+    void* userdata);
+
+typedef struct {
+    cxpr_series_value_resolve_fn resolve; /**< Required reference resolver. */
+    void* userdata; /**< Host-owned state; host provides synchronization. */
+} cxpr_series_value_resolver;
 
 /**
  * @brief Resolve one scoped source handle to a numeric value during evaluation.
@@ -141,19 +173,31 @@ typedef struct {
     cxpr_source_plan_bind_fn bind; /**< Required plan-time source binder. */
     cxpr_scope_resolver_fn resolve; /**< Optional eval-time source resolver. */
     void* userdata; /**< Host-owned pointer passed to @ref bind and @ref resolve. */
+    cxpr_series_requirement_bind_fn bind_requirement; /**< Preferred normalized binder; optional for compatibility. */
 } cxpr_plan_config;
 
 /**
  * @brief Handles produced while binding source-plan leaves.
  *
- * `handles` is an owned array with `count` entries in traversal order. Release
- * it with @ref cxpr_free_source_plan_bindings. The handles themselves are
- * host-defined ids; cxpr only stores and returns them.
+ * `handles` and `requirement_ids` are owned parallel arrays with `count`
+ * deduplicated entries in first-use order. They form the planning manifest used
+ * to assign pre-bound generated-C/CUDA input slots; runtime callbacks are not
+ * required by that path. Release them with @ref cxpr_free_source_plan_bindings.
  */
 typedef struct {
     uint64_t* handles; /**< Owned host handles, one per bound source-plan leaf. */
     size_t count;      /**< Number of entries in @ref handles. */
+    uint64_t* requirement_ids; /**< Owned stable requirement ids parallel to handles. */
+    cxpr_series_requirement* requirements; /**< Owned inspectable manifest parallel to handles. */
 } cxpr_source_plan_bindings;
+
+/** Borrowed state used by the reference AST/IR evaluator for bound resamples. */
+typedef struct {
+    const cxpr_source_plan_bindings* bindings;
+    const cxpr_series_value_resolver* resolver;
+    int64_t evaluation_time_ns;
+    size_t evaluation_cursor;
+} cxpr_bound_series_evaluator;
 
 /**
  * @brief Static mapping entry used by @ref cxpr_plan_bind_sources_from_table.
@@ -258,6 +302,44 @@ void cxpr_free_source_plan_ast(cxpr_source_plan_ast* plan);
  * @param[in,out] bindings Bindings to clear. Safe to call on zero-initialized storage.
  */
 void cxpr_free_source_plan_bindings(cxpr_source_plan_bindings* bindings);
+
+/**
+ * @brief Validate a manifest for the scalar numeric generated-C/CUDA ABI.
+ *
+ * Version 1 does not transport records or vectors. Hosts must call this before
+ * constructing/uploading resample views so unsupported provider types fail at
+ * the binding boundary rather than being reinterpreted as doubles.
+ */
+int cxpr_validate_generated_resample_bindings(
+    const cxpr_source_plan_bindings* bindings,
+    cxpr_error* err);
+
+/**
+ * @brief Resolve one manifest entry for reference evaluation.
+ *
+ * On missing history, invalid manifest index, or a resolver miss, this returns
+ * zero and writes numeric NAN to `out_value`. Successful values retain the
+ * provider-declared type supplied by the resolver.
+ */
+int cxpr_resolve_bound_series_value(
+    const cxpr_source_plan_bindings* bindings,
+    size_t requirement_index,
+    const cxpr_series_value_resolver* resolver,
+    int64_t evaluation_time_ns,
+    size_t evaluation_cursor,
+    size_t lookback,
+    cxpr_value* out_value);
+
+/** AST callback for registering the cxpr-owned `resample` reference evaluator. */
+cxpr_value cxpr_eval_bound_resample(
+    const cxpr_expr_ast* call_ast, const cxpr_context* context,
+    const cxpr_registry* registry, void* userdata, cxpr_error* err);
+
+/** Lookback callback preserving target-series-relative indexing. */
+bool cxpr_eval_bound_resample_lookback(
+    const cxpr_expr_ast* target, const cxpr_expr_ast* index,
+    const cxpr_context* context, const cxpr_registry* registry,
+    void* userdata, cxpr_value* out_value, cxpr_error* err);
 
 #ifdef __cplusplus
 }

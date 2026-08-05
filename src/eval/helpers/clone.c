@@ -178,6 +178,55 @@ cxpr_expr_ast* cxpr_eval_clone_ast(const cxpr_expr_ast* ast) {
     return NULL;
 }
 
+static void cxpr_expr_ast_copy_spans(const cxpr_expr_ast* ast, cxpr_expr_ast* clone) {
+    if (!ast || !clone) return;
+    if (ast->has_source_span) {
+        clone->source_span = ast->source_span;
+        clone->has_source_span = true;
+    }
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            cxpr_expr_ast_copy_spans(ast->data.array.elements[i], clone->data.array.elements[i]);
+        break;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            cxpr_expr_ast_copy_spans(ast->data.record.field_values[i], clone->data.record.field_values[i]);
+        break;
+    case CXPR_NODE_FIELD_ACCESS:
+        cxpr_expr_ast_copy_spans(ast->data.field_access.base, clone->data.field_access.base);
+        break;
+    case CXPR_NODE_UNARY_OP:
+        cxpr_expr_ast_copy_spans(ast->data.unary_op.operand, clone->data.unary_op.operand);
+        break;
+    case CXPR_NODE_BINARY_OP:
+        cxpr_expr_ast_copy_spans(ast->data.binary_op.left, clone->data.binary_op.left);
+        cxpr_expr_ast_copy_spans(ast->data.binary_op.right, clone->data.binary_op.right);
+        break;
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
+            cxpr_expr_ast_copy_spans(ast->data.function_call.args[i], clone->data.function_call.args[i]);
+        break;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i)
+            cxpr_expr_ast_copy_spans(ast->data.producer_access.args[i], clone->data.producer_access.args[i]);
+        break;
+    case CXPR_NODE_INDEX:
+        cxpr_expr_ast_copy_spans(ast->data.index.target, clone->data.index.target);
+        cxpr_expr_ast_copy_spans(ast->data.index.index, clone->data.index.index);
+        break;
+    case CXPR_NODE_TERNARY:
+        cxpr_expr_ast_copy_spans(ast->data.ternary.condition, clone->data.ternary.condition);
+        cxpr_expr_ast_copy_spans(ast->data.ternary.true_branch, clone->data.ternary.true_branch);
+        cxpr_expr_ast_copy_spans(ast->data.ternary.false_branch, clone->data.ternary.false_branch);
+        break;
+    default:
+        break;
+    }
+}
+
 cxpr_expr_ast* cxpr_expr_ast_clone(const cxpr_expr_ast* ast) {
-    return cxpr_eval_clone_ast(ast);
+    cxpr_expr_ast* clone = cxpr_eval_clone_ast(ast);
+    cxpr_expr_ast_copy_spans(ast, clone);
+    return clone;
 }

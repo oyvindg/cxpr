@@ -358,8 +358,30 @@ fail:
     return false;
 }
 
+static cxpr_source_pos cxpr_expr_parser_token_end(const cxpr_expr_parser* p,
+                                                  const cxpr_token* token) {
+    cxpr_source_pos end;
+    size_t width = token->length;
+    if (token->type == CXPR_TOK_STRING) width += 2u;
+    else if (token->type == CXPR_TOK_VARIABLE) width += 1u;
+    end.offset = token->position;
+    end.line = token->line;
+    end.column = token->column ? token->column - 1u : 0u;
+    for (size_t i = 0u; i < width; ++i) {
+        const char ch = p->lexer.source[end.offset++];
+        if (ch == '\n') {
+            end.line++;
+            end.column = 0u;
+        } else {
+            end.column++;
+        }
+    }
+    return end;
+}
+
 cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
     cxpr_expr_ast* node = NULL;
+    const cxpr_token start_token = p->current;
     if (cxpr_expr_parser_check(p, CXPR_TOK_NUMBER)) {
         const double val = p->current.number_value;
         cxpr_expr_parser_advance(p);
@@ -625,6 +647,14 @@ primary_done:
             p->last_error.message = "Out of memory";
             return NULL;
         }
+    }
+    if (node) {
+        cxpr_source_span span;
+        span.start.offset = start_token.position;
+        span.start.line = start_token.line;
+        span.start.column = start_token.column ? start_token.column - 1u : 0u;
+        span.end = cxpr_expr_parser_token_end(p, &p->previous);
+        cxpr_expr_ast_set_source_span(node, span);
     }
     return node;
 }

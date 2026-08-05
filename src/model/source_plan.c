@@ -6,7 +6,12 @@ static bool cxpr_model_source_bindings_append(cxpr_source_plan_bindings* out,
                                               const cxpr_source_plan_bindings* part,
                                               cxpr_error* err) {
     uint64_t* grown;
+    uint64_t* grown_ids;
+    cxpr_series_requirement* grown_requirements;
+    size_t old_count;
+    size_t i;
     if (!out || !part || part->count == 0u) return true;
+    old_count = out->count;
     grown = (uint64_t*)realloc(out->handles,
                                (out->count + part->count) * sizeof(uint64_t));
     if (!grown) {
@@ -14,7 +19,33 @@ static bool cxpr_model_source_bindings_append(cxpr_source_plan_bindings* out,
         return false;
     }
     out->handles = grown;
+    grown_ids = (uint64_t*)realloc(out->requirement_ids,
+        (old_count + part->count) * sizeof(uint64_t));
+    if (!grown_ids) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    out->requirement_ids = grown_ids;
+    grown_requirements = (cxpr_series_requirement*)realloc(out->requirements,
+        (old_count + part->count) * sizeof(cxpr_series_requirement));
+    if (!grown_requirements) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    out->requirements = grown_requirements;
     memcpy(out->handles + out->count, part->handles, part->count * sizeof(uint64_t));
+    memcpy(out->requirement_ids + out->count, part->requirement_ids,
+           part->count * sizeof(uint64_t));
+    for (i = 0u; i < part->count; ++i) {
+        cxpr_series_requirement* dst = &out->requirements[old_count + i];
+        *dst = part->requirements[i];
+        dst->provider_name = cxpr_strdup(part->requirements[i].provider_name);
+        dst->source_name = cxpr_strdup(part->requirements[i].source_name);
+        if (!dst->provider_name || !dst->source_name) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+    }
     out->count += part->count;
     return true;
 }
@@ -48,7 +79,8 @@ bool cxpr_model_plan_bind_sources(const cxpr_model* model,
 
     if (err) *err = (cxpr_error){0};
     if (out) memset(out, 0, sizeof(*out));
-    if (!model || !provider || !ctx || !config || !config->bind || !out) {
+    if (!model || !provider || !ctx || !config ||
+        (!config->bind && !config->bind_requirement) || !out) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid model source plan arguments", 0, 0);
         return false;
     }

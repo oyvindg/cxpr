@@ -91,6 +91,16 @@ add_dependencies(test_generated_history_parity generate_cxpr_history_function)
 target_include_directories(test_generated_history_parity PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}")
 
+add_executable(cxpr_generated_resample_codegen_tool generated_resample_codegen_tool.c)
+target_link_libraries(cxpr_generated_resample_codegen_tool PRIVATE cxpr)
+set(CXPR_GENERATED_RESAMPLE_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated_resample_function.h")
+add_custom_command(OUTPUT "${CXPR_GENERATED_RESAMPLE_HEADER}"
+    COMMAND $<TARGET_FILE:cxpr_generated_resample_codegen_tool> "${CXPR_GENERATED_RESAMPLE_HEADER}"
+    DEPENDS cxpr_generated_resample_codegen_tool VERBATIM)
+add_custom_target(generate_cxpr_resample_function DEPENDS "${CXPR_GENERATED_RESAMPLE_HEADER}")
+add_dependencies(test_generated_resample_parity generate_cxpr_resample_function)
+target_include_directories(test_generated_resample_parity PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
 find_package(Threads REQUIRED)
 target_link_libraries(test_history PRIVATE Threads::Threads)
 

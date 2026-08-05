@@ -396,6 +396,21 @@ static void test_parse_model_use_comma_list_from_namespace(void) {
     printf("  ✓ test_parse_model_use_comma_list_from_namespace\n");
 }
 
+static void test_parse_model_use_single_from_nested_namespace(void) {
+    cxpr_model* model = parse_model_ok(
+        "model single_nested_use\n"
+        "use ltf from indicators/strategy\n"
+        "in close\n"
+        "out close\n");
+
+    assert(cxpr_model_use_count(model) == 1);
+    assert(strcmp(cxpr_model_use(model, 0), "indicators/strategy/ltf") == 0);
+    assert(cxpr_model_use_alias(model, 0) == NULL);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_model_use_single_from_nested_namespace\n");
+}
+
 static void test_model_validate_use_files_checks_missing_targets(void) {
     cxpr_error err = {0};
     char model_path[1024];
@@ -4479,6 +4494,7 @@ int main(void) {
     test_parse_model_use_alias();
     test_parse_model_use_group_from_namespace();
     test_parse_model_use_comma_list_from_namespace();
+    test_parse_model_use_single_from_nested_namespace();
     test_model_validate_use_files_checks_missing_targets();
     test_model_resolve_uses_calls_host_callback();
     test_parse_model_statement_metadata_block();

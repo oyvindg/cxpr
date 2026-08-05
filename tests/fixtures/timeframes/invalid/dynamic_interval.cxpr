@@ -1,0 +1,3 @@
+model invalid_dynamic_interval
+in { close, interval }
+out value = resample(close, every=interval)

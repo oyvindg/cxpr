@@ -12,7 +12,15 @@
 // source, `ema` is a source-input function, and `atr` is a scoped indicator with
 // one numeric bound argument.
 static const cxpr_provider_scope_spec timeframe_scope = {"timeframe", true};
-static const cxpr_provider_source_spec close_source = {"close", 0u, 1u, &timeframe_scope};
+static const cxpr_provider_source_spec close_source = {
+    .name = "close",
+    .min_args = 0u,
+    .max_args = 1u,
+    .scope = &timeframe_scope,
+    .value_type = CXPR_VALUE_NUMBER,
+    .flags = CXPR_PROVIDER_SOURCE_RESAMPLE,
+    .materialization = CXPR_PROVIDER_MATERIALIZE_LAST,
+};
 static const cxpr_provider_source_spec* const sources[] = {&close_source};
 static const cxpr_provider_param_descriptor ema_params[] = {{"period"}};
 static const cxpr_provider_param_descriptor atr_params[] = {{"period"}};
@@ -434,10 +442,289 @@ static void test_plan_bind_sources_from_table_maps_name_and_scope(void) {
     cxpr_expr_parser_free(parser);
 }
 
+static void test_resample_requirement_matches_legacy_timeframe(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* legacy_ast;
+    cxpr_expr_ast* positional_ast;
+    cxpr_expr_ast* named_ast;
+    cxpr_expr_ast* lookback_ast;
+    cxpr_source_plan_ast legacy = {0};
+    cxpr_source_plan_ast positional = {0};
+    cxpr_source_plan_ast named = {0};
+    cxpr_source_plan_ast lookback = {0};
+    cxpr_source_plan_ast other_provider_plan = {0};
+    cxpr_provider other_provider = provider;
+
+    assert(parser != NULL);
+    legacy_ast = parse_or_die(parser, "close(timeframe=\"1h\")");
+    positional_ast = parse_or_die(parser, "resample(close, \"1h\")");
+    named_ast = parse_or_die(parser, "resample(close, every=\"1h\")");
+    lookback_ast = parse_or_die(parser, "resample(close, every=\"1h\")[1]");
+
+    assert(cxpr_parse_provider_source_plan_ast(&provider, legacy_ast, &legacy));
+    assert(cxpr_parse_provider_source_plan_ast(&provider, positional_ast, &positional));
+    assert(cxpr_parse_provider_source_plan_ast(&provider, named_ast, &named));
+    assert(cxpr_parse_provider_source_plan_ast(&provider, lookback_ast, &lookback));
+
+    /* Migration parity: both spellings describe the same host requirement. */
+    assert(legacy.root.kind == CXPR_SOURCE_PLAN_FIELD);
+    assert(positional.root.kind == CXPR_SOURCE_PLAN_FIELD);
+    assert(strcmp(legacy.root.name, "close") == 0);
+    assert(strcmp(legacy.root.scope_value, "1h") == 0);
+    assert(strcmp(legacy.root.interval_value, "1h") == 0);
+    assert(legacy.root.interval_duration_ns == INT64_C(3600000000000));
+    assert(strcmp(positional.root.interval_value, legacy.root.interval_value) == 0);
+    assert(positional.root.interval_duration_ns == legacy.root.interval_duration_ns);
+    assert(positional.root.node_id == legacy.root.node_id);
+    assert(named.root.node_id == legacy.root.node_id);
+    assert(strcmp(positional.canonical, legacy.canonical) == 0);
+    assert(strcmp(named.canonical, legacy.canonical) == 0);
+
+    /* The interval requirement stays equal, while lookback remains series-relative. */
+    assert(lookback.root.lookback_slot != SIZE_MAX);
+    assert(strcmp(lookback.root.interval_value, "1h") == 0);
+    assert(lookback.root.interval_duration_ns == legacy.root.interval_duration_ns);
+    assert(lookback.root.node_id != legacy.root.node_id);
+    other_provider.name = "other_provider";
+    assert(cxpr_parse_provider_source_plan_ast(
+        &other_provider, positional_ast, &other_provider_plan));
+    assert(other_provider_plan.root.requirement_id != positional.root.requirement_id);
+    assert(other_provider_plan.root.node_id == positional.root.node_id);
+
+    cxpr_free_source_plan_ast(&other_provider_plan);
+    cxpr_free_source_plan_ast(&lookback);
+    cxpr_free_source_plan_ast(&named);
+    cxpr_free_source_plan_ast(&positional);
+    cxpr_free_source_plan_ast(&legacy);
+    cxpr_expr_ast_free(lookback_ast);
+    cxpr_expr_ast_free(named_ast);
+    cxpr_expr_ast_free(positional_ast);
+    cxpr_expr_ast_free(legacy_ast);
+    cxpr_expr_parser_free(parser);
+}
+
+static void test_resample_requirements_are_deduplicated_across_syntax(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* ast;
+    cxpr_source_plan_bindings bindings = {0};
+    bind_capture capture = {0};
+    cxpr_plan_config config = {.bind = capture_bind, .userdata = &capture};
+    cxpr_error err = {0};
+
+    assert(parser != NULL);
+    ast = parse_or_die(parser,
+        "close(timeframe=\"1h\") + resample(close, every=\"1h\") + "
+        "resample(close, \"1h\")[1]");
+    assert(cxpr_plan_bind_sources(
+        &provider, ast, NULL, NULL, &config, &bindings, &err));
+    assert(capture.call_count == 1u);
+    assert(bindings.count == 1u);
+    assert(bindings.handles[0] == 12u);
+    assert(bindings.requirement_ids[0] != 0u);
+
+    cxpr_free_source_plan_bindings(&bindings);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
+}
+
+typedef struct {
+    size_t calls;
+    uint64_t id;
+} requirement_capture;
+
+static int capture_requirement_bind(
+    const cxpr_series_requirement* requirement,
+    uint64_t* out_handle,
+    void* userdata) {
+    requirement_capture* capture = (requirement_capture*)userdata;
+    assert(requirement != NULL);
+    assert(strcmp(requirement->provider_name, "source_plan_bind_test") == 0);
+    assert(strcmp(requirement->source_name, "close") == 0);
+    assert(strcmp(requirement->every.canonical, "1h") == 0);
+    assert(requirement->every.duration_ns == INT64_C(3600000000000));
+    assert(requirement->value_type == CXPR_VALUE_NUMBER);
+    assert((requirement->source_flags & CXPR_PROVIDER_SOURCE_RESAMPLE) != 0u);
+    assert(requirement->materialization == CXPR_PROVIDER_MATERIALIZE_LAST);
+    capture->calls++;
+    capture->id = requirement->requirement_id;
+    *out_handle = 501u;
+    return 1;
+}
+
+static void test_normalized_requirement_binder_and_owned_manifest(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* ast = parse_or_die(parser, "resample(close, every=\"1h\")[1]");
+    cxpr_source_plan_bindings bindings = {0};
+    requirement_capture capture = {0};
+    cxpr_plan_config config = {
+        .bind_requirement = capture_requirement_bind,
+        .userdata = &capture,
+    };
+    cxpr_error err = {0};
+
+    assert(cxpr_plan_bind_sources(
+        &provider, ast, NULL, NULL, &config, &bindings, &err));
+    assert(capture.calls == 1u);
+    assert(bindings.count == 1u);
+    assert(bindings.handles[0] == 501u);
+    assert(bindings.requirement_ids[0] == capture.id);
+    assert(bindings.requirements[0].requirement_id == capture.id);
+    assert(strcmp(bindings.requirements[0].provider_name, "source_plan_bind_test") == 0);
+    assert(strcmp(bindings.requirements[0].source_name, "close") == 0);
+    assert(strcmp(bindings.requirements[0].every.canonical, "1h") == 0);
+
+    /* Manifest strings remain owned by bindings after the temporary plan dies. */
+    cxpr_expr_ast_free(ast);
+    assert(strcmp(bindings.requirements[0].source_name, "close") == 0);
+    cxpr_free_source_plan_bindings(&bindings);
+    cxpr_expr_parser_free(parser);
+}
+
+typedef struct {
+    const int64_t* timestamps;
+    const double* values;
+    size_t count;
+    size_t last_evaluation_cursor;
+} timed_series;
+
+static int resolve_timed_series(
+    uint64_t handle,
+    const cxpr_series_requirement* requirement,
+    int64_t evaluation_time_ns,
+    size_t evaluation_cursor,
+    size_t lookback,
+    cxpr_value* out_value,
+    void* userdata) {
+    timed_series* series = (timed_series*)userdata;
+    size_t selected = SIZE_MAX;
+    size_t i;
+
+    assert(handle == 501u);
+    assert(strcmp(requirement->source_name, "close") == 0);
+    series->last_evaluation_cursor = evaluation_cursor;
+    /* Contract fixture: timestamps are monotonic. Greatest timestamp <= event
+       time aligns the row, and the last duplicate wins. */
+    for (i = 0u; i < series->count && series->timestamps[i] <= evaluation_time_ns; ++i) {
+        selected = i;
+    }
+    if (selected == SIZE_MAX) return 0;
+    while (lookback > 0u) {
+        int64_t current_time = series->timestamps[selected];
+        while (selected > 0u && series->timestamps[selected - 1u] == current_time) --selected;
+        if (selected == 0u) return 0;
+        --selected;
+        --lookback;
+    }
+    *out_value = cxpr_num(series->values[selected]);
+    return 1;
+}
+
+static void test_reference_resolver_alignment_lookback_and_missing_history(void) {
+    const int64_t hour = INT64_C(3600000000000);
+    const int64_t timestamps[] = {0, hour, hour, 2 * hour};
+    const double values[] = {9.0, 10.0, 11.0, 12.0};
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* ast = parse_or_die(parser, "resample(close, \"1h\")");
+    cxpr_source_plan_bindings bindings = {0};
+    requirement_capture bind_capture = {0};
+    cxpr_plan_config config = {
+        .bind_requirement = capture_requirement_bind,
+        .userdata = &bind_capture,
+    };
+    timed_series series = {timestamps, values, CXPR_ARRAY_COUNT(values), 0u};
+    cxpr_series_value_resolver resolver = {resolve_timed_series, &series};
+    cxpr_value value = cxpr_num(0.0);
+    cxpr_error err = {0};
+
+    assert(cxpr_plan_bind_sources(
+        &provider, ast, NULL, NULL, &config, &bindings, &err));
+    assert(cxpr_resolve_bound_series_value(
+        &bindings, 0u, &resolver, hour + hour / 2, 17u, 0u, &value));
+    assert(value.type == CXPR_VALUE_NUMBER && value.d == 11.0);
+    assert(series.last_evaluation_cursor == 17u);
+    assert(cxpr_resolve_bound_series_value(
+        &bindings, 0u, &resolver, hour + hour / 2, 18u, 1u, &value));
+    assert(value.d == 9.0);
+    assert(!cxpr_resolve_bound_series_value(
+        &bindings, 0u, &resolver, hour / 2, 19u, 1u, &value));
+    assert(value.type == CXPR_VALUE_NUMBER && isnan(value.d));
+
+    {
+        cxpr_source_plan_bindings incomplete = {.count = 1u};
+        cxpr_bound_series_evaluator invalid = {
+            .bindings = &incomplete, .resolver = &resolver,
+        };
+        err = (cxpr_error){0};
+        value = cxpr_eval_bound_resample(ast, NULL, NULL, &invalid, &err);
+        assert(isnan(value.d));
+        assert(err.code == CXPR_ERR_SYNTAX);
+        assert(strstr(err.message, "requirements and handles") != NULL);
+    }
+
+    {
+        cxpr_expr_ast* expression = parse_or_die(
+            parser, "resample(close, \"1h\") + resample(close, \"1h\")[1]");
+        cxpr_registry* registry = cxpr_registry_new();
+        cxpr_context* context = cxpr_context_new();
+        cxpr_expr_compiled* compiled;
+        cxpr_bound_series_evaluator evaluator = {
+            .bindings = &bindings,
+            .resolver = &resolver,
+            .evaluation_time_ns = hour + hour / 2,
+            .evaluation_cursor = 20u,
+        };
+        cxpr_value tree = {0}, ir = {0};
+        assert(registry && context);
+        cxpr_registry_add_ast(registry, "resample", cxpr_eval_bound_resample,
+                              2u, 2u, CXPR_VALUE_NUMBER, &evaluator, NULL);
+        cxpr_registry_set_lookback_resolver(
+            registry, cxpr_eval_bound_resample_lookback, &evaluator, NULL);
+        compiled = cxpr_expr_compile(expression, registry, &err);
+        assert(compiled);
+        assert(cxpr_eval_ast(expression, context, registry, &tree, &err));
+        assert(cxpr_expr_compiled_eval(compiled, context, registry, &ir, &err));
+        assert(tree.d == 20.0 && ir.d == tree.d);
+        evaluator.evaluation_time_ns = hour / 2;
+        assert(cxpr_eval_ast(expression, context, registry, &tree, &err));
+        assert(isnan(tree.d));
+        cxpr_expr_compiled_free(compiled);
+        cxpr_context_free(context);
+        cxpr_registry_free(registry);
+        cxpr_expr_ast_free(expression);
+    }
+
+    cxpr_free_source_plan_bindings(&bindings);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
+}
+
+static void test_generated_backend_rejects_record_and_vector_requirements(void) {
+    cxpr_series_requirement requirements[1] = {{0}};
+    cxpr_source_plan_bindings bindings = {
+        .count = 1u,
+        .requirements = requirements,
+    };
+    cxpr_error err = {0};
+    requirements[0].value_type = CXPR_VALUE_NUMBER;
+    assert(cxpr_validate_generated_resample_bindings(&bindings, &err));
+    requirements[0].value_type = CXPR_VALUE_STRUCT;
+    assert(!cxpr_validate_generated_resample_bindings(&bindings, &err));
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+    assert(strstr(err.message, "record/vector") != NULL);
+    requirements[0].value_type = CXPR_VALUE_ARRAY;
+    assert(!cxpr_validate_generated_resample_bindings(&bindings, &err));
+    assert(strstr(err.message, "scalar numeric") != NULL);
+}
+
 int main(void) {
     test_plan_bind_sources_uses_callback_for_source_plan_leaves();
     test_plan_bound_sources_resolve_against_bars();
     test_plan_bind_sources_from_table_maps_name_and_scope();
+    test_resample_requirement_matches_legacy_timeframe();
+    test_resample_requirements_are_deduplicated_across_syntax();
+    test_normalized_requirement_binder_and_owned_manifest();
+    test_reference_resolver_alignment_lookback_and_missing_history();
+    test_generated_backend_rejects_record_and_vector_requirements();
     printf("source plan bind tests passed\n");
     return 0;
 }

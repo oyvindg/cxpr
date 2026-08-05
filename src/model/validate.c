@@ -1,5 +1,6 @@
 #include "model/internal.h"
 #include "registry/internal.h"
+#include <cxpr/resample.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -505,6 +506,10 @@ bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
     }
 
     for (size_t i = 0; i < model->constant_count; ++i) {
+        if (!cxpr_resample_validate_ast(model->constants[i].expr, err)) {
+            cxpr_registry_free(function_registry);
+            return false;
+        }
         if (!cxpr_model_validate_expr_refs(
                 model,
                 model->constants[i].expr,
@@ -518,6 +523,15 @@ bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
+        if (!cxpr_resample_validate_ast(model->bindings[i].expr, err)) {
+            if (err && model->bindings[i].has_span) {
+                err->position = model->bindings[i].span.start.offset;
+                err->line = model->bindings[i].span.start.line;
+                err->column = model->bindings[i].span.start.column;
+            }
+            cxpr_registry_free(function_registry);
+            return false;
+        }
         if (!cxpr_model_validate_expr_refs(
                 model,
                 model->bindings[i].expr,
@@ -539,6 +553,11 @@ bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
             return false;
         }
         for (size_t f = 0; f < model->record_functions[i].field_count; ++f) {
+            if (!cxpr_resample_validate_ast(model->record_functions[i].fields[f].expr, err)) {
+                free(local_refs);
+                cxpr_registry_free(function_registry);
+                return false;
+            }
             if (!cxpr_model_validate_function_expr_refs(
                     model,
                     &model->record_functions[i],

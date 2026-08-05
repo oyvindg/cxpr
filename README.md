@@ -19,6 +19,9 @@ source resolution, scheduling, and policy. The same language can therefore
 describe a control rule, a scientific calculation, a game entity, an SLO
 condition, or a trading signal without adding those domains to `cxpr`.
 
+See [provider-backed resampling](docs/resample.md) for fixed-duration series,
+requirement manifests, host integration, and timeframe migration.
+
 ```cxpr
 # robotics
 stable = imu_ok and abs(roll) <= $max_roll

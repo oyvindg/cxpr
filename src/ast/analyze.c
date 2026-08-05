@@ -7,6 +7,7 @@
 #include "core.h"
 #include "registry/internal.h"
 #include "call/args.h"
+#include <cxpr/resample.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -178,13 +179,24 @@ static cxpr_expr_type cxpr_expr_ast_analyze_node(const cxpr_expr_ast* ast,
             return (ast->data.unary_op.op == CXPR_TOK_NOT) ? CXPR_EXPR_BOOL : left_type;
         case CXPR_NODE_FUNCTION_CALL: {
             cxpr_func_entry* entry = NULL;
+            cxpr_expr_type first_arg_type = CXPR_EXPR_UNKNOWN;
             out->uses_functions = true;
             out->is_constant = false;
 
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
-                (void)cxpr_expr_ast_analyze_node(
+                cxpr_expr_type arg_type = cxpr_expr_ast_analyze_node(
                     ast->data.function_call.args[i], state, depth + 1, lookback_depth, ok);
+                if (i == 0u) first_arg_type = arg_type;
                 if (!*ok) return CXPR_EXPR_UNKNOWN;
+            }
+
+            if (strcmp(ast->data.function_call.name, "resample") == 0) {
+                cxpr_resample_call parsed;
+                if (!cxpr_resample_call_parse(ast, &parsed, state->err)) {
+                    *ok = false;
+                    return CXPR_EXPR_UNKNOWN;
+                }
+                return first_arg_type;
             }
 
             if (state->reg) {

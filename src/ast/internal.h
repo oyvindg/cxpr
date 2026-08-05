@@ -11,6 +11,8 @@
 /** @brief Internal owned AST node representation. */
 struct cxpr_expr_ast {
     cxpr_expr_ast_kind type;
+    cxpr_source_span source_span;
+    bool has_source_span;
     cxpr_expr_compiled* compiled_cache;
     const struct cxpr_registry* compiled_registry;
     unsigned long compiled_registry_version;
@@ -122,6 +124,8 @@ struct cxpr_expr_ast {
         } ternary;
     } data;
 };
+
+void cxpr_expr_ast_set_source_span(cxpr_expr_ast* ast, cxpr_source_span span);
 
 /**
  * @brief Internal constructor for a numeric literal node.

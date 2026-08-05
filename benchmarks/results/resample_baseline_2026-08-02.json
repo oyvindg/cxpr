@@ -1,0 +1,47 @@
+{
+  "schema": "cxpr-resample-benchmark/v2",
+  "timestamp_utc": "2026-08-02T13:29:30Z",
+  "build_type": "Release",
+  "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\n",
+  "cpu": "AMD Ryzen 7 5800H with Radeon Graphics\n",
+  "gpu": "CUDA-capable runner; model/driver not recorded",
+  "sample_count": 4096,
+  "evaluation_count": 500000,
+  "trial_count": 9,
+  "planning_repetitions": 1000,
+  "cpu_regression_gate_percent": 15,
+  "host_allocations": null,
+  "host_peak_memory_bytes": null,
+  "generated_artifact_bytes": 2860,
+  "workloads": ["one_interval_current", "one_interval_lookback_1", "nested_indicator", "repeated_deduplicated", "multiple_intervals", "warmup_gap", "non_trading_path"],
+  "cpu_metrics": {
+    "scoped_ast": {"median_ns": 116.50, "p95_ns": 121.36, "throughput_per_s": 8583690.99},
+    "resample_ast": {"median_ns": 138.66, "p95_ns": 147.17, "throughput_per_s": 7211885.19},
+    "scoped_ir": {"median_ns": 32.31, "p95_ns": 34.14, "throughput_per_s": 30950170.23},
+    "resample_ir": {"median_ns": 29.06, "p95_ns": 31.20, "throughput_per_s": 34411562.28},
+    "generated_abi": {"median_ns": 0.86, "p95_ns": 0.92, "throughput_per_s": 1162790697.67},
+    "uncached_repeated": {"median_ns": 1.66, "p95_ns": 1.70, "throughput_per_s": 602409638.55},
+    "cse_repeated": {"median_ns": 1.34, "p95_ns": 1.35, "throughput_per_s": 746268656.72}
+  },
+  "cuda": {
+    "parity": "passed",
+    "view_count": 3,
+    "kernel_launches": 10000,
+    "transfer_repetitions": 10000,
+    "transfer_ns_per_three_view_set": 39530.39,
+    "kernel_ns_per_evaluation": 3555.03,
+    "fixture_device_bytes": 313,
+    "covered": [
+      "current",
+      "lookback_1",
+      "warmup",
+      "gap",
+      "multiple_intervals",
+      "finalized_bucket_no_lookahead",
+      "non_trading_path"
+    ],
+    "gpu_model": null,
+    "driver_version": null
+  },
+  "raw": "resample backend benchmark (500000 evaluations, ns/eval)\n  scoped timeframe AST     117.84\n  resample AST             140.01\n  scoped timeframe IR       33.60\n  resample IR               28.88\n  generated C/CUDA ABI       0.86\nrepeated pre-bound load workload (volatile memory contract, ns/eval)\n  uncached 2x current+2x [1]     1.66\n  CSE locals current/[1]         1.31\nplanning parse+compile+generate  49480.58 ns/model\ngenerated C artifact size           2860 bytes\n"
+}

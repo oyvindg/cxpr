@@ -1,0 +1,2 @@
+model invalid_non_source
+out value = resample(1 + 2, every="1h")

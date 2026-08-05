@@ -8,6 +8,66 @@
 #include "ir/compile/internal.h"
 #include "lookback.h"
 #include "model/internal.h"
+#include <cxpr/resample.h>
+#include <stdlib.h>
+#include <string.h>
+
+static bool cxpr_model_collect_resamples_ast(cxpr_model_compiled* program,
+                                             const cxpr_expr_ast* ast,
+                                             cxpr_error* err) {
+    cxpr_resample_call call = {0};
+    size_t i;
+    if (!ast) return true;
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_expr_ast_call_name(ast) &&
+        strcmp(cxpr_expr_ast_call_name(ast), "resample") == 0) {
+        const char* source_name;
+        cxpr_model_resample_requirement* grown;
+        if (!cxpr_resample_call_parse(ast, &call, err) || !call.source ||
+            cxpr_expr_ast_kind_of(call.source) != CXPR_NODE_IDENTIFIER) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Generated resample requires an identifier source", 0, 0);
+            return false;
+        }
+        source_name = cxpr_expr_ast_identifier_name(call.source);
+        for (i = 0; i < program->resample_requirement_count; ++i) {
+            if (program->resample_requirements[i].duration_ns == call.every.duration_ns &&
+                cxpr_model_names_match(program->resample_requirements[i].source_name,
+                                       source_name)) return true;
+        }
+        grown = realloc(program->resample_requirements,
+                        (program->resample_requirement_count + 1u) * sizeof(*grown));
+        if (!grown) return false;
+        program->resample_requirements = grown;
+        grown += program->resample_requirement_count++;
+        *grown = (cxpr_model_resample_requirement){
+            .source_name = cxpr_strdup(source_name),
+            .duration_ns = call.every.duration_ns,
+            .canonical = cxpr_strdup(call.every.canonical),
+        };
+        return grown->source_name && grown->canonical;
+    }
+    switch (cxpr_expr_ast_kind_of(ast)) {
+    case CXPR_NODE_FUNCTION_CALL:
+        for (i = 0; i < cxpr_expr_ast_call_arg_count(ast); ++i)
+            if (!cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_call_arg(ast, i), err)) return false;
+        break;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_binary_left(ast), err) &&
+               cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_binary_right(ast), err);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_unary_operand(ast), err);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_index_target(ast), err) &&
+               cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_index_expression(ast), err);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_ternary_condition(ast), err) &&
+               cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_ternary_true(ast), err) &&
+               cxpr_model_collect_resamples_ast(program, cxpr_expr_ast_ternary_false(ast), err);
+    default: break;
+    }
+    return true;
+}
 #include "model/window/window.h"
 #include "registry/internal.h"
 #include <cxpr/source.h>
@@ -1902,6 +1962,16 @@ compile_outputs:
         }
     }
 
+    for (size_t i = 0u; i < program->constant_count; ++i) {
+        if (!cxpr_model_collect_resamples_ast(program, program->constants[i].ast, err)) goto resample_fail;
+    }
+    for (size_t i = 0u; i < program->state_default_count; ++i) {
+        if (!cxpr_model_collect_resamples_ast(program, program->state_defaults[i].ast, err)) goto resample_fail;
+    }
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        if (!cxpr_model_collect_resamples_ast(program, program->bindings[i].ast, err)) goto resample_fail;
+    }
+
     if (!cxpr_model_compiled_select_backend(program, model, compile_reg, &compile_options, err)) {
         cxpr_model_compiled_free(program);
         for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
@@ -1922,4 +1992,10 @@ compile_outputs:
     }
     if (err) err->code = CXPR_OK;
     return program;
+
+resample_fail:
+    cxpr_model_compiled_free(program);
+    for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+    free(inferred_inputs);
+    return NULL;
 }

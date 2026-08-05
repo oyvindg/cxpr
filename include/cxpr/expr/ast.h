@@ -8,6 +8,7 @@
 
 #include <cxpr/token.h>
 #include <cxpr/types.h>
+#include <cxpr/source_location.h>
 #include <stdio.h>
 
 #ifdef __cplusplus
@@ -191,6 +192,13 @@ typedef struct {
  * @return Node tag for `ast`.
  */
 cxpr_expr_ast_kind cxpr_expr_ast_kind_of(const cxpr_expr_ast* ast);
+/**
+ * @brief Read the source span assigned by the expression parser.
+ * @param ast AST node to inspect.
+ * @param out_span Receives a half-open span when available.
+ * @return true when the node originated from parsed source, otherwise false.
+ */
+bool cxpr_expr_ast_source_span(const cxpr_expr_ast* ast, cxpr_source_span* out_span);
 /**
  * @brief Return the numeric payload of a number literal node.
  * @param ast Number node to inspect.

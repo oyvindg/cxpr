@@ -766,6 +766,7 @@ static bool cxpr_model_collect_ast_functions(const cxpr_model* model, const cxpr
     const char* used[256];
     size_t used_count = cxpr_expr_ast_functions_used(ast, used, CXPR_ARRAY_COUNT(used));
     for (size_t i = 0; i < used_count && i < CXPR_ARRAY_COUNT(used); ++i) {
+        if (strcmp(used[i], "resample") == 0) continue;
         if (cxpr_model_has_function_def(model, used[i])) continue;
         if (!cxpr_model_string_set_add(names, count, used[i])) return false;
     }

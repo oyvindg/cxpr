@@ -51,6 +51,9 @@ target_sources(cxpr_bench_ir PRIVATE ${CXPR_BENCH_IR_MODEL_INCLUDES})
 add_executable(cxpr_bench_engine engine_bench.c)
 target_link_libraries(cxpr_bench_engine PRIVATE cxpr)
 
+add_executable(cxpr_bench_resample resample_bench.c)
+target_link_libraries(cxpr_bench_resample PRIVATE cxpr)
+
 set(CXPR_BENCH_INDEX_HISTORY_HEADER
     "${CMAKE_CURRENT_BINARY_DIR}/index_history_generated.h")
 set(CXPR_BENCH_PRODUCER_HISTORY_HEADER
