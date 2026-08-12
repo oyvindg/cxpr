@@ -59,11 +59,11 @@ static void assert_models_have_same_public_shape(const cxpr_model* left,
 static void test_manifest_document_accepts_host_blocks_without_model(void) {
     const char* source =
         "project {\n"
-        "  name = \"dynasty\"\n"
+        "  name = \"example_host\"\n"
         "  language = \"c\"\n"
         "}\n"
         "vsix {\n"
-        "  recommended = [\"dynasty.cxpr-tools\"]\n"
+        "  recommended = [\"example.cxpr-tools\"]\n"
         "}\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_manifest(source, &err);
@@ -79,10 +79,10 @@ static void test_manifest_document_accepts_host_blocks_without_model(void) {
     vsix = cxpr_doc_host_block(document, "vsix");
     assert(project != NULL);
     assert(vsix != NULL);
-    assert(strcmp(cxpr_host_block_field_value_by_key(project, "name"), "\"dynasty\"") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(project, "name"), "\"example_host\"") == 0);
     assert(strcmp(cxpr_host_block_field_value_by_key(project, "language"), "\"c\"") == 0);
     assert(strcmp(cxpr_host_block_field_value_by_key(vsix, "recommended"),
-                  "[\"dynasty.cxpr-tools\"]") == 0);
+                  "[\"example.cxpr-tools\"]") == 0);
 
     cxpr_doc_free(document);
     printf("  ✓ test_manifest_document_accepts_host_blocks_without_model\n");
@@ -105,7 +105,7 @@ static void test_manifest_document_rejects_model_syntax_without_extension(void) 
 
 static void test_document_model_extension_exposes_model_view(void) {
     const char* source =
-        "project { name = \"dynasty\" }\n"
+        "project { name = \"example_host\" }\n"
         "model strategy\n"
         "in { close }\n"
         "signal = close > 0\n"
@@ -136,7 +136,7 @@ static void test_document_model_extension_exposes_model_view(void) {
     assert(cxpr_doc_host_block_count(document) == 1u);
     assert(strcmp(cxpr_host_block_field_value_by_key(
                       cxpr_doc_host_block(document, "project"), "name"),
-                  "\"dynasty\"") == 0);
+                  "\"example_host\"") == 0);
 
     cxpr_doc_free(document);
     printf("  ✓ test_document_model_extension_exposes_model_view\n");
@@ -273,7 +273,7 @@ static void test_document_ast_exposes_compact_initial_state_update(void) {
 
 static void test_parse_document_ast_preserves_block_shapes(void) {
     const char* source =
-        "project { name = \"dynasty\" }\n"
+        "project { name = \"example_host\" }\n"
         "model strategy { source_arg = \"close\" }\n"
         "${ fast = 12, slow = 26 { min = 10, max = 80 } }\n"
         "state {\n"
@@ -670,7 +670,7 @@ static void test_document_ast_lowering_handles_record_function_block(void) {
 
 static void test_document_model_exposes_semantic_source_spans(void) {
     const char* source =
-        "project { name = \"dynasty\" }\n"
+        "project { name = \"example_host\" }\n"
         "model strategy\n"
         "use indicators/rsi as rsi_lib\n"
         "in { close }\n"
@@ -720,7 +720,7 @@ static void test_document_model_exposes_semantic_source_spans(void) {
 
 static void test_document_ast_function_body_host_fields_and_visitor(void) {
     const char* source =
-        "project { name = \"dynasty\", language = \"c\" }\n"
+        "project { name = \"example_host\", language = \"c\" }\n"
         "model strategy\n"
         "fn impulse(src, base, threshold) {\n"
         "  delta = src - base\n"
@@ -855,7 +855,7 @@ static void test_load_document_file_is_primary_entrypoint(void) {
     const cxpr_model_host_block* tooling;
 
     assert(file != NULL);
-    fputs("tooling { cli = \"dyn_cli\" }\n", file);
+    fputs("tooling { cli = \"example_cli\" }\n", file);
     fclose(file);
 
     document = cxpr_doc_load_manifest(path, &err);
@@ -863,7 +863,7 @@ static void test_load_document_file_is_primary_entrypoint(void) {
     assert(err.code == CXPR_OK);
     tooling = cxpr_doc_host_block(document, "tooling");
     assert(tooling != NULL);
-    assert(strcmp(cxpr_host_block_field_value_by_key(tooling, "cli"), "\"dyn_cli\"") == 0);
+    assert(strcmp(cxpr_host_block_field_value_by_key(tooling, "cli"), "\"example_cli\"") == 0);
 
     cxpr_doc_free(document);
     unlink(path);

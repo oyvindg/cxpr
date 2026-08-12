@@ -2,28 +2,31 @@
 
 model vec2_math_demo
 
-use vec2
+use geometry2d as g
 
 in {
-    point_a,
-    point_b,
-    direction,
-    normal,
+    point_a_x,
+    point_a_y,
+    direction_x,
+    direction_y,
+    normal_x,
+    normal_y,
     max_delta
 }
 
-delta = point_a - point_b
-distance_value = distance(point_a, point_b)
-dot_value = dot(point_a, point_b)
-normalized = normalize(delta)
-reflected = reflect(direction, normal)
-moved = move_towards(point_a, point_b, max_delta)
-constructed = vec2(7, 9)
+point_a = g.vec2(point_a_x, point_a_y)
+direction = g.vec2(direction_x, direction_y)
+normal = g.vec2(normal_x, normal_y)
+delta = point_a - g.vec2(0, 0)
+distance_value = g.distance(point_a, g.vec2(0, 0))
+dot_value = g.dot(point_a, g.vec2(0, 0))
+normalized = g.normalize(delta)
+reflected = g.reflect(direction, normal)
+constructed = g.vec2(7, 9)
 
 out delta as vector_difference
 out distance_value as euclidean_distance
 out dot_value as dot_product
 out normalized as unit_vector
 out reflected as reflection
-out moved as bounded_motion
 out constructed as vec2_constructor

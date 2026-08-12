@@ -1,7 +1,7 @@
 # Host-neutral scale fixture
 
 `large_host_neutral.cxpr` is a standalone CXPR graph extracted from the graph
-shapes exercised by Dynasty, without Dynasty headers, callbacks, or trading
+shapes exercised by a production host, without host headers, callbacks, or domain
 vocabulary. It intentionally provides:
 
 - more than 50 named expressions;
@@ -11,7 +11,7 @@ vocabulary. It intentionally provides:
 - named parameters with deterministic defaults.
 
 The fixture is the shared input for standalone engine/generated-C parity and
-benchmark coverage. Keep domain integration assertions in Dynasty instead of
+benchmark coverage. Keep domain integration assertions in the embedding host instead of
 adding host concepts here.
 
 ## Reproduce parity and metrics

@@ -133,14 +133,6 @@ cxpr_model* cxpr_model_parse(const char* source, cxpr_error* err);
 /** @brief Free a document returned by any cxpr document parse/load API. */
 void cxpr_doc_free(cxpr_doc* document);
 
-/**
- * @brief Transfer the semantic model out of a parsed model document.
- *
- * Returns NULL for NULL, manifest-only, or already-drained documents. The
- * caller owns the returned model and must free it with @ref cxpr_model_free.
- */
-cxpr_model* cxpr_doc_take_model(cxpr_doc* document);
-
 /** @brief Return the number of top-level host blocks in @p document. */
 size_t cxpr_doc_host_block_count(const cxpr_doc* document);
 

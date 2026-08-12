@@ -47,8 +47,6 @@ int main(void) {
     assert(strstr(source, "sample(close).doubled[1]") != NULL);
     assert(strstr(source, "close[dynamic_offset]") != NULL);
     assert(strstr(source, "close[1][2]") != NULL);
-    assert(strstr(source, "bounds = \"ERROR\"") != NULL);
-    assert(strstr(source, "bounds = \"CLAMP_FIRST\"") != NULL);
     assert(strstr(source, "source[-1]") != NULL);
     cxpr_model_free(model);
     free(source);

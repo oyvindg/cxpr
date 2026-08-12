@@ -5,7 +5,7 @@ the build, executes the generated descriptor for 512 deterministic ticks, and
 compares every output with `cxpr_model_session`.
 
 The host bindings are generic numeric columns (`input_a`, `input_b`, and
-`clock`). No Dynasty, market-data, indicator, or trading API is part of the
+`clock`). No application-specific data, indicator, or policy API is part of the
 CXPR interface.
 
 From the repository root:

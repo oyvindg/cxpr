@@ -15,7 +15,7 @@ extern "C" {
 /**
  * @brief Options for graph manifest generation.
  *
- * The graph manifest is renderer-neutral. Cytoscape, dyn GUI, or any other
+ * The graph manifest is renderer-neutral. Cytoscape or any other
  * host can map the emitted nodes and edges to its own visual model.
  */
 typedef struct cxpr_graph_plugin_options {

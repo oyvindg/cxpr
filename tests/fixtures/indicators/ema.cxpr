@@ -1,4 +1,4 @@
-# Snapshot of dyn/cxpr/indicators/ema.cxpr used for standalone CXPR coverage.
+# Standalone EMA fixture used for CXPR coverage.
 
 model ema {
     type = "indicator"

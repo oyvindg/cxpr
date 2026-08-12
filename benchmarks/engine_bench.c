@@ -4,7 +4,7 @@
  *   1. basic     - per-bar expressions, no lookback.
  *   2. lookback  - expressions with close[3]/high[1] plus a registered fn.
  *
- * The low-level path mirrors how a host (dyn) drives the evaluator by hand. For
+ * The low-level path mirrors how a host drives the evaluator by hand. For
  * the lookback scenario it must also install its own lookback resolver and track
  * the cursor — exactly the boilerplate the engine absorbs. Each scenario asserts
  * both paths detect the same number of RISING signals (engine-vs-low-level

@@ -193,9 +193,9 @@ timestamp alignment without host-specific logic in cxpr.
 - [x] Document ownership and thread-safety of handles and materialized storage.
 - [x] Expose a typed provider-backed `bars` source for whole-record OHLCV
   requirements used by multi-source indicators.
-- [x] Add Dynasty binding of normalized requirements to existing materialized
+- [x] Add downstream-host binding of normalized requirements to existing materialized
   timeframe handles without expression scanning.
-- [x] Run the defined Dynasty ATR/ADX parity test for
+- [x] Run the defined downstream ATR/ADX parity test for
   `resample(bars, every="1h")` after the shared build is available.
 
 ### 6. Lookback semantics
@@ -264,7 +264,7 @@ timestamp alignment without host-specific logic in cxpr.
 - [x] Explicitly reject record/vector series until their CUDA ABI is defined.
 - [x] Add CPU versus CUDA parity for current value, `[1]`, warmup, gaps, and
   multiple intervals.
-- [x] Remove Dynasty's current one-extra-timeframe CUDA limitation only after
+- [x] Remove the downstream host's one-extra-timeframe CUDA limitation only after
   the generic manifest supports multiple requirements.
 - [x] Materialize one CUDA input buffer per unique `(symbol, requirement id)` so
   a strategy can consume primary bars plus 5m, 1h, 1d, or other intervals in
@@ -280,16 +280,16 @@ timestamp alignment without host-specific logic in cxpr.
   provider explicitly declares a different safe policy.
 - [x] Include the ordered requirement manifest (ids, value types, buffers, and
   alignment maps) in CUDA cache keys and generated kernel signatures.
-- [x] Add a Dynasty CUDA fixture with 30m primary, 5m execution, 1h trend, and
+- [x] Add a downstream CUDA fixture with 30m primary, 5m execution, 1h trend, and
   1d regime inputs, including boundary ticks around HTF completion. A runnable
-  NVRTC/GPU focus target exists as `test_dyn_cuda_resample_runtime`, but this
+  NVRTC/GPU focus target exists downstream, but this
   item remains open until its device launch succeeds on a CUDA host.
 
-### 10. Dynasty parity and migration
+### 10. Downstream parity and migration
 
-- [x] Reuse Dynasty's existing symbol `.cxpr` and feed builder to materialize
+- [x] Reuse the downstream host's existing symbol configuration and feed builder to materialize
   requested series.
-- [x] Adapt Dynasty's provider to bind normalized cxpr requirements instead of
+- [x] Adapt the downstream provider to bind normalized cxpr requirements instead of
   scanning expressions for timeframe strings.
 - [x] Compare `close(timeframe="1h")` with
   `resample(close, every="1h")` on identical bars.
@@ -349,10 +349,10 @@ timestamp alignment without host-specific logic in cxpr.
 - Production CPU execution uses generated C with no provider callback in the
   evaluation hot path.
 - Existing scoped-timeframe and `resample` forms produce equivalent bound
-  requirements for Dynasty trading sources.
+  requirements for downstream temporal sources.
 - `[1]` resolves the previous target-series sample on CPU and CUDA.
 - `rsi(resample(close, every="1h"), 14)` has parity with today's pre-aggregated
-  Dynasty timeframe implementation.
+  downstream pre-aggregated timeframe implementation.
 - At least one non-trading scalar fixture has evaluator/IR/C/CUDA parity.
 - Unsupported record/vector resampling fails explicitly rather than silently
   changing semantics.

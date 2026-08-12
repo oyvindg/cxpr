@@ -179,8 +179,8 @@ bool cxpr_model_resolve_uses(const cxpr_model* model,
 /**
  * @brief Validate that every model `use` path resolves to an existing .cxpr file.
  *
- * Paths are resolved relative to @p model_path. `indicators/...` imports also
- * probe ancestor `libs/dyn/cxpr/...` directories to match cxpr codegen tooling.
+ * Paths are resolved relative to @p model_path. Hosts that need additional
+ * search roots should use the explicit import resolver APIs.
  */
 bool cxpr_model_validate_use_files(const cxpr_model* model,
                                    const char* model_path,

@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Shared AST typecheck pass** exposed via `<cxpr/typecheck.h>`. `cxpr_compile`,
-  tree eval, bool eval, C codegen, engine watches, basket folds, and dyn CUDA
+  tree eval, bool eval, C codegen, engine watches, basket folds, and CUDA
   lowering now share the same bool/numeric rules before backend execution.
 - **Literal lookback IR resolution** for `expr[n]`. Literal and nested literal
   lookbacks compile to `LOOKBACK_RESOLVE` instead of the generic `CALL_AST`

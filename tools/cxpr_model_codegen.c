@@ -5,6 +5,7 @@
 #include <string.h>
 
 static char* resolve_import_path_for_model(const char* dir, const char* use_name);
+static const char* import_dir_override;
 
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
@@ -122,59 +123,6 @@ static int file_exists(const char* path) {
     if (!f) return 0;
     fclose(f);
     return 1;
-}
-
-static char* join_dyn_cxpr_import_path(const char* root,
-                                       const char* namespace_prefix,
-                                       const char* use_name) {
-    size_t root_len = strlen(root);
-    size_t use_len = strlen(use_name);
-    int need_slash = root_len > 0u && root[root_len - 1u] != '/';
-    int has_suffix = use_len > 5u && strcmp(use_name + use_len - 5u, ".cxpr") == 0;
-    size_t prefix_len = namespace_prefix ? strlen(namespace_prefix) : 0u;
-    size_t len = root_len + (need_slash ? 1u : 0u) +
-                 strlen("libs/dyn/cxpr/") + prefix_len + use_len +
-                 (has_suffix ? 0u : 5u) + 1u;
-    char* out = (char*)malloc(len);
-    if (!out) return NULL;
-    snprintf(out, len, "%s%slibs/dyn/cxpr/%s%s%s",
-             root, need_slash ? "/" : "", namespace_prefix ? namespace_prefix : "",
-             use_name, has_suffix ? "" : ".cxpr");
-    return out;
-}
-
-static char* resolve_dyn_cxpr_import_from_ancestors(const char* dir,
-                                                    const char* namespace_prefix,
-                                                    const char* use_name) {
-    char* cursor = xstrdup(dir ? dir : ".");
-    if (!cursor) return NULL;
-    for (;;) {
-        char* candidate =
-            join_dyn_cxpr_import_path(cursor, namespace_prefix, use_name);
-        if (!candidate) {
-            free(cursor);
-            return NULL;
-        }
-        if (file_exists(candidate)) {
-            free(cursor);
-            return candidate;
-        }
-        free(candidate);
-        if (strcmp(cursor, ".") == 0 || strcmp(cursor, "/") == 0) break;
-        char* parent = path_dirname(cursor);
-        if (!parent) {
-            free(cursor);
-            return NULL;
-        }
-        if (strcmp(parent, cursor) == 0) {
-            free(parent);
-            break;
-        }
-        free(cursor);
-        cursor = parent;
-    }
-    free(cursor);
-    return NULL;
 }
 
 static int string_list_contains(char* const* values, size_t count, const char* value) {
@@ -408,6 +356,7 @@ static void usage(const char* argv0) {
     fprintf(stderr,
             "usage: %s --model <model.cxpr> [--output <out.c>] "
             "[--meta-output <out.json>] [--graph-output <out.json>] "
+            "[--import-dir <directory>] "
             "[--function <name>] [--qualifiers <text>] "
             "[--outputs <name[,name...]>] [--specialize-defaults]\n",
             argv0);
@@ -531,12 +480,11 @@ static char* resolve_import_path_for_model(const char* dir, const char* use_name
         return path;
     }
     free(path);
-    if (strncmp(use_name, "indicators/", strlen("indicators/")) == 0) {
-        path = resolve_dyn_cxpr_import_from_ancestors(dir, "", use_name);
-        if (path) return path;
+    if (import_dir_override) {
+        path = join_import_path(import_dir_override, use_name);
+        if (!path || file_exists(path)) return path;
+        free(path);
     }
-    path = resolve_dyn_cxpr_import_from_ancestors(dir, "indicators/", use_name);
-    if (path) return path;
     return join_import_path(dir, use_name);
 }
 
@@ -861,6 +809,8 @@ int main(int argc, char** argv) {
             meta_output_path = argv[++i];
         } else if (strcmp(argv[i], "--graph-output") == 0 && i + 1 < argc) {
             graph_output_path = argv[++i];
+        } else if (strcmp(argv[i], "--import-dir") == 0 && i + 1 < argc) {
+            import_dir_override = argv[++i];
         } else if (strcmp(argv[i], "--function") == 0 && i + 1 < argc) {
             function_name = argv[++i];
         } else if (strcmp(argv[i], "--qualifiers") == 0 && i + 1 < argc) {

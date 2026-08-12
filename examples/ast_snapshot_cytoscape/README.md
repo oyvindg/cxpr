@@ -51,7 +51,7 @@ To demonstrate host-owned metadata without coupling cxpr to a specific host,
 write a snapshot with the optional host hooks enabled:
 
 The emitted `host` objects are opaque to cxpr and can be used by a host such as
-dyn to attach roles, source locations, strategy sections, or domain metrics.
+an embedding host to attach roles, source locations, sections, or domain metrics.
 The HTML page's Metadata selector loads matching host-demo snapshots named
 `snapshot.<scenario>.host.json`:
 

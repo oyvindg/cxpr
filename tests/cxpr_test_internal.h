@@ -141,6 +141,9 @@ typedef struct {
     cxpr_typed_func_ptr typed_func;
     cxpr_expr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
+    cxpr_struct_codegen_ptr struct_codegen;
+    void* struct_codegen_userdata;
+    cxpr_userdata_free_fn struct_codegen_userdata_free;
     cxpr_expr_ast_func_ptr model_producer;
     void* model_producer_userdata;
     cxpr_expr_ast_func_ptr ast_func_handler;

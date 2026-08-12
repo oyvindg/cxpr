@@ -167,6 +167,14 @@ static bool import_compile(
         const char* child_use = cxpr_model_use(model, i);
         if (!import_compile(builder, id, child_use, &child, err)) goto fail;
         if (!child) continue;
+        if (child->function_only) {
+            char* prefixed = import_prepend_source(
+                child->source, combined ? combined : source);
+            if (!prefixed) goto oom;
+            free(combined);
+            combined = prefixed;
+            continue;
+        }
         grown = (cxpr_model_import*)realloc(
             direct, (direct_count + 1u) * sizeof(*direct));
         if (!grown) goto oom;
@@ -177,13 +185,6 @@ static bool import_compile(
                 : child_use;
         direct[direct_count].program = child->program;
         direct_count++;
-        if (child->function_only) {
-            char* prefixed = import_prepend_source(
-                child->source, combined ? combined : source);
-            if (!prefixed) goto oom;
-            if (combined) free(combined);
-            combined = prefixed;
-        }
     }
     if (combined) {
         cxpr_model_free(model);

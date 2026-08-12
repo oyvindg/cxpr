@@ -1497,7 +1497,7 @@ static void test_validate_rejects_unknown_references(void) {
 
     assert(!cxpr_model_validate(model, &err));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Expression references unknown symbol") == 0);
+    assert(strcmp(err.message, "Expression references unknown symbol 'missing'") == 0);
 
     cxpr_model_free(model);
     printf("  ✓ test_validate_rejects_unknown_references\n");

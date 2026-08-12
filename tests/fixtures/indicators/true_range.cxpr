@@ -1,4 +1,4 @@
-# Snapshot of dyn/cxpr/indicators/true_range.cxpr used for standalone CXPR coverage.
+# Standalone true-range fixture used for CXPR coverage.
 
 model true_range {
     type = "indicator"

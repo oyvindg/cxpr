@@ -491,13 +491,13 @@ static void test_builtin_delta_and_roc_use_lookback(void) {
     ast = parse_or_die(parser, "roc(close, 2)");
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
-    ASSERT_DOUBLE_EQ(out, 15.0 / 105.0);
+    ASSERT_DOUBLE_EQ(out, (15.0 / 105.0) * 100.0);
     cxpr_expr_ast_free(ast);
 
     ast = parse_or_die(parser, "roc(base, 1)");
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
-    assert(isnan(out));
+    ASSERT_DOUBLE_EQ(out, 0.0);
     cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);

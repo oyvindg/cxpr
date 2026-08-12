@@ -1503,9 +1503,19 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
         program->registry->version++;
         if (child->registry) {
             for (size_t f = 0u; f < child->registry->count; ++f) {
+                const cxpr_func_entry* imported_entry = &child->registry->entries[f];
+                if (!cxpr_model_import_entry_is_namespaced(imported_entry) &&
+                    imported_entry->name &&
+                    !cxpr_registry_find(program->registry, imported_entry->name)) {
+                    /* Imported expression functions may depend on core builtins.
+                       Re-register known cxpr defaults, but never copy arbitrary
+                       host callbacks across the import boundary. */
+                    (void)cxpr_register_default_named(
+                        program->registry, imported_entry->name);
+                }
                 if (!cxpr_model_register_imported_defined_function(
                         program, namespace_name, child->registry,
-                        &child->registry->entries[f], err)) {
+                        imported_entry, err)) {
                     return false;
                 }
             }

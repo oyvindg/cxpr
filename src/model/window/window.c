@@ -3,7 +3,6 @@
 #include "eval/internal.h"
 #include "lookback.h"
 
-#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>

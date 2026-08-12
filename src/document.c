@@ -1410,7 +1410,8 @@ cxpr_model* cxpr_model_parse(const char* source, cxpr_error* err) {
     cxpr_doc* document = cxpr_doc_parse_model(source, err);
     cxpr_model* model;
     if (!document) return NULL;
-    model = cxpr_doc_take_model(document);
+    model = document->model;
+    document->model = NULL;
     cxpr_doc_free(document);
     return model;
 }
@@ -1420,16 +1421,6 @@ void cxpr_doc_free(cxpr_doc* document) {
     cxpr_doc_ast_free(document->syntax);
     cxpr_model_free(document->model);
     free(document);
-}
-
-cxpr_model* cxpr_doc_take_model(cxpr_doc* document) {
-    cxpr_model* model;
-    if (!document || (document->extensions & CXPR_DOC_EXTENSION_MODEL) == 0u) {
-        return NULL;
-    }
-    model = document->model;
-    document->model = NULL;
-    return model;
 }
 
 const cxpr_doc_ast* cxpr_doc_ast_view(const cxpr_doc* document) {

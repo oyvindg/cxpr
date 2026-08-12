@@ -1,6 +1,6 @@
 Subject: [DEFERRED] migrate 5m/30m breakaway fixture to resample
 
-Do not apply until Dynasty CUDA manifest parity is green. This candidate keeps
+Do not apply until the downstream CUDA manifest parity is green. This candidate keeps
 the provider-owned 30m materialization and changes expression syntax only.
 
 --- a/tests/configs/strategies/bollinger_kst_adx_confirmed_breakaway_5m.yaml

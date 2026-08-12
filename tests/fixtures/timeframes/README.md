@@ -44,5 +44,5 @@ form can be deprecated.
 The scoped form is therefore still supported and is not deprecated yet. Hosts
 should report an unbound requirement explicitly in reference evaluation, and
 generated targets validate missing value/alignment buffers before execution.
-Strategy migration remains gated on Dynasty CUDA manifest parity; CPU parity
+Host migration remains gated on CUDA manifest parity; CPU parity
 alone is not sufficient to replace active strategy syntax.

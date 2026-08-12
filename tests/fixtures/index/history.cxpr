@@ -1,7 +1,7 @@
-# Generic historical-source syntax contract for plan 71.
-# This fixture is parse-only until core-owned history bindings and explicit
-# bounds policies are implemented. Offsets are non-negative: source[-1] is
-# future temporal access and must be rejected, never interpreted as an array.
+# Generic historical-source syntax contract.
+# Offsets are non-negative: source[-1] is future temporal access and must be
+# rejected, never interpreted as an array. Hosts configure bounds policy when
+# binding a history source.
 
 model history_index_examples
 
@@ -26,15 +26,9 @@ field_previous = sample(close).doubled[1]
 dynamic_previous = close[dynamic_offset]
 nested_previous = close[1][2]
 
-# Metadata records the intended host-neutral policy. ERROR is the generic
-# default; CLAMP_FIRST is an explicit compatibility policy for Dynasty.
-out source_current {
-    history { bounds = "ERROR", future = "REJECT" }
-}
-out source_previous {
-    history { bounds = "CLAMP_FIRST", compatibility = "dynasty" }
-}
 out {
+    source_current,
+    source_previous,
     compound_previous,
     alias_previous,
     function_previous,

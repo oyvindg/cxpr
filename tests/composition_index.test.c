@@ -46,9 +46,6 @@ int main(void) {
     assert(strstr(source, "sensor[history_offset]") != NULL);
     assert(strstr(source, "path[distance]") != NULL);
     assert(strstr(source, "(path[distance]).x") != NULL);
-    assert(strstr(source, "capability = \"array\"") != NULL);
-    assert(strstr(source, "capability = \"history\"") != NULL);
-    assert(strstr(source, "capability = \"extension\"") != NULL);
     cxpr_model_free(model);
     free(source);
     puts("cxpr index composition fixture tests passed.");

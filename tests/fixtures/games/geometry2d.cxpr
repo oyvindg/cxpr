@@ -1,4 +1,4 @@
-# Host-neutral Vec2 helpers implemented entirely with native cxpr expressions.
+# Host-neutral 2D geometry helpers implemented entirely with native cxpr expressions.
 # Struct arithmetic matches fields by name, so `a - b` yields `{x, y}`.
 
 fn vec2(x, y) = x, y

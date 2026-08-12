@@ -182,8 +182,7 @@ ticks, and reproducible ns/tick metrics. The benchmark output is a single
 key/value record suitable for CI artifact capture; timing remains
 informational rather than a pass/fail threshold.
 
-Dynasty is a downstream integration and is not part of the CXPR API. Its
-market-data and strategy semantics remain in the downstream host.
+Application-specific data and policy remain in the embedding host.
 
 ## Expression language
 
@@ -566,8 +565,8 @@ use indicators/ema as ema_lib
 
 Library callers can resolve imports explicitly with
 `cxpr_model_compile_with_imports*` or the import bundle APIs. The
-`cxpr_model_codegen` tool resolves adjacent `.cxpr` imports and also probes
-ancestor `libs/dyn/cxpr/` directories for project integrations.
+`cxpr_model_codegen` resolves adjacent `.cxpr` imports. Library callers can
+provide additional search policy through the explicit import resolver APIs.
 
 Imports are resolved before model execution. Runtime expression parsing is not
 required for generated-model consumers.

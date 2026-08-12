@@ -1,4 +1,4 @@
-# Realistic standalone scale fixture derived from Dyn graph shapes, with all
+# Realistic standalone scale fixture derived from application graph shapes, with all
 # host/domain concepts replaced by generic typed columns and model state.
 
 model large_host_neutral

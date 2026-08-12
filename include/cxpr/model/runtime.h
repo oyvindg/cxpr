@@ -1,7 +1,7 @@
 #ifndef CXPR_MODEL_RUNTIME_H
 #define CXPR_MODEL_RUNTIME_H
 
-#if defined(DYN_CUDA_SOURCE_COMPOSED)
+#if defined(CXPR_CUDA_SOURCE_COMPOSED)
 typedef unsigned long size_t;
 #ifndef NAN
 #define NAN (0.0 / 0.0)
@@ -22,7 +22,7 @@ typedef unsigned long size_t;
 #endif
 
 #ifndef CXPR_MODEL_RUNTIME_LINKAGE
-#if defined(DYN_CUDA_SOURCE_COMPOSED)
+#if defined(CXPR_CUDA_SOURCE_COMPOSED)
 #define CXPR_MODEL_RUNTIME_LINKAGE static __device__ inline
 #else
 #define CXPR_MODEL_RUNTIME_LINKAGE static inline
