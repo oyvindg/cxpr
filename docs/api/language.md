@@ -172,6 +172,12 @@ record/struct at every intermediate segment. Indexing an array returns its
 element value; invalid container types and invalid fields are errors rather
 than implicit conversions.
 
+Compilation rejects every mismatch that can be proven from literals, operator
+results, array elements, record fields, and registered function signatures.
+Values supplied by a host or another model can remain statically unknown; the
+same checks are then enforced when the expression is evaluated. Unknown is not
+a runtime value type and does not permit a known incompatible value to pass.
+
 There is currently no accepted declaration type grammar such as `: number`,
 `series<T>`, or `buffer<T, samples=N>`. The files
 `tests/fixtures/syntax/typed_model_declarations*.cxpr` explicitly describe a
