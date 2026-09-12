@@ -92,6 +92,28 @@ The main types are:
 | `cxpr_engine_program` | Immutable plan for the optional rule-engine layer |
 | `cxpr_engine_session` | Mutable cursor, history, source, and watch state |
 
+## Public API documentation
+
+The [public API index](docs/api/README.md) is the code-aligned reference for
+the installed C headers and the `.cxpr` language. Start with the surface that
+matches the integration:
+
+| Goal | Documentation |
+| --- | --- |
+| Author `.cxpr` expressions and models | [Language reference](docs/api/language.md) |
+| Parse, inspect, or execute expressions | [Expressions](docs/api/expressions.md) and [execution](docs/api/execution.md) |
+| Parse, compile, and run complete models | [Documents and models](docs/api/documents-models.md) |
+| Run stateful host-driven rules | [Engine](docs/api/engine.md) |
+| Deploy generated native evaluators | [Generated C](docs/api/generated-c.md) |
+| Execute arrays, grids, and CUDA host kernels | [Bulk and grid](docs/api/bulk.md) |
+| Bind host data and explicit resampling | [Providers, sources, and resampling](docs/api/providers-sources-resample.md) |
+| Emit C, CUDA, graph, metadata, or debug artifacts | [Plugins and code generation](docs/api/plugins-codegen.md) |
+| Check lifetimes and compatibility | [Ownership, threading, and versioning](docs/api/ownership-threading-versioning.md) |
+
+This README is an overview and introduction. Where it conflicts with an
+installed declaration, the public header and its implementation are
+authoritative; the API pages are audited against those sources.
+
 ## Build
 
 ```bash
@@ -741,7 +763,7 @@ Generated variants can:
 - emit a stable `cxpr_generated_model_descriptor` containing names, counts,
   defaults, state size, and tick callbacks.
 
-Generated descriptor ABI version 3 supports at most 64 inputs, 64 outputs, and
+Generated descriptor ABI version 4 supports at most 64 inputs, 64 outputs, and
 64 public parameters. Consumers must validate descriptors with
 `cxpr_generated_model_descriptor_abi_valid`.
 
