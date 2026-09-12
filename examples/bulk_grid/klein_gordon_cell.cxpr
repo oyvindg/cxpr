@@ -1,0 +1,14 @@
+model klein_gordon_cell
+
+in { phi, momentum, phi_left, phi_right }
+$dt = 0.001
+$dx = 0.01
+$mass = 1.0
+
+laplacian = (phi_left - 2.0 * phi + phi_right) / ($dx * $dx)
+next_momentum = momentum + $dt * (laplacian - $mass * $mass * phi)
+next_phi = phi + $dt * next_momentum
+energy_density = 0.5 * next_momentum * next_momentum
+    + 0.5 * $mass * $mass * next_phi * next_phi
+
+out { next_phi, next_momentum, energy_density }

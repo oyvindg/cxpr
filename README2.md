@@ -41,6 +41,7 @@ evaluators for hot loops.
 | Named inputs, state, functions, or several outputs | Model API |
 | Rising/falling events over a sequence | Engine API |
 | Fixed model with minimal runtime work | Generated C |
+| Run one generated model over host-owned buffers | Bulk API |
 | Metadata, graph, debug map, or CUDA source | Plugin API |
 
 ## Embed with CMake

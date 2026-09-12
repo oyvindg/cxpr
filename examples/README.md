@@ -10,6 +10,8 @@ This folder contains longer examples that are useful for understanding how `cxpr
   Test: [`../tests/examples/robotics.test.c`](../tests/examples/robotics.test.c)
 - [`physics.md`](physics.md): analytical expressions and struct-based field access
   Test: [`../tests/examples/physics.test.c`](../tests/examples/physics.test.c)
+- [`bulk_grid/`](bulk_grid/): host-owned grid data evaluated by generated
+  scalar `.cxpr` models through the generic bulk API
 - [`scientific.md`](scientific.md): interdependent expressions resolved in topological
   order across relativity, quantum mechanics, and chemistry
   Test: [`../tests/examples/scientific.test.c`](../tests/examples/scientific.test.c)
