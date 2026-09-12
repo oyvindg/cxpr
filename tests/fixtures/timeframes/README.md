@@ -33,16 +33,16 @@ Until lowering is implemented, `multi_domain.cxpr` is an AST syntax fixture.
 The contract test intentionally verifies parsing and expression shape without
 claiming runtime/codegen support prematurely.
 
-Planned parity coverage will bind the same pre-aggregated series through both:
+Parity coverage binds the same pre-aggregated series through both:
 
 - the existing scoped form, for example `close(timeframe="1h")`; and
 - the canonical composable form, `resample(close, "1h")`.
 
-The two forms must produce identical source plans and values before the scoped
-form can be deprecated.
+The two forms produce identical source plans and values. New and migrated host
+expressions must use the canonical composable form.
 
-The scoped form is therefore still supported and is not deprecated yet. Hosts
-should report an unbound requirement explicitly in reference evaluation, and
+Generic cxpr providers may still define scoped source calls for unrelated
+domains. Dynasty does not: its provider rejects `close("<timeframe>")`, and
+repository strategy sources enforce that contract through a regression test.
+Hosts report an unbound requirement explicitly in reference evaluation, and
 generated targets validate missing value/alignment buffers before execution.
-Host migration remains gated on CUDA manifest parity; CPU parity
-alone is not sufficient to replace active strategy syntax.

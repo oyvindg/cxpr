@@ -191,7 +191,7 @@ inside `.cxpr` models.
 
 ### Values and references
 
-```cxpr
+```ts
 42
 3.14159
 true
@@ -241,7 +241,7 @@ arithmetic precedence.
 
 ### Functions, named arguments, and pipes
 
-```cxpr
+```js
 sqrt(x*x + y*y)
 within(source=latency_ms, min=0, max=$budget_ms)
 close | ema(20)
@@ -273,14 +273,14 @@ grammar.
 
 `in` means set membership:
 
-```cxpr
+```js
 status in ["ready", "degraded"]
 contains(status, $allowed_states)
 ```
 
 Continuous range checks use `within`:
 
-```cxpr
+```js
 within(temperature, $minimum, $maximum)
 within(source=x, min=0, max=1)
 ```

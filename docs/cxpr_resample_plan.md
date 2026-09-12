@@ -300,13 +300,12 @@ timestamp alignment without host-specific logic in cxpr.
   migration is `bollinger_kst_adx_confirmed_breakaway_5m.yaml`: direct OHLCV
   requests plus Bollinger/KST/EMA source arguments now use `resample(...)`.
 - [x] Make an explicit release decision for host-style timeframe arguments.
-  Decision (2026-08-02): retain compatibility and do not emit deprecation
-  warnings in this release. An active-consumer audit still finds 28 strategy
-  files (197 expression lines) using legacy positional or named timeframe
-  forms, chiefly implicit multi-field `adx`/`atr` calls and related BKADX
-  fixtures. Deprecation requires a source-aware replacement for those
-  multi-field indicators and a zero-consumer audit; model/symbol-level
-  `timeframe` metadata is not part of this syntax deprecation.
+  Decision (2026-08-26): `resample(source, every)` is required in repository
+  strategy sources. `close("<timeframe>")` consumers have been migrated and a
+  regression test prevents reintroduction. The Dynasty provider no longer
+  accepts the scoped close form; generic cxpr scope support remains available
+  for other provider contracts. Multi-field indicator migration is tracked
+  separately; model/symbol-level `timeframe` metadata is unaffected.
 
 ### 11. Benchmarks
 
