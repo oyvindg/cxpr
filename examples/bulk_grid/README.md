@@ -65,6 +65,24 @@ libs/cxpr/examples/bulk_grid/run_cuda_benchmark.sh build/cxpr-cuda-gcc13
 The script prints the report path. Workload can be overridden with
 `CXPR_BENCH_CELLS`, `CXPR_BENCH_STEPS`, and `CXPR_BENCH_REPETITIONS`.
 
+## Recorded baseline
+
+Measured at parent commit `5016f82` on 2026-09-12 using an NVIDIA GeForce RTX
+3070 Laptop GPU (compute capability 8.6, driver 580.173.02), 1,048,576 cells,
+1,000 steps, and seven repetitions:
+
+| CUDA block size | Median kernel time | Throughput | Effective bandwidth | Parity |
+| ---: | ---: | ---: | ---: | :---: |
+| 128 | 427.309 ms | 2.454 Gcell-steps/s | 176.68 GB/s | OK |
+| **256** | **418.431 ms** | **2.506 Gcell-steps/s** | **180.43 GB/s** | **OK** |
+| 512 | 419.861 ms | 2.497 Gcell-steps/s | 179.82 GB/s | OK |
+
+Block size 256 is the baseline default for this device. The bandwidth number
+is an effective model-traffic estimate, not measured DRAM traffic, and results
+on other GPUs, power profiles, drivers, or thermal states are not expected to
+match exactly. All configurations matched the independent CPU implementation
+after the complete 1,000-step simulation.
+
 Represent complex numbers or small tensors as scalar components (`psi_re`,
 `psi_im`, `metric_00`, and so on). This keeps the model portable while the host
 chooses AoS/SoA storage and gathers the required components.
