@@ -13,6 +13,10 @@ static void check(cudaError_t status, const char* operation) {
     std::exit(2);
 }
 
+static double host_abs(double value) {
+    return value < 0.0 ? -value : value;
+}
+
 __global__ static void klein_gordon_bulk(
     const double* phi, const double* momentum,
     double* next_phi, double* next_momentum, double* energy, size_t count) {
@@ -62,9 +66,9 @@ int main(void) {
         const double expected_energy = 0.5 * expected_momentum * expected_momentum
             + 0.5 * mass * mass * expected_phi * expected_phi;
         const double tolerance = 2e-12;
-        if (std::fabs(actual_phi[i] - expected_phi) > tolerance ||
-            std::fabs(actual_momentum[i] - expected_momentum) > tolerance ||
-            std::fabs(actual_energy[i] - expected_energy) > tolerance) {
+        if (host_abs(actual_phi[i] - expected_phi) > tolerance ||
+            host_abs(actual_momentum[i] - expected_momentum) > tolerance ||
+            host_abs(actual_energy[i] - expected_energy) > tolerance) {
             std::fprintf(stderr, "CUDA bulk mismatch at %zu\n", i);
             return 1;
         }
