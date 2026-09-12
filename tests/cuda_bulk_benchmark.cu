@@ -51,6 +51,8 @@ int main(int argc, char** argv) {
     const size_t steps = argc > 2 ? parse_size(argv[2], "steps") : 1000u;
     const unsigned block_size =
         (unsigned)(argc > 3 ? parse_size(argv[3], "block size") : 256u);
+    const size_t repetitions =
+        argc > 4 ? parse_size(argv[4], "repetitions") : 7u;
     constexpr double dt = 0.001;
     constexpr double dx = 0.01;
     constexpr double mass = 1.0;
@@ -70,6 +72,7 @@ int main(int argc, char** argv) {
            *d_momentum_b = nullptr, *d_source = nullptr,
            *d_acceleration = nullptr, *d_energy = nullptr;
     cudaEvent_t start = nullptr, stop = nullptr;
+    cudaDeviceProp device = {};
     const size_t bytes = count * sizeof(double);
     const unsigned grid_size = (unsigned)((count + block_size - 1u) / block_size);
 
@@ -86,6 +89,7 @@ int main(int argc, char** argv) {
     check(cudaMemcpy(d_source, source.data(), bytes, cudaMemcpyHostToDevice), "copy source");
     check(cudaEventCreate(&start), "create start event");
     check(cudaEventCreate(&stop), "create stop event");
+    check(cudaGetDeviceProperties(&device, 0), "query CUDA device");
 
     auto reset_fields = [&]() {
         check(cudaMemcpy(d_phi_a, initial_phi.data(), bytes, cudaMemcpyHostToDevice), "reset phi");
@@ -108,16 +112,20 @@ int main(int argc, char** argv) {
     launch_steps(warmup_steps, phi, next_phi, momentum, next_momentum);
     check(cudaDeviceSynchronize(), "warmup");
 
-    reset_fields();
-    phi = d_phi_a; next_phi = d_phi_b;
-    momentum = d_momentum_a; next_momentum = d_momentum_b;
-    check(cudaEventRecord(start), "record start");
-    launch_steps(steps, phi, next_phi, momentum, next_momentum);
-    check(cudaGetLastError(), "launch resident steps");
-    check(cudaEventRecord(stop), "record stop");
-    check(cudaEventSynchronize(stop), "wait for benchmark");
-    float elapsed_ms = 0.0f;
-    check(cudaEventElapsedTime(&elapsed_ms, start, stop), "measure benchmark");
+    std::vector<float> timings(repetitions);
+    for (size_t repetition = 0u; repetition < repetitions; ++repetition) {
+        reset_fields();
+        phi = d_phi_a; next_phi = d_phi_b;
+        momentum = d_momentum_a; next_momentum = d_momentum_b;
+        check(cudaEventRecord(start), "record start");
+        launch_steps(steps, phi, next_phi, momentum, next_momentum);
+        check(cudaGetLastError(), "launch resident steps");
+        check(cudaEventRecord(stop), "record stop");
+        check(cudaEventSynchronize(stop), "wait for benchmark");
+        float elapsed_ms = 0.0f;
+        check(cudaEventElapsedTime(&elapsed_ms, start, stop), "measure benchmark");
+        timings[repetition] = elapsed_ms;
+    }
     check(cudaMemcpy(actual_phi.data(), phi, bytes, cudaMemcpyDeviceToHost), "copy final phi");
     check(cudaMemcpy(actual_momentum.data(), momentum, bytes, cudaMemcpyDeviceToHost), "copy final momentum");
 
@@ -148,15 +156,32 @@ int main(int argc, char** argv) {
         }
     }
 
+    for (size_t i = 1u; i < repetitions; ++i) {
+        const float value = timings[i];
+        size_t position = i;
+        while (position > 0u && timings[position - 1u] > value) {
+            timings[position] = timings[position - 1u];
+            --position;
+        }
+        timings[position] = value;
+    }
+    const double median_ms = repetitions % 2u
+        ? timings[repetitions / 2u]
+        : 0.5 * ((double)timings[repetitions / 2u - 1u]
+                 + (double)timings[repetitions / 2u]);
     const double updates = (double)count * (double)steps;
-    const double seconds = (double)elapsed_ms / 1000.0;
+    const double seconds = median_ms / 1000.0;
     const double updates_per_second = updates / seconds;
     const double effective_gb_per_second = updates_per_second * 72.0 / 1.0e9;
     std::printf(
-        "CXPR CUDA resident benchmark: %zu cells x %zu steps, block=%u\n"
-        "kernel time: %.3f ms, %.3f Gcell-steps/s, %.2f effective GB/s\n"
+        "GPU: %s, compute capability %d.%d\n"
+        "CXPR CUDA resident benchmark: %zu cells x %zu steps, block=%u, repetitions=%zu\n"
+        "kernel time ms: median=%.3f, min=%.3f, max=%.3f\n"
+        "throughput: %.3f Gcell-steps/s, %.2f effective GB/s\n"
         "multi-step CPU parity: OK\n",
-        count, steps, block_size, elapsed_ms, updates_per_second / 1.0e9,
+        device.name, device.major, device.minor, count, steps, block_size,
+        repetitions, median_ms, (double)timings.front(), (double)timings.back(),
+        updates_per_second / 1.0e9,
         effective_gb_per_second);
 
     cudaEventDestroy(stop); cudaEventDestroy(start);

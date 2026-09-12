@@ -47,12 +47,23 @@ cmake --build build/cxpr-cuda --target cxpr_cuda_bulk_benchmark -j
 ./build/cxpr-cuda/tests/cxpr_cuda_bulk_benchmark 1048576 1000 256
 ```
 
-Arguments are `cells`, `steps`, and CUDA `block_size`. The timed region keeps
+Arguments are `cells`, `steps`, CUDA `block_size`, and optional repetition
+count (default 7). The reported throughput uses the median; minimum and maximum
+times expose run-to-run variance. The timed region keeps
 all field buffers on the GPU, uses ping-pong buffers, applies periodic
 boundaries in the host-owned kernel wrapper, and excludes allocation, initial
 copies, warmup, final copies, and CPU verification. The executable reports
 cell-steps/s and effective memory bandwidth, then verifies the complete final
 field against an independent CPU time loop.
+
+For a repeatable 128/256/512 sweep and a repository-local Markdown report:
+
+```sh
+libs/cxpr/examples/bulk_grid/run_cuda_benchmark.sh build/cxpr-cuda-gcc13
+```
+
+The script prints the report path. Workload can be overridden with
+`CXPR_BENCH_CELLS`, `CXPR_BENCH_STEPS`, and `CXPR_BENCH_REPETITIONS`.
 
 Represent complex numbers or small tensors as scalar components (`psi_re`,
 `psi_im`, `metric_00`, and so on). This keeps the model portable while the host
