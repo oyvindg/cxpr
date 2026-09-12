@@ -140,6 +140,15 @@ if(CXPR_BUILD_CUDA_TESTS)
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
     add_test(NAME cuda_bulk_runtime COMMAND $<TARGET_FILE:test_cuda_bulk_runtime>)
     set_tests_properties(cuda_bulk_runtime PROPERTIES LABELS "cuda")
+
+    add_executable(cxpr_cuda_bulk_benchmark cuda_bulk_benchmark.cu)
+    add_dependencies(cxpr_cuda_bulk_benchmark generate_cxpr_cuda_bulk_fixture)
+    target_include_directories(cxpr_cuda_bulk_benchmark PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_options(cxpr_cuda_bulk_benchmark PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
+    set_target_properties(cxpr_cuda_bulk_benchmark PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
 endif()
 
 if(TARGET cxpr_model_codegen)

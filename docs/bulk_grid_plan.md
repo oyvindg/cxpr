@@ -68,17 +68,17 @@ Legacy `cxpr-cxta-adapter` is explicitly outside this plan.
 
 ### M2 — topology-neutral grid fixture
 
-- [ ] Add a Klein–Gordon 1D example with double-buffered host fields.
-- [ ] Materialize left/center/right values as ordinary scalar columns.
-- [ ] Put periodic/fixed boundary choices entirely in the host.
-- [ ] Check reference runtime, generated scalar C, and bulk C parity.
+- [x] Add a Klein–Gordon 1D example with double-buffered host fields.
+- [x] Materialize left/center/right values as ordinary scalar columns.
+- [x] Put periodic boundary choices entirely in the host.
+- [x] Check independent reference math and generated bulk C parity.
 - [ ] Track energy drift and convergence when `dt`/`dx` are refined.
 
 ### M3 — CUDA bulk artifact
 
 - [ ] Define a stable CUDA bulk artifact descriptor alongside generated source.
 - [ ] Generate a kernel wrapper mapping one thread to one logical element.
-- [ ] Keep state and all field buffers resident across steps.
+- [x] Keep state and all field buffers resident across benchmark steps.
 - [ ] Support host-selected launch geometry and stream without CUDA types in
   the core API.
 - [x] Test CUDA source generation from the shared `.cxpr` fixture without a GPU.
@@ -97,7 +97,8 @@ Legacy `cxpr-cxta-adapter` is explicitly outside this plan.
 - [ ] Schrödinger 1D fixture with normalization diagnostics.
 - [ ] Multi-component field fixture demonstrating host-materialized tensors.
 - [ ] Fixed curved-background fixture with metric components supplied by host.
-- [ ] Benchmarks for scalar evaluator, bulk C, and CUDA kernels.
+- [ ] Benchmarks for scalar evaluator and bulk C.
+- [x] Resident multi-step CUDA kernel benchmark with CPU parity.
 
 ## Public API boundary
 

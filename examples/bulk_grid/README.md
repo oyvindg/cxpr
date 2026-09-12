@@ -40,6 +40,20 @@ ctest --test-dir build/cxpr-cuda -L cuda --output-on-failure
 `CXPR_BUILD_CUDA_TESTS` is off by default. Enabling it without `nvcc` produces
 a configure-time error instead of silently skipping the requested test.
 
+Build and run the resident multi-step benchmark separately from CTest:
+
+```sh
+cmake --build build/cxpr-cuda --target cxpr_cuda_bulk_benchmark -j
+./build/cxpr-cuda/tests/cxpr_cuda_bulk_benchmark 1048576 1000 256
+```
+
+Arguments are `cells`, `steps`, and CUDA `block_size`. The timed region keeps
+all field buffers on the GPU, uses ping-pong buffers, applies periodic
+boundaries in the host-owned kernel wrapper, and excludes allocation, initial
+copies, warmup, final copies, and CPU verification. The executable reports
+cell-steps/s and effective memory bandwidth, then verifies the complete final
+field against an independent CPU time loop.
+
 Represent complex numbers or small tensors as scalar components (`psi_re`,
 `psi_im`, `metric_00`, and so on). This keeps the model portable while the host
 chooses AoS/SoA storage and gathers the required components.
