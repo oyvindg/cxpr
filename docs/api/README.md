@@ -13,6 +13,7 @@ truth. Historical plans and release notes are not API specifications.
 | [Expression syntax and AST](expressions.md) | Lexing, parsing, AST construction and inspection, analysis, and type checking | `token.h`, `parser.h`, `expr/ast.h`, `analysis.h`, `typecheck.h` |
 | [Expression execution](execution.md) | Tree evaluation, compiled expressions, typed IR, evaluators, snapshots, and compatibility facades | `eval.h`, `expr/compiled.h`, `ir.h`, `execution.h`, `evaluator.h`, `expression.h`, `snapshot.h` |
 | [`.cxpr` language](language.md) | Authoring portable expression and model source files | lexer, expression parser, document parser, model validation |
+| [Embedding guide](embedding.md) | Integrating `.cxpr` into a host from parsing through C/CUDA deployment | `cxpr.h`, `doc.h`, `model/model.h`, `generated.h`, `bulk.h` |
 | [Documents and models](documents-models.md) | Parsing documents, model introspection, imports, compilation, and model sessions | `doc.h`, `doc/ast.h`, `model/model.h`, `model/imports.h`, `model/compiled.h`, `model/runtime.h` |
 | [Engine](engine.md) | Stateful ticks, source hydration, roles, watches, transitions, and engine snapshots | `engine.h`, `source.h`, `snapshot.h` |
 | [Generated C](generated-c.md) | Stable generated-model ABI and native deployment | `generated.h`, `codegen.h` |
@@ -50,4 +51,3 @@ generated-support interfaces and should be included explicitly when needed.
 | Public IR view API | 1 | `<cxpr/ir.h>` |
 | C target API | 1 | `<cxpr/codegen.h>` |
 | Debug-map ABI | 1 | `<cxpr/debug_map.h>` |
-

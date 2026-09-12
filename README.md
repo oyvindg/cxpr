@@ -101,6 +101,7 @@ matches the integration:
 | Goal | Documentation |
 | --- | --- |
 | Author `.cxpr` expressions and models | [Language reference](docs/api/language.md) |
+| Embed `.cxpr` in an application or service | [Host embedding guide](docs/api/embedding.md) |
 | Parse, inspect, or execute expressions | [Expressions](docs/api/expressions.md) and [execution](docs/api/execution.md) |
 | Parse, compile, and run complete models | [Documents and models](docs/api/documents-models.md) |
 | Run stateful host-driven rules | [Engine](docs/api/engine.md) |

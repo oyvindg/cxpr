@@ -45,13 +45,15 @@ ordinary import path segments. Parameter references begin with `$`, for
 example `$period` and `$risk.stop`; each dotted segment obeys the identifier
 rule. The `$` is not part of the stored parameter name.
 
-Numbers are decimal integer, fractional, or scientific literals:
+Numbers are decimal integer, fractional, or scientific literals. A leading
+zero before the decimal point is optional:
 
 ```cxpr
-0  42  3.14  1e3  1.5e-3  2E+4
+0  42  3.14  .5  .25e2  1e3  1.5e-3  2E+4
 ```
 
-A number must start with a digit; `.5` is not a numeric literal. A leading sign
+A leading-dot literal such as `.5` is exactly an alias for `0.5`; it is not
+field access because a field-access dot follows an expression. A leading sign
 is a unary operator. `null`, `Null`, and `NULL` lex as the numeric NaN sentinel.
 No other capitalization of `null` is special.
 
@@ -251,12 +253,38 @@ use asx, macd, rsi from indicators
 use { atr, ema, supertrend } from indicators
 ```
 
+`use` introduces a namespace; imported functions are called through that
+namespace. `as` selects the namespace explicitly:
+
+```cxpr
+# geometry2d.cxpr
+fn vec2(x, y) = x, y
+fn length(v) = sqrt(v.x * v.x + v.y * v.y)
+
+# simulation.cxpr
+model simulation
+use geometry2d as g
+
+in { position_x, position_y }
+position = g.vec2(position_x, position_y)
+out distance = g.length(position)
+```
+
+Without `as`, the effective namespace is the imported model/import leaf name.
+For example, `use math_helpers` exposes `math_helpers.twice(value)`. The
+`use member from package` and braced forms are path conveniences for importing
+one or several package members; calls still use each effective imported
+namespace rather than becoming unqualified global functions.
+
 Paths are relative, slash-separated identifier segments; an optional final
 `.cxpr` suffix is recognized. Absolute paths, empty segments, and invalid
 identifier segments are rejected. `from` prefixes every listed member.
 Validation rejects duplicate import paths and duplicate effective namespaces
 (the alias when present, otherwise the imported namespace). Resolving whether
-a target file exists is a separate host/import-resolution step.
+a target exists is a separate host/import-resolution step. The host callback
+receives the importer identity and exact `use` path and returns a canonical
+identity plus source text. cxpr detects cycles and duplicate effective
+namespaces while building the import bundle.
 
 ### Inputs and parameters
 
