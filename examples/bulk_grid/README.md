@@ -1,8 +1,10 @@
 # Bulk/Grid Host Pattern
 
 [`klein_gordon_cell.cxpr`](klein_gordon_cell.cxpr) describes the local update
-for one cell. It does not define a grid: the host supplies `phi_left`, `phi`,
-and `phi_right` columns and decides how boundary cells are populated.
+for one cell. It owns the local field equation, nonlinear potential, damping,
+source coupling, semi-implicit Euler step, and energy diagnostic. It does not
+define a grid: the host supplies `phi_left`, `phi`, `phi_right`, and `source`
+columns and decides how boundary cells are populated.
 
 Generate the scalar C evaluator at build time:
 
@@ -23,7 +25,8 @@ bulk artifact will add the generic one-thread-per-element wrapper; topology,
 allocation, streams, timestep loops, and buffer swaps remain host-owned.
 
 The optional end-to-end CUDA test generates that evaluator from this model,
-launches 65,536 cells, and checks all outputs against a CPU reference:
+launches 65,536 cells, and checks the updated field, momentum, acceleration,
+and energy density against an independent CPU reference:
 
 ```sh
 cmake -S libs/cxpr -B build/cxpr-cuda \

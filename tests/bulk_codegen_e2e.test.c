@@ -34,25 +34,28 @@ int main(void) {
     double momentum[CELL_COUNT];
     double phi_left[CELL_COUNT];
     double phi_right[CELL_COUNT];
+    double source[CELL_COUNT];
     double next_phi[CELL_COUNT];
     double next_momentum[CELL_COUNT];
+    double acceleration[CELL_COUNT];
     double energy_density[CELL_COUNT];
-    cxpr_bulk_const_column inputs[4];
-    cxpr_bulk_column outputs[3];
+    cxpr_bulk_const_column inputs[5];
+    cxpr_bulk_column outputs[4];
     double params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {0};
     void* states = NULL;
     size_t state_size;
     size_t i;
 
     assert(cxpr_generated_model_descriptor_abi_valid(descriptor));
-    assert(descriptor->input_count == 4u);
-    assert(descriptor->output_count == 3u);
-    assert(descriptor->param_count == 3u);
+    assert(descriptor->input_count == 5u);
+    assert(descriptor->output_count == 4u);
+    assert(descriptor->param_count == 5u);
 
     for (i = 0u; i < CELL_COUNT; ++i) {
         const double x = (double)i / (double)(CELL_COUNT - 1u);
         phi[i] = sin(6.0 * x) + 0.2 * cos(17.0 * x);
         momentum[i] = 0.3 * cos(4.0 * x);
+        source[i] = 0.05 * sin(3.0 * x);
     }
     for (i = 0u; i < CELL_COUNT; ++i) {
         /* Periodic topology is a host concern, not part of the CXPR model. */
@@ -68,10 +71,14 @@ int main(void) {
         (cxpr_bulk_const_column){phi_left, 1u};
     inputs[named_index(descriptor->input_names, descriptor->input_count, "phi_right")] =
         (cxpr_bulk_const_column){phi_right, 1u};
+    inputs[named_index(descriptor->input_names, descriptor->input_count, "source")] =
+        (cxpr_bulk_const_column){source, 1u};
     outputs[named_index(descriptor->output_names, descriptor->output_count, "next_phi")] =
         (cxpr_bulk_column){next_phi, 1u};
     outputs[named_index(descriptor->output_names, descriptor->output_count, "next_momentum")] =
         (cxpr_bulk_column){next_momentum, 1u};
+    outputs[named_index(descriptor->output_names, descriptor->output_count, "acceleration")] =
+        (cxpr_bulk_column){acceleration, 1u};
     outputs[named_index(descriptor->output_names, descriptor->output_count, "energy_density")] =
         (cxpr_bulk_column){energy_density, 1u};
 
@@ -104,17 +111,23 @@ int main(void) {
         const double dt = params[named_index(descriptor->param_names, descriptor->param_count, "dt")];
         const double dx = params[named_index(descriptor->param_names, descriptor->param_count, "dx")];
         const double mass = params[named_index(descriptor->param_names, descriptor->param_count, "mass")];
+        const double lambda = params[named_index(descriptor->param_names, descriptor->param_count, "lambda")];
+        const double damping = params[named_index(descriptor->param_names, descriptor->param_count, "damping")];
         for (i = 0u; i < CELL_COUNT; ++i) {
             const double laplacian =
                 (phi_left[i] - 2.0 * phi[i] + phi_right[i]) / (dx * dx);
-            const double expected_momentum =
-                momentum[i] + dt * (laplacian - mass * mass * phi[i]);
+            const double expected_acceleration = laplacian - mass * mass * phi[i]
+                - lambda * phi[i] * phi[i] * phi[i]
+                - damping * momentum[i] + source[i];
+            const double expected_momentum = momentum[i] + dt * expected_acceleration;
             const double expected_phi = phi[i] + dt * expected_momentum;
-            const double expected_energy =
-                0.5 * expected_momentum * expected_momentum +
-                0.5 * mass * mass * expected_phi * expected_phi;
+            const double gradient = (phi_right[i] - phi_left[i]) / (2.0 * dx);
+            const double expected_energy = 0.5 * momentum[i] * momentum[i]
+                + 0.5 * gradient * gradient + 0.5 * mass * mass * phi[i] * phi[i]
+                + 0.25 * lambda * phi[i] * phi[i] * phi[i] * phi[i];
             assert_close(next_phi[i], expected_phi);
             assert_close(next_momentum[i], expected_momentum);
+            assert_close(acceleration[i], expected_acceleration);
             assert_close(energy_density[i], expected_energy);
         }
     }

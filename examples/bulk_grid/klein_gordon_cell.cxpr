@@ -1,14 +1,21 @@
 model klein_gordon_cell
 
-in { phi, momentum, phi_left, phi_right }
+in { phi, momentum, phi_left, phi_right, source }
 $dt = 0.001
 $dx = 0.01
 $mass = 1.0
+$lambda = 0.1
+$damping = 0.02
 
 laplacian = (phi_left - 2.0 * phi + phi_right) / ($dx * $dx)
-next_momentum = momentum + $dt * (laplacian - $mass * $mass * phi)
+potential_force = $mass * $mass * phi + $lambda * phi * phi * phi
+acceleration = laplacian - potential_force - $damping * momentum + source
+next_momentum = momentum + $dt * acceleration
 next_phi = phi + $dt * next_momentum
-energy_density = 0.5 * next_momentum * next_momentum
-    + 0.5 * $mass * $mass * next_phi * next_phi
+gradient = (phi_right - phi_left) / (2.0 * $dx)
+potential_energy = 0.5 * $mass * $mass * phi * phi
+    + 0.25 * $lambda * phi * phi * phi * phi
+energy_density = 0.5 * momentum * momentum
+    + 0.5 * gradient * gradient + potential_energy
 
-out { next_phi, next_momentum, energy_density }
+out { next_phi, next_momentum, acceleration, energy_density }
