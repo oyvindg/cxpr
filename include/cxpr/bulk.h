@@ -21,7 +21,7 @@ typedef struct cxpr_bulk_const_column {
     size_t stride;
 } cxpr_bulk_const_column;
 
-/** One writable strided scalar column. */
+/** One writable strided scalar column. Stride must be non-zero for multiple elements. */
 typedef struct cxpr_bulk_column {
     double* values;
     size_t stride;
@@ -32,8 +32,15 @@ typedef struct cxpr_bulk_column {
  *
  * Inputs and outputs use structure-of-arrays layout. `states` contains one
  * model state block per element; `state_stride` is measured in bytes. Params
- * are shared by the whole launch. Hosts materialize neighbors, coordinates,
+ * are shared by the whole launch. Boolean scalars use 0.0/1.0. Hosts
+ * materialize neighbors, coordinates,
  * tensors, or complex components as ordinary named scalar input columns.
+ *
+ * The host must provide storage covering every strided access. Input and
+ * parameter storage must not overlap output or state ranges that can execute
+ * concurrently. State base and stride must satisfy the generated artifact's
+ * C alignment requirements. Call `cxpr_bulk_reset` before the first run unless
+ * the state storage is already zero-initialized.
  */
 typedef struct cxpr_bulk_view {
     const cxpr_bulk_const_column* inputs;
@@ -74,6 +81,18 @@ cxpr_bulk_status cxpr_bulk_run_range(
 
 /** Execute all elements serially. */
 cxpr_bulk_status cxpr_bulk_run(
+    const cxpr_generated_model_descriptor* descriptor,
+    const cxpr_bulk_view* view);
+
+/** Reset `[begin, begin + count)` to the generated model's initial state. */
+cxpr_bulk_status cxpr_bulk_reset_range(
+    const cxpr_generated_model_descriptor* descriptor,
+    const cxpr_bulk_view* view,
+    size_t begin,
+    size_t count);
+
+/** Reset all element states. Stateless models are accepted as a no-op. */
+cxpr_bulk_status cxpr_bulk_reset(
     const cxpr_generated_model_descriptor* descriptor,
     const cxpr_bulk_view* view);
 

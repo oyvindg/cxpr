@@ -58,6 +58,9 @@ int main(void) {
     assert(states[1].previous == 2.25 && states[2].previous == 4.5);
     assert(cxpr_bulk_run_range(&descriptor, &view, 3u, 1u) ==
            CXPR_BULK_RANGE_OUT_OF_BOUNDS);
+    assert(cxpr_bulk_reset_range(&descriptor, &view, 1u, 1u) == CXPR_BULK_OK);
+    assert(states[0].previous == 10.0 && states[1].previous == 0.0 &&
+           states[2].previous == 4.5);
     puts("bulk execution tests passed");
     return 0;
 }

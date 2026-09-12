@@ -22,6 +22,21 @@ For CUDA, the existing CUDA plugin emits the scalar device evaluator. A future
 bulk artifact will add the generic one-thread-per-element wrapper; topology,
 allocation, streams, timestep loops, and buffer swaps remain host-owned.
 
+The optional end-to-end CUDA test generates that evaluator from this model,
+launches 65,536 cells, and checks all outputs against a CPU reference:
+
+```sh
+cmake -S libs/cxpr -B build/cxpr-cuda \
+  -DCXPR_BUILD_TESTS=ON \
+  -DCXPR_BUILD_BENCHMARKS=OFF \
+  -DCXPR_BUILD_CUDA_TESTS=ON
+cmake --build build/cxpr-cuda --target test_cuda_bulk_runtime -j
+ctest --test-dir build/cxpr-cuda -L cuda --output-on-failure
+```
+
+`CXPR_BUILD_CUDA_TESTS` is off by default. Enabling it without `nvcc` produces
+a configure-time error instead of silently skipping the requested test.
+
 Represent complex numbers or small tensors as scalar components (`psi_re`,
 `psi_im`, `metric_00`, and so on). This keeps the model portable while the host
 chooses AoS/SoA storage and gathers the required components.

@@ -104,7 +104,69 @@ target_include_directories(test_generated_resample_parity PRIVATE "${CMAKE_CURRE
 find_package(Threads REQUIRED)
 target_link_libraries(test_history PRIVATE Threads::Threads)
 
+add_executable(cxpr_cuda_bulk_codegen_tool cuda_bulk_codegen_tool.c)
+target_link_libraries(cxpr_cuda_bulk_codegen_tool PRIVATE cxpr)
+add_test(NAME cuda_bulk_codegen
+    COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/bulk_grid/klein_gordon_cell.cxpr"
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_klein_gordon_codegen_test.cuh")
+
+option(CXPR_BUILD_CUDA_TESTS "Build CUDA runtime end-to-end tests" OFF)
+if(CXPR_BUILD_CUDA_TESTS)
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(NOT CMAKE_CUDA_COMPILER)
+        message(FATAL_ERROR "CXPR_BUILD_CUDA_TESTS=ON requires the CUDA toolkit and nvcc")
+    endif()
+    enable_language(CUDA)
+
+    set(CXPR_CUDA_BULK_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_klein_gordon_generated.cuh")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_BULK_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/../examples/bulk_grid/klein_gordon_cell.cxpr"
+            "${CXPR_CUDA_BULK_GENERATED}"
+        DEPENDS cxpr_cuda_bulk_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/../examples/bulk_grid/klein_gordon_cell.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_bulk_fixture
+        DEPENDS "${CXPR_CUDA_BULK_GENERATED}")
+    add_executable(test_cuda_bulk_runtime cuda_bulk_runtime.cu)
+    add_dependencies(test_cuda_bulk_runtime generate_cxpr_cuda_bulk_fixture)
+    target_include_directories(test_cuda_bulk_runtime PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    set_target_properties(test_cuda_bulk_runtime PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_bulk_runtime COMMAND $<TARGET_FILE:test_cuda_bulk_runtime>)
+    set_tests_properties(cuda_bulk_runtime PROPERTIES LABELS "cuda")
+endif()
+
 if(TARGET cxpr_model_codegen)
+    set(CXPR_BULK_GRID_EXAMPLE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/bulk_grid")
+    set(CXPR_BULK_GRID_GENERATED_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_examples/bulk_grid")
+    set(CXPR_BULK_GRID_GENERATED_C
+        "${CXPR_BULK_GRID_GENERATED_DIR}/klein_gordon_cell.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_BULK_GRID_GENERATED_C}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CXPR_BULK_GRID_GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_BULK_GRID_EXAMPLE_DIR}/klein_gordon_cell.cxpr"
+            --output "${CXPR_BULK_GRID_GENERATED_C}"
+            --function klein_gordon_cell_tick
+        DEPENDS
+            cxpr_model_codegen
+            "${CXPR_BULK_GRID_EXAMPLE_DIR}/klein_gordon_cell.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_bulk_grid_e2e
+        DEPENDS "${CXPR_BULK_GRID_GENERATED_C}")
+    add_dependencies(test_bulk_codegen_e2e generate_cxpr_bulk_grid_e2e)
+    target_include_directories(test_bulk_codegen_e2e PRIVATE
+        "${CXPR_BULK_GRID_GENERATED_DIR}")
+
     set(CXPR_SCALE_FIXTURE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/scale")
     set(CXPR_SCALE_GENERATED_C

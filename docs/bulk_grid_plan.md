@@ -64,7 +64,7 @@ Legacy `cxpr-cxta-adapter` is explicitly outside this plan.
 - [x] Support range execution so a host can partition work across threads.
 - [x] Validate descriptor, schema, buffers, state stride, and ranges.
 - [x] Test strided mapping, isolated state, and partial ranges.
-- [ ] Add generated `.cxpr` -> C -> bulk end-to-end parity fixture.
+- [x] Add generated `.cxpr` -> C -> bulk end-to-end parity fixture.
 
 ### M2 — topology-neutral grid fixture
 
@@ -81,8 +81,8 @@ Legacy `cxpr-cxta-adapter` is explicitly outside this plan.
 - [ ] Keep state and all field buffers resident across steps.
 - [ ] Support host-selected launch geometry and stream without CUDA types in
   the core API.
-- [ ] Test generated source shape without requiring a GPU.
-- [ ] Add optional NVCC/runtime parity tests when CUDA is available.
+- [x] Test CUDA source generation from the shared `.cxpr` fixture without a GPU.
+- [x] Add optional NVCC/runtime parity tests when CUDA is available.
 
 ### M4 — backend extension contract
 
@@ -123,4 +123,3 @@ library may be built on this API, but it must not become cxpr core semantics.
 - Generated C and CUDA agree with reference evaluation for documented fixtures.
 - Unsupported operations fail during generation with actionable diagnostics.
 - cxpr public headers contain no domain-specific physics or grid vocabulary.
-
