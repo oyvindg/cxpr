@@ -1,3 +1,4 @@
 build*
+!src/eval/snapshot/build.c
 plans/
 examples/ast_snapshot_cytoscape/*.json
