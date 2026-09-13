@@ -14,6 +14,12 @@ static bool cxpr_ir_program_is_bare_identifier(const cxpr_ir_program* program) {
            program->code[1].op == CXPR_OP_RETURN;
 }
 
+static void cxpr_ir_free_owned_composite(cxpr_value* value) {
+    if (value->type == CXPR_VALUE_ARRAY || value->type == CXPR_VALUE_STRUCT) {
+        cxpr_value_free(value);
+    }
+}
+
 bool cxpr_ir_prepare_defined_program(cxpr_func_entry* entry, const cxpr_registry* reg,
                                      cxpr_error* err) {
     if (!entry || !entry->defined_body || !cxpr_ir_defined_is_scalar_only(entry)) {
@@ -185,8 +191,12 @@ bool cxpr_expr_compiled_eval_number(const cxpr_expr_compiled* prog, const cxpr_c
         return true;
     }
     value = cxpr_expr_compiled_eval_value(prog, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return false;
+    if (err && err->code != CXPR_OK) {
+        cxpr_ir_free_owned_composite(&value);
+        return false;
+    }
     if (value.type != CXPR_VALUE_NUMBER) {
+        cxpr_ir_free_owned_composite(&value);
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to double";
@@ -214,8 +224,12 @@ bool cxpr_expr_compiled_eval_bool(const cxpr_expr_compiled* prog, const cxpr_con
         return cxpr_ir_exec_bool_fast(&prog->ir, ctx, reg, NULL, 0, out_value, err);
     }
     value = cxpr_expr_compiled_eval_value(prog, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return false;
+    if (err && err->code != CXPR_OK) {
+        cxpr_ir_free_owned_composite(&value);
+        return false;
+    }
     if (value.type != CXPR_VALUE_BOOL) {
+        cxpr_ir_free_owned_composite(&value);
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to bool";
