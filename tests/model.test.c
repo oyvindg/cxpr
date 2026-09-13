@@ -4486,6 +4486,158 @@ static void test_rsi_state_strategy_fixture_matches_golden_values(void) {
     printf("  ✓ test_rsi_state_strategy_fixture_matches_golden_values\n");
 }
 
+static void test_compile_rejects_known_value_type_mismatch(void) {
+    const char* source =
+        "model invalid_types\n"
+        "value = 1 and 2\n"
+        "out value\n";
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_model_parse(source, &err);
+    cxpr_model_compiled* program;
+
+    assert(model != NULL);
+    program = cxpr_model_compile(model, NULL, &err);
+    assert(program == NULL);
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+    assert(err.message && strstr(err.message, "bool operands"));
+    cxpr_model_free(model);
+    printf("  ✓ test_compile_rejects_known_value_type_mismatch\n");
+}
+
+static void test_value_type_contract_fixture(void) {
+    static const struct {
+        const char* name;
+        cxpr_value_type type;
+    } contracts[] = {
+        {"number_value", CXPR_VALUE_NUMBER},
+        {"nan_value", CXPR_VALUE_NUMBER},
+        {"bool_value", CXPR_VALUE_BOOL},
+        {"string_value", CXPR_VALUE_STRING},
+        {"array_value", CXPR_VALUE_ARRAY},
+        {"record_value", CXPR_VALUE_STRUCT},
+        {"array_element", CXPR_VALUE_NUMBER},
+        {"numeric_result", CXPR_VALUE_NUMBER},
+        {"comparison_result", CXPR_VALUE_BOOL},
+        {"equality_result", CXPR_VALUE_BOOL},
+        {"logical_result", CXPR_VALUE_BOOL},
+        {"conditional_result", CXPR_VALUE_NUMBER}
+    };
+    char* source = read_fixture("fixtures/syntax/value_type_contracts.cxpr");
+    cxpr_error err = {0};
+    cxpr_model* model = source ? cxpr_model_parse(source, &err) : NULL;
+
+    assert(source != NULL);
+    assert(model != NULL);
+    assert(cxpr_model_binding_count(model) ==
+           sizeof(contracts) / sizeof(contracts[0]));
+    for (size_t i = 0u; i < sizeof(contracts) / sizeof(contracts[0]); ++i) {
+        cxpr_value_type actual = CXPR_VALUE_NULL;
+        assert(strcmp(cxpr_model_binding_name(model, i), contracts[i].name) == 0);
+        assert(cxpr_typecheck(cxpr_model_binding_expr(model, i), NULL,
+                              &actual, &err));
+        assert(actual == contracts[i].type);
+    }
+    cxpr_model_free(model);
+    free(source);
+    printf("  ✓ test_value_type_contract_fixture\n");
+}
+
+static void test_typed_buffer_state_push_and_index(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* model = parse_model_ok(
+        "model typed_buffer_runtime\n"
+        "in source: series<number>\n"
+        "state observed: buffer<number, samples = 2>\n"
+        "state recent_prices: buffer<number, samples = 3>\n"
+        "observed := source\n"
+        "recent_prices := source + 1\n"
+        "out latest: number = observed[0]\n"
+        "out previous: number = observed[1]\n"
+        "out recent_latest: number = recent_prices[0]\n");
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+    char* code;
+
+    assert(cxpr_model_validate(model, &err));
+    program = cxpr_model_compile(model, NULL, &err);
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "typed_buffer_generated_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "double values[2]"));
+    assert(strstr(code, "double values[3]"));
+    assert(strstr(code, "state_observed;"));
+    assert(strstr(code, "state_recent_prices;"));
+    assert(strstr(code, "state_observed.count"));
+    assert(strstr(code, "state_recent_prices.next"));
+    assert(strstr(code, "_cx_state->state_observed.values[_cx_state->state_observed.next]"));
+    assert(strstr(code, "_cx_state->state_recent_prices.values[_cx_state->state_recent_prices.next]"));
+    free(code);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "source", 10.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "latest", &value));
+    assert(isnan(value));
+
+    cxpr_context_set(ctx, "source", 20.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "latest", &value) && value == 10.0);
+    assert(cxpr_model_session_get_number(session, "previous", &value) && isnan(value));
+
+    cxpr_context_set(ctx, "source", 30.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "latest", &value) && value == 20.0);
+    assert(cxpr_model_session_get_number(session, "previous", &value) && value == 10.0);
+
+    cxpr_context_set(ctx, "source", 40.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "latest", &value) && value == 30.0);
+    assert(cxpr_model_session_get_number(session, "previous", &value) && value == 20.0);
+    assert(cxpr_model_session_get_number(session, "recent_latest", &value) && value == 31.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_typed_buffer_state_push_and_index\n");
+}
+
+static void test_typed_declaration_fixtures_are_accepted(void) {
+    const char* fixtures[] = {
+        "fixtures/syntax/typed_model_declarations.cxpr",
+        "fixtures/syntax/typed_model_declarations_flat.cxpr"
+    };
+    for (size_t fixture_i = 0u; fixture_i < 2u; ++fixture_i) {
+        cxpr_error err = {0};
+        char* source = read_fixture(fixtures[fixture_i]);
+        cxpr_model* model;
+        cxpr_model_compiled* program;
+        assert(source != NULL);
+        model = cxpr_model_parse(source, &err);
+        if (!model) fprintf(stderr, "%s: %s at %zu:%zu\n", fixtures[fixture_i],
+                            err.message ? err.message : "parse failed", err.line, err.column);
+        assert(model != NULL);
+        assert(cxpr_model_validate(model, &err));
+        assert(cxpr_model_binding_declared_type(model, 0u) == CXPR_MODEL_DECL_NUMBER);
+        assert(cxpr_model_binding_declared_type(model, 1u) == CXPR_MODEL_DECL_BOOL);
+        assert(cxpr_model_binding_declared_type(model, 2u) == CXPR_MODEL_DECL_BUFFER);
+        assert(cxpr_model_binding_element_type(model, 2u) == CXPR_MODEL_ELEMENT_NUMBER);
+        assert(cxpr_model_binding_buffer_samples(model, 2u) == 64u);
+        program = cxpr_model_compile(model, NULL, &err);
+        if (!program) fprintf(stderr, "%s compile: %s\n", fixtures[fixture_i],
+                              err.message ? err.message : "failed");
+        assert(program != NULL);
+        cxpr_model_compiled_free(program);
+        cxpr_model_free(model);
+        free(source);
+    }
+    printf("  ✓ test_typed_declaration_fixtures_are_accepted\n");
+}
+
 int main(void) {
     test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
@@ -4549,9 +4701,13 @@ int main(void) {
     test_compile_model_ir_backend_rejects_unsupported_model();
     test_compile_model_c_backend_rejects_unsupported_model();
     test_compile_model_defined_function_without_host_registration();
+    test_compile_rejects_known_value_type_mismatch();
+    test_value_type_contract_fixture();
     test_output_list_syntax();
     test_function_block_out_expression();
     test_state_session_atomic_commit_and_events();
+    test_typed_declaration_fixtures_are_accepted();
+    test_typed_buffer_state_push_and_index();
     test_session_input_lookback();
     test_session_expression_lookback();
     test_session_cross_functions_capture_argument_history();

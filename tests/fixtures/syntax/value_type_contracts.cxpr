@@ -1,0 +1,33 @@
+# Executable static type contract. The TYPE comments are asserted by
+# tests/model.test.c and are not declaration syntax.
+
+model value_type_contracts
+
+number_value = 42                         # TYPE number
+nan_value = null                          # TYPE number (language NaN sentinel)
+bool_value = true                         # TYPE bool
+string_value = "ready"                    # TYPE string
+array_value = [1, 2, 3]                   # TYPE array
+record_value = { price: 42, active: true } # TYPE struct
+
+array_element = [10, 20][0]               # TYPE number
+numeric_result = 1 + 2 * 3                 # TYPE number
+comparison_result = 1 < 2                  # TYPE bool
+equality_result = "a" == "a"              # TYPE bool
+logical_result = true and not false        # TYPE bool
+conditional_result = true ? 1 : 2          # TYPE number
+
+out {
+    number_value,
+    nan_value,
+    bool_value,
+    string_value,
+    array_value,
+    record_value,
+    array_element,
+    numeric_result,
+    comparison_result,
+    equality_result,
+    logical_result,
+    conditional_result
+}

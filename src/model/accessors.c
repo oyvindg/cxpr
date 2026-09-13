@@ -339,6 +339,23 @@ const cxpr_expr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t ind
     return model && index < model->binding_count ? model->bindings[index].expr : NULL;
 }
 
+cxpr_model_decl_type cxpr_model_binding_declared_type(const cxpr_model* model,
+                                                       size_t index) {
+    return model && index < model->binding_count
+               ? model->bindings[index].declared_type : CXPR_MODEL_DECL_INFERRED;
+}
+
+cxpr_model_element_type cxpr_model_binding_element_type(const cxpr_model* model,
+                                                         size_t index) {
+    return model && index < model->binding_count
+               ? model->bindings[index].element_type : CXPR_MODEL_ELEMENT_UNKNOWN;
+}
+
+size_t cxpr_model_binding_buffer_samples(const cxpr_model* model, size_t index) {
+    return model && index < model->binding_count
+               ? model->bindings[index].buffer_samples : 0u;
+}
+
 bool cxpr_model_binding_source_span(const cxpr_model* model,
                                     size_t index,
                                     cxpr_source_span* out_span) {

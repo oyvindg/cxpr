@@ -1,0 +1,5 @@
+# Registered function signatures reject known incompatible argument values.
+
+model values_invalid_function_arg
+value = any(1)
+out value

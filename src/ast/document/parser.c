@@ -435,6 +435,84 @@ static cxpr_expr_ast* cxpr_doc_ast_parse_expr(const char* text,
     return ast;
 }
 
+static char* cxpr_doc_ast_top_level_char(char* text, char wanted) {
+    int angle = 0, brace = 0, paren = 0, bracket = 0;
+    for (char* p = text; p && *p; ++p) {
+        if (*p == '<') angle++;
+        else if (*p == '>' && angle) angle--;
+        else if (*p == '{') brace++;
+        else if (*p == '}' && brace) brace--;
+        else if (*p == '(') paren++;
+        else if (*p == ')' && paren) paren--;
+        else if (*p == '[') bracket++;
+        else if (*p == ']' && bracket) bracket--;
+        else if (*p == wanted && !angle && !brace && !paren && !bracket) return p;
+    }
+    return NULL;
+}
+
+static bool cxpr_doc_ast_type_valid(const char* type) {
+    const char* p;
+    char* end = NULL;
+    unsigned long n;
+    if (!type) return true;
+    if (!strcmp(type, "number") || !strcmp(type, "bool") || !strcmp(type, "int")) return true;
+    if (!strncmp(type, "series<", 7u)) {
+        size_t len = strlen(type);
+        if (len < 9u || type[len - 1u] != '>') return false;
+        return (!strncmp(type + 7, "number>", 7u) ||
+                !strncmp(type + 7, "bool>", 5u) ||
+                !strncmp(type + 7, "int>", 4u));
+    }
+    if (strncmp(type, "buffer<", 7u)) return false;
+    p = strchr(type + 7, ',');
+    if (!p || type[strlen(type) - 1u] != '>') return false;
+    {
+        size_t element_len = (size_t)(p - (type + 7));
+        while (element_len && isspace((unsigned char)type[7 + element_len - 1u])) element_len--;
+        if (!((element_len == 6u && !strncmp(type + 7, "number", 6u)) ||
+              (element_len == 4u && !strncmp(type + 7, "bool", 4u)) ||
+              (element_len == 3u && !strncmp(type + 7, "int", 3u)))) return false;
+    }
+    p++;
+    while (isspace((unsigned char)*p)) p++;
+    if (strncmp(p, "samples", 7u)) return false;
+    p += 7;
+    while (isspace((unsigned char)*p)) p++;
+    if (*p++ != '=') return false;
+    while (isspace((unsigned char)*p)) p++;
+    n = strtoul(p, &end, 10);
+    if (end == p || n == 0u) return false;
+    while (isspace((unsigned char)*end)) end++;
+    return end[0] == '>' && end[1] == '\0';
+}
+
+static bool cxpr_doc_ast_split_decl_head(cxpr_doc_ast_node* node, char* head,
+                                         bool strip_param, size_t line, size_t column,
+                                         cxpr_error* err) {
+    char* colon = cxpr_doc_ast_top_level_char(head, ':');
+    char* name;
+    char* type = NULL;
+    if (colon) {
+        *colon = '\0';
+        type = cxpr_doc_ast_trim_in_place(colon + 1);
+        if (!cxpr_doc_ast_type_valid(type)) {
+            cxpr_doc_ast_set_error(err, CXPR_ERR_SYNTAX, "Invalid declaration type", line,
+                                   column + (size_t)(colon - head) + 2u);
+            return false;
+        }
+    }
+    name = cxpr_doc_ast_trim_in_place(head);
+    if (strip_param && name[0] == '$') name++;
+    if (!cxpr_doc_ast_is_ident(name)) {
+        cxpr_doc_ast_set_error(err, CXPR_ERR_SYNTAX, "Invalid symbol name", line, column);
+        return false;
+    }
+    node->name = cxpr_strdup(name);
+    node->value = type ? cxpr_strdup(type) : NULL;
+    return node->name && (!type || node->value);
+}
+
 static bool cxpr_doc_ast_assign_name_expr(cxpr_doc_ast_node* node,
                                                cxpr_doc_ast_parser* parser,
                                                char* statement,
@@ -443,7 +521,7 @@ static bool cxpr_doc_ast_assign_name_expr(cxpr_doc_ast_node* node,
                                                size_t line,
                                                size_t column,
                                                cxpr_error* err) {
-    char* eq = strchr(statement, '=');
+    char* eq = cxpr_doc_ast_top_level_char(statement, '=');
     char* name;
     char* expr;
     char* metadata_open;
@@ -462,15 +540,16 @@ static bool cxpr_doc_ast_assign_name_expr(cxpr_doc_ast_node* node,
         *metadata_open = '\0';
         expr = cxpr_doc_ast_trim_in_place(expr);
     }
-    if (strip_param && name[0] == '$') name++;
-    if (!cxpr_doc_ast_is_ident(name)) {
-        cxpr_doc_ast_set_error(err, CXPR_ERR_SYNTAX, "Invalid symbol name", line, column);
+    if (!cxpr_doc_ast_split_decl_head(node, name, strip_param, line, column, err)) return false;
+    if (node->value && !strncmp(node->value, "buffer<", 7u)) {
+        cxpr_doc_ast_set_error(err, CXPR_ERR_SYNTAX,
+                               "Buffer declarations cannot have an initializer",
+                               line, column);
         return false;
     }
-    node->name = cxpr_strdup(name);
     node->text = cxpr_strdup(expr);
     node->expression = cxpr_doc_ast_parse_expr(expr, line, column, err);
-    if (!node->name || !node->text || !node->expression) return false;
+    if (!node->text || !node->expression) return false;
     if (!metadata_open) return true;
     if (!metadata_close || metadata_close < metadata_open) {
         cxpr_doc_ast_set_error(err, CXPR_ERR_SYNTAX,
@@ -633,6 +712,7 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
     int paren = 0;
     int brace = 0;
     int bracket = 0;
+    int angle = 0;
     for (;;) {
         char ch = *cursor;
         bool end = ch == '\0';
@@ -644,7 +724,9 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
             else if (ch == '}' && brace > 0) brace--;
             else if (ch == '[') bracket++;
             else if (ch == ']' && bracket > 0) bracket--;
-            else if ((ch == ',' || ch == '\n') && paren == 0 && brace == 0 && bracket == 0) {
+            else if (ch == '<') angle++;
+            else if (ch == '>' && angle > 0) angle--;
+            else if ((ch == ',' || ch == '\n') && paren == 0 && brace == 0 && bracket == 0 && angle == 0) {
                 split = true;
             }
         }
@@ -667,8 +749,11 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
                                                 "Out of memory", 0u, 0u);
                     return false;
                 }
-                if (child_kind == CXPR_DOC_AST_INPUT_DECL && strchr(entry, '=') &&
-                    entry[0] != '$') {
+                char* top_eq = cxpr_doc_ast_top_level_char(entry, '=');
+                /* Typed defaults may include an annotation between the
+                 * parameter name and '=' (e.g. `$period: int = 14`). */
+                if (child_kind == CXPR_DOC_AST_INPUT_DECL && top_eq &&
+                    (!strchr(entry, '$') || strchr(entry, '$') > top_eq)) {
                     const size_t error_line = child->span.start.line;
                     const size_t error_column = child->span.start.column + 1u;
                     cxpr_doc_ast_node_free(child);
@@ -679,8 +764,9 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
                         error_line, error_column);
                     return false;
                 }
-                if (params || child_kind == CXPR_DOC_AST_STATE_DECL ||
-                    (child_kind == CXPR_DOC_AST_INPUT_DECL && strchr(entry, '='))) {
+                if (params || (child_kind == CXPR_DOC_AST_STATE_DECL && top_eq) ||
+                    (child_kind == CXPR_DOC_AST_INPUT_DECL && top_eq) ||
+                    (child_kind == CXPR_DOC_AST_OUTPUT_DECL && top_eq)) {
                     if (!cxpr_doc_ast_assign_name_expr(
                             child, parser, entry,
                             params || child_kind == CXPR_DOC_AST_INPUT_DECL,
@@ -692,12 +778,21 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
                         return false;
                     }
                 } else {
-                    child->name = cxpr_strdup(entry);
-                    if (!child->name) {
+                    if (!cxpr_doc_ast_split_decl_head(child, entry, false,
+                                                     child->span.start.line,
+                                                     child->span.start.column + 1u,
+                                                     parser->err)) {
                         cxpr_doc_ast_node_free(child);
                         free(entry);
-                        cxpr_doc_ast_set_error(parser->err, CXPR_ERR_OUT_OF_MEMORY,
-                                                    "Out of memory", 0u, 0u);
+                        return false;
+                    }
+                    if (child_kind == CXPR_DOC_AST_STATE_DECL &&
+                        (!child->value || strncmp(child->value, "buffer<", 7u))) {
+                        cxpr_doc_ast_node_free(child);
+                        free(entry);
+                        cxpr_doc_ast_set_error(parser->err, CXPR_ERR_SYNTAX,
+                                               "State declarations require an initializer",
+                                               0u, 0u);
                         return false;
                     }
                 }
@@ -1065,7 +1160,9 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         node->text = cxpr_strdup(rest);
         ok = node->text != NULL;
     } else if (cxpr_doc_ast_keyword(statement, "in", &rest)) {
-        node = cxpr_doc_ast_node_new(strchr(rest, '{') ? CXPR_DOC_AST_INPUT_BLOCK
+        node = cxpr_doc_ast_node_new((strchr(rest, '{') &&
+                                      !cxpr_doc_ast_top_level_char((char*)rest, '='))
+                                         ? CXPR_DOC_AST_INPUT_BLOCK
                                                            : CXPR_DOC_AST_INPUT_DECL,
                                           span);
         if (!node) goto oom;
@@ -1086,14 +1183,16 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
                     parser, node, CXPR_DOC_AST_INPUT_DECL, open + 1,
                     start_offset + (size_t)(open + 1 - statement), false);
             }
-        } else if (strchr(rest, '=') || strchr(rest, ',')) {
+        } else if (cxpr_doc_ast_top_level_char((char*)rest, '=') ||
+                   cxpr_doc_ast_top_level_char((char*)rest, ',')) {
             node->kind = CXPR_DOC_AST_INPUT_BLOCK;
             ok = cxpr_doc_ast_parse_comma_or_line_decls(
                 parser, node, CXPR_DOC_AST_INPUT_DECL, rest,
                 start_offset + (size_t)(rest - statement), false);
         } else {
-            node->name = cxpr_strdup(rest);
-            ok = node->name != NULL;
+            ok = cxpr_doc_ast_split_decl_head(node, (char*)rest, false,
+                                              span.start.line, span.start.column + 1u,
+                                              parser->err);
         }
     } else if (cxpr_doc_ast_keyword(statement, "state", &rest)) {
         if (strchr(rest, '{')) {
@@ -1109,9 +1208,21 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         } else {
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_STATE_DECL, span);
             if (!node) goto oom;
-            ok = cxpr_doc_ast_assign_name_expr(
-                node, parser, (char*)rest, false, start_offset + (size_t)(rest - statement),
-                span.start.line, span.start.column + 1u, parser->err);
+            if (cxpr_doc_ast_top_level_char((char*)rest, '=')) {
+                ok = cxpr_doc_ast_assign_name_expr(
+                    node, parser, (char*)rest, false, start_offset + (size_t)(rest - statement),
+                    span.start.line, span.start.column + 1u, parser->err);
+            } else {
+                ok = cxpr_doc_ast_split_decl_head(node, (char*)rest, false,
+                                                  span.start.line, span.start.column + 1u,
+                                                  parser->err);
+                if (ok && (!node->value || strncmp(node->value, "buffer<", 7u))) {
+                    cxpr_doc_ast_set_error(parser->err, CXPR_ERR_SYNTAX,
+                                           "State declarations require an initializer",
+                                           span.start.line, span.start.column + 1u);
+                    ok = false;
+                }
+            }
         }
     } else if (cxpr_doc_ast_keyword(statement, "out", &rest)) {
         if (strstr(rest, ":=")) {
@@ -1155,7 +1266,7 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
             ok = node->name != NULL && metadata->name && metadata->text &&
                  cxpr_doc_ast_append_child(node, metadata);
             if (!ok) cxpr_doc_ast_node_free(metadata);
-        } else if (strchr(rest, '{') && !strchr(rest, '=')) {
+        } else if (*rest == '{') {
             char* open = strchr((char*)rest, '{');
             char* close = strrchr((char*)rest, '}');
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_OUTPUT_BLOCK, span);

@@ -523,6 +523,10 @@ bool cxpr_model_validate_with_external_refs(const cxpr_model* model,
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
+        if (model->bindings[i].declared_type == CXPR_MODEL_DECL_BUFFER &&
+            !model->bindings[i].expr) {
+            continue;
+        }
         if (!cxpr_resample_validate_ast(model->bindings[i].expr, err)) {
             if (err && model->bindings[i].has_span) {
                 err->position = model->bindings[i].span.start.offset;

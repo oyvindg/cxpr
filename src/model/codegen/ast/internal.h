@@ -4,7 +4,7 @@
 #include "model/codegen/internal.h"
 
 /**
- * @file model/codegen/codegen_ast_internal.h
+ * @file model/codegen/ast/internal.h
  * @brief Internal helpers for model AST-based C code generation.
  *
  * This header contains private APIs used by the AST emitter and C-generation
@@ -45,6 +45,53 @@ typedef struct {
     const cxpr_c_target* target;
     size_t next_temp;
 } cxpr_model_ast_temp_emit;
+
+char* cxpr_model_ast_expr_to_c_with_temps(
+    cxpr_model_ast_temp_emit* emit,
+    const cxpr_expr_ast* ast,
+    cxpr_error* err);
+
+bool cxpr_model_c_symbol_is_input(const cxpr_model_compiled* program,
+                                  const char* name,
+                                  size_t* out_index);
+
+bool cxpr_model_c_symbol_is_binding(const cxpr_model_compiled* program,
+                                    const char* name);
+
+const cxpr_expr_ast* cxpr_model_producer_arg_for_param(
+    const cxpr_expr_ast* ast,
+    const char* param_name,
+    size_t param_index);
+
+const cxpr_expr_ast* cxpr_model_child_call_source_arg(
+    const cxpr_model_child_program* child_ref,
+    const cxpr_model_compiled* child,
+    const cxpr_expr_ast* ast);
+
+const cxpr_expr_ast* cxpr_model_child_call_param_arg(
+    const cxpr_model_child_program* child_ref,
+    const cxpr_model_compiled* child,
+    const cxpr_expr_ast* ast,
+    size_t param_index);
+
+size_t cxpr_model_c_child_index_for_entry(const cxpr_model_compiled* program,
+                                          const cxpr_func_entry* entry);
+
+char* cxpr_model_c_child_call_key(const cxpr_expr_ast* ast);
+
+size_t cxpr_model_c_child_call_index_for_key(
+    char* const* keys,
+    const size_t* child_indices,
+    size_t count,
+    size_t child_index,
+    const char* key);
+
+char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
+                                     const cxpr_expr_ast* ast,
+                                     const char* field,
+                                     const cxpr_c_target* target,
+                                     cxpr_error* err,
+                                     unsigned depth);
 
 /** Collect resample CSE candidates for one AST subtree. */
 bool cxpr_model_collect_resample_cse(cxpr_model_ast_c_target* target,

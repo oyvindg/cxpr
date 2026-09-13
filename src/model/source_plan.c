@@ -93,6 +93,7 @@ bool cxpr_model_plan_bind_sources(const cxpr_model* model,
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
+        if (!model->bindings[i].expr) continue;
         if (!cxpr_model_plan_bind_ast_sources(provider, model->bindings[i].expr,
                                               ctx, reg, config, &tmp, err)) {
             cxpr_free_source_plan_bindings(&tmp);

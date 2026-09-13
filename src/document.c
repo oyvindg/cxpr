@@ -197,6 +197,52 @@ static char* cxpr_document_lower_trim_in_place(char* s) {
     return s;
 }
 
+static bool cxpr_document_parse_decl_type(const char* text,
+                                          cxpr_model_decl_type* declared_type,
+                                          cxpr_model_element_type* element_type,
+                                          size_t* buffer_samples) {
+    const char* inner;
+    *declared_type = CXPR_MODEL_DECL_INFERRED;
+    *element_type = CXPR_MODEL_ELEMENT_UNKNOWN;
+    if (buffer_samples) *buffer_samples = 0u;
+    if (!text || !*text) return true;
+    if (!strcmp(text, "number")) {
+        *declared_type = CXPR_MODEL_DECL_NUMBER;
+        *element_type = CXPR_MODEL_ELEMENT_NUMBER;
+        return true;
+    }
+    if (!strcmp(text, "bool")) {
+        *declared_type = CXPR_MODEL_DECL_BOOL;
+        *element_type = CXPR_MODEL_ELEMENT_BOOL;
+        return true;
+    }
+    if (!strcmp(text, "int")) {
+        *declared_type = CXPR_MODEL_DECL_INT;
+        *element_type = CXPR_MODEL_ELEMENT_INT;
+        return true;
+    }
+    if (!strncmp(text, "series<", 7u)) {
+        *declared_type = CXPR_MODEL_DECL_SERIES;
+        inner = text + 7u;
+    } else if (!strncmp(text, "buffer<", 7u)) {
+        const char* comma;
+        char* end = NULL;
+        unsigned long value;
+        *declared_type = CXPR_MODEL_DECL_BUFFER;
+        inner = text + 7u;
+        comma = strchr(inner, ',');
+        if (!comma) return false;
+        value = strtoul(strchr(comma, '=') + 1, &end, 10);
+        if (!value || !end) return false;
+        if (buffer_samples) *buffer_samples = (size_t)value;
+    } else return false;
+    if (!strncmp(inner, "number", 6u)) *element_type = CXPR_MODEL_ELEMENT_NUMBER;
+    else if (!strncmp(inner, "bool", 4u)) *element_type = CXPR_MODEL_ELEMENT_BOOL;
+    else if (!strncmp(inner, "int", 3u)) *element_type = CXPR_MODEL_ELEMENT_INT;
+    else return false;
+    return true;
+}
+
 static bool cxpr_document_lower_use_clause(cxpr_model* model,
                                            char* text,
                                            cxpr_error* err) {
@@ -499,6 +545,10 @@ static bool cxpr_doc_model_append_constant(cxpr_model* model,
     model->constants[model->constant_count].span = cxpr_doc_ast_node_span(node);
     model->constants[model->constant_count].has_span = true;
     model->constants[model->constant_count].is_call_param = is_call_param;
+    if (!cxpr_document_parse_decl_type(cxpr_doc_ast_node_value(node),
+                                       &model->constants[model->constant_count].declared_type,
+                                       &model->constants[model->constant_count].element_type,
+                                       NULL)) return false;
     if (!model->constants[model->constant_count].name ||
         !model->constants[model->constant_count].source ||
         !model->constants[model->constant_count].expr) {
@@ -515,7 +565,16 @@ static bool cxpr_doc_model_append_binding(cxpr_model* model,
     const char* name = cxpr_doc_ast_node_name(node);
     const char* text = cxpr_doc_ast_node_text(node);
     const cxpr_expr_ast* expr = cxpr_doc_ast_node_expr(node);
-    if (!model || !name || !text || !expr) return false;
+    cxpr_model_decl_type declared_type;
+    cxpr_model_element_type element_type;
+    size_t buffer_samples;
+    if (!model || !name ||
+        !cxpr_document_parse_decl_type(cxpr_doc_ast_node_value(node), &declared_type,
+                                       &element_type, &buffer_samples)) return false;
+    if ((!text || !expr) && !(kind == CXPR_MODEL_BINDING_STATE &&
+                              declared_type == CXPR_MODEL_DECL_BUFFER)) return false;
+    if (kind == CXPR_MODEL_BINDING_STATE && declared_type == CXPR_MODEL_DECL_BUFFER && expr)
+        return false;
     grown = (cxpr_model_binding*)realloc(
         model->bindings, (model->binding_count + 1u) * sizeof(*model->bindings));
     if (!grown) return false;
@@ -523,13 +582,16 @@ static bool cxpr_doc_model_append_binding(cxpr_model* model,
     model->bindings[model->binding_count] = (cxpr_model_binding){0};
     model->bindings[model->binding_count].kind = kind;
     model->bindings[model->binding_count].name = cxpr_strdup(name);
-    model->bindings[model->binding_count].source = cxpr_strdup(text);
-    model->bindings[model->binding_count].expr = cxpr_expr_ast_clone(expr);
+    model->bindings[model->binding_count].source = text ? cxpr_strdup(text) : NULL;
+    model->bindings[model->binding_count].expr = expr ? cxpr_expr_ast_clone(expr) : NULL;
     model->bindings[model->binding_count].span = cxpr_doc_ast_node_span(node);
     model->bindings[model->binding_count].has_span = true;
+    model->bindings[model->binding_count].declared_type = declared_type;
+    model->bindings[model->binding_count].element_type = element_type;
+    model->bindings[model->binding_count].buffer_samples = buffer_samples;
     if (!model->bindings[model->binding_count].name ||
-        !model->bindings[model->binding_count].source ||
-        !model->bindings[model->binding_count].expr) {
+        (expr && (!model->bindings[model->binding_count].source ||
+                  !model->bindings[model->binding_count].expr))) {
         return false;
     }
     model->binding_count++;

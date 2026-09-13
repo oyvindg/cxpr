@@ -245,8 +245,58 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
         return cxpr_cg_emit_trend_call(
             ast, lookback_offset, b, target, err, strcmp(name, "rising") == 0);
     }
+    if ((strcmp(name, "cross_above") == 0 || strcmp(name, "cross_below") == 0) &&
+        argc == 2u) {
+        const int above = strcmp(name, "cross_above") == 0;
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, above ? " > " : " < ");
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 1), lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " && ");
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset + 1u, b, target, err)) return 0;
+        cxpr_cg_puts(b, above ? " <= " : " >= ");
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 1), lookback_offset + 1u, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+        return 1;
+    }
     if (strcmp(name, "repeat") == 0) {
         return cxpr_cg_emit_repeat_call(ast, lookback_offset, b, target, err);
+    }
+    if (strcmp(name, "within") == 0 && argc >= 3u && argc <= 5u) {
+        cxpr_cg_putc(b, '(');
+        if (argc >= 4u) {
+            cxpr_cg_putc(b, '(');
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 3), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_puts(b, " ? ");
+        }
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " >= ");
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 1), lookback_offset, b, target, err)) return 0;
+        if (argc >= 4u) {
+            cxpr_cg_puts(b, " : ");
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_puts(b, " > ");
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 1), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_putc(b, ')');
+        }
+        cxpr_cg_puts(b, " && ");
+        if (argc >= 5u) {
+            cxpr_cg_putc(b, '(');
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 4), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_puts(b, " ? ");
+        }
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " <= ");
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 2), lookback_offset, b, target, err)) return 0;
+        if (argc >= 5u) {
+            cxpr_cg_puts(b, " : ");
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_puts(b, " < ");
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 2), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_putc(b, ')');
+        }
+        cxpr_cg_putc(b, ')');
+        return 1;
     }
     if (strcmp(name, "nan") == 0 && argc == 0u) {
         cxpr_cg_puts(b, "NAN");

@@ -8,14 +8,18 @@
 # persistent bounded storage with these rules:
 # - N is a positive integer known at build time.
 # - A newly initialized buffer is empty; it is not prefilled with zero values.
+# - A buffer declaration does not accept an `=` initializer.
 # - `samples` is the maximum capacity.
+# - `observed := expression` evaluates the expression once per tick and stages
+#   one push at the same atomic commit point used by scalar state updates.
+# - Reads during that tick see the previously committed buffer. Index zero is
+#   the newest committed sample; index one is the preceding sample.
 # - Pushing into a full buffer removes the oldest element.
 # - Capacity configures the common `buffer<T>` type rather than creating a
 #   distinct nominal type for every N. The compiler may still specialize its
 #   storage layout using the build-time capacity.
 #
-# This fixture is parse-only until typed declarations and generic buffer types
-# are implemented.
+# This executable fixture is validated and compiled by the model test suite.
 
 model typed_model_declarations
 
@@ -43,6 +47,7 @@ next_ticks = ticks + 1
 average := next_average
 initialized := true
 ticks := next_ticks
+observed := source
 
 out {
     value: series<number> = next_average

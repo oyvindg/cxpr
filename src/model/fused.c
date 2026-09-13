@@ -258,7 +258,9 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) continue;
-        if (!cxpr_model_fused_ast_supported(model->bindings[i].expr, compile_reg)) {
+        if (!(model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
+              model->bindings[i].declared_type == CXPR_MODEL_DECL_BUFFER) &&
+            !cxpr_model_fused_ast_supported(model->bindings[i].expr, compile_reg)) {
             cxpr_model_fused_program_clear(program);
             return true;
         }
@@ -323,6 +325,14 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
         }
     }
     program->has_fused_layout = true;
+
+    for (size_t i = 0u; i < model->binding_count; ++i) {
+        if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
+            model->bindings[i].declared_type == CXPR_MODEL_DECL_BUFFER) {
+            program->has_fused_ir = false;
+            return true;
+        }
+    }
 
     for (size_t i = 0; i < model->binding_count; ++i) {
         size_t slot;

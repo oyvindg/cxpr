@@ -45,6 +45,22 @@ static void test_decimal(void) {
     printf("  ✓ test_decimal\n");
 }
 
+static void test_decimal_without_leading_zero(void) {
+    cxpr_lexer lex;
+    cxpr_lexer_init(&lex, ".5 .25e2");
+
+    cxpr_token tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_NUMBER);
+    assert(tok.length == 2 && memcmp(tok.start, ".5", 2) == 0);
+    ASSERT_DOUBLE_EQ(tok.number_value, 0.5);
+
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_NUMBER);
+    ASSERT_DOUBLE_EQ(tok.number_value, 25.0);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EOF);
+    printf("  ✓ test_decimal_without_leading_zero\n");
+}
+
 static void test_scientific(void) {
     cxpr_lexer lex;
 
@@ -560,6 +576,7 @@ int main(void) {
     /* Numbers */
     test_integer();
     test_decimal();
+    test_decimal_without_leading_zero();
     test_scientific();
     test_zero();
 

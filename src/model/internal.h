@@ -20,6 +20,8 @@ typedef struct {
     cxpr_source_span span;
     bool has_span;
     bool is_call_param;
+    cxpr_model_decl_type declared_type;
+    cxpr_model_element_type element_type;
 } cxpr_model_constant;
 
 /** @brief Parsed model binding with source and span metadata. */
@@ -30,6 +32,9 @@ typedef struct {
     cxpr_expr_ast* expr;
     cxpr_source_span span;
     bool has_span;
+    cxpr_model_decl_type declared_type;
+    cxpr_model_element_type element_type;
+    size_t buffer_samples;
 } cxpr_model_binding;
 
 /** @brief Anonymous model output expression awaiting a generated name. */
@@ -128,6 +133,9 @@ typedef struct {
     bool has_min_value;
     bool has_max_value;
     bool is_call_param;
+    cxpr_model_decl_type declared_type;
+    cxpr_model_element_type element_type;
+    size_t buffer_samples;
 } cxpr_model_compiled_binding;
 
 /** @brief Current and previous values tracked for one model output. */
@@ -234,6 +242,8 @@ struct cxpr_model_compiled {
     cxpr_model_compiled_binding* bindings;
     size_t binding_count;
     char** inputs;
+    cxpr_model_decl_type* input_declared_types;
+    cxpr_model_element_type* input_element_types;
     size_t input_count;
     char* source_arg;
     char* invalid_input_guard;
@@ -245,6 +255,8 @@ struct cxpr_model_compiled {
     cxpr_model_resample_requirement* resample_requirements;
     size_t resample_requirement_count;
     char** outputs;
+    cxpr_model_decl_type* output_declared_types;
+    cxpr_model_element_type* output_element_types;
     size_t output_count;
 };
 
@@ -255,6 +267,8 @@ struct cxpr_model_session {
     size_t output_count;
     cxpr_model_history_entry* histories;
     size_t history_count;
+    cxpr_model_history_entry* state_buffers;
+    size_t state_buffer_count;
     double* fused_slots;
     size_t fused_slot_count;
     cxpr_context_slot* fused_input_slots;

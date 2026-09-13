@@ -1,0 +1,21 @@
+# Executable contract for inferred values and runtime typing.
+
+model values_valid
+
+in dynamic_index
+
+numbers = [10, 20, 30]
+selected = numbers[dynamic_index]
+point = { price: 42, active: true }
+price = point.price
+active = point.active
+label_matches = "ready" == "ready"
+signal = active and price > 0
+
+out {
+    selected,
+    price,
+    active,
+    label_matches,
+    signal
+}

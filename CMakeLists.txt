@@ -136,6 +136,8 @@ if(CXPR_BUILD_TOOLS)
     add_executable(cxpr_document_tooling
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c")
     target_link_libraries(cxpr_document_tooling PRIVATE cxpr)
+    target_include_directories(cxpr_document_tooling PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

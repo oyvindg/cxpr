@@ -1,0 +1,7 @@
+# Record shapes supplied through bindings are runtime-checked when their
+# statically inferred shape is unknown.
+
+model values_invalid_field
+record = { price: 42 }
+value = record.missing
+out value

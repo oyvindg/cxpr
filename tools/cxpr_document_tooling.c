@@ -1,6 +1,8 @@
 #include <cxpr/cxpr.h>
+#include "../src/model/internal.h"
 
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,6 +58,37 @@ static void json_string(const char* text) {
         }
     }
     fputc('"', stdout);
+}
+
+static void recover_error_location(cxpr_error* err, const char* source) {
+    const char* marker;
+    const char* start;
+    const char* end;
+    size_t offset;
+    if (!err || !source || !err->message) return;
+    marker = strstr(err->message, "operand '");
+    if (!marker) marker = strstr(err->message, "argument '");
+    if (!marker) marker = strstr(err->message, "expression '");
+    if (!marker) return;
+    start = strchr(marker, '\'');
+    if (!start) return;
+    start++;
+    end = strchr(start, '\'');
+    if (!end || end == start) return;
+    for (offset = 0u; source[offset]; ++offset) {
+        size_t len = (size_t)(end - start);
+        if (strncmp(source + offset, start, len) == 0) {
+            size_t i;
+            err->position = offset;
+            err->line = 1u;
+            err->column = 0u;
+            for (i = 0u; i < offset; ++i) {
+                if (source[i] == '\n') { err->line++; err->column = 0u; }
+                else err->column++;
+            }
+            return;
+        }
+    }
 }
 
 static const char* node_kind_name(cxpr_doc_ast_kind kind) {
@@ -271,11 +304,61 @@ static void walk_tokens(const cxpr_doc_ast_node* node,
     }
 }
 
+static void collect_function_names(const cxpr_model* model,
+                                   const char** names,
+                                   size_t* count,
+                                   size_t capacity) {
+    if (!model || !names || !count) return;
+    for (size_t group = 0u; group < 2u; ++group) {
+        size_t expr_count = group == 0u
+            ? cxpr_model_constant_count(model)
+            : cxpr_model_binding_count(model);
+        for (size_t i = 0u; i < expr_count; ++i) {
+            const cxpr_expr_ast* expr = group == 0u
+                ? cxpr_model_constant_expr(model, i)
+                : cxpr_model_binding_expr(model, i);
+            const char* used[128];
+            size_t used_count = cxpr_expr_ast_functions_used(expr, used, 128u);
+            for (size_t j = 0u; j < used_count && *count < capacity; ++j) {
+                int duplicate = 0;
+                for (size_t k = 0u; k < *count; ++k) {
+                    if (strcmp(names[k], used[j]) == 0) duplicate = 1;
+                }
+                if (!duplicate) names[(*count)++] = used[j];
+            }
+        }
+    }
+}
+
+static int typecheck_model_expressions(const cxpr_model* model,
+                                       const cxpr_registry* registry,
+                                       cxpr_error* err) {
+    for (size_t group = 0u; model && group < 2u; ++group) {
+        size_t count = group == 0u
+            ? cxpr_model_constant_count(model)
+            : cxpr_model_binding_count(model);
+        for (size_t i = 0u; i < count; ++i) {
+            const cxpr_expr_ast* expr = group == 0u
+                ? cxpr_model_constant_expr(model, i)
+                : cxpr_model_binding_expr(model, i);
+            /* Typed buffers deliberately have no initializer expression. */
+            if (!expr) continue;
+            if (!cxpr_typecheck(expr, registry, NULL, err)) return 0;
+        }
+    }
+    return 1;
+}
+
 int main(int argc, char** argv) {
     const char* source_name = "<stdin>";
     char* source;
     cxpr_error err = {0};
     cxpr_doc_ast* ast;
+    cxpr_model* model = NULL;
+    cxpr_error semantic_err = {0};
+    int semantic_ok = 1;
+    const char* function_names[256];
+    size_t function_count = 0u;
     int comma = 0;
 
     for (int i = 1; i < argc; ++i) {
@@ -306,6 +389,39 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    model = cxpr_model_parse(source, &semantic_err);
+    if (!model) {
+        semantic_ok = 0;
+    } else {
+        size_t use_count = cxpr_model_use_count(model);
+        char** external_refs = use_count
+            ? (char**)calloc(use_count, sizeof(*external_refs))
+            : NULL;
+        if (use_count == 0u || external_refs) {
+            for (size_t i = 0u; i < use_count; ++i) {
+                external_refs[i] = (char*)cxpr_model_use_alias(model, i);
+            }
+            semantic_ok = cxpr_model_validate_with_external_refs(
+                model, external_refs, use_count, &semantic_err) ? 1 : 0;
+        }
+        free(external_refs);
+        collect_function_names(model, function_names, &function_count, 256u);
+        if (semantic_ok) {
+            cxpr_registry* registry = cxpr_registry_new();
+            if (!registry) {
+                semantic_ok = 0;
+                semantic_err.code = CXPR_ERR_OUT_OF_MEMORY;
+                semantic_err.message = "Out of memory";
+            } else {
+                cxpr_register_defaults(registry);
+                semantic_ok = typecheck_model_expressions(
+                    model, registry, &semantic_err);
+                cxpr_registry_free(registry);
+            }
+        }
+    }
+
+    recover_error_location(&semantic_err, source);
     fputs("{\"ok\":true,\"outline\":[", stdout);
     walk_outline(cxpr_doc_ast_root(ast), &comma);
     fputs("],\"folds\":[", stdout);
@@ -314,8 +430,96 @@ int main(int argc, char** argv) {
     fputs("],\"tokens\":[", stdout);
     comma = 0;
     walk_tokens(cxpr_doc_ast_root(ast), source, &comma);
+    fputs("],\"functions\":[", stdout);
+    {
+        cxpr_registry* registry = cxpr_registry_new();
+        cxpr_register_defaults(registry);
+        int function_json_comma = 0;
+        for (size_t i = 0u; i < cxpr_model_function_count(model); ++i) {
+            char* declaration = NULL;
+            const char* source_text = cxpr_model_function_source(model, i);
+            const char* open_paren;
+            char function_name[256];
+            size_t function_name_len;
+            if (!source_text) continue;
+            open_paren = strchr(source_text, '(');
+            if (!open_paren) continue;
+            function_name_len = (size_t)(open_paren - source_text);
+            while (function_name_len > 0u &&
+                   (source_text[function_name_len - 1u] == ' ' || source_text[function_name_len - 1u] == '\t')) {
+                function_name_len--;
+            }
+            if (function_name_len == 0u || function_name_len >= sizeof(function_name)) continue;
+            memcpy(function_name, source_text, function_name_len);
+            function_name[function_name_len] = '\0';
+            if (!cxpr_model_function_declaration_source(model, i, &declaration)) {
+                const char* open_brace = strchr(source_text, '{');
+                size_t signature_len = open_brace
+                    ? (size_t)(open_brace - source_text)
+                    : strlen(source_text);
+                while (signature_len > 0u && isspace((unsigned char)source_text[signature_len - 1u])) {
+                    signature_len--;
+                }
+                declaration = (char*)malloc(signature_len + 4u);
+                if (!declaration) continue;
+                memcpy(declaration, "fn ", 3u);
+                memcpy(declaration + 3u, source_text, signature_len);
+                declaration[signature_len + 3u] = '\0';
+            }
+            if (function_json_comma) fputc(',', stdout);
+            function_json_comma = 1;
+            fputs("{\"name\":", stdout);
+            json_string(function_name);
+            fputs(",\"builtin\":false,\"minArgs\":0,\"maxArgs\":0,\"signature\":", stdout);
+            json_string(declaration);
+            fputc('}', stdout);
+            free(declaration);
+        }
+        for (size_t i = 0u; i < model->record_function_count; ++i) {
+            const cxpr_model_record_function* record = &model->record_functions[i];
+            if (!record->name) continue;
+            if (function_json_comma) fputc(',', stdout);
+            function_json_comma = 1;
+            fputs("{\"name\":", stdout);
+            json_string(record->name);
+            fputs(",\"builtin\":false,\"minArgs\":", stdout);
+            fprintf(stdout, "%zu,\"maxArgs\":%zu,\"signature\":", record->param_count, record->param_count);
+            fputs("\"", stdout);
+            fputs(record->name, stdout);
+            fputs("(", stdout);
+            for (size_t j = 0u; j < record->param_count; ++j) {
+                if (j > 0u) fputs(", ", stdout);
+                fputs(record->params[j], stdout);
+            }
+            fputs(")\"}", stdout);
+        }
+        for (size_t i = 0u; i < function_count; ++i) {
+            size_t min_args = 0u;
+            size_t max_args = 0u;
+            int builtin = cxpr_registry_lookup(
+                registry, function_names[i], &min_args, &max_args) ? 1 : 0;
+            if (function_json_comma) fputc(',', stdout);
+            function_json_comma = 1;
+            fputs("{\"name\":", stdout);
+            json_string(function_names[i]);
+            fprintf(stdout,
+                    ",\"builtin\":%s,\"minArgs\":%zu,\"maxArgs\":%zu}",
+                    builtin ? "true" : "false", min_args, max_args);
+        }
+        cxpr_registry_free(registry);
+    }
+    fputs("],\"diagnostics\":[", stdout);
+    if (!semantic_ok) {
+        fputs("{\"severity\":1,\"message\":", stdout);
+        json_string(semantic_err.message ? semantic_err.message : "CXPR semantic validation failed");
+        fprintf(stdout,
+                ",\"line\":%zu,\"column\":%zu}",
+                semantic_err.line > 0u ? semantic_err.line - 1u : 0u,
+                semantic_err.column);
+    }
     fputs("]}\n", stdout);
 
+    cxpr_model_free(model);
     cxpr_doc_ast_free(ast);
     free(source);
     return 0;

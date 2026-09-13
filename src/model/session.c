@@ -181,6 +181,44 @@ cxpr_model_session_find_history(cxpr_model_session* session, const char* name) {
     return NULL;
 }
 
+static cxpr_model_history_entry*
+cxpr_model_session_find_state_buffer(cxpr_model_session* session, const char* name) {
+    if (!session || !name) return NULL;
+    for (size_t i = 0u; i < session->state_buffer_count; ++i) {
+        if (cxpr_model_names_match(session->state_buffers[i].name, name)) {
+            return &session->state_buffers[i];
+        }
+    }
+    return NULL;
+}
+
+static bool cxpr_model_session_publish_state_buffer(cxpr_model_session* session,
+                                                    cxpr_model_history_entry* buffer) {
+    cxpr_value* values;
+    cxpr_array_value* array;
+    cxpr_value value;
+    if (!session || !buffer) return false;
+    values = buffer->capacity
+        ? (cxpr_value*)calloc(buffer->capacity, sizeof(cxpr_value)) : NULL;
+    if (buffer->capacity && !values) return false;
+    for (size_t i = 0u; i < buffer->capacity; ++i) {
+        if (i < buffer->count) {
+            size_t slot = (buffer->next + buffer->capacity - 1u - i) % buffer->capacity;
+            values[i] = cxpr_value_clone(&buffer->values[slot]);
+        } else {
+            values[i] = cxpr_num(NAN);
+        }
+    }
+    array = cxpr_array_value_new(values, buffer->capacity);
+    for (size_t i = 0u; i < buffer->capacity; ++i) cxpr_value_free(&values[i]);
+    free(values);
+    if (!array) return false;
+    value = cxpr_array(array);
+    cxpr_context_set_value(session->ctx, buffer->name, &value);
+    cxpr_value_free(&value);
+    return true;
+}
+
 static bool cxpr_model_session_history_push(cxpr_model_session* session,
                                             const char* name,
                                             const cxpr_value* value) {
@@ -264,6 +302,18 @@ bool cxpr_model_lookback_resolver(const cxpr_expr_ast* target,
         offset = (unsigned)dynamic_offset;
     }
     if (!cxpr_model_lookback_target_key(target, &key, err)) return false;
+    entry = cxpr_model_session_find_state_buffer(session, key);
+    if (entry) {
+        free(key);
+        if (entry->capacity == 0u || entry->count <= (size_t)offset) {
+            *out = cxpr_num(NAN);
+            return true;
+        }
+        slot = (entry->next + entry->capacity - 1u - (size_t)offset) %
+               entry->capacity;
+        *out = cxpr_value_clone(&entry->values[slot]);
+        return true;
+    }
     if (offset == 0u) {
         *out = cxpr_model_context_get_history_value(ctx, key, &found);
         free(key);
@@ -447,6 +497,40 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
             }
         }
     }
+    for (size_t i = 0u; i < program->state_default_count; ++i) {
+        if (program->state_defaults[i].declared_type == CXPR_MODEL_DECL_BUFFER) {
+            session->state_buffer_count++;
+        }
+    }
+    if (session->state_buffer_count > 0u) {
+        size_t out_i = 0u;
+        session->state_buffers = (cxpr_model_history_entry*)calloc(
+            session->state_buffer_count, sizeof(cxpr_model_history_entry));
+        if (!session->state_buffers) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        for (size_t i = 0u; i < program->state_default_count; ++i) {
+            const cxpr_model_compiled_binding* state = &program->state_defaults[i];
+            cxpr_model_history_entry* buffer;
+            if (state->declared_type != CXPR_MODEL_DECL_BUFFER) continue;
+            buffer = &session->state_buffers[out_i++];
+            buffer->name = cxpr_strdup(state->name);
+            buffer->capacity = state->buffer_samples;
+            buffer->values = (cxpr_value*)calloc(buffer->capacity, sizeof(cxpr_value));
+            if (!buffer->name || !buffer->values) {
+                cxpr_model_session_free(session);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return NULL;
+            }
+            if (!cxpr_model_session_publish_state_buffer(session, buffer)) {
+                cxpr_model_session_free(session);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return NULL;
+            }
+        }
+    }
     if (program->binding_count > 0u) {
         session->pending_values =
             (cxpr_value*)calloc(program->binding_count, sizeof(cxpr_value));
@@ -520,6 +604,7 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         return NULL;
     }
     for (size_t i = 0; i < program->state_default_count; ++i) {
+        if (program->state_defaults[i].declared_type == CXPR_MODEL_DECL_BUFFER) continue;
         if (program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_NUMBER) {
             double value = 0.0;
             if (!cxpr_eval_ast_number(program->state_defaults[i].ast,
@@ -589,6 +674,10 @@ void cxpr_model_session_free(cxpr_model_session* session) {
         cxpr_model_history_entry_free(&session->histories[i]);
     }
     free(session->histories);
+    for (size_t i = 0; i < session->state_buffer_count; ++i) {
+        cxpr_model_history_entry_free(&session->state_buffers[i]);
+    }
+    free(session->state_buffers);
     free(session->fused_slots);
     free(session->fused_input_slots);
     free(session->fused_input_slot_bound);
@@ -682,6 +771,19 @@ static void cxpr_model_session_commit_pending(const cxpr_model_compiled* program
     for (size_t i = 0u; i < session->pending_count; ++i) {
         size_t binding_index = session->pending_binding_indices[i];
         if (binding_index >= program->binding_count) continue;
+        if (program->bindings[binding_index].declared_type == CXPR_MODEL_DECL_BUFFER) {
+            cxpr_model_history_entry* buffer = cxpr_model_session_find_state_buffer(
+                session, program->bindings[binding_index].name);
+            if (buffer && buffer->capacity > 0u) {
+                cxpr_value_free(&buffer->values[buffer->next]);
+                buffer->values[buffer->next] =
+                    cxpr_value_clone(&session->pending_values[i]);
+                buffer->next = (buffer->next + 1u) % buffer->capacity;
+                if (buffer->count < buffer->capacity) buffer->count++;
+                (void)cxpr_model_session_publish_state_buffer(session, buffer);
+            }
+            continue;
+        }
         if (session->pending_values[i].type == CXPR_VALUE_NUMBER) {
             cxpr_model_context_set_compiled_number(
                 session->ctx,

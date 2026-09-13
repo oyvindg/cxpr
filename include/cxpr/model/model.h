@@ -39,6 +39,24 @@ typedef enum {
     CXPR_MODEL_RESULT_BOOL = 2,
 } cxpr_model_result_kind;
 
+/** Build-time type attached to a model declaration. */
+typedef enum {
+    CXPR_MODEL_DECL_INFERRED = 0,
+    CXPR_MODEL_DECL_NUMBER,
+    CXPR_MODEL_DECL_BOOL,
+    CXPR_MODEL_DECL_INT,
+    CXPR_MODEL_DECL_SERIES,
+    CXPR_MODEL_DECL_BUFFER,
+} cxpr_model_decl_type;
+
+/** Scalar element type for series and buffer declarations. */
+typedef enum {
+    CXPR_MODEL_ELEMENT_UNKNOWN = 0,
+    CXPR_MODEL_ELEMENT_NUMBER,
+    CXPR_MODEL_ELEMENT_BOOL,
+    CXPR_MODEL_ELEMENT_INT,
+} cxpr_model_element_type;
+
 typedef enum {
     CXPR_MODEL_BACKEND_AUTO = 0,
     CXPR_MODEL_BACKEND_IR = 1,
@@ -651,6 +669,12 @@ size_t cxpr_model_binding_count(const cxpr_model* model);
 cxpr_model_binding_kind cxpr_model_binding_kind_at(const cxpr_model* model, size_t index);
 const char* cxpr_model_binding_name(const cxpr_model* model, size_t index);
 const cxpr_expr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index);
+
+cxpr_model_decl_type cxpr_model_binding_declared_type(const cxpr_model* model,
+                                                       size_t index);
+cxpr_model_element_type cxpr_model_binding_element_type(const cxpr_model* model,
+                                                         size_t index);
+size_t cxpr_model_binding_buffer_samples(const cxpr_model* model, size_t index);
 bool cxpr_model_binding_source_span(const cxpr_model* model,
                                     size_t index,
                                     cxpr_source_span* out_span);

@@ -80,6 +80,11 @@ static bool cxpr_typecheck_error(cxpr_error* err,
         *err = (cxpr_error){0};
         err->code = CXPR_ERR_TYPE_MISMATCH;
         err->message = message;
+        if (node && node->has_source_span) {
+            err->position = node->source_span.start.offset;
+            err->line = node->source_span.start.line;
+            err->column = node->source_span.start.column;
+        }
     }
     free(expr);
     return false;
@@ -99,6 +104,25 @@ static bool cxpr_typecheck_struct_shape_error(cxpr_error* err, const char* op) {
     return false;
 }
 
+static bool cxpr_typecheck_field_error(cxpr_error* err, const char* field,
+                                       const cxpr_expr_ast* node) {
+    static _Thread_local char message[256];
+
+    if (err) {
+        snprintf(message, sizeof(message),
+                 "type error: record has no field '%s'", field ? field : "");
+        *err = (cxpr_error){0};
+        err->code = CXPR_ERR_TYPE_MISMATCH;
+        err->message = message;
+        if (node && node->has_source_span) {
+            err->position = node->source_span.start.offset;
+            err->line = node->source_span.start.line;
+            err->column = node->source_span.start.column;
+        }
+    }
+    return false;
+}
+
 static bool cxpr_typecheck_record_has_field(const cxpr_expr_ast* record,
                                             const char* field_name) {
     if (!record || record->type != CXPR_NODE_RECORD || !field_name) return false;
@@ -108,6 +132,17 @@ static bool cxpr_typecheck_record_has_field(const cxpr_expr_ast* record,
         }
     }
     return false;
+}
+
+static const cxpr_expr_ast* cxpr_typecheck_record_field(
+    const cxpr_expr_ast* record, const char* field_name) {
+    if (!record || record->type != CXPR_NODE_RECORD || !field_name) return NULL;
+    for (size_t i = 0u; i < record->data.record.field_count; ++i) {
+        if (strcmp(record->data.record.field_names[i], field_name) == 0) {
+            return record->data.record.field_values[i];
+        }
+    }
+    return NULL;
 }
 
 static bool cxpr_typecheck_record_shapes_match(const cxpr_expr_ast* left,
@@ -313,7 +348,9 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast*
                                    ast->data.function_call.args[2], err);
     }
 
+    entry = cxpr_registry_find(reg, name);
     for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
+        size_t expected_index = i;
         cxpr_typecheck_static_type arg_type = cxpr_typecheck_infer(ast->data.function_call.args[i], reg, err);
         if (arg_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
         if ((strcmp(name, "any") == 0 || strcmp(name, "all") == 0) &&
@@ -322,9 +359,30 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast*
                             ast->data.function_call.args[i], arg_type);
             return CXPR_STATIC_ERROR;
         }
+        if (entry && ast->data.function_call.arg_names &&
+            ast->data.function_call.arg_names[i]) {
+            size_t param_count = 0u;
+            const char* const* param_names =
+                cxpr_registry_entry_param_names(entry, &param_count);
+            for (size_t p = 0u; param_names && p < param_count; ++p) {
+                if (strcmp(param_names[p], ast->data.function_call.arg_names[i]) == 0) {
+                    expected_index = p;
+                    break;
+                }
+            }
+        }
+        if (entry && entry->arg_types && expected_index < entry->arg_type_count &&
+            arg_type != CXPR_STATIC_UNKNOWN &&
+            arg_type != (cxpr_typecheck_static_type)entry->arg_types[expected_index]) {
+            cxpr_typecheck_error(err, name,
+                                 cxpr_typecheck_type_name(
+                                     (cxpr_typecheck_static_type)
+                                         entry->arg_types[expected_index]),
+                                 "argument", ast->data.function_call.args[i], arg_type);
+            return CXPR_STATIC_ERROR;
+        }
     }
 
-    entry = cxpr_registry_find(reg, name);
     if (entry && entry->has_return_type) return (cxpr_typecheck_static_type)entry->return_type;
     return CXPR_STATIC_UNKNOWN;
 }
@@ -352,7 +410,32 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
         return CXPR_STATIC_STRUCT;
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:
+        return CXPR_STATIC_UNKNOWN;
     case CXPR_NODE_FIELD_ACCESS:
+        if (ast->data.field_access.base) {
+            const cxpr_expr_ast* base =
+                cxpr_typecheck_resolve_static_index_value(ast->data.field_access.base);
+            operand_type = cxpr_typecheck_infer(ast->data.field_access.base, reg, err);
+            if (operand_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+            if (base && base->type == CXPR_NODE_RECORD) {
+                const cxpr_expr_ast* field = cxpr_typecheck_record_field(
+                    base, ast->data.field_access.field);
+                if (!field) {
+                    cxpr_typecheck_field_error(err, ast->data.field_access.field, ast);
+                    return CXPR_STATIC_ERROR;
+                }
+                return cxpr_typecheck_infer(field, reg, err);
+            }
+            if (ast->data.field_access.base->type == CXPR_NODE_NUMBER ||
+                ast->data.field_access.base->type == CXPR_NODE_BOOL ||
+                ast->data.field_access.base->type == CXPR_NODE_STRING ||
+                ast->data.field_access.base->type == CXPR_NODE_ARRAY) {
+                cxpr_typecheck_error(err, ".", "record operand", "base",
+                                     ast->data.field_access.base, operand_type);
+                return CXPR_STATIC_ERROR;
+            }
+        }
+        return CXPR_STATIC_UNKNOWN;
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_PRODUCER_ACCESS:
         return CXPR_STATIC_UNKNOWN;
@@ -390,12 +473,6 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
                                  ast->data.index.index, operand_type);
             return CXPR_STATIC_ERROR;
         }
-        resolved_target =
-            cxpr_typecheck_resolve_static_index_value(ast->data.index.target);
-        if (resolved_target && resolved_target->type == CXPR_NODE_ARRAY) {
-            return cxpr_typecheck_infer_array_element(
-                resolved_target, ast->data.index.index, reg, err);
-        }
         {
             const cxpr_index_capability_entry* capability;
             bool handled = false;
@@ -405,6 +482,12 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
             if (capability) {
                 return (cxpr_typecheck_static_type)capability->result_type;
             }
+        }
+        resolved_target =
+            cxpr_typecheck_resolve_static_index_value(ast->data.index.target);
+        if (resolved_target && resolved_target->type == CXPR_NODE_ARRAY) {
+            return cxpr_typecheck_infer_array_element(
+                resolved_target, ast->data.index.index, reg, err);
         }
         operand_type = cxpr_typecheck_infer(ast->data.index.target, reg, err);
         if (operand_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;

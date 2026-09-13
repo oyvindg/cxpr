@@ -178,11 +178,26 @@ Values supplied by a host or another model can remain statically unknown; the
 same checks are then enforced when the expression is evaluated. Unknown is not
 a runtime value type and does not permit a known incompatible value to pass.
 
-There is currently no accepted declaration type grammar such as `: number`,
-`series<T>`, or `buffer<T, samples=N>`. The files
-`tests/fixtures/syntax/typed_model_declarations*.cxpr` explicitly describe a
-future, parse-only contract and are not evidence that typed declarations work
-today.
+Declarations accept `: number`, `: bool`, `: int`, `series<T>`, and
+`buffer<T, samples=N>`. The executable fixtures
+`tests/fixtures/syntax/typed_model_declarations*.cxpr` are parsed, validated,
+type-checked, and compiled by the model test suite.
+
+The accepted design contract for the future buffer declaration is:
+
+```cxpr
+state observed: buffer<number, samples = 64>
+observed := source
+```
+
+`samples` is a positive build-time integer and the maximum capacity. A buffer
+starts empty and a buffer declaration must not have an `=` initializer. The
+right side of `:=` is evaluated once alongside the tick's other expressions;
+at the existing atomic state-commit point, scalar `:=` replaces its value while
+buffer `:=` pushes one value. A push to a full buffer removes the oldest value.
+`observed[0]` is the newest committed sample and `observed[1]` the previous
+sample. Expressions evaluated during a tick see only the buffer state committed
+by earlier ticks.
 
 ## Indexing and temporal history
 
@@ -366,6 +381,16 @@ The initial declaration and its update intentionally share a name; other
 duplicate bindings do not. `out state := expression` is also parsed as a state
 update while making the state public. The obsolete `out name = name + 1` form
 does not mean an update.
+
+The typed-buffer form deliberately has no initializer and uses the
+same staged-update syntax:
+
+```cxpr
+state observed: buffer<number, samples = 64>
+observed := sample
+```
+
+For buffer state, commit pushes instead of replacing.
 
 ### Outputs
 
@@ -566,7 +591,6 @@ foo = 1                      # not an expression when parsed standalone
 in period = 14               # defaulted input requires $period
 meta legacy { kind = "x" }  # legacy metadata block
 config { key: value }        # YAML mapping syntax in host blocks
-in source: series<number>    # planned typed declarations, not current syntax
 ```
 
 Do not infer language support solely from a `.cxpr` fixture: some fixtures are

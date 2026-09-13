@@ -318,7 +318,19 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
         {
             char* key = NULL;
             bool supported = cxpr_model_lookback_target_key(target, &key, err);
+            bool is_state_buffer = false;
+            if (supported && key) {
+                for (size_t i = 0u; i < model->binding_count; ++i) {
+                    if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
+                        model->bindings[i].declared_type == CXPR_MODEL_DECL_BUFFER &&
+                        cxpr_model_names_match(model->bindings[i].name, key)) {
+                        is_state_buffer = true;
+                        break;
+                    }
+                }
+            }
             if (supported &&
+                !is_state_buffer &&
                 !cxpr_model_history_spec_add(specs, count, key, target, offset)) {
                 free(key);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -440,6 +452,7 @@ bool cxpr_model_collect_lookbacks(const cxpr_model* model,
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
+        if (!model->bindings[i].expr) continue;
         cxpr_expr_ast* expanded =
             cxpr_model_inline_defined_calls(model->bindings[i].expr, registry, err);
         bool ok = expanded &&

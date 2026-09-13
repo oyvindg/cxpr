@@ -54,7 +54,8 @@ const cxpr_index_capability_entry* cxpr_registry_select_index_capability(
         if (handled) *handled = true;
         return NULL;
     }
-    cxpr_expr_ast_references(target, references, reference_count);
+    reference_count = cxpr_expr_ast_references(
+        target, references, reference_count);
     for (size_t i = 0u; i < reference_count; ++i) {
         const cxpr_index_capability_entry* candidate =
             cxpr_registry_find_index_capability(reg, references[i]);

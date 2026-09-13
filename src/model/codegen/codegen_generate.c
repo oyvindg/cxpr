@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "model/codegen/codegen_ast_internal.h"
+#include "model/codegen/ast/internal.h"
 
 bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                                                const char* qualifiers,
@@ -223,6 +223,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         }
     }
     for (size_t i = 0u; i < program->state_default_count; ++i) {
+        if (program->state_defaults[i].declared_type == CXPR_MODEL_DECL_BUFFER) continue;
         char* name = cxpr_model_c_prefixed_name("_cx_state_", program->state_defaults[i].name);
         char* field_name = cxpr_model_c_prefixed_name("state_", program->state_defaults[i].name);
         if (!name || !field_name) {
@@ -470,14 +471,31 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     }
     for (size_t i = 0u; i < program->fused_commit_count; ++i) {
         char* next_name = state_next_names[program->fused_commits[i].state_slot];
+        const cxpr_model_compiled_binding* state = NULL;
+        const char* state_name = program->fused_slot_names[program->fused_commits[i].state_slot];
         char* field_name = cxpr_model_c_prefixed_name(
-            "state_", program->fused_slot_names[program->fused_commits[i].state_slot]);
+            "state_", state_name);
         if (!next_name) goto oom;
         if (!field_name) {
             free(field_name);
             goto oom;
         }
-        cxpr_model_c_printf(&b, "    _cx_state->%s = %s;\n", field_name, next_name);
+        for (size_t state_i = 0u; state_i < program->state_default_count; ++state_i) {
+            if (cxpr_model_names_match(program->state_defaults[state_i].name, state_name)) {
+                state = &program->state_defaults[state_i];
+                break;
+            }
+        }
+        if (state && state->declared_type == CXPR_MODEL_DECL_BUFFER) {
+            cxpr_model_c_printf(&b,
+                "    _cx_state->%s.values[_cx_state->%s.next] = %s;\n"
+                "    _cx_state->%s.next = (_cx_state->%s.next + 1u) %% %zuu;\n"
+                "    if (_cx_state->%s.count < %zuu) ++_cx_state->%s.count;\n",
+                field_name, field_name, next_name, field_name, field_name,
+                state->buffer_samples, field_name, state->buffer_samples, field_name);
+        } else {
+            cxpr_model_c_printf(&b, "    _cx_state->%s = %s;\n", field_name, next_name);
+        }
         free(field_name);
     }
     for (size_t out_i = 0u; out_i < (output_indices ? selected_output_count : program->fused_output_count); ++out_i) {

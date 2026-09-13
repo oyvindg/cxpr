@@ -3,9 +3,10 @@
 # This is the block-free counterpart to typed_model_declarations.cxpr. Both
 # forms must lower to the same declaration model and apply the same explicit
 # type validation and fallback inference rules.
+# Buffer declarations have no `=` initializer. A staged `:=` update evaluates
+# once per tick and atomically pushes at commit; reads see the previous commit.
 #
-# This fixture is parse-only until typed declarations and generic buffer types
-# are implemented.
+# This executable fixture is validated and compiled by the model test suite.
 
 model typed_model_declarations_flat
 
@@ -26,6 +27,7 @@ next_ticks = ticks + 1
 average := next_average
 initialized := true
 ticks := next_ticks
+observed := source
 
 out value: series<number> = next_average
 out ready: series<bool> = enabled and initialized

@@ -355,7 +355,8 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
 
     c = *lexer->current;
 
-    if (isdigit((unsigned char)c)) {
+    if (isdigit((unsigned char)c) ||
+        (c == '.' && isdigit((unsigned char)cxpr_lexer_peek_next(lexer)))) {
         return cxpr_lexer_number(lexer);
     }
     if (cxpr_is_ident_start(c)) {

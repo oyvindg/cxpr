@@ -1,0 +1,5 @@
+# Literal array indexes must be finite, integral, non-negative and in bounds.
+
+model values_invalid_index
+value = [10, 20][-1]
+out value
