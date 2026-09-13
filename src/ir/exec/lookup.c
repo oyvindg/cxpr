@@ -247,8 +247,10 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
         if (found && root.type == CXPR_VALUE_STRUCT) {
             current = root.s;
         } else {
+            const char* message =
+                cxpr_ir_unknown_lookup_message("identifier", segment);
             free(path);
-            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_lookup_message("identifier", segment));
+            return cxpr_ir_make_not_found(err, message);
         }
     }
 
