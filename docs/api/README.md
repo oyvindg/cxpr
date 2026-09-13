@@ -28,6 +28,9 @@ truth. Historical plans and release notes are not API specifications.
 `<cxpr/plugins/debug_map.h>`, and `<cxpr/model/runtime.h>` are focused or
 generated-support interfaces and should be included explicitly when needed.
 
+See [Performance guidance](performance.md) for tuning parse/compile/evaluate
+hot paths and running the benchmarks.
+
 ## Stability classes
 
 - **Public:** installed declarations without a deprecation annotation.
