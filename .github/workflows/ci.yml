@@ -101,6 +101,6 @@ jobs:
 
       - name: Smoke-run parser fuzzer
         run: >
-          ./build-fuzz/fuzz/cxpr_fuzz_parse
+          ./build-fuzz/tests/fuzz/cxpr_fuzz_parse
           -max_total_time=30 -print_final_stats=1
-          build-fuzz/fuzz/corpus
+          build-fuzz/tests/fuzz/corpus
