@@ -391,6 +391,8 @@ observed := sample
 ```
 
 For buffer state, commit pushes instead of replacing.
+The same buffer semantics are portable across model sessions, generated C,
+CPU bulk execution, and CUDA device emission.
 
 ### Outputs
 

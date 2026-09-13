@@ -29,17 +29,18 @@ int main(int argc, char** argv) {
     cxpr_registry* registry = NULL;
     cxpr_model* model = NULL;
     cxpr_model_compiled* program = NULL;
-    const cxpr_cuda_plugin_options options = {
+    cxpr_cuda_plugin_options options = {
         "cxpr_klein_gordon_tick", "static __device__ __forceinline__"};
     char* input = NULL;
     char* generated = NULL;
     FILE* output = NULL;
     int result = 1;
 
-    if (argc != 3) {
-        fprintf(stderr, "usage: %s MODEL.cxpr OUTPUT.cuh\n", argv[0]);
+    if (argc != 3 && argc != 4) {
+        fprintf(stderr, "usage: %s MODEL.cxpr OUTPUT.cuh [FUNCTION]\n", argv[0]);
         return 2;
     }
+    if (argc == 4) options.function_name = argv[3];
     input = read_file(argv[1]);
     registry = cxpr_registry_new();
     if (!input || !registry) goto done;

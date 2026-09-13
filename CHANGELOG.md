@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-13
+
 ### Added
+
+- Typed model declarations for `number`, `bool`, `int`, `series<T>`, and
+  `buffer<T, samples = N>` in block and flat forms, validated at build time.
+- Persistent `buffer<T>` state: empty on initialization, no `=` initializer,
+  atomic per-tick push with `:=`, newest-first indexing, and NaN for unavailable
+  or out-of-range samples. Ring storage is supported by model sessions,
+  generated C, CPU bulk execution, and CUDA device emission.
+- Opt-in shared-library builds with `CXPR_BUILD_SHARED`, plus dynamically loaded
+  C and .NET P/Invoke smoke coverage.
 
 - Neutral `target[index]` AST/IR semantics with built-in zero-based array
   indexing, numeric history adapters, and exact-name extension capabilities.

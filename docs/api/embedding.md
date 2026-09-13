@@ -18,6 +18,37 @@ CPU/GPU compilation and dispatch.
 The reference session and generated artifact should implement the same model
 semantics. Keeping a parity test between them is the safest deployment pattern.
 
+## Shared library and .NET P/Invoke
+
+Configure with `-DCXPR_BUILD_SHARED=ON` to produce `libcxpr.so`, `cxpr.dll`, or
+`libcxpr.dylib`. Install normally with `cmake --install`; the native library is
+placed in the configured library directory on Unix and runtime directory on
+Windows, while the exported `cxpr::cxpr` CMake target remains unchanged.
+
+For .NET deployment, copy the native artifact into the application's matching
+RID runtime folder, for example `runtimes/linux-x64/native/libcxpr.so`,
+`runtimes/win-x64/native/cxpr.dll`, or
+`runtimes/osx-arm64/native/libcxpr.dylib`. Declare `[DllImport("cxpr")]`; the
+runtime supplies the platform-specific prefix and suffix.
+
+The recommended flat expression path is
+`cxpr_expr_parser_new`/`cxpr_expr_ast_parse`, `cxpr_expr_compile`,
+`cxpr_context_new`/`cxpr_context_set`,
+`cxpr_expr_compiled_eval_number` or `_bool`, followed by the matching free
+functions. Opaque handles marshal as `IntPtr`, C `double` as `double`, `size_t`
+as `nuint`, and C `bool` returns as one-byte `[MarshalAs(UnmanagedType.I1)]`.
+UTF-8 input strings are borrowed for the duration of each call.
+
+`cxpr_error` is blittable apart from its borrowed `message` pointer; copy or
+format that message before another cxpr call. `cxpr_value` contains a tagged C
+union and is best avoided at the managed boundary in favor of the typed number
+and bool evaluators. The bulk column/view structs contain only pointers and
+`size_t` fields and are blittable, but their backing arrays must remain pinned
+for the complete call. Descriptor structs include function pointers and are not
+recommended for direct managed marshalling; wrap descriptor/bulk execution in
+a small flat native shim when needed. The 3.1 shared target intentionally uses
+default symbol visibility; an explicit export-macro policy is future work.
+
 ## Minimal dynamic model host
 
 For a model already available as a NUL-terminated string:

@@ -1,0 +1,12 @@
+model rolling_buffer
+
+in sample
+
+state observed: buffer<number, samples = 4>
+observed := sample
+
+newest = observed[0]
+oldest = observed[3]
+window_sum = observed[0] + observed[1] + observed[2] + observed[3]
+
+out { newest, oldest, window_sum }

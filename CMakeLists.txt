@@ -36,6 +36,7 @@ option(CXPR_STRICT "Enable stricter compiler warnings and treat warnings as erro
 option(CXPR_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
+option(CXPR_BUILD_SHARED "Build cxpr as a shared library" OFF)
 
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
@@ -73,13 +74,22 @@ list(APPEND CXPR_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/meta.c")
 list(SORT CXPR_SOURCES)
 
-add_library(cxpr STATIC ${CXPR_SOURCES})
+if(CXPR_BUILD_SHARED)
+    add_library(cxpr SHARED ${CXPR_SOURCES})
+else()
+    add_library(cxpr STATIC ${CXPR_SOURCES})
+endif()
 add_library(cxpr::cxpr ALIAS cxpr)
 
 set_target_properties(cxpr PROPERTIES
     VERSION ${PROJECT_VERSION}
+    POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME cxpr
 )
+if(CXPR_BUILD_SHARED)
+    # 3.1 exports the public cxpr_* C ABI with the platform's default visibility.
+    set_target_properties(cxpr PROPERTIES SOVERSION ${CXPR_VERSION_MAJOR})
+endif()
 
 target_include_directories(cxpr PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -121,8 +131,11 @@ if(CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN)
     add_link_options(${CXPR_SANITIZER_FLAGS})
 endif()
 
-# Link math library on UNIX systems
-target_link_libraries(cxpr PRIVATE m)
+# Public headers/tests use standard math functions, and static consumers need
+# the dependency propagated. CMake ignores the name on platforms without libm.
+if(UNIX)
+    target_link_libraries(cxpr PUBLIC m)
+endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Tools

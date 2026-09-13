@@ -273,6 +273,21 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
     }
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_IDENTIFIER) {
         name = cxpr_expr_ast_identifier_name(ast);
+        for (size_t i = 0u; i < program->state_default_count; ++i) {
+            const cxpr_model_compiled_binding* state = &program->state_defaults[i];
+            if (state->declared_type == CXPR_MODEL_DECL_BUFFER &&
+                cxpr_model_names_match(state->name, name)) {
+                char* field_name = cxpr_model_c_prefixed_name("state_", state->name);
+                char out[512];
+                if (!field_name) return NULL;
+                snprintf(out, sizeof(out),
+                    "((%uu < _cx_state->%s.count) ? _cx_state->%s.values[(_cx_state->%s.next + %zuu - 1u - %uu) %% %zuu] : NAN)",
+                    lookback_offset, field_name, field_name, field_name,
+                    state->buffer_samples, lookback_offset, state->buffer_samples);
+                free(field_name);
+                return cxpr_strdup(out);
+            }
+        }
         for (size_t i = 0u; target && i < target->param_count; ++i) {
             if (cxpr_model_names_match(target->param_names[i], name)) {
                 if (target->param_exprs && target->param_exprs[i]) {

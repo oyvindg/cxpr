@@ -59,6 +59,37 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     list(APPEND CXPR_C_TEST_NAMES "${test_base}")
 endforeach()
 
+if(CXPR_BUILD_SHARED)
+    add_executable(test_pinvoke_smoke pinvoke_smoke.c)
+    target_link_libraries(test_pinvoke_smoke PRIVATE ${CMAKE_DL_LIBS})
+    target_compile_definitions(test_pinvoke_smoke PRIVATE
+        CXPR_SHARED_LIBRARY_PATH="$<TARGET_FILE:cxpr>")
+    add_dependencies(test_pinvoke_smoke cxpr)
+    add_test(NAME pinvoke_smoke COMMAND $<TARGET_FILE:test_pinvoke_smoke>)
+
+    find_program(DOTNET_EXECUTABLE dotnet)
+    if(DOTNET_EXECUTABLE)
+        execute_process(COMMAND "${DOTNET_EXECUTABLE}" --version
+            OUTPUT_VARIABLE DOTNET_SDK_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX MATCH "^[0-9]+" DOTNET_SDK_MAJOR "${DOTNET_SDK_VERSION}")
+        set(CXPR_DOTNET_SMOKE_DIR "${CMAKE_CURRENT_BINARY_DIR}/pinvoke_dotnet_smoke")
+        file(MAKE_DIRECTORY "${CXPR_DOTNET_SMOKE_DIR}")
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/pinvoke_dotnet_smoke/pinvoke_dotnet_smoke.csproj.in"
+            "${CXPR_DOTNET_SMOKE_DIR}/pinvoke_dotnet_smoke.csproj" @ONLY)
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/pinvoke_dotnet_smoke/Program.cs"
+            "${CXPR_DOTNET_SMOKE_DIR}/Program.cs" COPYONLY)
+        add_test(NAME pinvoke_dotnet_smoke
+            COMMAND "${DOTNET_EXECUTABLE}" run --project
+                "${CXPR_DOTNET_SMOKE_DIR}/pinvoke_dotnet_smoke.csproj"
+                --configuration Release)
+        set_tests_properties(pinvoke_dotnet_smoke PROPERTIES
+            ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cxpr>"
+            LABELS "dotnet")
+    endif()
+endif()
+
 add_executable(cxpr_generated_array_codegen_tool generated_array_codegen_tool.c)
 target_link_libraries(cxpr_generated_array_codegen_tool PRIVATE cxpr)
 set(CXPR_GENERATED_ARRAY_HEADER
@@ -141,6 +172,32 @@ if(CXPR_BUILD_CUDA_TESTS)
     add_test(NAME cuda_bulk_runtime COMMAND $<TARGET_FILE:test_cuda_bulk_runtime>)
     set_tests_properties(cuda_bulk_runtime PROPERTIES LABELS "cuda")
 
+    set(CXPR_CUDA_BUFFER_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_rolling_buffer_generated.cuh")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_BUFFER_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bulk/rolling_buffer.cxpr"
+            "${CXPR_CUDA_BUFFER_GENERATED}"
+            cxpr_rolling_buffer_tick
+        DEPENDS cxpr_cuda_bulk_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bulk/rolling_buffer.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_buffer_fixture
+        DEPENDS "${CXPR_CUDA_BUFFER_GENERATED}")
+    add_executable(test_cuda_bulk_buffer_runtime cuda_bulk_buffer_runtime.cu)
+    add_dependencies(test_cuda_bulk_buffer_runtime generate_cxpr_cuda_buffer_fixture)
+    target_include_directories(test_cuda_bulk_buffer_runtime PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_bulk_buffer_runtime PRIVATE cxpr)
+    target_compile_definitions(test_cuda_bulk_buffer_runtime PRIVATE
+        CXPR_ROLLING_BUFFER_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bulk/rolling_buffer.cxpr")
+    set_target_properties(test_cuda_bulk_buffer_runtime PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_bulk_buffer_runtime
+        COMMAND $<TARGET_FILE:test_cuda_bulk_buffer_runtime>)
+    set_tests_properties(cuda_bulk_buffer_runtime PROPERTIES LABELS "cuda")
+
     add_executable(cxpr_cuda_bulk_benchmark cuda_bulk_benchmark.cu)
     add_dependencies(cxpr_cuda_bulk_benchmark generate_cxpr_cuda_bulk_fixture)
     target_include_directories(cxpr_cuda_bulk_benchmark PRIVATE
@@ -175,6 +232,23 @@ if(TARGET cxpr_model_codegen)
     add_dependencies(test_bulk_codegen_e2e generate_cxpr_bulk_grid_e2e)
     target_include_directories(test_bulk_codegen_e2e PRIVATE
         "${CXPR_BULK_GRID_GENERATED_DIR}")
+
+    set(CXPR_BULK_BUFFER_GENERATED_C
+        "${CMAKE_CURRENT_BINARY_DIR}/rolling_buffer.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_BULK_BUFFER_GENERATED_C}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bulk/rolling_buffer.cxpr"
+            --output "${CXPR_BULK_BUFFER_GENERATED_C}"
+            --function rolling_buffer_tick
+        DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bulk/rolling_buffer.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_bulk_buffer_fixture
+        DEPENDS "${CXPR_BULK_BUFFER_GENERATED_C}")
+    add_dependencies(test_bulk_buffer_parity generate_cxpr_bulk_buffer_fixture)
+    target_include_directories(test_bulk_buffer_parity PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
 
     set(CXPR_SCALE_FIXTURE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/scale")

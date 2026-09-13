@@ -40,6 +40,12 @@ ctest --test-dir build/cxpr-cuda -L cuda --output-on-failure
 See `examples/bulk_grid/`, `tests/bulk.test.c`,
 `tests/bulk_codegen_e2e.test.c`, and `tests/cuda_bulk_runtime.cu`.
 
+Persistent `buffer<T>` rings live inside each generated state block, so every
+bulk element has independent history. This layout is supported by both CPU
+bulk execution and the CUDA dispatch pattern. Exact session/generated-C parity
+and cross-element isolation are covered by `tests/bulk_buffer_parity.test.c`;
+device-state parity is covered by `tests/cuda_bulk_buffer_runtime.cu`.
+
 ## API inventory
 
 | Public symbol | Role |
