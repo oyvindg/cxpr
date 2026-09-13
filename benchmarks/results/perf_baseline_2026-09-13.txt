@@ -1,0 +1,123 @@
+cxpr performance baseline
+=========================
+date=2026-09-13T17:51:03Z
+host=Linux 6.4.3-060403-generic x86_64
+cpu=AMD Ryzen 7 5800H with Radeon Graphics
+gcc=gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+build_dir=/home/evoldoc/_code/dynasty/libs/cxpr/build-bench
+trials=5
+
+### cxpr_bench_ir (representative trial) ###
+cxpr generated C vs AST vs IR benchmark (.cxpr source)
+
+Scalar
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+simple_arith                  500000         29.03         23.39            2.98      1.24x      7.85x
+nested_expr                   400000         34.49         32.08            3.12      1.08x     10.28x
+function_call                 250000         41.60         41.58            2.94      1.00x     14.13x
+defined_fn                    200000         38.79         29.23            4.25      1.33x      6.88x
+defined_chain                 120000         45.73         41.02            8.79      1.11x      4.67x
+deep_defined                   80000         43.62         41.00            4.44      1.06x      9.22x
+complex_signal                 80000         74.22         71.07            5.60      1.04x     12.69x
+large_arith                    60000        207.54        201.42            7.06      1.03x     28.52x
+large_branch                   60000        145.40        138.59            5.07      1.05x     27.33x
+large_math                    400000        188.45        183.47           20.38      1.03x      9.00x
+mixed_expr                    120000         42.32         39.76            3.41      1.06x     11.66x
+mixed_pipe                    120000         42.29         39.72            3.41      1.06x     11.66x
+context_churn                 200000        187.43        128.25            4.85      1.46x     26.44x
+
+Typed Struct
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+struct_scalar_mul             120000        427.53        429.18            2.96      1.00x    144.88x
+scalar_struct_mul             120000        451.08        438.41            2.96      1.03x    147.93x
+struct_struct_mul             100000        596.35        618.51            2.93      0.96x    211.11x
+struct_struct_add             100000        586.31        609.02            3.02      0.96x    201.81x
+struct_scalar_mul_all         100000       1245.23       1230.34            2.98      1.01x    413.43x
+scalar_struct_mul_all         100000       1339.41       1287.48            3.05      1.04x    421.45x
+struct_struct_mul_all          80000       1899.13       1888.34            2.91      1.01x    648.77x
+struct_struct_add_all          80000       1857.80       1915.25            3.15      0.97x    608.38x
+
+Lookback
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+lookback_leaf                 250000        168.78        140.52            2.82      1.20x     49.81x
+lookback_mixed                200000        277.90        216.67            4.89      1.28x     44.34x
+
+IR-only
+case                           iters   AST ns/eval    IR ns/eval  .cxpr C ns/eval    AST/IR      IR/C
+context_slot                  200000             -         52.01               -         -         -
+
+Context Update Paths
+case                           iters     set ns/op     alt ns/op   speedup
+base_array                    500000        224.15        257.44      0.87x
+mutate_array                  500000        114.64        118.52      0.97x
+mutate_prehashed              500000        114.64        102.82      1.11x
+mutate_slot                   500000        114.64          9.76     11.74x
+
+Param Update Paths
+case                           iters     set ns/op     alt ns/op   speedup
+base_param_array              500000        148.90        153.30      0.97x
+mutate_param_array            500000        146.88        151.13      0.97x
+mutate_param_hash             500000        146.88        134.13      1.10x
+
+Overlay Paths
+case                           iters           ns/op        output
+parent_get                   1000000           11.99     11.500000
+overlay_fallback_get         1000000           31.59     11.500000
+overlay_override_get         1000000           13.04     21.500000
+overlay_alloc_free_get        200000           33.95     11.500000
+defined_prefix                200000           94.60     42.000000
+sink=362591329.763414
+### cxpr_bench_model (representative trial) ###
+cxpr model runtime benchmark
+note: parse, compile, session creation and generated-C build are outside timed loops
+eval  host_registered_fn: 78.24 ns/op
+eval  cxpr_model_fn:      325.68 ns/op (4.16x host)
+eval  host_signal_helpers: 653.87 ns/op
+eval  cxpr_signal_helpers: 2477.03 ns/op (3.79x host)
+eval  cxpr_strategy_fixture: 2891.39 ns/op
+tick  cxpr_rsi_state_fixture: 423.78 ns/op
+tick  cxpr_rsi_state_c:       5.25 ns/op (0.01x fused IR)
+tick  cxpr_rsi_state_c_inline: 5.49 ns/op (1.00x lowlevel)
+tick  cxpr_rsi_state_c_const_params: 5.28 ns/op (1.01x cxpr C)
+tick  lowlevel_rsi_state_slot_c: 5.20 ns/op (0.95x lowlevel)
+tick  lowlevel_rsi_state_c:   5.50 ns/op (cxpr C 0.95x lowlevel)
+tick  cxpr_macd_record_fixture: 1724.51 ns/op
+model registry functions: 1
+rsi fused IR instructions: 178
+rsi fused disabled opcode: (none)
+sink: 85187509
+### cxpr_bench_engine (representative trial) ###
+bars=4096 reps=3000  (12288000 ticks/scenario)
+[basic   ] low-level  311.99 ns/bar | engine  357.97 ns/bar | engine/low 1.15x | parity OK
+  basic.raw_programs        124.20 ns/bar
+  basic.evaluator           311.99 ns/bar
+  basic.engine_nowatch      362.74 ns/bar
+  basic.engine_watch        357.97 ns/bar
+[lookback] low-level  447.21 ns/bar | engine  508.24 ns/bar | engine/low 1.14x | parity OK
+  lookback.raw_programs     246.02 ns/bar
+  lookback.evaluator        447.21 ns/bar
+  lookback.engine_nowatch   504.05 ns/bar
+  lookback.engine_watch     508.24 ns/bar
+(sink 5105321366.796)
+### cxpr_bench_index_history (representative trial) ###
+Plan 71 index/history benchmark (200000 iterations, ns/eval)
+case                      baseline       AST           IR generated
+array index                   2.82    183.88        98.76      3.58
+close[1]                      2.93    677.72       675.58      2.79
+producer-field[1]        unsupported    988.67       878.58      2.98
+sink=39699994
+### resample summary (median/p95 over 9 trials) ###
+scoped timeframe AST median_ns=122.21 p95_ns=126.15 throughput_per_s=8182636,45
+resample AST median_ns=146.73 p95_ns=150.79 throughput_per_s=6815238,87
+scoped timeframe IR median_ns=32.07 p95_ns=34.25 throughput_per_s=31181789,83
+resample IR median_ns=29.72 p95_ns=30.96 throughput_per_s=33647375,50
+generated C/CUDA ABI median_ns=0.85 p95_ns=0.85 throughput_per_s=1176470588,24
+uncached 2x current+2x [1] median_ns=1.70 p95_ns=1.82 throughput_per_s=588235294,12
+CSE locals current/[1] median_ns=1.27 p95_ns=1.43 throughput_per_s=787401574,80
+
+### CUDA bulk (RTX 3070) ###
+GPU: NVIDIA GeForce RTX 3070 Laptop GPU, compute capability 8.6
+CXPR CUDA resident benchmark: 1048576 cells x 1000 steps, block=256, repetitions=7
+kernel time ms: median=318.648, min=315.049, max=339.553
+throughput: 3.291 Gcell-steps/s, 236.93 effective GB/s
+multi-step CPU parity: OK
