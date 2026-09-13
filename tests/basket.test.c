@@ -57,61 +57,66 @@ static cxpr_struct_value* make_role_binding(const double* values, size_t value_c
     return out;
 }
 
-static cxpr_ast* parse_expr(const char* expr, cxpr_error* err) {
-    cxpr_parser* p = cxpr_parser_new();
-    cxpr_ast* ast = cxpr_parse(p, expr, err);
-    cxpr_parser_free(p);
+static cxpr_expr_ast* parse_expr(const char* expr, cxpr_error* err) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, err);
+    cxpr_expr_parser_free(p);
     return ast;
 }
 
 static double eval_number(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr, &err);
+    cxpr_expr_ast* ast = parse_expr(expr, &err);
     double out = 0.0;
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     return out;
 }
 
 static bool eval_bool(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr, &err);
+    cxpr_expr_ast* ast = parse_expr(expr, &err);
     bool out = false;
     assert(ast);
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     return out;
 }
 
 static void assert_eval_fails(const char* expr, cxpr_context* ctx, cxpr_registry* reg) {
     cxpr_error err = {0};
-    cxpr_ast* ast = parse_expr(expr, &err);
+    cxpr_expr_ast* ast = parse_expr(expr, &err);
     cxpr_value out = {0};
 
     assert(ast);
     assert(!cxpr_eval_ast(ast, ctx, reg, &out, &err));
     assert(err.message != NULL);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 }
 
 int main(void) {
     const double values[] = {1.0, 2.0, 3.0};
+    const double nan_values[] = {NAN, 0.0};
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_struct_value* role = make_role_binding(values, 3);
+    cxpr_struct_value* nan_role = make_role_binding(nan_values, 2);
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
 
     assert(ctx);
     assert(reg);
     assert(role);
+    assert(nan_role);
 
     cxpr_register_basket_builtins(reg);
     cxpr_context_set_struct(ctx, "__cxpr_basket_role_pair", role);
+    cxpr_context_set_struct(ctx, "__cxpr_basket_role_nanrole", nan_role);
     cxpr_struct_value_free(role);
+    cxpr_struct_value_free(nan_role);
 
     assert(cxpr_basket_is_builtin("avg"));
     assert(cxpr_basket_is_aggregate_function("avg", 1));
@@ -123,6 +128,8 @@ int main(void) {
     assert(fabs(eval_number("max($pair)", ctx, reg) - 3.0) < 1e-10);
     assert(eval_bool("any($pair > 2)", ctx, reg));
     assert(eval_bool("all($pair > 0)", ctx, reg));
+    assert_eval_fails("any($nanrole)", ctx, reg);
+    assert_eval_fails("all($nanrole)", ctx, reg);
     assert(fabs(eval_number("min(3, 1, 2)", ctx, reg) - 1.0) < 1e-10);
     assert(fabs(eval_number("max(3, 1, 2)", ctx, reg) - 3.0) < 1e-10);
     assert_eval_fails("count(1)", ctx, reg);
@@ -130,8 +137,8 @@ int main(void) {
 
     ast = parse_expr("avg($pair)", &err);
     assert(ast);
-    assert(cxpr_ast_uses_basket_aggregates(ast));
-    cxpr_ast_free(ast);
+    assert(cxpr_expr_ast_uses_basket_aggregates(ast));
+    cxpr_expr_ast_free(ast);
 
     assert(cxpr_expression_uses_basket_aggregates("count($pair)"));
     assert(!cxpr_expression_uses_basket_aggregates("rsi > 30"));

@@ -6,12 +6,12 @@
 #include <string.h>
 #include <stdlib.h>
 
-bool cxpr_eval_bind_call_args(const cxpr_ast* call_ast,
+bool cxpr_eval_bind_call_args(const cxpr_expr_ast* call_ast,
                               const cxpr_func_entry* entry,
-                              const cxpr_ast** out_args,
+                              const cxpr_expr_ast** out_args,
                               cxpr_error* err);
-const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast,
-                                                     const cxpr_ast* const* ordered_args,
+const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_expr_ast* ast,
+                                                     const cxpr_expr_ast* const* ordered_args,
                                                      size_t argc,
                                                      const cxpr_context* ctx,
                                                      const cxpr_registry* reg,
@@ -24,7 +24,7 @@ const char* cxpr_build_struct_cache_key(const char* name, const double* args, si
 bool cxpr_context_copy_prefixed_scalars(cxpr_context* dst, const cxpr_context* src,
                                         const char* src_prefix, const char* dst_prefix);
 cxpr_value cxpr_eval_defined_with_overlay(cxpr_func_entry* entry,
-                                          const cxpr_ast* call_ast,
+                                          const cxpr_expr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           cxpr_error* err);
@@ -51,11 +51,11 @@ static void pair_producer(const double* args, size_t argc,
 }
 
 static void test_eval_call_paths(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double out = 0.0;
     const char* params[] = {"a", "b", "c"};
 
@@ -65,30 +65,30 @@ static void test_eval_call_paths(void) {
     assert(cxpr_registry_set_param_names(reg, "sum3", params, 3));
     assert(cxpr_registry_define_fn(reg, "twice(x) => x * 2").code == CXPR_OK);
 
-    ast = cxpr_parse(p, "sum3(c=3, a=1, b=2)", &err);
+    ast = cxpr_expr_ast_parse(p, "sum3(c=3, a=1, b=2)", &err);
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(out == 6.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(p, "twice(5)", &err);
+    ast = cxpr_expr_ast_parse(p, "twice(5)", &err);
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(out == 10.0);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_named_param_producer_cache_paths(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* prog;
     cxpr_value result;
     const char* fields[] = {"line", "histogram"};
     const char* params[] = {"period", "signal"};
@@ -101,7 +101,7 @@ static void test_named_param_producer_cache_paths(void) {
     cxpr_context_set_param(ctx, "signal", 3.0);
 
     g_struct_call_count = 0;
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
                      "macd(period=$period, signal=$signal).line + "
                      "macd(period=$period, signal=$signal).histogram",
                      &err);
@@ -111,16 +111,16 @@ static void test_named_param_producer_cache_paths(void) {
     assert(result.type == CXPR_VALUE_NUMBER);
     assert(fabs(result.d - 2.9) < 1e-12);
     assert(g_struct_call_count == 1);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     cxpr_context_clear_cached_structs(ctx);
     g_struct_call_count = 0;
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
                      "macd(period=$period, signal=$signal).line + "
                      "macd(period=$period, signal=$signal).histogram",
                      &err);
     assert(ast);
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog != NULL && err.code == CXPR_OK);
     {
         const cxpr_ir_program* ir = (const cxpr_ir_program*)prog;
@@ -136,27 +136,27 @@ static void test_named_param_producer_cache_paths(void) {
         assert(call_ast_count == 0u);
         assert(call_producer_count >= 2u);
     }
-    assert(cxpr_eval_program(prog, ctx, reg, &result, &err));
+    assert(cxpr_expr_compiled_eval(prog, ctx, reg, &result, &err));
     assert(err.code == CXPR_OK);
     assert(result.type == CXPR_VALUE_NUMBER);
     assert(fabs(result.d - 2.9) < 1e-12);
     assert(g_struct_call_count == 1);
-    cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_compiled_free(prog);
+    cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_prepare_const_key_with_param_args(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_func_entry* entry;
-    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
     char local_buf[256];
     char expected_buf[256];
     char* heap_buf = NULL;
@@ -173,7 +173,7 @@ static void test_prepare_const_key_with_param_args(void) {
     cxpr_context_set_param(ctx, "period", 14.0);
     cxpr_context_set_param(ctx, "signal", 3.0);
 
-    ast = cxpr_parse(p,
+    ast = cxpr_expr_ast_parse(p,
                      "macd(period=$period + 0, signal=$signal * 1).line",
                      &err);
     assert(ast != NULL);
@@ -204,19 +204,19 @@ static void test_prepare_const_key_with_param_args(void) {
     assert(strcmp(key, expected) == 0);
 
     free(heap_buf);
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
 }
 
 static void test_defined_overlay_copies_prefixed_scalars(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_context* dst = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_func_entry* entry;
     cxpr_value value;
     bool found = false;
@@ -227,7 +227,7 @@ static void test_defined_overlay_copies_prefixed_scalars(void) {
     assert(cxpr_context_copy_prefixed_scalars(dst, ctx, "src", "copied"));
     assert(cxpr_context_get(dst, "copied.x", &found) == 42.0 && found);
 
-    ast = cxpr_parse(p, "pick(src)", &err);
+    ast = cxpr_expr_ast_parse(p, "pick(src)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "pick");
     assert(entry);
@@ -241,11 +241,59 @@ static void test_defined_overlay_copies_prefixed_scalars(void) {
     assert(isnan(value.d));
     assert(err.code == CXPR_ERR_SYNTAX);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(dst);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
+}
+
+static void test_defined_function_accepts_record_literal_struct_arg(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast;
+    double out = 0.0;
+
+    assert(p && ctx && reg);
+    assert(cxpr_registry_define_fn(reg, "pick(v) => v.x + v.y").code == CXPR_OK);
+
+    ast = cxpr_expr_ast_parse(p, "pick({x = 40, y = 2})", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out == 42.0);
+
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_expr_parser_free(p);
+}
+
+static void test_defined_function_accepts_flat_prefixed_struct_arg(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast;
+    double out = 0.0;
+
+    assert(p && ctx && reg);
+    assert(cxpr_registry_define_fn(reg, "session_sum(session) => session.open + session.bar_index").code == CXPR_OK);
+    cxpr_context_set(ctx, "session_open", 40.0);
+    cxpr_context_set(ctx, "session_bar_index", 2.0);
+
+    ast = cxpr_expr_ast_parse(p, "session_sum(session)", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(err.code == CXPR_OK);
+    assert(out == 42.0);
+
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_expr_parser_free(p);
 }
 
 int main(void) {
@@ -253,6 +301,8 @@ int main(void) {
     test_named_param_producer_cache_paths();
     test_prepare_const_key_with_param_args();
     test_defined_overlay_copies_prefixed_scalars();
+    test_defined_function_accepts_record_literal_struct_arg();
+    test_defined_function_accepts_flat_prefixed_struct_arg();
     printf("  \xE2\x9C\x93 eval_calls\n");
     return 0;
 }

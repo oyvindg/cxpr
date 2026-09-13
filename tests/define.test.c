@@ -28,31 +28,31 @@
 
 static double eval_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
                         cxpr_error* out_err) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
-    if (!ast) { if (out_err) *out_err = err; cxpr_parser_free(p); return NAN; }
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
+    if (!ast) { if (out_err) *out_err = err; cxpr_expr_parser_free(p); return NAN; }
     double result = cxpr_test_eval_ast_number(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static bool eval_bool_expr(const char* expr, cxpr_context* ctx, cxpr_registry* reg,
                            cxpr_error* out_err) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     if (!ast) {
         if (out_err) *out_err = err;
-        cxpr_parser_free(p);
+        cxpr_expr_parser_free(p);
         return false;
     }
     bool result = cxpr_test_eval_ast_bool(ast, ctx, reg, &err);
     if (out_err) *out_err = err;
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
@@ -77,6 +77,22 @@ static void test_scalar_params(void) {
     r = eval_expr("sum(1.5, 2.5)", ctx, reg, &err);
     assert(err.code == CXPR_OK);
     ASSERT_APPROX(r, 4.0);
+
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+}
+
+static void test_optional_document_fn_prefix(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_register_defaults(reg);
+    cxpr_context* ctx = cxpr_context_new();
+
+    cxpr_error err = cxpr_registry_define_fn(reg, "fn sum(a, b) = a + b");
+    assert(err.code == CXPR_OK);
+
+    double r = eval_expr("sum(4, 6)", ctx, reg, &err);
+    assert(err.code == CXPR_OK);
+    ASSERT_APPROX(r, 10.0);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -261,7 +277,7 @@ static void test_error_struct_arg_not_identifier(void) {
     /* Passing a number literal where a struct identifier is required */
     double r = eval_expr("len2(1.0)", ctx, reg, &err);
     assert(isnan(r));
-    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.code == CXPR_ERR_TYPE_MISMATCH);
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
@@ -303,6 +319,7 @@ static void test_registry_lookup_arity(void) {
 
 int main(void) {
     test_scalar_params();
+    test_optional_document_fn_prefix();
     test_struct_params_distance3();
     test_struct_params_dot2();
     test_struct_with_dollar_params();

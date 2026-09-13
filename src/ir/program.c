@@ -7,6 +7,8 @@
 #include "internal.h"
 #include "ast/internal.h"
 #include "context/internal.h"
+#include "lookback.h"
+#include <cxpr/typecheck.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -68,11 +70,12 @@ bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr, cxpr_error* err
     return true;
 }
 
-const char* cxpr_ir_opcode_name(cxpr_opcode op) {
+const char* cxpr_ir_internal_opcode_name(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return "PUSH_CONST";
     case CXPR_OP_PUSH_BOOL: return "PUSH_BOOL";
     case CXPR_OP_PUSH_STRING: return "PUSH_STRING";
+    case CXPR_OP_BUILD_ARRAY: return "BUILD_ARRAY";
     case CXPR_OP_LOAD_LOCAL: return "LOAD_LOCAL";
     case CXPR_OP_LOAD_LOCAL_SQUARE: return "LOAD_LOCAL_SQUARE";
     case CXPR_OP_LOAD_VAR: return "LOAD_VAR";
@@ -118,7 +121,12 @@ const char* cxpr_ir_opcode_name(cxpr_opcode op) {
     case CXPR_OP_JUMP: return "JUMP";
     case CXPR_OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
     case CXPR_OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
+    case CXPR_OP_LOOKBACK_PUSH: return "LOOKBACK_PUSH";
+    case CXPR_OP_LOOKBACK_POP: return "LOOKBACK_POP";
+    case CXPR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
+    case CXPR_OP_STORE_LOCAL: return "STORE_LOCAL";
     case CXPR_OP_RETURN: return "RETURN";
+    case CXPR_OP_INDEX: return "INDEX";
     default: return "UNKNOWN";
     }
 }
@@ -132,7 +140,30 @@ void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target) {
     program->code[at].index = target;
 }
 
-bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
+static const cxpr_expr_ast* cxpr_ir_constant_array_value_ast(
+    const cxpr_expr_ast* ast,
+    const cxpr_registry* reg) {
+    const cxpr_expr_ast* target;
+    cxpr_value index_value;
+    size_t index;
+
+    if (!ast) return NULL;
+    if (ast->type == CXPR_NODE_ARRAY) return ast;
+    if (ast->type != CXPR_NODE_INDEX) return NULL;
+    target = cxpr_ir_constant_array_value_ast(ast->data.index.target, reg);
+    if (!target || target->type != CXPR_NODE_ARRAY ||
+        !cxpr_ir_constant_typed_value(ast->data.index.index, reg, &index_value) ||
+        index_value.type != CXPR_VALUE_NUMBER || !isfinite(index_value.d) ||
+        index_value.d < 0.0 || floor(index_value.d) != index_value.d ||
+        index_value.d > (double)SIZE_MAX) {
+        return NULL;
+    }
+    index = (size_t)index_value.d;
+    if (index >= target->data.array.count) return NULL;
+    return target->data.array.elements[index];
+}
+
+bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                   cxpr_value* out) {
     cxpr_value left, right;
     double numeric;
@@ -152,8 +183,33 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         *out = cxpr_string(ast->data.string.value);
         return true;
 
+    case CXPR_NODE_INDEX:
+    {
+        const cxpr_expr_ast* target =
+            cxpr_ir_constant_array_value_ast(ast->data.index.target, reg);
+        cxpr_value selected;
+        if (target && target->type == CXPR_NODE_ARRAY) {
+            if (!cxpr_ir_constant_typed_value(ast->data.index.index, reg, &right) ||
+                right.type != CXPR_VALUE_NUMBER || !isfinite(right.d) || right.d < 0.0 ||
+                floor(right.d) != right.d || right.d > (double)SIZE_MAX ||
+                (size_t)right.d >= target->data.array.count) {
+                return false;
+            }
+            if (!cxpr_ir_constant_typed_value(
+                    target->data.array.elements[(size_t)right.d], reg, &selected) ||
+                (selected.type != CXPR_VALUE_NUMBER && selected.type != CXPR_VALUE_BOOL)) {
+                return false;
+            }
+            *out = selected;
+            return true;
+        }
+        if (!cxpr_lookback_literal_offset(ast->data.index.index, NULL, NULL, NULL)) {
+            return false;
+        }
+        return cxpr_ir_constant_typed_value(ast->data.index.target, reg, out);
+    }
+
     case CXPR_NODE_CHAIN_ACCESS:
-    case CXPR_NODE_LOOKBACK:
         return false;
 
     case CXPR_NODE_UNARY_OP:
@@ -250,7 +306,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
         const cxpr_func_entry* entry;
         size_t argc = ast->data.function_call.argc;
 
-        if (!reg || cxpr_ast_call_uses_named_args(ast) || argc > CXPR_MAX_CALL_ARGS) return false;
+        if (!reg || cxpr_expr_ast_call_uses_named_args(ast) || argc > CXPR_MAX_CALL_ARGS) return false;
 
         if (strcmp(ast->data.function_call.name, "if") == 0 && argc == 3u) {
             cxpr_value condition;
@@ -296,7 +352,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
     }
 }
 
-bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, double* out) {
+bool cxpr_ir_constant_value(const cxpr_expr_ast* ast, const cxpr_registry* reg, double* out) {
     cxpr_value value;
 
     if (!out) return false;
@@ -306,7 +362,7 @@ bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, doubl
     return true;
 }
 
-bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
+bool cxpr_ir_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right) {
     size_t i;
 
     if (left == right) return true;
@@ -326,6 +382,12 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
         return strcmp(left->data.variable.name, right->data.variable.name) == 0;
 
     case CXPR_NODE_FIELD_ACCESS:
+        if (left->data.field_access.base || right->data.field_access.base) {
+            return cxpr_ir_ast_equal(left->data.field_access.base,
+                                     right->data.field_access.base) &&
+                   left->data.field_access.field && right->data.field_access.field &&
+                   strcmp(left->data.field_access.field, right->data.field_access.field) == 0;
+        }
         return strcmp(left->data.field_access.full_key, right->data.field_access.full_key) == 0;
 
     case CXPR_NODE_CHAIN_ACCESS:
@@ -385,9 +447,9 @@ bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right) {
         }
         return true;
 
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_ir_ast_equal(left->data.lookback.target, right->data.lookback.target) &&
-               cxpr_ir_ast_equal(left->data.lookback.index, right->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_ir_ast_equal(left->data.index.target, right->data.index.target) &&
+               cxpr_ir_ast_equal(left->data.index.index, right->data.index.index);
 
     case CXPR_NODE_TERNARY:
         return cxpr_ir_ast_equal(left->data.ternary.condition,
@@ -625,10 +687,11 @@ bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry) {
     return true;
 }
 
-cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
+cxpr_expr_compiled* cxpr_expr_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                            cxpr_error* err) {
-    cxpr_ast* owned_ast = NULL;
-    (void)reg;
+    cxpr_expr_ast* owned_ast = NULL;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
+    const unsigned long version = reg ? reg->version : 0u;
     if (err) *err = (cxpr_error){0};
     if (!ast) {
         if (err) {
@@ -637,8 +700,20 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
         }
         return NULL;
     }
+    if (!mutable_ast->typecheck_cache_valid ||
+        mutable_ast->typecheck_registry != reg ||
+        mutable_ast->typecheck_registry_version != version) {
+        mutable_ast->typecheck_registry = reg;
+        mutable_ast->typecheck_registry_version = version;
+        mutable_ast->typecheck_cache_ok = cxpr_typecheck(ast, reg, NULL, err);
+        mutable_ast->typecheck_cache_valid = true;
+        if (!mutable_ast->typecheck_cache_ok) return NULL;
+    } else if (!mutable_ast->typecheck_cache_ok) {
+        (void)cxpr_typecheck(ast, reg, NULL, err);
+        return NULL;
+    }
 
-    cxpr_program* prog = (cxpr_program*)calloc(1, sizeof(cxpr_program));
+    cxpr_expr_compiled* prog = (cxpr_expr_compiled*)calloc(1, sizeof(cxpr_expr_compiled));
     if (!prog) {
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
@@ -647,7 +722,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
         return NULL;
     }
 
-    owned_ast = cxpr_ast_clone(ast);
+    owned_ast = cxpr_expr_ast_clone(ast);
     if (!owned_ast) {
         if (err) {
             err->code = CXPR_ERR_OUT_OF_MEMORY;
@@ -660,7 +735,7 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
     prog->owned_ast = owned_ast;
     prog->ast = owned_ast;
     if (!cxpr_ir_compile(owned_ast, reg, &prog->ir, err)) {
-        cxpr_ast_free(owned_ast);
+        cxpr_expr_ast_free(owned_ast);
         free(prog);
         return NULL;
     }
@@ -668,14 +743,14 @@ cxpr_program* cxpr_compile(const cxpr_ast* ast, const cxpr_registry* reg,
     return prog;
 }
 
-void cxpr_program_free(cxpr_program* prog) {
+void cxpr_expr_compiled_free(cxpr_expr_compiled* prog) {
     if (!prog) return;
     cxpr_ir_program_reset(&prog->ir);
-    cxpr_ast_free(prog->owned_ast);
+    cxpr_expr_ast_free(prog->owned_ast);
     free(prog);
 }
 
-void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
+void cxpr_expr_compiled_dump(const cxpr_expr_compiled* prog, FILE* out) {
     size_t i;
     FILE* stream = out ? out : stdout;
 
@@ -686,14 +761,16 @@ void cxpr_program_dump(const cxpr_program* prog, FILE* out) {
 
     for (i = 0; i < prog->ir.count; ++i) {
         const cxpr_ir_instr* instr = &prog->ir.code[i];
-        fprintf(stream, "%zu: %s", i, cxpr_ir_opcode_name(instr->op));
+        fprintf(stream, "%zu: %s", i, cxpr_ir_internal_opcode_name(instr->op));
         if (instr->name) fprintf(stream, " name=%s", instr->name);
         if (instr->aux_name) fprintf(stream, " aux=%s", instr->aux_name);
         if (instr->func) fprintf(stream, " argc=%zu func=%s", instr->index, instr->func->name);
         else if (instr->op == CXPR_OP_PUSH_CONST) fprintf(stream, " value=%.17g", instr->value);
         else if (instr->op == CXPR_OP_PUSH_STRING) fprintf(stream, " value=\"%s\"", instr->name ? instr->name : "");
         else if (instr->op == CXPR_OP_JUMP || instr->op == CXPR_OP_JUMP_IF_FALSE ||
-                 instr->op == CXPR_OP_JUMP_IF_TRUE || instr->op == CXPR_OP_LOAD_LOCAL ||
+                 instr->op == CXPR_OP_JUMP_IF_TRUE || instr->op == CXPR_OP_LOOKBACK_PUSH ||
+                 instr->op == CXPR_OP_LOOKBACK_RESOLVE ||
+                 instr->op == CXPR_OP_LOAD_LOCAL ||
                  instr->op == CXPR_OP_LOAD_LOCAL_SQUARE) {
             fprintf(stream, " index=%zu", instr->index);
         }

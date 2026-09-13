@@ -1,0 +1,5 @@
+model ir_struct_struct_mul_all_fields
+in { vx, vy, vz, wx, wy, wz }
+vector = { x = vx, y = vy, z = vz }
+weights = { x = wx, y = wy, z = wz }
+out result = (vector * weights).x + (vector * weights).y + (vector * weights).z

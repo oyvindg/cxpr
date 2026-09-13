@@ -25,6 +25,7 @@ typedef enum {
     CXPR_OP_PUSH_CONST,
     CXPR_OP_PUSH_BOOL,
     CXPR_OP_PUSH_STRING,
+    CXPR_OP_BUILD_ARRAY,
     CXPR_OP_LOAD_LOCAL,
     CXPR_OP_LOAD_LOCAL_SQUARE,
     CXPR_OP_LOAD_VAR,
@@ -70,7 +71,12 @@ typedef enum {
     CXPR_OP_JUMP,
     CXPR_OP_JUMP_IF_FALSE,
     CXPR_OP_JUMP_IF_TRUE,
-    CXPR_OP_RETURN
+    CXPR_OP_LOOKBACK_PUSH,
+    CXPR_OP_LOOKBACK_POP,
+    CXPR_OP_LOOKBACK_RESOLVE,
+    CXPR_OP_STORE_LOCAL,
+    CXPR_OP_RETURN,
+    CXPR_OP_INDEX
 } cxpr_opcode;
 
 /**
@@ -79,12 +85,16 @@ typedef enum {
  * The operand is interpreted according to opcode:
  * - PUSH_CONST: literal double in value
  * - PUSH_STRING: borrowed string literal in name
+ * - BUILD_ARRAY: number of stack values to collect in index
+ * - INDEX: pops an index and indexable target, then pushes the selected value
  * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
  * - LOAD_NAMED_FIELD: borrowed root in name, borrowed field in aux_name, flat-key hash in hash
  * - CALL_PRODUCER_CONST_FIELD: cache key in name, field name in aux_name
  * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
+ * - LOOKBACK_PUSH: literal offset in index
+ * - LOOKBACK_RESOLVE: target AST in payload, literal offset in index
  * - arithmetic / comparisons / return: no extra operand
  */
 typedef struct {
@@ -98,7 +108,7 @@ typedef struct {
         double value;        /* PUSH_CONST, PUSH_BOOL */
         unsigned long hash;  /* LOAD_VAR, LOAD_PARAM, LOAD_FIELD, LOAD_CHAIN */
         size_t index;        /* LOAD_LOCAL, CALL_*, CALL_DEFINED, CALL_PRODUCER, JUMP* */
-        const cxpr_ast* ast; /* CALL_AST */
+        const cxpr_expr_ast* ast; /* CALL_AST */
     };
 } cxpr_ir_instr;
 
@@ -118,27 +128,27 @@ typedef struct {
 /**
  * @brief Internal compiled program representation.
  *
- * This stays internal until a public cxpr_program API is introduced.
+ * This stays internal until a public cxpr_expr_compiled API is introduced.
  */
 typedef struct {
     cxpr_ir_instr* code;        /**< Owned instruction array */
     size_t count;               /**< Number of instructions */
     size_t capacity;            /**< Allocated instruction capacity */
-    const cxpr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
+    const cxpr_expr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
     cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
     unsigned char fast_result_kind; /**< 0=unknown, 1=double, 2=bool for scalar fast-path */
 } cxpr_ir_program;
 
-struct cxpr_program {
+struct cxpr_expr_compiled {
     cxpr_ir_program ir;
-    const cxpr_ast* ast;
-    cxpr_ast* owned_ast;
+    const cxpr_expr_ast* ast;
+    cxpr_expr_ast* owned_ast;
 };
 
 /** @brief One substitution frame used while inlining defined-function bodies into IR. */
 typedef struct cxpr_ir_subst_frame {
     const char* const* names;
-    const cxpr_ast* const* args;
+    const cxpr_expr_ast* const* args;
     size_t count;
     const struct cxpr_ir_subst_frame* parent;
 } cxpr_ir_subst_frame;
@@ -172,7 +182,7 @@ void cxpr_ir_patch_target(cxpr_ir_program* program, size_t at, size_t target);
  * @param out Output location for the constant value.
  * @return true when the subtree is pure and was folded successfully.
  */
-bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                   cxpr_value* out);
 /** @brief Try to fold an AST subtree to a numeric compile-time constant.
  * @param ast AST subtree to inspect.
@@ -180,13 +190,13 @@ bool cxpr_ir_constant_typed_value(const cxpr_ast* ast, const cxpr_registry* reg,
  * @param out Output location for the numeric constant.
  * @return true when the subtree is pure and folded to a number.
  */
-bool cxpr_ir_constant_value(const cxpr_ast* ast, const cxpr_registry* reg, double* out);
+bool cxpr_ir_constant_value(const cxpr_expr_ast* ast, const cxpr_registry* reg, double* out);
 /** @brief Compare two AST subtrees structurally.
  * @param left Left subtree.
  * @param right Right subtree.
  * @return true when both subtrees have identical structure and payload.
  */
-bool cxpr_ir_ast_equal(const cxpr_ast* left, const cxpr_ast* right);
+bool cxpr_ir_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right);
 /** @brief Populate an IR runtime error and return a NaN field sentinel.
  * @param err Optional error output to populate.
  * @param message Error message to attach.
@@ -241,7 +251,7 @@ bool cxpr_ir_validate_bool_fast_program(const cxpr_ir_program* program);
  * @param argc Number of arguments in `args`.
  * @return Newly allocated cache key, or NULL when the arguments are not constant.
  */
-char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
+char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_expr_ast* const* args,
                                           size_t argc, const cxpr_registry* reg);
 /** @brief Resolve a scalar identifier lookup using the per-instruction cache when possible.
  * @param ctx Request context.
@@ -273,7 +283,7 @@ bool cxpr_ir_defined_is_scalar_only(const cxpr_func_entry* entry);
 /** @brief Release all storage owned by one internal IR program. */
 void cxpr_ir_program_reset(cxpr_ir_program* program);
 /** @brief Compile one AST into internal IR. */
-bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);
 /** @brief Compile one AST into IR with an explicit local-variable table.
  * @param ast AST to compile.
@@ -284,7 +294,7 @@ bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
  * @param err Optional error output.
  * @return True on success, false on compilation failure.
  */
-bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                  const char* const* local_names, size_t local_count,
                                  cxpr_ir_program* program, cxpr_error* err);
 /** @brief Lazily compile the IR program backing one defined function. */
@@ -297,11 +307,18 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
 double cxpr_ir_exec_with_locals(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, const double* locals,
                                 size_t local_count, cxpr_error* err);
+/** @brief Execute internal IR with locals and preserve the typed result. */
+cxpr_value cxpr_ir_exec_value_with_locals(const cxpr_ir_program* program,
+                                          const cxpr_context* ctx,
+                                          const cxpr_registry* reg,
+                                          const double* locals,
+                                          size_t local_count,
+                                          cxpr_error* err);
 /** @brief Return a stable printable opcode name. */
-const char* cxpr_ir_opcode_name(cxpr_opcode op);
+const char* cxpr_ir_internal_opcode_name(cxpr_opcode op);
 /** @brief Release one public compiled-program wrapper and all owned internal IR state.
  * @param prog Program wrapper to free. May be NULL.
  */
-void cxpr_program_free(cxpr_program* prog);
+void cxpr_expr_compiled_free(cxpr_expr_compiled* prog);
 
 #endif /* CXPR_IR_INTERNAL_H */

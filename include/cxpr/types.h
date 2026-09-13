@@ -18,15 +18,21 @@ extern "C" {
 #endif
 
 /** @brief Opaque parser handle. */
-typedef struct cxpr_parser cxpr_parser;
+typedef struct cxpr_expr_parser cxpr_expr_parser;
 /** @brief Opaque AST handle. */
-typedef struct cxpr_ast cxpr_ast;
+typedef struct cxpr_expr_ast cxpr_expr_ast;
 /** @brief Opaque evaluation context handle. */
 typedef struct cxpr_context cxpr_context;
 /** @brief Opaque function registry handle. */
 typedef struct cxpr_registry cxpr_registry;
 /** @brief Opaque compiled program handle. */
-typedef struct cxpr_program cxpr_program;
+typedef struct cxpr_expr_compiled cxpr_expr_compiled;
+/** @brief Opaque parsed .cxpr model handle. */
+typedef struct cxpr_model cxpr_model;
+/** @brief Opaque compiled .cxpr model program handle. */
+typedef struct cxpr_model_compiled cxpr_model_compiled;
+/** @brief Opaque mutable .cxpr model session handle. */
+typedef struct cxpr_model_session cxpr_model_session;
 /** @brief Opaque expression evaluator handle. */
 typedef struct cxpr_evaluator cxpr_evaluator;
 /** @brief Opaque/public struct-value handle. */
@@ -44,7 +50,9 @@ typedef enum {
     CXPR_ERR_DIVISION_BY_ZERO,
     CXPR_ERR_CIRCULAR_DEPENDENCY,
     CXPR_ERR_TYPE_MISMATCH,
-    CXPR_ERR_OUT_OF_MEMORY
+    CXPR_ERR_OUT_OF_MEMORY,
+    CXPR_ERR_INVALID_INDEX,
+    CXPR_ERR_INDEX_OUT_OF_RANGE
 } cxpr_error_code;
 
 /** @brief Runtime type tags for `cxpr_value`. */

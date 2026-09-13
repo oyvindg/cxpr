@@ -53,6 +53,12 @@ int cxpr_provider_expr_param_spec_for(
     if (!cxpr_provider_is_valid(provider) || !name || !out) return 0;
     if (provider->vtable->expr_param_spec_for &&
         provider->vtable->expr_param_spec_for(provider->userdata, name, out)) {
+        if (!out->index_sugar_name) {
+            out->index_sugar_name = out->lookback_sugar_name;
+        }
+        if (!out->lookback_sugar_name) {
+            out->lookback_sugar_name = out->index_sugar_name;
+        }
         return 1;
     }
 
@@ -67,6 +73,7 @@ int cxpr_provider_expr_param_spec_for(
         out->kinds = NULL;
         out->count = 1u;
         out->min_count = source_spec->scope->optional ? 0u : 1u;
+        out->index_sugar_name = NULL;
         out->lookback_sugar_name = NULL;
         out->has_timeframe_param = 0;
         return 1;

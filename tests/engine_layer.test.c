@@ -117,7 +117,7 @@ static cxpr_value nested_box_value_fn(const cxpr_value* args, size_t argc, void*
     return cxpr_struct(outer);
 }
 
-static cxpr_value shifted_ast_fn(const cxpr_ast* call_ast,
+static cxpr_value shifted_ast_fn(const cxpr_expr_ast* call_ast,
                                  const cxpr_context* ctx,
                                  const cxpr_registry* reg,
                                  void* userdata,
@@ -125,23 +125,23 @@ static cxpr_value shifted_ast_fn(const cxpr_ast* call_ast,
     double arg = NAN;
     size_t offset = 0u;
     (void)userdata;
-    assert(cxpr_ast_function_argc(call_ast) == 1u);
-    if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0u), ctx, reg, &arg, err)) {
+    assert(cxpr_expr_ast_call_arg_count(call_ast) == 1u);
+    if (!cxpr_eval_ast_number(cxpr_expr_ast_call_arg(call_ast, 0u), ctx, reg, &arg, err)) {
         return cxpr_num(NAN);
     }
     return cxpr_num(
         arg + (cxpr_engine_context_lookback_offset(ctx, &offset) ? (double)offset * 100.0 : 0.0));
 }
 
-static bool inline_shifted_policy(const cxpr_ast* target, void* userdata) {
+static bool inline_shifted_policy(const cxpr_expr_ast* target, void* userdata) {
     size_t* calls = (size_t*)userdata;
     if (calls) (*calls)++;
     return target &&
-           cxpr_ast_type(target) == CXPR_NODE_FUNCTION_CALL &&
-           strcmp(cxpr_ast_function_name(target), "shifted") == 0;
+           cxpr_expr_ast_kind_of(target) == CXPR_NODE_FUNCTION_CALL &&
+           strcmp(cxpr_expr_ast_call_name(target), "shifted") == 0;
 }
 
-static bool host_counting_resolver(const cxpr_ast* target, const cxpr_ast* index,
+static bool host_counting_resolver(const cxpr_expr_ast* target, const cxpr_expr_ast* index,
                                    const cxpr_context* ctx, const cxpr_registry* reg,
                                    void* userdata, cxpr_value* out, cxpr_error* err) {
     size_t* calls = (size_t*)userdata;
@@ -452,7 +452,7 @@ static void test_engine_pull_arg_lookback_uses_per_argument_ring(void) {
 }
 
 /* A host resolver that owns only `hostvar[n]`, counting its invocations. */
-static bool host_prior_resolver(const cxpr_ast* target, const cxpr_ast* index,
+static bool host_prior_resolver(const cxpr_expr_ast* target, const cxpr_expr_ast* index,
                                 const cxpr_context* ctx, const cxpr_registry* reg,
                                 void* userdata, cxpr_value* out, cxpr_error* err) {
     size_t* calls = (size_t*)userdata;
@@ -461,11 +461,11 @@ static bool host_prior_resolver(const cxpr_ast* target, const cxpr_ast* index,
     (void)ctx;
     (void)reg;
     (void)err;
-    if (!target || cxpr_ast_type(target) != CXPR_NODE_IDENTIFIER) return false;
-    name = cxpr_ast_identifier_name(target);
+    if (!target || cxpr_expr_ast_kind_of(target) != CXPR_NODE_IDENTIFIER) return false;
+    name = cxpr_expr_ast_identifier_name(target);
     if (!name || strcmp(name, "hostvar") != 0) return false;
     if (calls) (*calls)++;
-    nd = (index && cxpr_ast_type(index) == CXPR_NODE_NUMBER) ? cxpr_ast_number_value(index) : 0.0;
+    nd = (index && cxpr_expr_ast_kind_of(index) == CXPR_NODE_NUMBER) ? cxpr_expr_ast_number_value(index) : 0.0;
     *out = cxpr_num(1000.0 + nd);
     return true;
 }
@@ -544,11 +544,11 @@ static void test_engine_shared_registry_non_engine_lookback_uses_prior_resolver(
     };
     cxpr_registry* registry = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_engine_config cfg = {0};
     cxpr_error err = {0};
     cxpr_engine_session* session;
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double out = 0.0;
 
     assert(registry);
@@ -566,15 +566,15 @@ static void test_engine_shared_registry_non_engine_lookback_uses_prior_resolver(
     session = cxpr_engine_session_create(&cfg, &err);
     assert(session);
 
-    ast = cxpr_parse(parser, "hostvar[2]", &err);
+    ast = cxpr_expr_ast_parse(parser, "hostvar[2]", &err);
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, registry, &out, &err));
     assert(out == 1002.0);
     assert(host_calls == 1u);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_engine_session_free(session);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(registry);
 }
@@ -777,6 +777,34 @@ static void test_engine_inline_lookback_policy_preempts_prior_resolver(void) {
     cxpr_registry_free(registry);
 }
 
+static void test_engine_qualified_param_names(void) {
+    const cxpr_expression_def exprs[] = {
+        {"sum", "$base.period + $period"},
+    };
+    const cxpr_context_entry params[] = {
+        {"base.period", 8.0},
+        {"period", 5.0},
+    };
+    cxpr_engine_config cfg = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    bool found = false;
+    double value;
+
+    cfg.expressions = exprs;
+    cfg.expression_count = 1u;
+    cfg.params = params;
+    cfg.param_count = 2u;
+
+    session = cxpr_engine_session_create(&cfg, &err);
+    assert(session);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    value = cxpr_engine_get_double(session, "sum", &found);
+    assert(found);
+    assert(value == 13.0);
+    cxpr_engine_session_free(session);
+}
+
 int main(void) {
     test_engine_view_source_lookback();
     test_engine_view_source_map_index_before_read();
@@ -791,6 +819,7 @@ int main(void) {
     test_engine_basket_roles_source_args_and_member_lookback();
     test_engine_source_call_memo_reuses_bound_args();
     test_engine_pull_arg_lookback_uses_per_argument_ring();
+    test_engine_qualified_param_names();
     printf("  \xE2\x9C\x93 engine_layer\n");
     return 0;
 }

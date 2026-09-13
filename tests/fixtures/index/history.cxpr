@@ -1,0 +1,38 @@
+# Generic historical-source syntax contract.
+# Offsets are non-negative: source[-1] is future temporal access and must be
+# rejected, never interpreted as an array. Hosts configure bounds policy when
+# binding a history source.
+
+model history_index_examples
+
+in {
+    close,
+    high,
+    dynamic_offset
+}
+
+fn midpoint(left, right) = (left + right) / 2
+fn sample(value) {
+    return { raw = value, doubled = value * 2 }
+}
+
+alias_close = close
+source_current = close[0]
+source_previous = close[1]
+compound_previous = (close + high)[2]
+alias_previous = alias_close[1]
+function_previous = midpoint(close, high)[1]
+field_previous = sample(close).doubled[1]
+dynamic_previous = close[dynamic_offset]
+nested_previous = close[1][2]
+
+out {
+    source_current,
+    source_previous,
+    compound_previous,
+    alias_previous,
+    function_previous,
+    field_previous,
+    dynamic_previous,
+    nested_previous
+}

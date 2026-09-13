@@ -1,0 +1,3 @@
+model invalid_overflow_interval
+in close
+out value = resample(close, every="9223372036854775807d")

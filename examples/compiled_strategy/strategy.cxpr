@@ -1,0 +1,24 @@
+# Host-neutral stateful graph used to prove engine/generated-C parity.
+
+model compiled_strategy_example
+
+in { input_a, input_b, clock }
+
+$threshold = 0.25
+
+state {
+    initialized = false
+    previous_delta = 0
+    total = 0
+}
+
+delta = input_a - input_b
+next_total = total + delta
+crossed = initialized and previous_delta <= $threshold and delta > $threshold
+active = next_total > clock * 0.1
+
+initialized := true
+previous_delta := delta
+total := next_total
+
+out { crossed, active, delta, total }

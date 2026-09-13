@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-/* cxpr_token_type is publicly defined in cxpr/ast.h (included via cxpr/cxpr.h) */
+/* cxpr_token_type is publicly defined in cxpr/expr/ast.h (included via cxpr/cxpr.h) */
 
 typedef struct {
     cxpr_token_type type;
@@ -45,6 +45,7 @@ typedef enum {
     CXPR_OP_PUSH_CONST,
     CXPR_OP_PUSH_BOOL,
     CXPR_OP_PUSH_STRING,
+    CXPR_OP_BUILD_ARRAY,
     CXPR_OP_LOAD_LOCAL,
     CXPR_OP_LOAD_LOCAL_SQUARE,
     CXPR_OP_LOAD_VAR,
@@ -90,7 +91,12 @@ typedef enum {
     CXPR_OP_JUMP,
     CXPR_OP_JUMP_IF_FALSE,
     CXPR_OP_JUMP_IF_TRUE,
-    CXPR_OP_RETURN
+    CXPR_OP_LOOKBACK_PUSH,
+    CXPR_OP_LOOKBACK_POP,
+    CXPR_OP_LOOKBACK_RESOLVE,
+    CXPR_OP_STORE_LOCAL,
+    CXPR_OP_RETURN,
+    CXPR_OP_INDEX
 } cxpr_opcode;
 
 struct cxpr_func_entry;
@@ -105,7 +111,7 @@ typedef struct {
         double value;
         unsigned long hash;
         size_t index;
-        const cxpr_ast* ast;
+        const cxpr_expr_ast* ast;
     };
 } cxpr_ir_instr;
 
@@ -121,7 +127,7 @@ typedef struct {
     cxpr_ir_instr* code;
     size_t count;
     size_t capacity;
-    const cxpr_ast* ast;
+    const cxpr_expr_ast* ast;
     cxpr_ir_lookup_cache* lookup_cache;
     unsigned char fast_result_kind;
 } cxpr_ir_program;
@@ -133,9 +139,14 @@ typedef struct {
     cxpr_func_ptr sync_func;
     cxpr_value_func_ptr value_func;
     cxpr_typed_func_ptr typed_func;
-    cxpr_ast_func_ptr ast_func;
+    cxpr_expr_ast_func_ptr ast_func;
     cxpr_struct_producer_ptr struct_producer;
-    cxpr_ast_func_ptr ast_func_handler;
+    cxpr_struct_codegen_ptr struct_codegen;
+    void* struct_codegen_userdata;
+    cxpr_userdata_free_fn struct_codegen_userdata_free;
+    cxpr_expr_ast_func_ptr model_producer;
+    void* model_producer_userdata;
+    cxpr_expr_ast_func_ptr ast_func_handler;
     void* ast_func_handler_userdata;
     cxpr_userdata_free_fn ast_func_handler_userdata_free;
     enum {
@@ -164,18 +175,21 @@ typedef struct {
     char** struct_fields;
     size_t fields_per_arg;
     size_t struct_argc;
-    cxpr_ast* defined_body;
-    cxpr_program* defined_program;
+    cxpr_expr_ast* defined_body;
+    cxpr_expr_compiled* defined_program;
     bool defined_program_failed;
     char** defined_param_names;
     size_t defined_param_count;
     char*** defined_param_fields;
     size_t* defined_param_field_counts;
+    char** defined_return_field_names;
+    cxpr_expr_ast** defined_return_field_bodies;
+    size_t defined_return_field_count;
 } cxpr_func_entry;
 
 cxpr_func_entry* cxpr_registry_find(const cxpr_registry* reg, const char* name);
 
-bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err);
@@ -184,8 +198,8 @@ void cxpr_ir_program_reset(cxpr_ir_program* program);
 typedef struct {
     char* name;
     char* expression;
-    cxpr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
     cxpr_value result;
     bool evaluated;
 } cxpr_expression_entry;
@@ -198,10 +212,10 @@ struct cxpr_evaluator {
     size_t eval_order_count;
     bool compiled;
     const cxpr_registry* registry;
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
 };
 
-static inline cxpr_value cxpr_test_eval_ast(const cxpr_ast* ast, const cxpr_context* ctx,
+static inline cxpr_value cxpr_test_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                             const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value out = {0};
     if (!cxpr_eval_ast(ast, ctx, reg, &out, err)) {
@@ -210,44 +224,44 @@ static inline cxpr_value cxpr_test_eval_ast(const cxpr_ast* ast, const cxpr_cont
     return out;
 }
 
-static inline double cxpr_test_eval_ast_number(const cxpr_ast* ast, const cxpr_context* ctx,
+static inline double cxpr_test_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                                const cxpr_registry* reg, cxpr_error* err) {
     double out = NAN;
     (void)cxpr_eval_ast_number(ast, ctx, reg, &out, err);
     return out;
 }
 
-static inline bool cxpr_test_eval_ast_bool(const cxpr_ast* ast, const cxpr_context* ctx,
+static inline bool cxpr_test_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                            const cxpr_registry* reg, cxpr_error* err) {
     bool out = false;
     (void)cxpr_eval_ast_bool(ast, ctx, reg, &out, err);
     return out;
 }
 
-static inline cxpr_value cxpr_test_eval_program(const cxpr_program* prog, const cxpr_context* ctx,
+static inline cxpr_value cxpr_test_eval_program(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
                                                 const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value out = {0};
-    if (!cxpr_eval_program(prog, ctx, reg, &out, err)) {
+    if (!cxpr_expr_compiled_eval(prog, ctx, reg, &out, err)) {
         return cxpr_num(NAN);
     }
     return out;
 }
 
-static inline double cxpr_test_eval_program_number(const cxpr_program* prog,
+static inline double cxpr_test_eval_program_number(const cxpr_expr_compiled* prog,
                                                    const cxpr_context* ctx,
                                                    const cxpr_registry* reg,
                                                    cxpr_error* err) {
     double out = NAN;
-    (void)cxpr_eval_program_number(prog, ctx, reg, &out, err);
+    (void)cxpr_expr_compiled_eval_number(prog, ctx, reg, &out, err);
     return out;
 }
 
-static inline bool cxpr_test_eval_program_bool(const cxpr_program* prog,
+static inline bool cxpr_test_eval_program_bool(const cxpr_expr_compiled* prog,
                                                const cxpr_context* ctx,
                                                const cxpr_registry* reg,
                                                cxpr_error* err) {
     bool out = false;
-    (void)cxpr_eval_program_bool(prog, ctx, reg, &out, err);
+    (void)cxpr_expr_compiled_eval_bool(prog, ctx, reg, &out, err);
     return out;
 }
 

@@ -1,0 +1,32 @@
+# Demonstrates the reusable Vec2 library with game-neutral coordinates.
+
+model vec2_math_demo
+
+use geometry2d as g
+
+in {
+    point_a_x,
+    point_a_y,
+    direction_x,
+    direction_y,
+    normal_x,
+    normal_y,
+    max_delta
+}
+
+point_a = g.vec2(point_a_x, point_a_y)
+direction = g.vec2(direction_x, direction_y)
+normal = g.vec2(normal_x, normal_y)
+delta = point_a - g.vec2(0, 0)
+distance_value = g.distance(point_a, g.vec2(0, 0))
+dot_value = g.dot(point_a, g.vec2(0, 0))
+normalized = g.normalize(delta)
+reflected = g.reflect(direction, normal)
+constructed = g.vec2(7, 9)
+
+out delta as vector_difference
+out distance_value as euclidean_distance
+out dot_value as dot_product
+out normalized as unit_vector
+out reflected as reflection
+out constructed as vec2_constructor

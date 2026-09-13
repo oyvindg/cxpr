@@ -1,0 +1,12 @@
+model ir_large_branch
+in { a, b, c, d, e, f, g, h, i, j, x, y, z, m, n }
+out result =
+    (a * b > c * d ?
+        ((e + f > g) ? sqrt(e * e + f * f) : abs(g - h) * i) :
+        ((j - x < y) ? (j * x + y * z) : (m * n - a * h))) +
+    (b + d + f > h + j ?
+        ((x > y) ? x * x + z : y * y - z) :
+        ((m < n) ? abs(m - n) : sqrt(m * m + n * n))) +
+    (a + e + i + m > b + f + j + n ?
+        (c * g + h * x - y * z) :
+        (d * h - i * y + z * n))

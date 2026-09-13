@@ -1,0 +1,5 @@
+# Known numeric operands must not enter a boolean operator.
+
+model values_invalid_operator
+value = 1 and 2
+out value

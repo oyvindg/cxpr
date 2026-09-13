@@ -1,0 +1,4 @@
+model ir_struct_scalar_mul
+in { vx, vy, vz }
+vector = { x = vx, y = vy, z = vz }
+out result = (vector * 2).z

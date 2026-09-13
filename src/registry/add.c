@@ -6,6 +6,7 @@
 #include "internal.h"
 #include "core.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,6 +48,25 @@ static void cxpr_registry_replace_entry(cxpr_func_entry* entry) {
     entry->has_return_type = false;
     entry->userdata = NULL;
     entry->userdata_free = NULL;
+}
+
+static int cxpr_registry_warn_overrides_enabled(void) {
+    const char* value = getenv("CXPR_REGISTRY_WARN_OVERRIDES");
+    return value &&
+           (strcmp(value, "1") == 0 ||
+            strcmp(value, "true") == 0 ||
+            strcmp(value, "TRUE") == 0 ||
+            strcmp(value, "on") == 0 ||
+            strcmp(value, "ON") == 0);
+}
+
+static void cxpr_registry_warn_overlay(const char* api, const char* name) {
+    if (!cxpr_registry_warn_overrides_enabled()) return;
+    fprintf(
+        stderr,
+        "cxpr_registry: warning: %s overlays existing entry '%s'; metadata will be preserved unless explicitly replaced\n",
+        api ? api : "registry update",
+        name ? name : "<unknown>");
 }
 
 void cxpr_registry_add_numeric(cxpr_registry* reg, const char* name,
@@ -160,7 +180,7 @@ void cxpr_registry_add_typed(cxpr_registry* reg, const char* name,
 }
 
 void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
-                           cxpr_ast_func_ptr func, size_t min_args, size_t max_args,
+                           cxpr_expr_ast_func_ptr func, size_t min_args, size_t max_args,
                            cxpr_value_type return_type,
                            void* userdata, cxpr_userdata_free_fn free_userdata) {
     if (!reg || !name || !func) return;
@@ -193,7 +213,7 @@ void cxpr_registry_add_ast(cxpr_registry* reg, const char* name,
 }
 
 void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
-                                   cxpr_ast_func_ptr func,
+                                   cxpr_expr_ast_func_ptr func,
                                    size_t min_args, size_t max_args,
                                    void* userdata,
                                    cxpr_userdata_free_fn free_userdata) {
@@ -201,6 +221,7 @@ void cxpr_registry_add_ast_handler(cxpr_registry* reg, const char* name,
 
     cxpr_func_entry* entry = cxpr_registry_find(reg, name);
     if (entry) {
+        cxpr_registry_warn_overlay("add_ast_handler", name);
         if (entry->ast_func_handler_userdata_free) {
             entry->ast_func_handler_userdata_free(entry->ast_func_handler_userdata);
         }
@@ -233,7 +254,7 @@ void cxpr_registry_add_timeseries(cxpr_registry* reg, const char* name,
     cxpr_registry_add_ast(
         reg,
         name,
-        (cxpr_ast_func_ptr)func,
+        (cxpr_expr_ast_func_ptr)func,
         min_args,
         max_args,
         return_type,
@@ -406,4 +427,28 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     entry->struct_fields = owned_fields;
     entry->fields_per_arg = field_count;
     reg->version++;
+}
+
+bool cxpr_registry_set_struct_codegen(cxpr_registry* reg, const char* name,
+                                      cxpr_struct_codegen_ptr codegen,
+                                      void* userdata,
+                                      cxpr_userdata_free_fn free_userdata) {
+    cxpr_func_entry* entry;
+    if (!reg || !name || !codegen) return false;
+    entry = cxpr_registry_find(reg, name);
+    if (!entry || !entry->struct_producer) return false;
+    if (entry->struct_codegen_userdata == userdata) {
+        entry->struct_codegen = codegen;
+        if (free_userdata) entry->struct_codegen_userdata_free = free_userdata;
+        reg->version++;
+        return true;
+    }
+    if (entry->struct_codegen_userdata_free && entry->struct_codegen_userdata) {
+        entry->struct_codegen_userdata_free(entry->struct_codegen_userdata);
+    }
+    entry->struct_codegen = codegen;
+    entry->struct_codegen_userdata = userdata;
+    entry->struct_codegen_userdata_free = free_userdata;
+    reg->version++;
+    return true;
 }

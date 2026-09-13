@@ -5,7 +5,7 @@
 
 #include "compile/internal.h"
 
-bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
+bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                  const char* const* local_names, size_t local_count,
                                  cxpr_ir_program* program, cxpr_error* err) {
     if (err) *err = (cxpr_error){0};
@@ -62,7 +62,7 @@ bool cxpr_ir_compile_with_locals(const cxpr_ast* ast, const cxpr_registry* reg,
     return true;
 }
 
-bool cxpr_ir_compile(const cxpr_ast* ast, const cxpr_registry* reg, cxpr_ir_program* program,
+bool cxpr_ir_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg, cxpr_ir_program* program,
                      cxpr_error* err) {
     return cxpr_ir_compile_with_locals(ast, reg, NULL, 0, program, err);
 }

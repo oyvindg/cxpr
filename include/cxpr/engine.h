@@ -55,6 +55,7 @@
 #ifndef CXPR_ENGINE_H
 #define CXPR_ENGINE_H
 
+#include <cxpr/snapshot.h>
 #include <cxpr/types.h>
 #include <cxpr/registry.h>
 #include <cxpr/expression.h>
@@ -150,7 +151,7 @@ typedef bool (*cxpr_engine_view_fn)(
  * targets into engine inline evaluation without teaching cxpr any domain names.
  */
 typedef bool (*cxpr_engine_inline_lookback_fn)(
-    const cxpr_ast* target,
+    const cxpr_expr_ast* target,
     void* userdata);
 
 /**
@@ -615,6 +616,28 @@ size_t cxpr_engine_expression_dependency_instruction_count(
  * @brief Return total compiled IR instructions for the engine expression batch.
  */
 size_t cxpr_engine_expression_total_instruction_count(const cxpr_engine_session* session);
+
+/**
+ * @brief Build a diagnostic flow snapshot for all expressions at the current tick.
+ *
+ * The flow contains expression-level dependency edges plus one AST snapshot per
+ * expression for drilldown. This is intended for debugging/visualization and is
+ * not part of the hot tick path.
+ */
+bool cxpr_engine_snapshot_flow(const cxpr_engine_session* session,
+                               cxpr_eval_snapshot_flow* out_flow,
+                               cxpr_error* err);
+
+/**
+ * @brief Build a flow snapshot while resolving missing values from a parent context.
+ *
+ * Mirrors the fallback tick APIs and is useful to hosts that keep domain state
+ * outside the engine-owned persistent context.
+ */
+bool cxpr_engine_snapshot_flow_fallback(const cxpr_engine_session* session,
+                                        const cxpr_context* parent_ctx,
+                                        cxpr_eval_snapshot_flow* out_flow,
+                                        cxpr_error* err);
 
 #ifdef __cplusplus
 }

@@ -27,6 +27,17 @@ jobs:
       - name: Test
         run: ctest --preset default
 
+      - name: Install
+        run: cmake --install build --prefix "${{ runner.temp }}/cxpr-install"
+
+      - name: Test installed package
+        run: >
+          cmake -S tests/consumer -B build-consumer
+          -DCMAKE_PREFIX_PATH="${{ runner.temp }}/cxpr-install"
+          -DCMAKE_C_COMPILER="${{ matrix.cc }}"
+          && cmake --build build-consumer
+          && ./build-consumer/cxpr_consumer
+
   strict:
     runs-on: ubuntu-latest
     strategy:
@@ -90,6 +101,6 @@ jobs:
 
       - name: Smoke-run parser fuzzer
         run: >
-          ./build-fuzz/fuzz/cxpr_fuzz_parse
+          ./build-fuzz/tests/fuzz/cxpr_fuzz_parse
           -max_total_time=30 -print_final_stats=1
-          build-fuzz/fuzz/corpus
+          build-fuzz/tests/fuzz/corpus

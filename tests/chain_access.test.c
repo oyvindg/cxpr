@@ -20,28 +20,28 @@
 
 static cxpr_value eval_typed(const char *expr,
                                    cxpr_context *ctx, cxpr_registry *reg) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_OK);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
 static cxpr_value eval_typed_fails(const char *expr,
                                          cxpr_context *ctx, cxpr_registry *reg,
                                          cxpr_error_code expected) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, expr, &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast != NULL && err.code == CXPR_OK);
     cxpr_value result = cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == expected);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     return result;
 }
 
@@ -78,30 +78,30 @@ static cxpr_context *make_nested_ctx(void) {
 /* ── two-segment access still emits FIELD_ACCESS (regression) ─────────── */
 
 static void test_two_segment_is_field_access(void) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, "a.b", &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "a.b", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_ast_type(ast) == CXPR_NODE_FIELD_ACCESS);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     printf("  \u2713 test_two_segment_is_field_access\n");
 }
 
 /* ── three-segment emits CHAIN_ACCESS ────────────────────────────────── */
 
 static void test_three_segment_is_chain_access(void) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, "outer.inner.value", &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "outer.inner.value", &err);
     assert(ast != NULL && err.code == CXPR_OK);
-    assert(cxpr_ast_type(ast) == CXPR_NODE_CHAIN_ACCESS);
-    assert(cxpr_ast_chain_depth(ast) == 3);
-    assert(strcmp(cxpr_ast_chain_segment(ast, 0), "outer") == 0);
-    assert(strcmp(cxpr_ast_chain_segment(ast, 1), "inner") == 0);
-    assert(strcmp(cxpr_ast_chain_segment(ast, 2), "value") == 0);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_CHAIN_ACCESS);
+    assert(cxpr_expr_ast_chain_count(ast) == 3);
+    assert(strcmp(cxpr_expr_ast_chain_segment(ast, 0), "outer") == 0);
+    assert(strcmp(cxpr_expr_ast_chain_segment(ast, 1), "inner") == 0);
+    assert(strcmp(cxpr_expr_ast_chain_segment(ast, 2), "value") == 0);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     printf("  \u2713 test_three_segment_is_chain_access\n");
 }
 
@@ -182,21 +182,21 @@ static void test_unknown_intermediate(void) {
     printf("  \u2713 test_unknown_intermediate\n");
 }
 
-/* ── cxpr_ast_references returns full dotted path ────────────────────── */
+/* ── cxpr_expr_ast_references returns full dotted path ────────────────────── */
 
 static void test_chain_ast_references(void) {
-    cxpr_parser *p = cxpr_parser_new();
+    cxpr_expr_parser *p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast *ast = cxpr_parse(p, "outer.inner.value", &err);
+    cxpr_expr_ast *ast = cxpr_expr_ast_parse(p, "outer.inner.value", &err);
     assert(ast != NULL && err.code == CXPR_OK);
 
     const char *refs[4];
-    size_t n = cxpr_ast_references(ast, refs, 4);
+    size_t n = cxpr_expr_ast_references(ast, refs, 4);
     assert(n == 1);
     assert(strcmp(refs[0], "outer.inner.value") == 0);
 
-    cxpr_ast_free(ast);
-    cxpr_parser_free(p);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
     printf("  \u2713 test_chain_ast_references\n");
 }
 

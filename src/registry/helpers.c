@@ -37,12 +37,28 @@ static void cxpr_registry_free_param_names(cxpr_func_entry* entry) {
 }
 
 static void cxpr_registry_free_defined_fn(cxpr_func_entry* entry) {
-    if (!entry->defined_body) return;
-    cxpr_program_free(entry->defined_program);
+    cxpr_expr_compiled_free(entry->defined_program);
     entry->defined_program = NULL;
     entry->defined_program_failed = false;
-    cxpr_ast_free(entry->defined_body);
-    entry->defined_body = NULL;
+    if (entry->defined_body) {
+        cxpr_expr_ast_free(entry->defined_body);
+        entry->defined_body = NULL;
+    }
+    if (entry->defined_return_field_names) {
+        for (size_t i = 0; i < entry->defined_return_field_count; i++) {
+            free(entry->defined_return_field_names[i]);
+        }
+        free(entry->defined_return_field_names);
+        entry->defined_return_field_names = NULL;
+    }
+    if (entry->defined_return_field_bodies) {
+        for (size_t i = 0; i < entry->defined_return_field_count; i++) {
+            cxpr_expr_ast_free(entry->defined_return_field_bodies[i]);
+        }
+        free(entry->defined_return_field_bodies);
+        entry->defined_return_field_bodies = NULL;
+    }
+    entry->defined_return_field_count = 0;
     if (entry->defined_param_fields) {
         for (size_t i = 0; i < entry->defined_param_count; i++) {
             if (entry->defined_param_fields[i]) {
@@ -142,6 +158,8 @@ void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
     entry->typed_func = NULL;
     entry->ast_func = NULL;
     entry->struct_producer = NULL;
+    entry->model_producer = NULL;
+    entry->model_producer_userdata = NULL;
     entry->ast_func_handler = NULL;
     entry->ast_func_handler_userdata = NULL;
     entry->ast_func_handler_userdata_free = NULL;
@@ -167,6 +185,9 @@ void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
     entry->defined_param_count = 0;
     entry->defined_param_fields = NULL;
     entry->defined_param_field_counts = NULL;
+    entry->defined_return_field_names = NULL;
+    entry->defined_return_field_bodies = NULL;
+    entry->defined_return_field_count = 0;
 }
 
 void cxpr_registry_clear_owned_entry(cxpr_func_entry* entry) {
@@ -176,15 +197,23 @@ void cxpr_registry_clear_owned_entry(cxpr_func_entry* entry) {
     if (entry->ast_func_handler_userdata_free) {
         entry->ast_func_handler_userdata_free(entry->ast_func_handler_userdata);
     }
+    if (entry->struct_codegen_userdata_free) {
+        entry->struct_codegen_userdata_free(entry->struct_codegen_userdata);
+    }
     cxpr_registry_free_struct_fields(entry);
     cxpr_registry_free_param_names(entry);
     cxpr_registry_free_arg_types(entry);
     cxpr_registry_free_defined_fn(entry);
     entry->userdata = NULL;
     entry->userdata_free = NULL;
+    entry->model_producer = NULL;
+    entry->model_producer_userdata = NULL;
     entry->ast_func_handler = NULL;
     entry->ast_func_handler_userdata = NULL;
     entry->ast_func_handler_userdata_free = NULL;
+    entry->struct_codegen = NULL;
+    entry->struct_codegen_userdata = NULL;
+    entry->struct_codegen_userdata_free = NULL;
 }
 
 void cxpr_registry_prepare_entry(cxpr_func_entry* entry, const char* name) {
@@ -215,6 +244,15 @@ void cxpr_registry_free(cxpr_registry* reg) {
         free(reg->entries[i].name);
         cxpr_registry_clear_owned_entry(&reg->entries[i]);
     }
+    for (size_t i = 0; i < reg->index_capability_count; ++i) {
+        cxpr_index_capability_entry* capability = &reg->index_capabilities[i];
+        if (capability->free_userdata && capability->userdata) {
+            capability->free_userdata(capability->userdata);
+        }
+        free(capability->capability_name);
+        free(capability->target_name);
+    }
+    free(reg->index_capabilities);
     free(reg->entries);
     free(reg);
 }
@@ -224,8 +262,12 @@ void cxpr_registry_set_lookback_resolver(cxpr_registry* reg,
                                          void* userdata,
                                          cxpr_userdata_free_fn free_userdata) {
     if (!reg) return;
-    if (reg->free_lookback_userdata && reg->lookback_userdata &&
-        reg->lookback_userdata != userdata) {
+    if (reg->lookback_userdata == userdata) {
+        reg->lookback_resolver = resolver;
+        if (free_userdata) reg->free_lookback_userdata = free_userdata;
+        return;
+    }
+    if (reg->free_lookback_userdata && reg->lookback_userdata) {
         reg->free_lookback_userdata(reg->lookback_userdata);
     }
     reg->lookback_resolver = resolver;

@@ -5,21 +5,324 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef CXPR_BENCH_IR_SIMPLE_ARITH_INLINE
+#include CXPR_BENCH_IR_SIMPLE_ARITH_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_NESTED_EXPR_INLINE
+#include CXPR_BENCH_IR_NESTED_EXPR_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_FUNCTION_CALL_INLINE
+#include CXPR_BENCH_IR_FUNCTION_CALL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_DEFINED_FN_INLINE
+#include CXPR_BENCH_IR_DEFINED_FN_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_DEFINED_CHAIN_INLINE
+#include CXPR_BENCH_IR_DEFINED_CHAIN_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_DEEP_DEFINED_INLINE
+#include CXPR_BENCH_IR_DEEP_DEFINED_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
+#include CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_LARGE_ARITH_INLINE
+#include CXPR_BENCH_IR_LARGE_ARITH_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_LARGE_BRANCH_INLINE
+#include CXPR_BENCH_IR_LARGE_BRANCH_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_LARGE_MATH_INLINE
+#include CXPR_BENCH_IR_LARGE_MATH_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_EXPR_INLINE
+#include CXPR_BENCH_IR_MIXED_EXPR_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_PIPE_INLINE
+#include CXPR_BENCH_IR_MIXED_PIPE_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
+#include CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
+#include CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE
+#include CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE
+#include CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
+#include CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_LOOKBACK_MIXED_INLINE
+#include CXPR_BENCH_IR_LOOKBACK_MIXED_INLINE
+#endif
+
+typedef enum {
+    BENCH_C_NONE = 0,
+    BENCH_C_SIMPLE_ARITH,
+    BENCH_C_NESTED_EXPR,
+    BENCH_C_FUNCTION_CALL,
+    BENCH_C_DEFINED_FN,
+    BENCH_C_DEFINED_CHAIN,
+    BENCH_C_DEEP_DEFINED,
+    BENCH_C_COMPLEX_SIGNAL,
+    BENCH_C_LARGE_ARITH,
+    BENCH_C_LARGE_BRANCH,
+    BENCH_C_LARGE_MATH,
+    BENCH_C_MIXED_EXPR,
+    BENCH_C_MIXED_PIPE,
+    BENCH_C_CONTEXT_CHURN,
+    BENCH_C_STRUCT_SCALAR_MUL,
+    BENCH_C_SCALAR_STRUCT_MUL,
+    BENCH_C_STRUCT_STRUCT_MUL,
+    BENCH_C_STRUCT_STRUCT_ADD,
+    BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS,
+    BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS,
+    BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS,
+    BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS,
+    BENCH_C_LOOKBACK_LEAF,
+    BENCH_C_LOOKBACK_MIXED,
+} bench_c_model;
+
 typedef struct {
     const char* name;
-    const char* expr;
+    const char* fixture;
     size_t iterations;
     int mutate_context;
+    bench_c_model c_model;
 } bench_case;
 
 typedef struct {
     const char* name;
-    const char* expr;
+    const char* fixture;
     size_t iterations;
     const char* field;
+    int free_result;
+    bench_c_model c_model;
 } typed_bench_case;
 
+typedef struct {
+    const char* name;
+    const char* fixture;
+    size_t iterations;
+    bench_c_model c_model;
+} lookback_bench_case;
+
 static volatile double g_sink = 0.0;
+
+#ifndef CXPR_BENCH_FIXTURE_DIR
+#error "CXPR_BENCH_FIXTURE_DIR must name the benchmark fixture directory"
+#endif
+
+typedef struct {
+    char* source;
+    cxpr_model* model;
+    const cxpr_expr_ast* result;
+} bench_model_source;
+
+static char* read_text_file(const char* path) {
+    FILE* file = fopen(path, "rb");
+    long size;
+    char* text;
+    if (!file || fseek(file, 0, SEEK_END) != 0) return NULL;
+    size = ftell(file);
+    if (size < 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    text = (char*)malloc((size_t)size + 1u);
+    if (!text || fread(text, 1u, (size_t)size, file) != (size_t)size) {
+        free(text);
+        fclose(file);
+        return NULL;
+    }
+    text[size] = '\0';
+    fclose(file);
+    return text;
+}
+
+static bench_model_source load_bench_model(const char* fixture) {
+    bench_model_source loaded = {0};
+    cxpr_error err = {0};
+    char path[1024];
+    size_t i;
+
+    snprintf(path, sizeof(path), "%s/%s", CXPR_BENCH_FIXTURE_DIR, fixture);
+    loaded.source = read_text_file(path);
+    if (!loaded.source) {
+        fprintf(stderr, "Failed to read benchmark fixture '%s'\n", path);
+        exit(1);
+    }
+    loaded.model = cxpr_model_parse(loaded.source, &err);
+    if (!loaded.model) {
+        fprintf(stderr, "Failed to parse benchmark fixture '%s': %s\n",
+                path, err.message ? err.message : "(null)");
+        exit(1);
+    }
+    for (i = 0u; i < cxpr_model_binding_count(loaded.model); ++i) {
+        if (strcmp(cxpr_model_binding_name(loaded.model, i), "result") == 0) {
+            loaded.result = cxpr_model_binding_expr(loaded.model, i);
+            break;
+        }
+    }
+    if (!loaded.result) {
+        fprintf(stderr, "Benchmark fixture '%s' has no result binding\n", path);
+        exit(1);
+    }
+    return loaded;
+}
+
+static void free_bench_model(bench_model_source* loaded) {
+    cxpr_model_free(loaded->model);
+    free(loaded->source);
+    *loaded = (bench_model_source){0};
+}
+
+enum { LOOKBACK_BARS = 4096 };
+static double g_close[LOOKBACK_BARS];
+static double g_high[LOOKBACK_BARS];
+static int64_t g_lookback_cursor = 0;
+
+static const char* bench_c_model_inline_path(bench_c_model model) {
+    switch (model) {
+#ifdef CXPR_BENCH_IR_SIMPLE_ARITH_INLINE
+    case BENCH_C_SIMPLE_ARITH: return CXPR_BENCH_IR_SIMPLE_ARITH_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_NESTED_EXPR_INLINE
+    case BENCH_C_NESTED_EXPR: return CXPR_BENCH_IR_NESTED_EXPR_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_FUNCTION_CALL_INLINE
+    case BENCH_C_FUNCTION_CALL: return CXPR_BENCH_IR_FUNCTION_CALL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_DEFINED_FN_INLINE
+    case BENCH_C_DEFINED_FN: return CXPR_BENCH_IR_DEFINED_FN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_DEFINED_CHAIN_INLINE
+    case BENCH_C_DEFINED_CHAIN: return CXPR_BENCH_IR_DEFINED_CHAIN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_DEEP_DEFINED_INLINE
+    case BENCH_C_DEEP_DEFINED: return CXPR_BENCH_IR_DEEP_DEFINED_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
+    case BENCH_C_COMPLEX_SIGNAL: return CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LARGE_ARITH_INLINE
+    case BENCH_C_LARGE_ARITH: return CXPR_BENCH_IR_LARGE_ARITH_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LARGE_BRANCH_INLINE
+    case BENCH_C_LARGE_BRANCH: return CXPR_BENCH_IR_LARGE_BRANCH_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LARGE_MATH_INLINE
+    case BENCH_C_LARGE_MATH: return CXPR_BENCH_IR_LARGE_MATH_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_EXPR_INLINE
+    case BENCH_C_MIXED_EXPR: return CXPR_BENCH_IR_MIXED_EXPR_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_MIXED_PIPE_INLINE
+    case BENCH_C_MIXED_PIPE: return CXPR_BENCH_IR_MIXED_PIPE_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
+    case BENCH_C_CONTEXT_CHURN: return CXPR_BENCH_IR_CONTEXT_CHURN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
+    case BENCH_C_STRUCT_SCALAR_MUL: return CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE
+    case BENCH_C_SCALAR_STRUCT_MUL: return CXPR_BENCH_IR_SCALAR_STRUCT_MUL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE
+    case BENCH_C_STRUCT_STRUCT_MUL: return CXPR_BENCH_IR_STRUCT_STRUCT_MUL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE
+    case BENCH_C_STRUCT_STRUCT_ADD: return CXPR_BENCH_IR_STRUCT_STRUCT_ADD_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE
+    case BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS: return CXPR_BENCH_IR_STRUCT_SCALAR_MUL_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE
+    case BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS: return CXPR_BENCH_IR_SCALAR_STRUCT_MUL_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE
+    case BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS: return CXPR_BENCH_IR_STRUCT_STRUCT_MUL_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE
+    case BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS: return CXPR_BENCH_IR_STRUCT_STRUCT_ADD_ALL_FIELDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE
+    case BENCH_C_LOOKBACK_LEAF: return CXPR_BENCH_IR_LOOKBACK_LEAF_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_LOOKBACK_MIXED_INLINE
+    case BENCH_C_LOOKBACK_MIXED: return CXPR_BENCH_IR_LOOKBACK_MIXED_INLINE;
+#endif
+    case BENCH_C_NONE:
+    default:
+        return NULL;
+    }
+}
+
+static int print_file(FILE* out, const char* path) {
+    char buf[4096];
+    size_t nread;
+    int last = '\n';
+    FILE* file = fopen(path, "rb");
+    if (!file) {
+        fprintf(stderr, "Failed to open generated C '%s'\n", path);
+        return 1;
+    }
+    while ((nread = fread(buf, 1, sizeof(buf), file)) > 0) {
+        if (fwrite(buf, 1, nread, out) != nread) {
+            fclose(file);
+            return 1;
+        }
+        last = buf[nread - 1];
+    }
+    if (ferror(file)) {
+        fprintf(stderr, "Failed to read generated C '%s'\n", path);
+        fclose(file);
+        return 1;
+    }
+    fclose(file);
+    if (last != '\n') fputc('\n', out);
+    return 0;
+}
+
+static int print_generated_c_case(const char* name, const char* fixture, bench_c_model model, const char* filter, int* matched) {
+    const char* path = bench_c_model_inline_path(model);
+    if (filter && strcmp(name, filter) != 0) return 0;
+    if (filter) *matched = 1;
+    if (!path) {
+        if (filter) {
+            printf("\n=== %s ===\n", name);
+            printf(".cxpr fixture: %s\n", fixture);
+            printf(".inc path: -\n");
+            printf("No generated .cxpr C for this benchmark case.\n");
+        }
+        return 0;
+    }
+    printf("\n=== %s ===\n", name);
+    printf(".cxpr fixture: %s\n", fixture);
+    printf(".inc path: %s\n", path);
+    printf("--- generated C ---\n");
+    return print_file(stdout, path);
+}
 
 static double native_sq(double x) {
     return x * x;
@@ -68,7 +371,7 @@ static cxpr_value bench_tf_value_fn(const cxpr_value* args, size_t argc, void* u
     return cxpr_num(args[0].d + 1.0);
 }
 
-static cxpr_value bench_tf_ast_handler_fn(const cxpr_ast* call_ast,
+static cxpr_value bench_tf_ast_handler_fn(const cxpr_expr_ast* call_ast,
                                           const cxpr_context* ctx,
                                           const cxpr_registry* reg,
                                           void* userdata,
@@ -76,14 +379,14 @@ static cxpr_value bench_tf_ast_handler_fn(const cxpr_ast* call_ast,
     double value = 0.0;
 
     (void)userdata;
-    if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, 0), ctx, reg, &value, err)) {
+    if (!cxpr_eval_ast_number(cxpr_expr_ast_call_arg(call_ast, 0), ctx, reg, &value, err)) {
         return cxpr_num(NAN);
     }
 
-    if (cxpr_ast_function_argc(call_ast) == 2) {
-        const cxpr_ast* timeframe = cxpr_ast_function_arg(call_ast, 1);
-        if (!timeframe || cxpr_ast_type(timeframe) != CXPR_NODE_STRING ||
-            strcmp(cxpr_ast_string_value(timeframe), "1h") != 0) {
+    if (cxpr_expr_ast_call_arg_count(call_ast) == 2) {
+        const cxpr_expr_ast* timeframe = cxpr_expr_ast_call_arg(call_ast, 1);
+        if (!timeframe || cxpr_expr_ast_kind_of(timeframe) != CXPR_NODE_STRING ||
+            strcmp(cxpr_expr_ast_string_value(timeframe), "1h") != 0) {
             if (err) {
                 err->code = CXPR_ERR_SYNTAX;
                 err->message = "bench_tf expects timeframe \"1h\"";
@@ -118,6 +421,52 @@ static void set_base_values(cxpr_context* ctx) {
     cxpr_context_set(ctx, "z", 13.5);
     cxpr_context_set(ctx, "m", 14.5);
     cxpr_context_set(ctx, "n", -15.5);
+}
+
+static void set_base_struct_values(cxpr_context* ctx) {
+    const char* fields[] = {"x", "y", "z"};
+    cxpr_value vector_values[] = {
+        cxpr_num(2.0),
+        cxpr_num(4.0),
+        cxpr_num(8.0),
+    };
+    cxpr_value weight_values[] = {
+        cxpr_num(3.0),
+        cxpr_num(5.0),
+        cxpr_num(7.0),
+    };
+    cxpr_struct_value* vector = cxpr_struct_value_new(fields, vector_values, 3u);
+    cxpr_struct_value* weights = cxpr_struct_value_new(fields, weight_values, 3u);
+
+    if (!vector || !weights) {
+        fprintf(stderr, "Failed to allocate benchmark structs\n");
+        exit(1);
+    }
+    cxpr_context_set_struct(ctx, "vector", vector);
+    cxpr_context_set_struct(ctx, "weights", weights);
+    cxpr_struct_value_free(weights);
+    cxpr_struct_value_free(vector);
+}
+
+static void init_lookback_bars(void) {
+    uint64_t state = 0x9e3779b97f4a7c15ULL;
+
+    for (size_t i = 0u; i < LOOKBACK_BARS; ++i) {
+        double open_value;
+        double close_value;
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        open_value = 100.0 + (double)((state >> 33u) % 1000u) / 100.0;
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        close_value = 100.0 + (double)((state >> 33u) % 1000u) / 100.0;
+        g_close[i] = close_value;
+        g_high[i] = (open_value > close_value ? open_value : close_value) + 0.75;
+    }
+}
+
+static void set_lookback_bar(cxpr_context* ctx, size_t i) {
+    g_lookback_cursor = (int64_t)(i % LOOKBACK_BARS);
+    cxpr_context_set(ctx, "close", g_close[g_lookback_cursor]);
+    cxpr_context_set(ctx, "high", g_high[g_lookback_cursor]);
 }
 
 static void mutate_values(cxpr_context* ctx, size_t i) {
@@ -442,7 +791,7 @@ static double time_mutate_params_prehashed_only(cxpr_context* ctx, size_t iterat
     return (double)(end - start) / (double)iterations;
 }
 
-static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
+static double time_ast(const cxpr_expr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
                        size_t iterations, int mutate_context) {
     size_t i;
     double total = 0.0;
@@ -462,7 +811,7 @@ static double time_ast(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_regist
     return total;
 }
 
-static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr_registry* reg,
+static double time_ir(const cxpr_expr_compiled* program, cxpr_context* ctx, const cxpr_registry* reg,
                       size_t iterations, int mutate_context) {
     size_t i;
     double total = 0.0;
@@ -472,7 +821,7 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
         if (mutate_context) mutate_values_prehashed(ctx, &hashes, i);
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
@@ -480,6 +829,560 @@ static double time_ir(const cxpr_program* program, cxpr_context* ctx, const cxpr
     }
 
     return total;
+}
+
+static void fill_inputs_abcde(double* inputs) {
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+}
+
+static void fill_inputs_abcdefghi(double* inputs) {
+    fill_inputs_abcde(inputs);
+    inputs[5] = 6.5;
+    inputs[6] = 7.5;
+    inputs[7] = 8.5;
+    inputs[8] = 9.5;
+}
+
+static void fill_inputs_context_churn(double* inputs, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    inputs[0] = 1.5 + t;
+    inputs[1] = 2.5 + t * 2.0;
+    inputs[2] = 3.5 + t * 3.0;
+    inputs[3] = 4.5 + t * 4.0;
+    inputs[4] = 5.5 + t * 5.0;
+    inputs[5] = 11.5 - t;
+    inputs[6] = 12.5 + t * 0.5;
+    inputs[7] = 13.5 - t * 0.25;
+}
+
+static double time_c_simple_arith(size_t iterations, double* out_total) {
+    cxpr_bench_ir_simple_arith_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_simple_arith_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_simple_arith;
+    double inputs[5];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_abcde(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_nested_expr(size_t iterations, double* out_total) {
+    cxpr_bench_ir_nested_expr_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_nested_expr_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_nested_expr;
+    double inputs[9];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_abcdefghi(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_function_call(size_t iterations, double* out_total) {
+    cxpr_bench_ir_function_call_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_function_call_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_function_call;
+    double inputs[4];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_defined_fn(size_t iterations, double* out_total) {
+    cxpr_bench_ir_defined_fn_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_defined_fn_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_defined_fn;
+    double inputs[5];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_abcde(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_defined_chain(size_t iterations, double* out_total) {
+    cxpr_bench_ir_defined_chain_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_defined_chain_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_defined_chain;
+    double inputs[7];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+    inputs[5] = 6.5;
+    inputs[6] = 7.5;
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_deep_defined(size_t iterations, double* out_total) {
+    cxpr_bench_ir_deep_defined_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_deep_defined_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_deep_defined;
+    double inputs[8];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+    inputs[5] = 6.5;
+    inputs[6] = 7.5;
+    inputs[7] = 8.5;
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_complex_signal(size_t iterations, double* out_total) {
+    cxpr_bench_ir_complex_signal_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_complex_signal_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_complex_signal;
+    double inputs[14];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+    inputs[5] = 6.5;
+    inputs[6] = 7.5;
+    inputs[7] = 8.5;
+    inputs[8] = 9.5;
+    inputs[9] = 11.5;
+    inputs[10] = 12.5;
+    inputs[11] = 13.5;
+    inputs[12] = 14.5;
+    inputs[13] = -15.5;
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static void fill_inputs_large(double* inputs) {
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+    inputs[5] = 6.5;
+    inputs[6] = 7.5;
+    inputs[7] = 8.5;
+    inputs[8] = 9.5;
+    inputs[9] = 10.5;
+    inputs[10] = 11.5;
+    inputs[11] = 12.5;
+    inputs[12] = 13.5;
+    inputs[13] = 14.5;
+    inputs[14] = -15.5;
+}
+
+#define DEFINE_LARGE_C_BENCH(suffix)                                                \
+static double time_c_##suffix(size_t iterations, double* out_total) {               \
+    cxpr_bench_ir_##suffix##_state state = {0};                                     \
+    void (*volatile tick)(cxpr_bench_ir_##suffix##_state*, const double*,           \
+                          const double*, double*) = cxpr_bench_ir_##suffix;          \
+    double inputs[15];                                                               \
+    double outputs[1] = {0};                                                         \
+    double total = 0.0;                                                              \
+    long long start, end;                                                            \
+    fill_inputs_large(inputs);                                                       \
+    start = now_ns();                                                                \
+    for (size_t i = 0u; i < iterations; ++i) {                                      \
+        tick(&state, inputs, NULL, outputs);                                         \
+        total += outputs[0];                                                         \
+    }                                                                                \
+    end = now_ns();                                                                  \
+    *out_total = total;                                                              \
+    return (double)(end - start) / (double)iterations;                              \
+}
+
+DEFINE_LARGE_C_BENCH(large_arith)
+DEFINE_LARGE_C_BENCH(large_branch)
+DEFINE_LARGE_C_BENCH(large_math)
+
+static void fill_inputs_mixed(double* inputs) {
+    inputs[0] = 1.5;
+    inputs[1] = 2.5;
+    inputs[2] = 3.5;
+    inputs[3] = 4.5;
+    inputs[4] = 5.5;
+    inputs[5] = -15.5;
+}
+
+static double time_c_mixed_expr(size_t iterations, double* out_total) {
+    cxpr_bench_ir_mixed_expr_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_mixed_expr_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_mixed_expr;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_mixed(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_mixed_pipe(size_t iterations, double* out_total) {
+    cxpr_bench_ir_mixed_pipe_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_mixed_pipe_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_mixed_pipe;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_mixed(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static void fill_inputs_struct_unary(double* inputs) {
+    inputs[0] = 2.0;
+    inputs[1] = 4.0;
+    inputs[2] = 8.0;
+}
+
+static void fill_inputs_struct_binary(double* inputs) {
+    fill_inputs_struct_unary(inputs);
+    inputs[3] = 3.0;
+    inputs[4] = 5.0;
+    inputs[5] = 7.0;
+}
+
+static double time_c_struct_scalar_mul(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_scalar_mul_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_scalar_mul;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_scalar_struct_mul(size_t iterations, double* out_total) {
+    cxpr_bench_ir_scalar_struct_mul_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_scalar_struct_mul;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_mul(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_mul_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_mul;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_add(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_add_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_add;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_scalar_mul_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_scalar_mul_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_scalar_mul_all_fields;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_scalar_struct_mul_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_scalar_struct_mul_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_scalar_struct_mul_all_fields;
+    double inputs[3];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_unary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_mul_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_mul_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_mul_all_fields;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_struct_struct_add_all_fields(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_struct_add_all_fields_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_all_fields_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_struct_struct_add_all_fields;
+    double inputs[6];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    fill_inputs_struct_binary(inputs);
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_context_churn(size_t iterations, double* out_total) {
+    cxpr_bench_ir_context_churn_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_context_churn_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_context_churn;
+    double inputs[8];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        fill_inputs_context_churn(inputs, i);
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_lookback_leaf(size_t iterations, double* out_total) {
+    cxpr_bench_ir_lookback_leaf_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_lookback_leaf_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_lookback_leaf;
+    double inputs[1];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        if (i > 0u && i % LOOKBACK_BARS == 0u) state = (cxpr_bench_ir_lookback_leaf_state){0};
+        inputs[0] = g_close[i % LOOKBACK_BARS];
+        tick(&state, inputs, NULL, outputs);
+        if (isfinite(outputs[0])) total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_lookback_mixed(size_t iterations, double* out_total) {
+    cxpr_bench_ir_lookback_mixed_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_lookback_mixed_state*, const double*, const double*, double*) =
+        cxpr_bench_ir_lookback_mixed;
+    double inputs[2];
+    double outputs[1] = {0};
+    double total = 0.0;
+    long long start, end;
+
+    start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        if (i > 0u && i % LOOKBACK_BARS == 0u) state = (cxpr_bench_ir_lookback_mixed_state){0};
+        inputs[0] = g_close[i % LOOKBACK_BARS];
+        inputs[1] = g_high[i % LOOKBACK_BARS];
+        tick(&state, inputs, NULL, outputs);
+        if (isfinite(outputs[0])) total += outputs[0];
+    }
+    end = now_ns();
+    *out_total = total;
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_c_model(bench_c_model model, size_t iterations, double* out_total) {
+    if (out_total) *out_total = 0.0;
+    switch (model) {
+    case BENCH_C_SIMPLE_ARITH: return time_c_simple_arith(iterations, out_total);
+    case BENCH_C_NESTED_EXPR: return time_c_nested_expr(iterations, out_total);
+    case BENCH_C_FUNCTION_CALL: return time_c_function_call(iterations, out_total);
+    case BENCH_C_DEFINED_FN: return time_c_defined_fn(iterations, out_total);
+    case BENCH_C_DEFINED_CHAIN: return time_c_defined_chain(iterations, out_total);
+    case BENCH_C_DEEP_DEFINED: return time_c_deep_defined(iterations, out_total);
+    case BENCH_C_COMPLEX_SIGNAL: return time_c_complex_signal(iterations, out_total);
+    case BENCH_C_LARGE_ARITH: return time_c_large_arith(iterations, out_total);
+    case BENCH_C_LARGE_BRANCH: return time_c_large_branch(iterations, out_total);
+    case BENCH_C_LARGE_MATH: return time_c_large_math(iterations, out_total);
+    case BENCH_C_MIXED_EXPR: return time_c_mixed_expr(iterations, out_total);
+    case BENCH_C_MIXED_PIPE: return time_c_mixed_pipe(iterations, out_total);
+    case BENCH_C_CONTEXT_CHURN: return time_c_context_churn(iterations, out_total);
+    case BENCH_C_STRUCT_SCALAR_MUL: return time_c_struct_scalar_mul(iterations, out_total);
+    case BENCH_C_SCALAR_STRUCT_MUL: return time_c_scalar_struct_mul(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_MUL: return time_c_struct_struct_mul(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_ADD: return time_c_struct_struct_add(iterations, out_total);
+    case BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS: return time_c_struct_scalar_mul_all_fields(iterations, out_total);
+    case BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS: return time_c_scalar_struct_mul_all_fields(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS: return time_c_struct_struct_mul_all_fields(iterations, out_total);
+    case BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS: return time_c_struct_struct_add_all_fields(iterations, out_total);
+    case BENCH_C_LOOKBACK_LEAF: return time_c_lookback_leaf(iterations, out_total);
+    case BENCH_C_LOOKBACK_MIXED: return time_c_lookback_mixed(iterations, out_total);
+    default: return NAN;
+    }
 }
 
 static double typed_value_to_double(const cxpr_value* value, const char* field) {
@@ -503,8 +1406,8 @@ static double typed_value_to_double(const cxpr_value* value, const char* field) 
     return found ? NAN : NAN;
 }
 
-static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
-                             size_t iterations, const char* field) {
+static double time_ast_typed(const cxpr_expr_ast* ast, cxpr_context* ctx, const cxpr_registry* reg,
+                             size_t iterations, const char* field, int free_result) {
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
@@ -516,30 +1419,32 @@ static double time_ast_typed(const cxpr_ast* ast, cxpr_context* ctx, const cxpr_
             exit(1);
         }
         total += typed_value_to_double(&value, field);
+        if (free_result) cxpr_value_free(&value);
     }
 
     return total;
 }
 
-static double time_ir_typed(const cxpr_program* program, cxpr_context* ctx, const cxpr_registry* reg,
-                            size_t iterations, const char* field) {
+static double time_ir_typed(const cxpr_expr_compiled* program, cxpr_context* ctx, const cxpr_registry* reg,
+                            size_t iterations, const char* field, int free_result) {
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
 
     for (i = 0; i < iterations; ++i) {
         cxpr_value value = {0};
-        if (!cxpr_eval_program(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Typed IR benchmark eval failed at iter %zu: %s\n", i, err.message);
             exit(1);
         }
         total += typed_value_to_double(&value, field);
+        if (free_result) cxpr_value_free(&value);
     }
 
     return total;
 }
 
-static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
+static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_expr_compiled* program,
                                cxpr_context* ctx, const cxpr_registry* reg,
                                const bench_case* c) {
     size_t i;
@@ -559,7 +1464,7 @@ static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
         if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) {
             ast_value = NAN;
         }
-        if (!cxpr_eval_program_number(program, ctx, reg, &ir_value, &ir_err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &ir_value, &ir_err)) {
             ir_value = NAN;
         }
 
@@ -586,23 +1491,21 @@ static void validate_ast_vs_ir(const cxpr_ast* ast, const cxpr_program* program,
     }
 }
 
-static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                       const bench_case* c) {
     long long ast_start, ast_end, ir_start, ir_end;
-    double ast_total, ir_total, ast_ns, ir_ns;
+    double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
-    cxpr_program* program;
+    bench_model_source source = load_bench_model(c->fixture);
+    const cxpr_expr_ast* ast = source.result;
+    cxpr_expr_compiled* program;
 
-    if (!ast) {
-        fprintf(stderr, "Parse failed for '%s': %s\n", c->name, err.message);
-        exit(1);
-    }
+    (void)parser;
 
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
-        cxpr_ast_free(ast);
+        free_bench_model(&source);
         exit(1);
     }
 
@@ -620,47 +1523,69 @@ static void bench_one(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg
 
     ast_ns = (double)(ast_end - ast_start) / (double)c->iterations;
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
+    c_ns = time_c_model(c->c_model, c->iterations, &c_total);
+    if (!isnan(c_ns)) {
+        if (fabs(ast_total - c_total) > 1e-9 * (1.0 + fabs(ast_total))) {
+            fprintf(stderr, "AST/.cxpr C mismatch for '%s': %.17g vs %.17g\n",
+                    c->name, ast_total, c_total);
+            exit(1);
+        }
+        g_sink += c_total;
+    }
     g_sink += ast_total + ir_total;
 
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
-           c->name,
-           c->iterations,
-           ast_ns,
-           ir_ns,
-           ast_ns / ir_ns);
-
-    cxpr_program_free(program);
-    cxpr_ast_free(ast);
-}
-
-static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
-                            const typed_bench_case* c) {
-    long long ast_start, ast_end, ir_start, ir_end;
-    double ast_total, ir_total, ast_ns, ir_ns;
-    cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, c->expr, &err);
-    cxpr_program* program;
-
-    if (!ast) {
-        fprintf(stderr, "Parse failed for '%s': %s\n", c->name, err.message);
-        exit(1);
+    if (isnan(c_ns)) {
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               "-",
+               ast_ns / ir_ns,
+               "-");
+    } else {
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               c_ns,
+               ast_ns / ir_ns,
+               ir_ns / c_ns);
     }
 
-    program = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled_free(program);
+    free_bench_model(&source);
+}
+
+static void bench_one_typed(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+                            const typed_bench_case* c) {
+    long long ast_start, ast_end, ir_start, ir_end;
+    double ast_total, ir_total, c_total = 0.0, ast_ns, ir_ns, c_ns = NAN;
+    cxpr_error err = {0};
+    bench_model_source source = load_bench_model(c->fixture);
+    const cxpr_expr_ast* ast = source.result;
+    cxpr_expr_compiled* program;
+
+    (void)parser;
+
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
-        cxpr_ast_free(ast);
+        free_bench_model(&source);
         exit(1);
     }
 
     set_base_values(ctx);
+    set_base_struct_values(ctx);
     ast_start = now_ns();
-    ast_total = time_ast_typed(ast, ctx, reg, c->iterations, c->field);
+    ast_total = time_ast_typed(ast, ctx, reg, c->iterations, c->field, c->free_result);
     ast_end = now_ns();
 
     set_base_values(ctx);
+    set_base_struct_values(ctx);
     ir_start = now_ns();
-    ir_total = time_ir_typed(program, ctx, reg, c->iterations, c->field);
+    ir_total = time_ir_typed(program, ctx, reg, c->iterations, c->field, c->free_result);
     ir_end = now_ns();
 
     if (fabs(ast_total - ir_total) > 1e-9 * (1.0 + fabs(ast_total))) {
@@ -673,18 +1598,179 @@ static void bench_one_typed(cxpr_parser* parser, cxpr_context* ctx, cxpr_registr
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
     g_sink += ast_total + ir_total;
 
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
-           c->name,
-           c->iterations,
-           ast_ns,
-           ir_ns,
-           ast_ns / ir_ns);
+    if (c->c_model != BENCH_C_NONE) {
+        c_ns = time_c_model(c->c_model, c->iterations, &c_total);
+        if (fabs(ast_total - c_total) > 1e-9 * (1.0 + fabs(ast_total))) {
+            fprintf(stderr, "Typed AST/.cxpr C mismatch for '%s': %.17g vs %.17g\n",
+                    c->name, ast_total, c_total);
+            exit(1);
+        }
+        g_sink += c_total;
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               c_ns,
+               ast_ns / ir_ns,
+               ir_ns / c_ns);
+    } else {
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               "-",
+               ast_ns / ir_ns,
+               "-");
+    }
 
-    cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_compiled_free(program);
+    free_bench_model(&source);
 }
 
-static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
+static double time_ast_lookback(const cxpr_expr_ast* ast, cxpr_context* ctx,
+                                const cxpr_registry* reg, size_t iterations) {
+    size_t i;
+    double total = 0.0;
+    cxpr_error err = {0};
+
+    for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
+        set_lookback_bar(ctx, i);
+        if (!cxpr_eval_ast_number(ast, ctx, reg, &value, &err)) {
+            fprintf(stderr, "AST lookback benchmark eval failed at iter %zu: %s\n",
+                    i, err.message ? err.message : "(null)");
+            exit(1);
+        }
+        if (isfinite(value)) total += value;
+    }
+
+    return total;
+}
+
+static double time_ir_lookback(const cxpr_expr_compiled* program, cxpr_context* ctx,
+                               const cxpr_registry* reg, size_t iterations) {
+    size_t i;
+    double total = 0.0;
+    cxpr_error err = {0};
+
+    for (i = 0; i < iterations; ++i) {
+        double value = 0.0;
+        set_lookback_bar(ctx, i);
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
+            fprintf(stderr, "IR lookback benchmark eval failed at iter %zu: %s\n",
+                    i, err.message ? err.message : "(null)");
+            exit(1);
+        }
+        if (isfinite(value)) total += value;
+    }
+
+    return total;
+}
+
+static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_expr_compiled* program,
+                                        cxpr_context* ctx, const cxpr_registry* reg,
+                                        const lookback_bench_case* c) {
+    cxpr_error ast_err = {0};
+    cxpr_error ir_err = {0};
+
+    for (size_t i = 0u; i < LOOKBACK_BARS; ++i) {
+        double ast_value = NAN;
+        double ir_value = NAN;
+        set_lookback_bar(ctx, i);
+        if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) ast_value = NAN;
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &ir_value, &ir_err)) ir_value = NAN;
+        if (ast_err.code != ir_err.code) {
+            fprintf(stderr,
+                    "Lookback AST/IR error-code mismatch for '%s' at bar %zu: ast=%d ir=%d\n",
+                    c->name, i, ast_err.code, ir_err.code);
+            exit(1);
+        }
+        if (ast_err.code != CXPR_OK) {
+            fprintf(stderr,
+                    "Lookback AST/IR runtime error for '%s' at bar %zu: %s\n",
+                    c->name, i, ast_err.message ? ast_err.message : "(null)");
+            exit(1);
+        }
+        if ((isnan(ast_value) && isnan(ir_value)) ||
+            fabs(ast_value - ir_value) <= 1e-9 * (1.0 + fabs(ast_value))) {
+            ast_err = (cxpr_error){0};
+            ir_err = (cxpr_error){0};
+            continue;
+        }
+        fprintf(stderr,
+                "Lookback AST/IR mismatch for '%s' at bar %zu: %.17g vs %.17g\n",
+                c->name, i, ast_value, ir_value);
+        exit(1);
+    }
+}
+
+static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
+                               const lookback_bench_case* c) {
+    long long ast_start, ast_end, ir_start, ir_end;
+    double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
+    cxpr_error err = {0};
+    bench_model_source source = load_bench_model(c->fixture);
+    const cxpr_expr_ast* ast = source.result;
+    cxpr_expr_compiled* program;
+
+    (void)parser;
+    program = cxpr_expr_compile(ast, reg, &err);
+    if (!program) {
+        fprintf(stderr, "Compile failed for lookback '%s': %s\n", c->name, err.message);
+        free_bench_model(&source);
+        exit(1);
+    }
+
+    ast_start = now_ns();
+    ast_total = time_ast_lookback(ast, ctx, reg, c->iterations);
+    ast_end = now_ns();
+
+    ir_start = now_ns();
+    ir_total = time_ir_lookback(program, ctx, reg, c->iterations);
+    ir_end = now_ns();
+
+    validate_lookback_ast_vs_ir(ast, program, ctx, reg, c);
+
+    ast_ns = (double)(ast_end - ast_start) / (double)c->iterations;
+    ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;
+    c_ns = time_c_model(c->c_model, c->iterations, &c_total);
+    if (!isnan(c_ns)) {
+        if (fabs(ast_total - c_total) > 1e-9 * (1.0 + fabs(ast_total))) {
+            fprintf(stderr, "Lookback AST/.cxpr C mismatch for '%s': %.17g vs %.17g\n",
+                    c->name, ast_total, c_total);
+            exit(1);
+        }
+        g_sink += c_total;
+    }
+    g_sink += ast_total + ir_total;
+
+    if (isnan(c_ns)) {
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14s  %8.2fx  %8s\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               "-",
+               ast_ns / ir_ns,
+               "-");
+    } else {
+        printf("%-24s  %10zu  %12.2f  %12.2f  %14.2f  %8.2fx  %8.2fx\n",
+               c->name,
+               c->iterations,
+               ast_ns,
+               ir_ns,
+               c_ns,
+               ast_ns / ir_ns,
+               ir_ns / c_ns);
+    }
+
+    cxpr_expr_compiled_free(program);
+    free_bench_model(&source);
+}
+
+static void bench_slot_churn(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg) {
     const char* expr = "a + b * c - d / e + x * y - z";
     const size_t iterations = 200000;
     long long churn_start, churn_end;
@@ -692,11 +1778,11 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     churn_slots s;
     size_t i;
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, expr, &err);
-    cxpr_program* program;
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, expr, &err);
+    cxpr_expr_compiled* program;
 
     if (!ast) { fprintf(stderr, "Parse failed: %s\n", err.message); exit(1); }
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) { fprintf(stderr, "Compile failed: %s\n", err.message); exit(1); }
 
     set_base_values(ctx);
@@ -716,7 +1802,7 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
         mutate_values_slots(&s, i);
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Slot benchmark eval failed: %s\n", err.message); exit(1);
         }
         churn_total += value;
@@ -726,11 +1812,11 @@ static void bench_slot_churn(cxpr_parser* parser, cxpr_context* ctx, cxpr_regist
     churn_ns = (double)(churn_end - churn_start) / (double)iterations;
     g_sink += churn_total;
 
-    printf("%-18s  %10zu  %12s  %12.2f  %8s\n",
-           "context_slot", iterations, "-", churn_ns, "-");
+    printf("%-24s  %10zu  %12s  %12.2f  %14s  %8s  %8s\n",
+           "context_slot", iterations, "-", churn_ns, "-", "-", "-");
 
-    cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
 }
 
 static void bench_context_update_paths(cxpr_context* ctx) {
@@ -749,15 +1835,15 @@ static void bench_context_update_paths(cxpr_context* ctx) {
     mutate_prehashed_ns = time_mutate_values_prehashed_only(ctx, iterations);
     mutate_slot_ns = time_mutate_values_slots_only(ctx, iterations);
 
-    printf("%-18s  %10s  %12s  %12s  %8s\n",
+    printf("%-24s  %10s  %12s  %12s  %8s\n",
            "case", "iters", "set ns/op", "alt ns/op", "speedup");
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "base_array", iterations, set_ns, array_ns, set_ns / array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_prehashed", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_slot", iterations, mutate_set_ns, mutate_slot_ns, mutate_set_ns / mutate_slot_ns);
 }
 
@@ -775,13 +1861,13 @@ static void bench_param_update_paths(cxpr_context* ctx) {
     mutate_array_ns = time_mutate_params_array_only(ctx, iterations);
     mutate_prehashed_ns = time_mutate_params_prehashed_only(ctx, iterations);
 
-    printf("%-18s  %10s  %12s  %12s  %8s\n",
+    printf("%-24s  %10s  %12s  %12s  %8s\n",
            "case", "iters", "set ns/op", "alt ns/op", "speedup");
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "base_param_array", iterations, set_ns, array_ns, set_ns / array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_param_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
-    printf("%-18s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_param_hash", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
 }
 
@@ -831,7 +1917,7 @@ static double time_context_overlay_alloc_free(const cxpr_context* parent,
     return (double)(end - start) / (double)iterations;
 }
 
-static double time_expression_number(const cxpr_program* program, cxpr_context* ctx,
+static double time_expression_number(const cxpr_expr_compiled* program, cxpr_context* ctx,
                                      const cxpr_registry* reg, size_t iterations,
                                      double* out_total) {
     size_t i;
@@ -842,7 +1928,7 @@ static double time_expression_number(const cxpr_program* program, cxpr_context* 
     start = now_ns();
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
-        if (!cxpr_eval_program_number(program, ctx, reg, &value, &err)) {
+        if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "Overlay expression benchmark failed at iter %zu: %s\n",
                     i, err.message);
             exit(1);
@@ -854,13 +1940,13 @@ static double time_expression_number(const cxpr_program* program, cxpr_context* 
     return (double)(end - start) / (double)iterations;
 }
 
-static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg) {
+static void bench_defined_overlay_prefix(cxpr_expr_parser* parser, cxpr_registry* reg) {
     const char* expr = "pickx(src)";
     const size_t iterations = 200000;
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
-    cxpr_program* program;
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
     double total = 0.0;
     double ns;
 
@@ -870,12 +1956,12 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
     }
     cxpr_context_set(ctx, "src.x", 42.0);
 
-    ast = cxpr_parse(parser, expr, &err);
+    ast = cxpr_expr_ast_parse(parser, expr, &err);
     if (!ast) {
         fprintf(stderr, "Parse failed for defined_overlay_prefix: %s\n", err.message);
         exit(1);
     }
-    program = cxpr_compile(ast, reg, &err);
+    program = cxpr_expr_compile(ast, reg, &err);
     if (!program) {
         fprintf(stderr, "Compile failed for defined_overlay_prefix: %s\n", err.message);
         exit(1);
@@ -891,8 +1977,8 @@ static void bench_defined_overlay_prefix(cxpr_parser* parser, cxpr_registry* reg
     printf("%-24s  %10zu  %14.2f  %12.6f\n",
            "defined_prefix", iterations, ns, total / (double)iterations);
 
-    cxpr_program_free(program);
-    cxpr_ast_free(ast);
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
 }
 
@@ -944,35 +2030,92 @@ static void bench_context_overlay_paths(void) {
 
 static void print_bench_header(const char* title) {
     printf("\n%s\n", title);
-    printf("%-18s  %10s  %12s  %12s  %8s\n",
-           "case", "iters", "AST ns/eval", "IR ns/eval", "speedup");
+    printf("%-24s  %10s  %12s  %12s  %14s  %8s  %8s\n",
+           "case", "iters", "AST ns/eval", "IR ns/eval", ".cxpr C ns/eval", "AST/IR", "IR/C");
 }
 
-int main(void) {
+static int print_generated_c(const bench_case* cases, size_t case_count,
+                             const typed_bench_case* typed_cases, size_t typed_case_count,
+                             const lookback_bench_case* lookback_cases, size_t lookback_case_count,
+                             const char* filter) {
+    size_t i;
+    int matched = filter ? 0 : 1;
+    for (i = 0; i < case_count; ++i) {
+        if (print_generated_c_case(cases[i].name, cases[i].fixture, cases[i].c_model, filter, &matched)) return 1;
+    }
+    for (i = 0; i < typed_case_count; ++i) {
+        if (print_generated_c_case(typed_cases[i].name, typed_cases[i].fixture, typed_cases[i].c_model, filter, &matched)) return 1;
+    }
+    for (i = 0; i < lookback_case_count; ++i) {
+        if (print_generated_c_case(lookback_cases[i].name, lookback_cases[i].fixture, lookback_cases[i].c_model, filter, &matched)) return 1;
+    }
+    if (!matched) {
+        fprintf(stderr, "Unknown benchmark case '%s'\n", filter);
+        return 1;
+    }
+    return 0;
+}
+
+static void print_usage(const char* argv0) {
+    printf("usage: %s [--print-c [case]]\n", argv0);
+    printf("  --print-c [case]   print generated .cxpr C include files and exit\n");
+}
+
+int main(int argc, char** argv) {
     const bench_case cases[] = {
-        { "simple_arith", "a + b * c - d / e", 500000, 0 },
-        { "nested_expr", "((a + b) * (c - d) / (e + f)) > g ? h : i", 400000, 0 },
-        { "function_call", "sqrt(a*a + b*b) + pow(c, 2) - abs(d)", 250000, 0 },
-        { "defined_fn", "hyp2(a, b) + hyp2(c, d) - sq(e)", 200000, 0 },
-        { "native_fn", "native_hyp2(a, b) + native_hyp2(c, d) - native_sq(e)", 200000, 0 },
-        { "defined_chain", "f3(a, b, c) + f3(d, e, f) - sq(g)", 120000, 0 },
-        { "native_chain", "native_f3(a, b, c) + native_f3(d, e, f) - native_sq(g)", 120000, 0 },
-        { "mixed_chain", "f3(a, b, c) + native_f3(d, e, f) - native_sq(g)", 120000, 0 },
-        { "deep_defined", "f5(a, b, c, d) + f5(e, f, g, h)", 80000, 0 },
-        { "deep_native", "native_f5(a, b, c, d) + native_f5(e, f, g, h)", 80000, 0 },
-        { "context_churn", "a + b * c - d / e + x * y - z", 200000, 1 },
-        { "ast_handler_num", "bench_tf(a)", 200000, 0 },
-        { "ast_handler_string", "bench_tf(a, \"1h\")", 200000, 0 },
+        { "simple_arith", "ir_simple_arith.cxpr", 500000, 0, BENCH_C_SIMPLE_ARITH },
+        { "nested_expr", "ir_nested_expr.cxpr", 400000, 0, BENCH_C_NESTED_EXPR },
+        { "function_call", "ir_function_call.cxpr", 250000, 0, BENCH_C_FUNCTION_CALL },
+        { "defined_fn", "ir_defined_fn.cxpr", 200000, 0, BENCH_C_DEFINED_FN },
+        { "defined_chain", "ir_defined_chain.cxpr", 120000, 0, BENCH_C_DEFINED_CHAIN },
+        { "deep_defined", "ir_deep_defined.cxpr", 80000, 0, BENCH_C_DEEP_DEFINED },
+        { "complex_signal", "ir_complex_signal.cxpr", 80000, 0, BENCH_C_COMPLEX_SIGNAL },
+        { "large_arith", "ir_large_arith.cxpr", 60000, 0, BENCH_C_LARGE_ARITH },
+        { "large_branch", "ir_large_branch.cxpr", 60000, 0, BENCH_C_LARGE_BRANCH },
+        { "large_math", "ir_large_math.cxpr", 400000, 0, BENCH_C_LARGE_MATH },
+        { "mixed_expr", "ir_mixed_expr.cxpr", 120000, 0, BENCH_C_MIXED_EXPR },
+        { "mixed_pipe", "ir_mixed_pipe.cxpr", 120000, 0, BENCH_C_MIXED_PIPE },
+        { "context_churn", "ir_context_churn.cxpr", 200000, 1, BENCH_C_CONTEXT_CHURN },
     };
     const typed_bench_case typed_cases[] = {
-        { "producer_field", "macd(12, 26, 9).histogram + macd(12, 26, 9).signal", 150000, NULL },
-        { "producer_struct", "macd(12, 26, 9)", 150000, "histogram" },
+        { "struct_scalar_mul", "ir_struct_scalar_mul.cxpr", 120000, NULL, 0, BENCH_C_STRUCT_SCALAR_MUL },
+        { "scalar_struct_mul", "ir_scalar_struct_mul.cxpr", 120000, NULL, 0, BENCH_C_SCALAR_STRUCT_MUL },
+        { "struct_struct_mul", "ir_struct_struct_mul.cxpr", 100000, NULL, 0, BENCH_C_STRUCT_STRUCT_MUL },
+        { "struct_struct_add", "ir_struct_struct_add.cxpr", 100000, NULL, 0, BENCH_C_STRUCT_STRUCT_ADD },
+        { "struct_scalar_mul_all", "ir_struct_scalar_mul_all_fields.cxpr", 100000, NULL, 0, BENCH_C_STRUCT_SCALAR_MUL_ALL_FIELDS },
+        { "scalar_struct_mul_all", "ir_scalar_struct_mul_all_fields.cxpr", 100000, NULL, 0, BENCH_C_SCALAR_STRUCT_MUL_ALL_FIELDS },
+        { "struct_struct_mul_all", "ir_struct_struct_mul_all_fields.cxpr", 80000, NULL, 0, BENCH_C_STRUCT_STRUCT_MUL_ALL_FIELDS },
+        { "struct_struct_add_all", "ir_struct_struct_add_all_fields.cxpr", 80000, NULL, 0, BENCH_C_STRUCT_STRUCT_ADD_ALL_FIELDS },
     };
+    const lookback_bench_case lookback_cases[] = {
+        { "lookback_leaf", "ir_lookback_leaf.cxpr", 250000, BENCH_C_LOOKBACK_LEAF },
+        { "lookback_mixed", "ir_lookback_mixed.cxpr", 200000, BENCH_C_LOOKBACK_MIXED },
+    };
+    const size_t case_count = sizeof(cases) / sizeof(cases[0]);
+    const size_t typed_case_count = sizeof(typed_cases) / sizeof(typed_cases[0]);
+    const size_t lookback_case_count = sizeof(lookback_cases) / sizeof(lookback_cases[0]);
     size_t i;
     cxpr_error err = {0};
-    cxpr_parser* parser = cxpr_parser_new();
-    cxpr_context* ctx = cxpr_context_new();
-    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_expr_parser* parser;
+    cxpr_context* ctx;
+    cxpr_registry* reg;
+
+    if (argc > 3 || (argc >= 2 && strcmp(argv[1], "--print-c") != 0 && strcmp(argv[1], "--help") != 0)) {
+        print_usage(argv[0]);
+        return 2;
+    }
+    if (argc >= 2 && strcmp(argv[1], "--help") == 0) {
+        print_usage(argv[0]);
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "--print-c") == 0) {
+        return print_generated_c(cases, case_count, typed_cases, typed_case_count,
+                                 lookback_cases, lookback_case_count, argc == 3 ? argv[2] : NULL);
+    }
+
+    parser = cxpr_expr_parser_new();
+    ctx = cxpr_context_new();
+    reg = cxpr_registry_new();
 
     if (!parser || !ctx || !reg) {
         fprintf(stderr, "Failed to initialize benchmark state\n");
@@ -989,13 +2132,27 @@ int main(void) {
         const char* macd_fields[] = {"line", "signal", "histogram"};
         cxpr_registry_add_struct(reg, "macd", bench_macd, 3, 3, macd_fields, 3, NULL, NULL);
     }
+    {
+        const cxpr_lookback_column columns[] = {
+            { "close", &g_close[0], sizeof(g_close[0]), LOOKBACK_BARS },
+            { "high", &g_high[0], sizeof(g_high[0]), LOOKBACK_BARS },
+        };
+        init_lookback_bars();
+        if (!cxpr_register_column_lookback(reg, columns, 2u, &g_lookback_cursor)) {
+            fprintf(stderr, "Failed to register lookback columns\n");
+            cxpr_registry_free(reg);
+            cxpr_context_free(ctx);
+            cxpr_expr_parser_free(parser);
+            return 1;
+        }
+    }
 
     err = cxpr_registry_define_fn(reg, "sq(x) => x * x");
     if (err.code != CXPR_OK) {
         fprintf(stderr, "Failed to define sq: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -1004,7 +2161,7 @@ int main(void) {
         fprintf(stderr, "Failed to define hyp2: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -1013,7 +2170,7 @@ int main(void) {
         fprintf(stderr, "Failed to define f3: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -1022,7 +2179,34 @@ int main(void) {
         fprintf(stderr, "Failed to define f5: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define_fn(reg, "add(x, y) => x + y");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define add: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_expr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define_fn(reg, "div(x, y) => x / y");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define div: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_expr_parser_free(parser);
+        return 1;
+    }
+
+    err = cxpr_registry_define_fn(reg, "clamp(x, lo, hi) => x < lo ? lo : (x > hi ? hi : x)");
+    if (err.code != CXPR_OK) {
+        fprintf(stderr, "Failed to define clamp: %s\n", err.message);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
@@ -1031,20 +2215,25 @@ int main(void) {
         fprintf(stderr, "Failed to define pickx: %s\n", err.message);
         cxpr_registry_free(reg);
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return 1;
     }
 
-    printf("cxpr AST vs IR benchmark\n");
+    printf("cxpr generated C vs AST vs IR benchmark (.cxpr source)\n");
 
     print_bench_header("Scalar");
-    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+    for (i = 0; i < case_count; ++i) {
         bench_one(parser, ctx, reg, &cases[i]);
     }
 
     print_bench_header("Typed Struct");
-    for (i = 0; i < sizeof(typed_cases) / sizeof(typed_cases[0]); ++i) {
+    for (i = 0; i < typed_case_count; ++i) {
         bench_one_typed(parser, ctx, reg, &typed_cases[i]);
+    }
+
+    print_bench_header("Lookback");
+    for (i = 0; i < lookback_case_count; ++i) {
+        bench_one_lookback(parser, ctx, reg, &lookback_cases[i]);
     }
 
     print_bench_header("IR-only");
@@ -1064,6 +2253,6 @@ int main(void) {
 
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return 0;
 }

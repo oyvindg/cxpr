@@ -1,0 +1,37 @@
+# Host-owned collision query results represented with ordinary cxpr values.
+# No collision or game-specific type is required in cxpr core.
+
+model collision_queries
+
+in {
+    hits,
+    hit_count,
+    move_x,
+    move_y,
+    reset
+}
+
+state position_x = 0
+state position_y = 0
+
+first_hit = hits[0]
+hit_point = (hits[0]).point
+hit_normal = (hits[0]).normal
+hit_entity = (hits[0]).entity
+blocked = hit_count > 0
+
+resolved_x = reset > 0 ? 0 : blocked ? hit_point.x : position_x + move_x
+resolved_y = reset > 0 ? 0 : blocked ? hit_point.y : position_y + move_y
+position = { x = resolved_x, y = resolved_y }
+
+position_x := resolved_x
+position_y := resolved_y
+
+out position { role = "movement_state" }
+out blocked { role = "collision_state" }
+out first_hit { role = "query_hit" }
+out hit_point { role = "contact_point" }
+out hit_normal { role = "contact_normal" }
+out hit_entity { role = "contact_entity" }
+out resolved_x
+out resolved_y

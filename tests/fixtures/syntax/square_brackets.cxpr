@@ -1,0 +1,62 @@
+# Syntax contract for the host-agnostic INDEX work in plan 71.
+# The parser preserves one target[index] shape. Target capabilities decide
+# whether it means array lookup, source history, or extension sampling.
+#
+# This fixture is parse-only until neutral INDEX dispatch is implemented.
+
+model square_brackets
+
+in {
+    sensor,
+    mode,
+    vertices,
+    vertex_index,
+    ray,
+    sample_distance
+}
+
+fn passthrough(value) = value
+fn sample(value) {
+    return { raw = value, doubled = value * 2 }
+}
+
+# Brackets construct arrays.
+numeric_values = [1, 2, sensor]
+labels = ["idle", "moving", "blocked"]
+nested_values = [[1, 2], [3, 4]]
+mode_allowed = mode in ["idle", "moving"]
+
+# Built-in arrays use zero-based absolute indexing.
+literal_second = [10, 20, 30][1]
+computed_vertex = vertices[vertex_index]
+nested_cell = [[1, 2], [3, 4]][1][0]
+
+# Historical sources keep non-negative relative-offset semantics.
+input_previous = sensor[1]
+function_previous = passthrough(sensor)[2]
+field_previous = sample(sensor).doubled[3]
+
+# A non-temporal extension can make a procedural path indexable. For the
+# planned ray provider, the index is distance forward from the ray origin;
+# ray[0] is the origin and ray[sample_distance] is a predicted { x, y } point.
+ray_origin = ray[0]
+ray_sample = ray[sample_distance]
+ray_sample_x = (ray[sample_distance]).x
+ray_sample_y = (ray[sample_distance]).y
+
+out {
+    numeric_values,
+    labels,
+    nested_values,
+    mode_allowed,
+    literal_second,
+    computed_vertex,
+    nested_cell,
+    input_previous,
+    function_previous,
+    field_previous,
+    ray_origin,
+    ray_sample,
+    ray_sample_x,
+    ray_sample_y
+}

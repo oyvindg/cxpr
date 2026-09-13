@@ -36,6 +36,7 @@ option(CXPR_STRICT "Enable stricter compiler warnings and treat warnings as erro
 option(CXPR_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
+option(CXPR_BUILD_SHARED "Build cxpr as a shared library" OFF)
 
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
@@ -65,15 +66,30 @@ endif()
 file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
+list(APPEND CXPR_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/c.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/cuda.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/debug_map.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/graph.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/plugins/meta.c")
 list(SORT CXPR_SOURCES)
 
-add_library(cxpr STATIC ${CXPR_SOURCES})
+if(CXPR_BUILD_SHARED)
+    add_library(cxpr SHARED ${CXPR_SOURCES})
+else()
+    add_library(cxpr STATIC ${CXPR_SOURCES})
+endif()
 add_library(cxpr::cxpr ALIAS cxpr)
 
 set_target_properties(cxpr PROPERTIES
     VERSION ${PROJECT_VERSION}
+    POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME cxpr
 )
+if(CXPR_BUILD_SHARED)
+    # 3.1 exports the public cxpr_* C ABI with the platform's default visibility.
+    set_target_properties(cxpr PROPERTIES SOVERSION ${CXPR_VERSION_MAJOR})
+endif()
 
 target_include_directories(cxpr PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -83,8 +99,12 @@ target_include_directories(cxpr PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Determinism: no fast-math, no FP contraction
-target_compile_options(cxpr PRIVATE -ffp-contract=off -fno-fast-math)
+# Determinism: no fast-math, no FP contraction.
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(cxpr PRIVATE -ffp-contract=off -fno-fast-math)
+elseif(MSVC)
+    target_compile_options(cxpr PRIVATE /fp:strict)
+endif()
 
 if(CXPR_STRICT)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
@@ -111,8 +131,27 @@ if(CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN)
     add_link_options(${CXPR_SANITIZER_FLAGS})
 endif()
 
-# Link math library on UNIX systems
-target_link_libraries(cxpr PRIVATE m)
+# Public headers/tests use standard math functions, and static consumers need
+# the dependency propagated. CMake ignores the name on platforms without libm.
+if(UNIX)
+    target_link_libraries(cxpr PUBLIC m)
+endif()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Tools
+# ═══════════════════════════════════════════════════════════════════════════
+option(CXPR_BUILD_TOOLS "Build cxpr command-line tools" ON)
+if(CXPR_BUILD_TOOLS)
+    add_executable(cxpr_model_codegen
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_model_codegen.c")
+    target_link_libraries(cxpr_model_codegen PRIVATE cxpr)
+
+    add_executable(cxpr_document_tooling
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c")
+    target_link_libraries(cxpr_document_tooling PRIVATE cxpr)
+    target_include_directories(cxpr_document_tooling PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Tests
@@ -121,6 +160,16 @@ option(CXPR_BUILD_TESTS "Build cxpr tests" ${PROJECT_IS_TOP_LEVEL})
 if(CXPR_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+
+    add_executable(cxpr_example_engine_lookback
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/engine_lookback.c")
+    target_link_libraries(cxpr_example_engine_lookback PRIVATE cxpr)
+    add_test(NAME examples_engine_lookback
+             COMMAND "$<TARGET_FILE:cxpr_example_engine_lookback>")
+
+    add_executable(cxpr_example_ast_snapshot_cytoscape
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/ast_snapshot_cytoscape.c")
+    target_link_libraries(cxpr_example_ast_snapshot_cytoscape PRIVATE cxpr)
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -136,7 +185,7 @@ endif()
 # ═══════════════════════════════════════════════════════════════════════════
 option(CXPR_BUILD_FUZZERS "Build cxpr libFuzzer targets (requires Clang)" OFF)
 if(CXPR_BUILD_FUZZERS)
-    add_subdirectory(fuzz)
+    add_subdirectory(tests/fuzz)
 endif()
 
 if(CXPR_ENABLE_COVERAGE)

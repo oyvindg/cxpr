@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static char* cxpr_ast_join_with_dot(const char* left, const char* right) {
+static char* cxpr_expr_ast_join_with_dot(const char* left, const char* right) {
     size_t left_len;
     size_t right_len;
     char* out;
@@ -25,24 +25,33 @@ static char* cxpr_ast_join_with_dot(const char* left, const char* right) {
     return out;
 }
 
-cxpr_ast* cxpr_ast_new_number(double value) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+static void cxpr_expr_ast_inherit_range(cxpr_expr_ast* node,
+                                        const cxpr_expr_ast* first,
+                                        const cxpr_expr_ast* last) {
+    if (!node || !first || !last || !first->has_source_span || !last->has_source_span) return;
+    node->source_span.start = first->source_span.start;
+    node->source_span.end = last->source_span.end;
+    node->has_source_span = true;
+}
+
+cxpr_expr_ast* cxpr_expr_ast_number_new(double value) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_NUMBER;
     node->data.number.value = value;
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_bool(bool value) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_bool_new(bool value) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_BOOL;
     node->data.boolean.value = value;
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_array_new(cxpr_expr_ast** elements, size_t count) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_ARRAY;
     node->data.array.elements = elements;
@@ -50,8 +59,32 @@ cxpr_ast* cxpr_ast_new_array(cxpr_ast** elements, size_t count) {
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_string(const char* value) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_record_new(const char* const* field_names,
+                              cxpr_expr_ast** field_values,
+                              size_t field_count) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_RECORD;
+    node->data.record.field_values = field_values;
+    node->data.record.field_count = field_count;
+    if (field_count == 0u) return node;
+    node->data.record.field_names = (char**)calloc(field_count, sizeof(char*));
+    if (!node->data.record.field_names) {
+        cxpr_expr_ast_free(node);
+        return NULL;
+    }
+    for (size_t i = 0u; i < field_count; ++i) {
+        node->data.record.field_names[i] = cxpr_strdup(field_names[i]);
+        if (!node->data.record.field_names[i]) {
+            cxpr_expr_ast_free(node);
+            return NULL;
+        }
+    }
+    return node;
+}
+
+cxpr_expr_ast* cxpr_expr_ast_new_string(const char* value) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_STRING;
     node->data.string.value = cxpr_strdup(value ? value : "");
@@ -62,8 +95,8 @@ cxpr_ast* cxpr_ast_new_string(const char* value) {
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_identifier(const char* name) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_identifier_new(const char* name) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_IDENTIFIER;
     node->data.identifier.name = cxpr_strdup(name);
@@ -75,8 +108,8 @@ cxpr_ast* cxpr_ast_new_identifier(const char* name) {
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_variable(const char* name) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_param_new(const char* name) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_VARIABLE;
     node->data.variable.name = cxpr_strdup(name);
@@ -88,29 +121,45 @@ cxpr_ast* cxpr_ast_new_variable(const char* name) {
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_field_access(const char* object, const char* field) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_field_new(const char* object, const char* field) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_FIELD_ACCESS;
     node->data.field_access.object = cxpr_strdup(object);
     node->data.field_access.field = cxpr_strdup(field);
-    node->data.field_access.full_key = cxpr_ast_join_with_dot(object, field);
+    node->data.field_access.full_key = cxpr_expr_ast_join_with_dot(object, field);
     if (!node->data.field_access.object || !node->data.field_access.field ||
         !node->data.field_access.full_key) {
-        cxpr_ast_free(node);
+        cxpr_expr_ast_free(node);
         return NULL;
     }
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
-    cxpr_ast* node;
+cxpr_expr_ast* cxpr_expr_ast_field_expr_new(cxpr_expr_ast* base, const char* field) {
+    cxpr_expr_ast* node;
+
+    if (!base || !field) return NULL;
+    node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_FIELD_ACCESS;
+    node->data.field_access.base = base;
+    node->data.field_access.field = cxpr_strdup(field);
+    if (!node->data.field_access.field) {
+        cxpr_expr_ast_free(node);
+        return NULL;
+    }
+    return node;
+}
+
+cxpr_expr_ast* cxpr_expr_ast_new_chain_access(const char* const* path, size_t depth) {
+    cxpr_expr_ast* node;
     size_t total_len = 1;
     char* cursor;
 
     if (!path || depth < 2) return NULL;
 
-    node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_CHAIN_ACCESS;
     node->data.chain_access.path = (char**)calloc(depth, sizeof(char*));
@@ -123,7 +172,7 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
     for (size_t i = 0; i < depth; ++i) {
         node->data.chain_access.path[i] = cxpr_strdup(path[i]);
         if (!node->data.chain_access.path[i]) {
-            cxpr_ast_free(node);
+            cxpr_expr_ast_free(node);
             return NULL;
         }
         total_len += strlen(path[i]) + (i + 1 < depth ? 1 : 0);
@@ -131,7 +180,7 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
 
     node->data.chain_access.full_key = (char*)malloc(total_len);
     if (!node->data.chain_access.full_key) {
-        cxpr_ast_free(node);
+        cxpr_expr_ast_free(node);
         return NULL;
     }
 
@@ -146,10 +195,10 @@ cxpr_ast* cxpr_ast_new_chain_access(const char* const* path, size_t depth) {
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_producer_access_named(const char* name, cxpr_ast** args,
+cxpr_expr_ast* cxpr_expr_ast_producer_field_named_new(const char* name, cxpr_expr_ast** args,
                                              char** arg_names, size_t argc,
                                              const char* field) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_PRODUCER_ACCESS;
     node->data.producer_access.name = cxpr_strdup(name);
@@ -157,42 +206,47 @@ cxpr_ast* cxpr_ast_new_producer_access_named(const char* name, cxpr_ast** args,
     node->data.producer_access.arg_names = arg_names;
     node->data.producer_access.argc = argc;
     node->data.producer_access.field = cxpr_strdup(field);
-    node->data.producer_access.full_key = cxpr_ast_join_with_dot(name, field);
+    node->data.producer_access.full_key = cxpr_expr_ast_join_with_dot(name, field);
     if (!node->data.producer_access.name || !node->data.producer_access.field ||
         !node->data.producer_access.full_key) {
-        cxpr_ast_free(node);
+        cxpr_expr_ast_free(node);
         return NULL;
     }
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_producer_access(const char* name, cxpr_ast** args, size_t argc,
+cxpr_expr_ast* cxpr_expr_ast_producer_field_new(const char* name, cxpr_expr_ast** args, size_t argc,
                                        const char* field) {
-    return cxpr_ast_new_producer_access_named(name, args, NULL, argc, field);
+    return cxpr_expr_ast_producer_field_named_new(name, args, NULL, argc, field);
 }
 
-cxpr_ast* cxpr_ast_new_binary_op(int op, cxpr_ast* left, cxpr_ast* right) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_binary_new(int op, cxpr_expr_ast* left, cxpr_expr_ast* right) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_BINARY_OP;
     node->data.binary_op.op = op;
     node->data.binary_op.left = left;
     node->data.binary_op.right = right;
+    cxpr_expr_ast_inherit_range(node, left, right);
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_unary_op(int op, cxpr_ast* operand) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_unary_new(int op, cxpr_expr_ast* operand) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_UNARY_OP;
     node->data.unary_op.op = op;
     node->data.unary_op.operand = operand;
+    if (operand && operand->has_source_span) {
+        node->source_span = operand->source_span;
+        node->has_source_span = true;
+    }
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_function_call_named(const char* name, cxpr_ast** args,
+cxpr_expr_ast* cxpr_expr_ast_call_named_new(const char* name, cxpr_expr_ast** args,
                                            char** arg_names, size_t argc) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_FUNCTION_CALL;
     node->data.function_call.name = cxpr_strdup(name);
@@ -200,31 +254,37 @@ cxpr_ast* cxpr_ast_new_function_call_named(const char* name, cxpr_ast** args,
     node->data.function_call.arg_names = arg_names;
     node->data.function_call.argc = argc;
     if (!node->data.function_call.name) {
-        cxpr_ast_free(node);
+        cxpr_expr_ast_free(node);
         return NULL;
     }
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_function_call(const char* name, cxpr_ast** args, size_t argc) {
-    return cxpr_ast_new_function_call_named(name, args, NULL, argc);
+cxpr_expr_ast* cxpr_expr_ast_call_new(const char* name, cxpr_expr_ast** args, size_t argc) {
+    return cxpr_expr_ast_call_named_new(name, args, NULL, argc);
 }
 
-cxpr_ast* cxpr_ast_new_lookback(cxpr_ast* target, cxpr_ast* index) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_index_new(cxpr_expr_ast* target, cxpr_expr_ast* index) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
-    node->type = CXPR_NODE_LOOKBACK;
-    node->data.lookback.target = target;
-    node->data.lookback.index = index;
+    node->type = CXPR_NODE_INDEX;
+    node->data.index.target = target;
+    node->data.index.index = index;
+    cxpr_expr_ast_inherit_range(node, target, index);
     return node;
 }
 
-cxpr_ast* cxpr_ast_new_ternary(cxpr_ast* condition, cxpr_ast* true_branch, cxpr_ast* false_branch) {
-    cxpr_ast* node = (cxpr_ast*)calloc(1, sizeof(cxpr_ast));
+cxpr_expr_ast* cxpr_expr_ast_lookback_new(cxpr_expr_ast* target, cxpr_expr_ast* index) {
+    return cxpr_expr_ast_index_new(target, index);
+}
+
+cxpr_expr_ast* cxpr_expr_ast_ternary_new(cxpr_expr_ast* condition, cxpr_expr_ast* true_branch, cxpr_expr_ast* false_branch) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_TERNARY;
     node->data.ternary.condition = condition;
     node->data.ternary.true_branch = true_branch;
     node->data.ternary.false_branch = false_branch;
+    cxpr_expr_ast_inherit_range(node, condition, false_branch);
     return node;
 }

@@ -1,0 +1,3 @@
+model ir_nested_expr
+in { a, b, c, d, e, f, g, h, i }
+out result = ((a + b) * (c - d) / (e + f)) > g ? h : i

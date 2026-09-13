@@ -1,0 +1,8 @@
+model ir_mixed_pipe
+in { a, b, c, d, e, n }
+fn sq(x) = x * x
+fn hyp2(x, y) = sqrt(sq(x) + sq(y))
+fn add(x, y) = x + y
+fn div(x, y) = x / y
+fn clamp(x, lo, hi) = x < lo ? lo : (x > hi ? hi : x)
+out result = (n |> abs |> add(a * b) |> clamp(0, 20) |> div(3)) + hyp2(c, d) - sq(e)

@@ -4,22 +4,22 @@
 #include <stdlib.h>
 
 static void test_ast_free_handles_nested_trees(void) {
-    cxpr_ast** args = (cxpr_ast**)calloc(1, sizeof(*args));
-    cxpr_ast* ast;
+    cxpr_expr_ast** args = (cxpr_expr_ast**)calloc(1, sizeof(*args));
+    cxpr_expr_ast* ast;
 
     assert(args);
-    args[0] = cxpr_ast_new_number(9.0);
-    ast = cxpr_ast_new_ternary(
-        cxpr_ast_new_binary_op(CXPR_TOK_GT,
-                               cxpr_ast_new_identifier("x"),
-                               cxpr_ast_new_number(0.0)),
-        cxpr_ast_new_function_call("sqrt", args, 1),
-        cxpr_ast_new_lookback(cxpr_ast_new_identifier("close"),
-                              cxpr_ast_new_number(1.0)));
+    args[0] = cxpr_expr_ast_number_new(9.0);
+    ast = cxpr_expr_ast_ternary_new(
+        cxpr_expr_ast_binary_new(CXPR_TOK_GT,
+                               cxpr_expr_ast_identifier_new("x"),
+                               cxpr_expr_ast_number_new(0.0)),
+        cxpr_expr_ast_call_new("sqrt", args, 1),
+        cxpr_expr_ast_lookback_new(cxpr_expr_ast_identifier_new("close"),
+                              cxpr_expr_ast_number_new(1.0)));
 
     assert(ast);
-    cxpr_ast_free(ast);
-    cxpr_ast_free(NULL);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_ast_free(NULL);
 }
 
 int main(void) {

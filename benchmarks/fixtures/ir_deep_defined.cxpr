@@ -1,0 +1,4 @@
+model ir_deep_defined
+in { a, b, c, d, e, f, g, h }
+fn f5(a, b, c, d) = sqrt((a*a + b*b) + (c*c + d*d))
+out result = f5(a, b, c, d) + f5(e, f, g, h)

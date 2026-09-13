@@ -29,7 +29,7 @@ cxpr_value cxpr_struct_get_field(const cxpr_struct_value* value, const char* fie
     for (size_t i = 0; i < value->field_count; ++i) {
         if (strcmp(value->field_names[i], field) == 0) {
             if (found) *found = true;
-            return value->field_values[i];
+            return cxpr_value_clone(&value->field_values[i]);
         }
     }
 
@@ -41,5 +41,5 @@ cxpr_value cxpr_struct_get_field_by_index(const cxpr_struct_value* value, size_t
     if (found) *found = false;
     if (!value || index >= value->field_count) return cxpr_num(NAN);
     if (found) *found = true;
-    return value->field_values[index];
+    return cxpr_value_clone(&value->field_values[index]);
 }

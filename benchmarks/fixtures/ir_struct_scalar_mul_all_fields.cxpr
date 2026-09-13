@@ -1,0 +1,4 @@
+model ir_struct_scalar_mul_all_fields
+in { vx, vy, vz }
+vector = { x = vx, y = vy, z = vz }
+out result = (vector * 2).x + (vector * 2).y + (vector * 2).z

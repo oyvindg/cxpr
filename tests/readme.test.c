@@ -25,7 +25,7 @@
  *   cxpr_registry_add_unary(reg, "ema_alpha", readme_ema_alpha);
  *   cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
  *   cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
- *   cxpr_ast* ast = cxpr_parse(parser,
+ *   cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser,
  *       "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -38,7 +38,7 @@ static cxpr_value readme_within_limit(const cxpr_value* args, size_t argc, void*
 }
 
 static void test_readme_quick_start(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -50,7 +50,7 @@ static void test_readme_quick_start(void) {
     cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
 
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser,
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser,
         "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
     assert(ast);
     assert(err.code == CXPR_OK);
@@ -66,8 +66,8 @@ static void test_readme_quick_start(void) {
     assert(result.type == CXPR_VALUE_BOOL);
     assert(result.b == false); /* ema_alpha(3) = 0.5 >= 0.4 */
 
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_quick_start\n");
@@ -76,14 +76,14 @@ static void test_readme_quick_start(void) {
 /* ═══════════════════════════════════════════════════════════════════════════
  * README: Repeated evaluation — compile once, evaluate many times
  *
- *   cxpr_program* prog = cxpr_compile(ast, reg, &err);
+ *   cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
  *   cxpr_value fast_result = cxpr_test_eval_program(prog, ctx, reg, &err);
  *
  * Verifies that AST and IR paths agree on every context update.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_ir_path(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -93,10 +93,10 @@ static void test_readme_ir_path(void) {
     cxpr_registry_add_ternary(reg, "clamp", readme_clamp);
     cxpr_registry_add_value(reg, "within_limit", readme_within_limit, 2, 2, NULL, NULL);
 
-    cxpr_ast* ast = cxpr_parse(parser,
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser,
         "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
     assert(ast);
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog);
     assert(err.code == CXPR_OK);
 
@@ -120,9 +120,9 @@ static void test_readme_ir_path(void) {
     assert(ast_result.b == false);
     assert(ir_result.b  == ast_result.b);
 
-    cxpr_program_free(prog);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_compiled_free(prog);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_ir_path\n");
@@ -139,7 +139,7 @@ static void test_readme_ir_path(void) {
 static double readme_rand_uniform(void)                        { return 0.25; }
 
 static void test_readme_custom_c_functions(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -152,11 +152,11 @@ static void test_readme_custom_c_functions(void) {
     cxpr_error err = {0};
 
 #define EVAL_DOUBLE(expr) ({ \
-    cxpr_ast* _a = cxpr_parse(parser, (expr), &err); \
+    cxpr_expr_ast* _a = cxpr_expr_ast_parse(parser, (expr), &err); \
     assert(_a); \
     double _r = cxpr_test_eval_ast_number(_a, ctx, reg, &err); \
     assert(err.code == CXPR_OK); \
-    cxpr_ast_free(_a); \
+    cxpr_expr_ast_free(_a); \
     _r; \
 })
 
@@ -167,12 +167,12 @@ static void test_readme_custom_c_functions(void) {
     ASSERT_APPROX(EVAL_DOUBLE("rand_uniform()"),    0.25);
 
 #define EVAL_BOOL(expr) ({ \
-    cxpr_ast* _a = cxpr_parse(parser, (expr), &err); \
+    cxpr_expr_ast* _a = cxpr_expr_ast_parse(parser, (expr), &err); \
     assert(_a); \
     cxpr_value _r = cxpr_test_eval_ast(_a, ctx, reg, &err); \
     assert(err.code == CXPR_OK); \
     assert(_r.type == CXPR_VALUE_BOOL); \
-    cxpr_ast_free(_a); \
+    cxpr_expr_ast_free(_a); \
     _r.b; \
 })
 
@@ -182,7 +182,7 @@ static void test_readme_custom_c_functions(void) {
 #undef EVAL_BOOL
 #undef EVAL_DOUBLE
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_custom_c_functions\n");
@@ -208,7 +208,7 @@ static double fn_lookup(const double* args, size_t argc, void* userdata) {
 }
 
 static void test_readme_custom_fn_with_userdata(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -223,13 +223,13 @@ static void test_readme_custom_fn_with_userdata(void) {
     cxpr_registry_add(reg, "lookup", fn_lookup, 1, 1, tbl, free);
 
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(parser, "lookup(2)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "lookup(2)", &err);
     assert(ast);
     ASSERT_APPROX(cxpr_test_eval_ast_number(ast, ctx, reg, &err), 30.0);
     assert(err.code == CXPR_OK);
 
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);  /* calls free(tbl) via free_userdata */
     printf("  ✓ test_readme_custom_fn_with_userdata\n");
@@ -247,7 +247,7 @@ static void test_readme_custom_fn_with_userdata(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_define_scalar(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -262,11 +262,11 @@ static void test_readme_define_scalar(void) {
     cxpr_error err = {0};
 
 #define EVAL(expr) ({ \
-    cxpr_ast* _a = cxpr_parse(parser, (expr), &err); \
+    cxpr_expr_ast* _a = cxpr_expr_ast_parse(parser, (expr), &err); \
     assert(_a); \
     double _r = cxpr_test_eval_ast_number(_a, ctx, reg, &err); \
     assert(err.code == CXPR_OK); \
-    cxpr_ast_free(_a); \
+    cxpr_expr_ast_free(_a); \
     _r; \
 })
 
@@ -281,7 +281,7 @@ static void test_readme_define_scalar(void) {
 
 #undef EVAL
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_define_scalar\n");
@@ -304,7 +304,7 @@ static void test_readme_define_struct(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser*  parser = cxpr_parser_new();
+    cxpr_expr_parser*  parser = cxpr_expr_parser_new();
 
     assert(cxpr_registry_define_fn(reg, "dot2(u, v) => u.x * v.x + u.y * v.y").code == CXPR_OK);
     assert(cxpr_registry_define_fn(reg, "len2(p) => sqrt(p.x * p.x + p.y * p.y)").code == CXPR_OK);
@@ -322,11 +322,11 @@ static void test_readme_define_struct(void) {
     cxpr_error err = {0};
 
 #define EVAL(expr) ({ \
-    cxpr_ast* _a = cxpr_parse(parser, (expr), &err); \
+    cxpr_expr_ast* _a = cxpr_expr_ast_parse(parser, (expr), &err); \
     assert(_a); \
     double _r = cxpr_test_eval_ast_number(_a, ctx, reg, &err); \
     assert(err.code == CXPR_OK); \
-    cxpr_ast_free(_a); \
+    cxpr_expr_ast_free(_a); \
     _r; \
 })
 
@@ -335,7 +335,7 @@ static void test_readme_define_struct(void) {
 
 #undef EVAL
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_define_struct\n");
@@ -469,7 +469,7 @@ static void test_readme_domain_trading(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_domain_robotics(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -482,7 +482,7 @@ static void test_readme_domain_robotics(void) {
     cxpr_context_set_param(ctx, "max_slip",      0.10);
 
     cxpr_error err = {0};
-    cxpr_ast* stop_expr = cxpr_parse(parser,
+    cxpr_expr_ast* stop_expr = cxpr_expr_ast_parse(parser,
         "distance_front < $stop_distance ? 0.0 : (battery > 20 ? max_speed : 0.0)", &err);
     assert(stop_expr);
 
@@ -497,14 +497,14 @@ static void test_readme_domain_robotics(void) {
     assert(err.code == CXPR_OK);
     ASSERT_APPROX(cmd_vel, 0.0);
 
-    cxpr_ast* slip_guard = cxpr_parse(parser,
+    cxpr_expr_ast* slip_guard = cxpr_expr_ast_parse(parser,
         "slip_ratio > $max_slip", &err);
     assert(slip_guard);
     assert(cxpr_test_eval_ast_bool(slip_guard, ctx, reg, &err) == false);
 
-    cxpr_ast_free(stop_expr);
-    cxpr_ast_free(slip_guard);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(stop_expr);
+    cxpr_expr_ast_free(slip_guard);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_domain_robotics\n");
@@ -533,7 +533,7 @@ static double fn_distance3(const double* args, size_t argc, void* ud) {
 }
 
 static void test_readme_domain_distance(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -552,7 +552,7 @@ static void test_readme_domain_distance(void) {
     cxpr_context_set_param(ctx, "capture_radius", 5.0);
 
     cxpr_error err = {0};
-    cxpr_ast* ast3 = cxpr_parse(parser,
+    cxpr_expr_ast* ast3 = cxpr_expr_ast_parse(parser,
         "distance3(goal.x, goal.y, goal.z, pose.x, pose.y, pose.z) < $capture_radius", &err);
     assert(ast3);
     assert(cxpr_test_eval_ast_bool(ast3, ctx, reg, &err) == true);   /* dist=4 < 5 */
@@ -563,7 +563,7 @@ static void test_readme_domain_distance(void) {
     cxpr_context_set_fields(ctx, "goal", xy, goal_vals, 2);
     cxpr_context_set_fields(ctx, "pose", xy, pose_vals, 2);
 
-    cxpr_ast* ast2 = cxpr_parse(parser, "distance2(goal, pose) < $capture_radius", &err);
+    cxpr_expr_ast* ast2 = cxpr_expr_ast_parse(parser, "distance2(goal, pose) < $capture_radius", &err);
     assert(ast2);
     assert(cxpr_test_eval_ast_bool(ast2, ctx, reg, &err) == false);  /* dist=5 < 5 is false */
 
@@ -573,9 +573,9 @@ static void test_readme_domain_distance(void) {
     assert(err.code == CXPR_OK);
     assert(in_range == false);  /* dist=5.0 is not < 5.0 */
 
-    cxpr_ast_free(ast3);
-    cxpr_ast_free(ast2);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast3);
+    cxpr_expr_ast_free(ast2);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_domain_distance\n");
@@ -589,7 +589,7 @@ static void test_readme_domain_distance(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_domain_physics(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -605,11 +605,11 @@ static void test_readme_domain_physics(void) {
     cxpr_error err = {0};
 
 #define EVAL_DOUBLE(expr) ({ \
-    cxpr_ast* _a = cxpr_parse(parser, (expr), &err); \
+    cxpr_expr_ast* _a = cxpr_expr_ast_parse(parser, (expr), &err); \
     assert(_a); assert(err.code == CXPR_OK); \
     double _r = cxpr_test_eval_ast_number(_a, ctx, reg, &err); \
     assert(err.code == CXPR_OK); \
-    cxpr_ast_free(_a); \
+    cxpr_expr_ast_free(_a); \
     _r; \
 })
 
@@ -618,7 +618,7 @@ static void test_readme_domain_physics(void) {
 
 #undef EVAL_DOUBLE
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_domain_physics\n");
@@ -633,7 +633,7 @@ static void test_readme_domain_physics(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_pipe_expressions(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -647,12 +647,12 @@ static void test_readme_pipe_expressions(void) {
     cxpr_error err = {0};
 
     /* Pipe form from the README. */
-    cxpr_ast* pipe_ast = cxpr_parse(parser,
+    cxpr_expr_ast* pipe_ast = cxpr_expr_ast_parse(parser,
         "period |> ema_alpha |> clamp(0.0, 1.0) |> within_limit($limit)", &err);
     assert(pipe_ast);
 
     /* Nested form from the Quick Start section — semantically identical. */
-    cxpr_ast* nested_ast = cxpr_parse(parser,
+    cxpr_expr_ast* nested_ast = cxpr_expr_ast_parse(parser,
         "within_limit(clamp(ema_alpha(period), 0.0, 1.0), $limit)", &err);
     assert(nested_ast);
 
@@ -679,15 +679,15 @@ static void test_readme_pipe_expressions(void) {
     assert(cxpr_registry_define_fn(reg, "half(x) => x / 2").code == CXPR_OK);
 
     cxpr_context_set(ctx, "val", 6.0);
-    cxpr_ast* num_pipe = cxpr_parse(parser, "val |> sq |> half", &err);
+    cxpr_expr_ast* num_pipe = cxpr_expr_ast_parse(parser, "val |> sq |> half", &err);
     assert(num_pipe);
     ASSERT_APPROX(cxpr_test_eval_ast_number(num_pipe, ctx, reg, &err), 18.0);  /* half(sq(6)) = 36/2 */
     assert(err.code == CXPR_OK);
 
-    cxpr_ast_free(pipe_ast);
-    cxpr_ast_free(nested_ast);
-    cxpr_ast_free(num_pipe);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(pipe_ast);
+    cxpr_expr_ast_free(nested_ast);
+    cxpr_expr_ast_free(num_pipe);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_pipe_expressions\n");
@@ -713,7 +713,7 @@ static void readme_bb_producer(const double* args, size_t argc,
 }
 
 static void test_readme_struct_producer(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -725,23 +725,23 @@ static void test_readme_struct_producer(void) {
     cxpr_error err = {0};
 
     /* bb(100, 20, 2.0) → mid=100, band=40 → upper=140, middle=100, lower=60 */
-    cxpr_ast* ast_upper = cxpr_parse(parser, "bb(close, 20, 2.0).upper", &err);
+    cxpr_expr_ast* ast_upper = cxpr_expr_ast_parse(parser, "bb(close, 20, 2.0).upper", &err);
     assert(ast_upper);
     ASSERT_APPROX(cxpr_test_eval_ast_number(ast_upper, ctx, reg, &err), 140.0);
     assert(err.code == CXPR_OK);
 
-    cxpr_ast* ast_middle = cxpr_parse(parser, "bb(close, 20, 2.0).middle", &err);
+    cxpr_expr_ast* ast_middle = cxpr_expr_ast_parse(parser, "bb(close, 20, 2.0).middle", &err);
     assert(ast_middle);
     ASSERT_APPROX(cxpr_test_eval_ast_number(ast_middle, ctx, reg, &err), 100.0);
 
-    cxpr_ast* ast_lower = cxpr_parse(parser, "bb(close, 20, 2.0).lower", &err);
+    cxpr_expr_ast* ast_lower = cxpr_expr_ast_parse(parser, "bb(close, 20, 2.0).lower", &err);
     assert(ast_lower);
     ASSERT_APPROX(cxpr_test_eval_ast_number(ast_lower, ctx, reg, &err), 60.0);
 
-    cxpr_ast_free(ast_upper);
-    cxpr_ast_free(ast_middle);
-    cxpr_ast_free(ast_lower);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast_upper);
+    cxpr_expr_ast_free(ast_middle);
+    cxpr_expr_ast_free(ast_lower);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_struct_producer\n");
@@ -753,11 +753,11 @@ static void test_readme_struct_producer(void) {
  *   cxpr_context_slot close_slot, volume_slot;
  *   cxpr_context_slot_bind(ctx, "close", &close_slot);
  *   cxpr_context_slot_set(&close_slot, bars[i].close);
- *   cxpr_eval_program_bool(prog, ctx, reg, &result, NULL);
+ *   cxpr_expr_compiled_eval_bool(prog, ctx, reg, &result, NULL);
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_context_slot_binding(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_context*  ctx    = cxpr_context_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
@@ -773,9 +773,9 @@ static void test_readme_context_slot_binding(void) {
     assert(cxpr_context_slot_bind(ctx, "volume", &volume_slot));
 
     /* Compile expression once. */
-    cxpr_ast* ast = cxpr_parse(parser, "close > 100 and volume > $min_volume", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "close > 100 and volume > $min_volume", &err);
     assert(ast);
-    cxpr_program* prog = cxpr_compile(ast, reg, &err);
+    cxpr_expr_compiled* prog = cxpr_expr_compile(ast, reg, &err);
     assert(prog);
 
     /* Simulate bar data. */
@@ -792,61 +792,61 @@ static void test_readme_context_slot_binding(void) {
         cxpr_context_slot_set(&volume_slot, bars[i].volume);
 
         bool result = false;
-        assert(cxpr_eval_program_bool(prog, ctx, reg, &result, &err));
+        assert(cxpr_expr_compiled_eval_bool(prog, ctx, reg, &result, &err));
         assert(result == expected[i]);
     }
 
-    cxpr_program_free(prog);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_compiled_free(prog);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_context_slot_binding\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * README: Analysis API — cxpr_analyze_expr and cxpr_ast_references
+ * README: Analysis API — cxpr_analyze_expr and cxpr_expr_ast_references
  *
- *   cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err);
- *   cxpr_ast_references(ast, refs, 8);
- *   cxpr_ast_variables_used(ast, params, 8);
- *   cxpr_ast_functions_used(ast, fns, 8);
+ *   cxpr_analyze_expr("close > ema_fast and volume > $min_volume", reg, &info, &err);
+ *   cxpr_expr_ast_references(ast, refs, 8);
+ *   cxpr_expr_ast_variables_used(ast, params, 8);
+ *   cxpr_expr_ast_functions_used(ast, fns, 8);
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_readme_analysis_api(void) {
-    cxpr_parser*   parser = cxpr_parser_new();
+    cxpr_expr_parser*   parser = cxpr_expr_parser_new();
     cxpr_registry* reg    = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     /* Part 1: cxpr_analyze_expr */
     cxpr_analysis info = {0};
-    assert(cxpr_analyze_expr("rsi < 30 and volume > $min_volume", reg, &info, &err));
+    assert(cxpr_analyze_expr("close > ema_fast and volume > $min_volume", reg, &info, &err));
     assert(info.result_type == CXPR_EXPR_BOOL);
     assert(info.uses_parameters == true);
     assert(info.uses_variables == true);
     assert(info.can_short_circuit == true);
-    assert(info.reference_count == 2);   /* rsi, volume */
+    assert(info.reference_count == 3);   /* close, ema_fast, volume */
     assert(info.parameter_count == 1);   /* min_volume */
 
-    /* Part 2: cxpr_ast_references / variables_used / functions_used */
-    cxpr_ast* ast = cxpr_parse(parser, "ema_fast > ema_slow and rsi < $limit", &err);
+    /* Part 2: cxpr_expr_ast_references / variables_used / functions_used */
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "close > ema_fast and volume > $limit", &err);
     assert(ast);
 
     const char* refs[8];
-    size_t n = cxpr_ast_references(ast, refs, 8);
-    assert(n == 3);  /* ema_fast, ema_slow, rsi */
+    size_t n = cxpr_expr_ast_references(ast, refs, 8);
+    assert(n == 3);  /* close, ema_fast, volume */
 
     const char* params[8];
-    size_t p = cxpr_ast_variables_used(ast, params, 8);
+    size_t p = cxpr_expr_ast_variables_used(ast, params, 8);
     assert(p == 1);  /* limit */
 
     const char* fns[8];
-    size_t f = cxpr_ast_functions_used(ast, fns, 8);
+    size_t f = cxpr_expr_ast_functions_used(ast, fns, 8);
     assert(f == 0);  /* no function calls */
 
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     cxpr_registry_free(reg);
     printf("  ✓ test_readme_analysis_api\n");
 }

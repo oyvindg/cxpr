@@ -1,0 +1,11 @@
+resample backend benchmark (500000 evaluations, ns/eval)
+  scoped timeframe AST     117.84
+  resample AST             140.01
+  scoped timeframe IR       33.60
+  resample IR               28.88
+  generated C/CUDA ABI       0.86
+repeated pre-bound load workload (volatile memory contract, ns/eval)
+  uncached 2x current+2x [1]     1.66
+  CSE locals current/[1]         1.31
+planning parse+compile+generate  49480.58 ns/model
+generated C artifact size           2860 bytes

@@ -1,0 +1,2 @@
+model invalid_missing_source
+out value = resample()

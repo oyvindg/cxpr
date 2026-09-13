@@ -6,7 +6,7 @@
 #ifndef CXPR_BASKET_H
 #define CXPR_BASKET_H
 
-#include <cxpr/ast.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/context.h>
 #include <cxpr/registry.h>
 
@@ -40,7 +40,7 @@ void cxpr_register_basket_builtins(cxpr_registry* reg);
  * @param ast AST root node.
  * @return True when a basket aggregate call is present.
  */
-bool cxpr_ast_uses_basket_aggregates(const cxpr_ast* ast);
+bool cxpr_expr_ast_uses_basket_aggregates(const cxpr_expr_ast* ast);
 
 /**
  * @brief Parse a source expression and detect basket aggregate usage.

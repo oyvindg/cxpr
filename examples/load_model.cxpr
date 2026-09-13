@@ -1,0 +1,9 @@
+model load_model_example
+
+in { price }
+
+$threshold = 100
+
+above_threshold = price > $threshold
+
+out { above_threshold }

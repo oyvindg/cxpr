@@ -103,6 +103,13 @@ typedef enum {
  *   - `duration / number -> duration`, `duration / duration -> number`
  *   - ordering (`< <= > >=`) on two timestamps or two durations -> bool
  *
+ * Also implements record/struct arithmetic:
+ *   - struct plus/minus/times/divide struct -> struct, fieldwise when both operands have the
+ *     same named fields
+ *   - struct plus/minus/times/divide number -> struct and
+ *     number plus/minus/times/divide struct -> struct
+ *     fieldwise, preserving operand order for non-commutative operators
+ *
  * @param op Normalized operator.
  * @param a Left operand.
  * @param b Right operand.

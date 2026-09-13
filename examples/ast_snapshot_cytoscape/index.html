@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cxpr Flow Snapshot</title>
+  <script src="js/vendor/cytoscape.min.js"></script>
+  <script src="js/vendor/dagre.min.js"></script>
+  <script src="js/vendor/cytoscape-dagre.js"></script>
+  <script src="js/state.js" defer></script>
+  <script src="js/styles.js" defer></script>
+  <script src="js/graph-utils.js" defer></script>
+  <script src="js/full-tree.js" defer></script>
+  <script src="js/renderers.js" defer></script>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #dbe5ef;
+      background: #121820;
+    }
+    main {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100%;
+    }
+    header {
+      padding: 14px 18px;
+      border-bottom: 1px solid #293443;
+      background: #18212b;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+    .scenario-picker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #93a4b7;
+      font-size: 13px;
+    }
+    .file-picker {
+      max-width: 260px;
+    }
+    input[type="file"] {
+      color: #93a4b7;
+      font: inherit;
+      font-size: 12px;
+      max-width: 180px;
+    }
+    select {
+      color: #dbe5ef;
+      background: #10161d;
+      border: 1px solid #344154;
+      border-radius: 4px;
+      padding: 5px 28px 5px 8px;
+      font: inherit;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 4px 12px;
+      margin: 0;
+      font-size: 13px;
+    }
+    dt {
+      color: #93a4b7;
+    }
+    dd {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    .panes {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.8fr) minmax(380px, 1fr) minmax(420px, 1.2fr);
+      min-height: 0;
+    }
+    section {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid #293443;
+    }
+    section:last-child {
+      border-right: 0;
+    }
+    .ast-pane {
+      grid-template-rows: auto auto 1fr;
+    }
+    h2 {
+      margin: 0;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 650;
+      border-bottom: 1px solid #293443;
+      background: #18212b;
+    }
+    #evaluation {
+      padding: 10px 14px;
+      border-bottom: 1px solid #293443;
+      background: #141c25;
+      color: #d4d4d4;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    #flow, #ast, #full {
+      min-height: 0;
+      background: #10161d;
+    }
+    @media (max-width: 860px) {
+      .panes {
+        grid-template-columns: 1fr;
+        grid-template-rows: 45vh 1fr;
+      }
+      section {
+        border-right: 0;
+        border-bottom: 1px solid #293443;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="topline">
+        <h1>cxpr Flow Snapshot</h1>
+        <label class="scenario-picker">
+          Example
+          <select id="scenario">
+            <option value="trading">Trading</option>
+            <option value="physics">Physics</option>
+            <option value="orbital">Kepler/Newton Orbit</option>
+            <option value="apollo11">Apollo 11 Landing</option>
+            <option value="chemistry">Chemistry</option>
+            <option value="robotics">Robotics</option>
+            <option value="quantum">Quantum</option>
+            <option value="blackhole">Black Hole</option>
+            <option value="reactor">Reactor</option>
+            <option value="credit_policy">Credit Policy</option>
+          </select>
+        </label>
+        <label class="scenario-picker">
+          Metadata
+          <select id="metadata-mode">
+            <option value="core">Core</option>
+            <option value="host">Host demo</option>
+          </select>
+        </label>
+        <label class="scenario-picker">
+          Connectors
+          <select id="connector-mode">
+            <option value="off">Off</option>
+            <option value="on">On</option>
+          </select>
+        </label>
+        <label class="scenario-picker">
+          AST Labels
+          <select id="ast-flow-mode">
+            <option value="name">Names</option>
+            <option value="role">Roles</option>
+          </select>
+        </label>
+        <label class="scenario-picker">
+          Comparators
+          <select id="comparator-mode">
+            <option value="operator">Operator</option>
+            <option value="expression">Expression</option>
+          </select>
+        </label>
+        <label class="scenario-picker file-picker">
+          JSON
+          <input id="json-file" type="file" accept=".json,application/json">
+        </label>
+      </div>
+      <dl>
+        <dt>Name</dt><dd id="name">loading</dd>
+        <dt>Expression</dt><dd id="expression">loading</dd>
+        <dt>Resolved</dt><dd id="resolved">loading</dd>
+        <dt>Host</dt><dd id="host">loading</dd>
+      </dl>
+    </header>
+    <div class="panes">
+      <section>
+        <h2>Expression Flow</h2>
+        <div id="flow"></div>
+      </section>
+      <section class="ast-pane">
+        <h2 id="ast-title">AST Drilldown</h2>
+        <div id="evaluation">loading</div>
+        <div id="ast"></div>
+      </section>
+      <section>
+        <h2>Full Evaluation Tree</h2>
+        <div id="full"></div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

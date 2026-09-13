@@ -16,10 +16,15 @@ typedef struct cxpr_func_entry {
     cxpr_func_ptr sync_func;    /**< Scalar function pointer */
     cxpr_value_func_ptr value_func; /**< Typed-value function pointer */
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
-    cxpr_ast_func_ptr ast_func; /**< AST-aware function pointer */
+    cxpr_expr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
+    cxpr_struct_codegen_ptr struct_codegen; /**< Optional generated-C field emitter */
+    void* struct_codegen_userdata;
+    cxpr_userdata_free_fn struct_codegen_userdata_free;
+    cxpr_expr_ast_func_ptr model_producer; /**< AST-aware stateful model producer */
+    void* model_producer_userdata;
     /* AST handler: coexists with sync_func/struct_producer for TF string dispatch */
-    cxpr_ast_func_ptr ast_func_handler; /**< AST handler function; takes priority for FUNCTION_CALL */
+    cxpr_expr_ast_func_ptr ast_func_handler; /**< AST handler function; takes priority for FUNCTION_CALL */
     void* ast_func_handler_userdata;
     cxpr_userdata_free_fn ast_func_handler_userdata_free;
     enum {
@@ -50,14 +55,26 @@ typedef struct cxpr_func_entry {
     size_t fields_per_arg;    /**< Number of fields per struct argument */
     size_t struct_argc;       /**< Number of struct arguments accepted */
     /* Defined function (expression-based, via cxpr_registry_define_fn) */
-    cxpr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
-    cxpr_program* defined_program;         /**< Lazily compiled body program; NULL until needed */
+    cxpr_expr_ast*  defined_body;               /**< Parsed body AST; NULL for C functions */
+    cxpr_expr_compiled* defined_program;         /**< Lazily compiled body program; NULL until needed */
     bool       defined_program_failed;     /**< Sticky flag when program compilation is unsupported */
     char**     defined_param_names;        /**< Parameter name array, owned */
     size_t     defined_param_count;        /**< Number of parameters */
     char***    defined_param_fields;       /**< Per-param field lists; NULL entry = scalar */
     size_t*    defined_param_field_counts; /**< Per-param field counts */
+    char**     defined_return_field_names; /**< Struct-return field names, owned */
+    cxpr_expr_ast** defined_return_field_bodies; /**< Struct-return field ASTs, owned */
+    size_t     defined_return_field_count; /**< Number of struct-return fields */
 } cxpr_func_entry;
+
+typedef struct {
+    char* capability_name;
+    char* target_name;
+    cxpr_value_type result_type;
+    cxpr_index_capability_fn resolve;
+    void* userdata;
+    cxpr_userdata_free_fn free_userdata;
+} cxpr_index_capability_entry;
 
 /** @brief Initial owned entry capacity for new registries. */
 #define CXPR_REGISTRY_INITIAL_CAPACITY 64
@@ -71,8 +88,22 @@ struct cxpr_registry {
     cxpr_lookback_resolver_ptr lookback_resolver;
     void* lookback_userdata;
     cxpr_userdata_free_fn free_lookback_userdata;
+    cxpr_index_capability_entry* index_capabilities;
+    size_t index_capability_count;
+    size_t index_capability_capacity;
 };
 
+const cxpr_index_capability_entry* cxpr_registry_find_index_capability(
+    const cxpr_registry* reg, const char* target_name);
+const cxpr_index_capability_entry* cxpr_registry_select_index_capability(
+    const cxpr_registry* reg, const cxpr_expr_ast* target,
+    cxpr_error* err, bool* handled);
+bool cxpr_registry_resolve_index_capability(
+    const cxpr_registry* reg, const cxpr_expr_ast* target, int64_t index,
+    const cxpr_context* ctx, cxpr_value* out, cxpr_error* err,
+    bool* handled);
+
+/** @brief Userdata wrapper for native unary scalar adapters. */
 typedef struct {
     double (*fn)(double);
 } cxpr_unary_userdata;
@@ -122,5 +153,14 @@ double cxpr_ternary_adapter(const double* args, size_t argc, void* userdata);
 double cxpr_min(const double* args, size_t argc, void* userdata);
 /** @brief Internal variadic `max` builtin implementation. */
 double cxpr_max(const double* args, size_t argc, void* userdata);
+/** @brief Register one cxpr-owned default function by name. */
+bool cxpr_register_default_named(cxpr_registry* reg, const char* name);
+/** @brief Register an expression-defined struct-return function. */
+cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
+                                          const char* const* param_names,
+                                          size_t param_count,
+                                          const char* const* field_names,
+                                          const cxpr_expr_ast* const* field_bodies,
+                                          size_t field_count);
 
 #endif /* CXPR_REGISTRY_INTERNAL_H */

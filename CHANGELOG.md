@@ -5,6 +5,76 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [3.1.0] - 2026-09-13
+
+### Added
+
+- Typed model declarations for `number`, `bool`, `int`, `series<T>`, and
+  `buffer<T, samples = N>` in block and flat forms, validated at build time.
+- Persistent `buffer<T>` state: empty on initialization, no `=` initializer,
+  atomic per-tick push with `:=`, newest-first indexing, and NaN for unavailable
+  or out-of-range samples. Ring storage is supported by model sessions,
+  generated C, CPU bulk execution, and CUDA device emission.
+- Opt-in shared-library builds with `CXPR_BUILD_SHARED`, plus dynamically loaded
+  C and .NET P/Invoke smoke coverage.
+
+- Neutral `target[index]` AST/IR semantics with built-in zero-based array
+  indexing, numeric history adapters, and exact-name extension capabilities.
+- Host-neutral history registration for contiguous and strided numeric sources,
+  with explicit error, clamp-first, and legacy-NaN bounds policies.
+- Array literals now compile to typed IR with `BUILD_ARRAY`, including
+  top-level and nested array literals that evaluate to owned `CXPR_VALUE_ARRAY`
+  results.
+- A versioned, read-only IR inspection contract in `<cxpr/ir.h>`. The public
+  view is diagnostic and must not be treated as serialized bytecode.
+- Installed-package consumer coverage in CI for both GCC and Clang.
+
+### Changed
+
+- `CXPR_NODE_INDEX` is now the canonical public AST kind. The
+  `CXPR_NODE_LOOKBACK`, resolver, column-lookback, and `at_lookback` names remain
+  compatibility APIs while hosts migrate to history adapters/capabilities.
+- Generated model descriptor ABI v4 supports up to 64 inputs, outputs, and
+  parameters, validates every count, and reports a codegen error before
+  emitting descriptors that exceed those limits.
+- Expression-defined functions with struct parameters retain overlay binding
+  instead of entering scalar-only AST/IR inlining.
+- Deterministic floating-point compiler flags are now selected per compiler,
+  including `/fp:strict` on MSVC.
+
+### Fixed
+
+- C literal formatting no longer triggers GCC `-Wformat-truncation` under the
+  strict build.
+- Model benchmarks with more than eight inputs now generate valid descriptors.
+
+## [3.0.0] - 2026-06-30
+
+### Added
+
+- **Shared AST typecheck pass** exposed via `<cxpr/typecheck.h>`. `cxpr_compile`,
+  tree eval, bool eval, C codegen, engine watches, basket folds, and CUDA
+  lowering now share the same bool/numeric rules before backend execution.
+- **Literal lookback IR resolution** for `expr[n]`. Literal and nested literal
+  lookbacks compile to `LOOKBACK_RESOLVE` instead of the generic `CALL_AST`
+  fallback, while dynamic lookbacks still fall back to AST evaluation.
+- `cxpr_analysis.max_lookback_depth`, reporting the accumulated literal lookback
+  depth across an AST.
+
+### Changed
+
+- **Breaking:** numeric truthiness is removed. Boolean positions now require
+  `bool`: `and`/`or`/`not`, ternary conditions, `any(...)`/`all(...)` arguments,
+  engine watch roots, basket results, and bool eval entrypoints. Numeric
+  expressions such as `not 1`, `1 and 2`, or `any(atr(14))` now fail with
+  `CXPR_ERR_TYPE_MISMATCH`.
+- Typed IR conditional jumps and `NOT` now require `CXPR_VALUE_BOOL` at runtime
+  as a defense-in-depth check.
+- Basket `any`/`all` now require bool child results instead of coercing numeric
+  results.
+
 ## [2.7.0] - 2026-06-29
 
 ### Added
@@ -198,15 +268,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Provider metadata for host-backed inventories (`cxpr/provider.h`,
-  `cxpr/runtime_call.h`, `cxpr/scope.h`): describe host functions and direct
+  `cxpr/runtime.h`, `cxpr/scope.h`): describe host functions and direct
   sources, preserve named arguments, declare record fields, and decode
   scoped/partitioned series; register provider signatures at parse time and turn
   call ASTs into host-neutral runtime-call views.
-- Source planning for host-owned data (`cxpr/source_plan.h`):
+- Source planning for host-owned data (`cxpr/source.h`):
   `cxpr_plan_bind_sources` and `cxpr_plan_bind_sources_from_table` own the AST
   walk, numeric-argument evaluation, per-leaf host binding, and scoped-source
   registration so hosts materialize series bar-by-bar.
-- IR views (`cxpr/ir_view.h`): inspect a compiled program's opcodes, result
+- IR views (`cxpr/ir.h`): inspect a compiled program's opcodes, result
   kind, and instruction count without executing it.
 - Compiled-program introspection on the expression evaluator:
   `cxpr_expression_program`, `cxpr_expression_instruction_count`,
@@ -220,7 +290,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `_param_` variants), plus per-evaluation cached structs
   (`cxpr_context_set_cached_struct`, `cxpr_context_get_cached_struct`,
   `cxpr_context_clear_cached_structs`).
-- AST inspection and analysis (`cxpr/ast.h`): `cxpr_ast_clone`,
+- AST inspection and analysis (`cxpr/expr/ast.h`): `cxpr_ast_clone`,
   `cxpr_ast_to_string`/`cxpr_ast_dump`, producer-field and reference/variable
   collection, call-argument context tracing
   (`cxpr_ast_call_arg_contexts_for_reference`/`_for_variable`),
@@ -236,15 +306,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semantics. Output is self-contained and safe to retain.
 - `cxpr_thread_cleanup` — release the calling thread's thread-local overlay
   cache; optional and only affects when memory is reclaimed, never correctness.
-- libFuzzer harness (`fuzz/parse_fuzzer.c`, `CXPR_BUILD_FUZZERS` option and
+- libFuzzer harness (`tests/fuzz/parse_fuzzer.c`, `CXPR_BUILD_FUZZERS` option and
   `fuzz` preset) driving untrusted input through parse → compile → evaluate
   under ASan/UBSan, plus a CI smoke run.
 
 ### Changed
 
 - Defined an explicit concurrency contract (see the README "Concurrency"
-  section): immutable-after-build handles (`cxpr_registry`, `cxpr_ast`,
-  `cxpr_program`) may be shared read-only across threads, while mutable handles
+  section): immutable-after-build handles (`cxpr_registry`, `cxpr_expr_ast`,
+  `cxpr_expr_compiled`) may be shared read-only across threads, while mutable handles
   (`cxpr_context`, `cxpr_evaluator`) must be per-thread.
 - The internal empty-overlay reuse cache and the error-message scratch buffers
   are now thread-local, so concurrent evaluation on separate contexts no longer

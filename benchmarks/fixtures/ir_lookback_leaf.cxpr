@@ -1,0 +1,3 @@
+model ir_lookback_leaf
+in { close }
+out result = close - close[3]

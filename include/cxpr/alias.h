@@ -14,9 +14,10 @@
 extern "C" {
 #endif
 
+/** @brief One named expression alias used during AST-level expansion. */
 typedef struct {
-    const char* name;
-    const char* expression;
+    const char* name;        /**< Alias name referenced by expressions. */
+    const char* expression;  /**< Expression source substituted for the alias. */
 } cxpr_alias;
 
 /**

@@ -54,7 +54,7 @@ const char* cxpr_ir_build_struct_cache_key(const char* name, const double* args,
     return key;
 }
 
-char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_ast* const* args,
+char* cxpr_ir_build_constant_producer_key(const char* name, const cxpr_expr_ast* const* args,
                                           size_t argc, const cxpr_registry* reg) {
     double values[CXPR_MAX_CALL_ARGS];
     char local_buf[256];

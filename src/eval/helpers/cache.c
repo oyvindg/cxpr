@@ -47,7 +47,7 @@ static int cxpr_eval_arg_names_equal(char** lhs, char** rhs, size_t count) {
     return 1;
 }
 
-unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
+unsigned long cxpr_eval_ast_hash(const cxpr_expr_ast* ast) {
     unsigned long hash = 1469598103934665603UL;
     size_t i;
 
@@ -70,6 +70,14 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
         }
         hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.array.count);
         break;
+    case CXPR_NODE_RECORD:
+        for (i = 0u; i < ast->data.record.field_count; ++i) {
+            hash = cxpr_eval_hash_string(hash, ast->data.record.field_names[i]);
+            hash = cxpr_eval_hash_mix(
+                hash, cxpr_eval_ast_hash(ast->data.record.field_values[i]));
+        }
+        hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.record.field_count);
+        break;
     case CXPR_NODE_STRING:
         hash = cxpr_eval_hash_string(hash, ast->data.string.value);
         break;
@@ -80,6 +88,7 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
         hash = cxpr_eval_hash_string(hash, ast->data.variable.name);
         break;
     case CXPR_NODE_FIELD_ACCESS:
+        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.field_access.base));
         hash = cxpr_eval_hash_string(hash, ast->data.field_access.object);
         hash = cxpr_eval_hash_string(hash, ast->data.field_access.field);
         break;
@@ -119,9 +128,9 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
         }
         hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.function_call.argc);
         break;
-    case CXPR_NODE_LOOKBACK:
-        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.lookback.target));
-        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.lookback.index));
+    case CXPR_NODE_INDEX:
+        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.index.target));
+        hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.index.index));
         break;
     case CXPR_NODE_TERNARY:
         hash = cxpr_eval_hash_mix(hash, cxpr_eval_ast_hash(ast->data.ternary.condition));
@@ -132,7 +141,7 @@ unsigned long cxpr_eval_ast_hash(const cxpr_ast* ast) {
     return hash;
 }
 
-bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
+bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
     size_t i;
 
     if (lhs == rhs) return true;
@@ -150,6 +159,17 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
             }
         }
         return true;
+    case CXPR_NODE_RECORD:
+        if (lhs->data.record.field_count != rhs->data.record.field_count) return false;
+        for (i = 0u; i < lhs->data.record.field_count; ++i) {
+            if (!cxpr_eval_opt_string_equal(
+                    lhs->data.record.field_names[i], rhs->data.record.field_names[i]) ||
+                !cxpr_eval_ast_equal(
+                    lhs->data.record.field_values[i], rhs->data.record.field_values[i])) {
+                return false;
+            }
+        }
+        return true;
     case CXPR_NODE_STRING:
         return cxpr_eval_opt_string_equal(lhs->data.string.value, rhs->data.string.value);
     case CXPR_NODE_IDENTIFIER:
@@ -157,7 +177,8 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
     case CXPR_NODE_VARIABLE:
         return cxpr_eval_opt_string_equal(lhs->data.variable.name, rhs->data.variable.name);
     case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_eval_opt_string_equal(lhs->data.field_access.object, rhs->data.field_access.object) &&
+        return cxpr_eval_ast_equal(lhs->data.field_access.base, rhs->data.field_access.base) &&
+               cxpr_eval_opt_string_equal(lhs->data.field_access.object, rhs->data.field_access.object) &&
                cxpr_eval_opt_string_equal(lhs->data.field_access.field, rhs->data.field_access.field);
     case CXPR_NODE_CHAIN_ACCESS:
         if (lhs->data.chain_access.depth != rhs->data.chain_access.depth) return false;
@@ -201,9 +222,9 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
                     rhs->data.function_call.args[i])) return false;
         }
         return true;
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_eval_ast_equal(lhs->data.lookback.target, rhs->data.lookback.target) &&
-               cxpr_eval_ast_equal(lhs->data.lookback.index, rhs->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_eval_ast_equal(lhs->data.index.target, rhs->data.index.target) &&
+               cxpr_eval_ast_equal(lhs->data.index.index, rhs->data.index.index);
     case CXPR_NODE_TERNARY:
         return cxpr_eval_ast_equal(lhs->data.ternary.condition, rhs->data.ternary.condition) &&
                cxpr_eval_ast_equal(lhs->data.ternary.true_branch, rhs->data.ternary.true_branch) &&
@@ -212,7 +233,7 @@ bool cxpr_eval_ast_equal(const cxpr_ast* lhs, const cxpr_ast* rhs) {
     return false;
 }
 
-bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
+bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg) {
     if (!ast) return false;
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
@@ -221,7 +242,8 @@ bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
     case CXPR_NODE_VARIABLE:
     case CXPR_NODE_STRING:
     case CXPR_NODE_ARRAY:
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_RECORD:
+    case CXPR_NODE_INDEX:
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_FIELD_ACCESS:
     case CXPR_NODE_CHAIN_ACCESS:
@@ -241,7 +263,7 @@ bool cxpr_eval_ast_memoable(const cxpr_ast* ast, const cxpr_registry* reg) {
 }
 
 bool cxpr_eval_memo_get(const cxpr_context* ctx,
-                        const cxpr_ast* ast,
+                        const cxpr_expr_ast* ast,
                         unsigned long hash,
                         cxpr_value* out_value) {
     size_t i;
@@ -258,7 +280,7 @@ bool cxpr_eval_memo_get(const cxpr_context* ctx,
 }
 
 bool cxpr_eval_memo_set(const cxpr_context* ctx,
-                        const cxpr_ast* ast,
+                        const cxpr_expr_ast* ast,
                         unsigned long hash,
                         cxpr_value value) {
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
@@ -302,7 +324,7 @@ void cxpr_eval_memo_leave(cxpr_context* ctx) {
 
 const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
                                                  const char* name,
-                                                 const cxpr_ast* const* arg_nodes,
+                                                 const cxpr_expr_ast* const* arg_nodes,
                                                  size_t argc,
                                                  const char* cache_key_hint,
                                                  const cxpr_context* ctx,
@@ -384,9 +406,9 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     return existing;
 }
 
-cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_ast* ast,
+cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_expr_ast* ast,
                                                  const cxpr_registry* reg) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
 
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !reg) return NULL;
 
@@ -417,9 +439,9 @@ cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_ast* ast,
     return &((cxpr_registry*)reg)->entries[mutable_ast->data.function_call.cached_entry_index];
 }
 
-cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
+cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_expr_ast* ast,
                                                  const cxpr_registry* reg) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
 
     if (!ast || ast->type != CXPR_NODE_PRODUCER_ACCESS || !reg) return NULL;
 
@@ -453,7 +475,7 @@ cxpr_func_entry* cxpr_eval_cached_producer_entry(const cxpr_ast* ast,
     return &((cxpr_registry*)reg)->entries[mutable_ast->data.producer_access.cached_entry_index];
 }
 
-bool cxpr_eval_ast_contains_string_literal(const cxpr_ast* ast) {
+bool cxpr_eval_ast_contains_string_literal(const cxpr_expr_ast* ast) {
     size_t i;
 
     if (!ast) return false;
@@ -493,9 +515,9 @@ bool cxpr_eval_ast_contains_string_literal(const cxpr_ast* ast) {
         }
         return false;
 
-    case CXPR_NODE_LOOKBACK:
-        return cxpr_eval_ast_contains_string_literal(ast->data.lookback.target) ||
-               cxpr_eval_ast_contains_string_literal(ast->data.lookback.index);
+    case CXPR_NODE_INDEX:
+        return cxpr_eval_ast_contains_string_literal(ast->data.index.target) ||
+               cxpr_eval_ast_contains_string_literal(ast->data.index.index);
 
     case CXPR_NODE_TERNARY:
         return cxpr_eval_ast_contains_string_literal(ast->data.ternary.condition) ||

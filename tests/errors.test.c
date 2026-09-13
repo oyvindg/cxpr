@@ -89,13 +89,13 @@ static void test_error_format(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_empty(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_empty\n");
 }
 
@@ -104,13 +104,13 @@ static void test_parse_error_empty(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_unclosed_paren(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "(2 + 3", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "(2 + 3", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.message != NULL);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_unclosed_paren\n");
 }
 
@@ -119,12 +119,12 @@ static void test_parse_error_unclosed_paren(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_missing_operand(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "3 +", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "3 +", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_missing_operand\n");
 }
 
@@ -133,12 +133,12 @@ static void test_parse_error_missing_operand(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_trailing_content(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "3 4", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "3 4", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_trailing_content\n");
 }
 
@@ -147,12 +147,12 @@ static void test_parse_error_trailing_content(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_unclosed_func(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "sqrt(4", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "sqrt(4", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_unclosed_func\n");
 }
 
@@ -161,12 +161,12 @@ static void test_parse_error_unclosed_func(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_missing_ternary_colon(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "x > 0 ? 1", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "x > 0 ? 1", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_missing_ternary_colon\n");
 }
 
@@ -175,12 +175,12 @@ static void test_parse_error_missing_ternary_colon(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_parse_error_bare_dollar(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast = cxpr_parse(p, "$ + 1", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "$ + 1", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_parse_error_bare_dollar\n");
 }
 
@@ -189,22 +189,22 @@ static void test_parse_error_bare_dollar(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_eval_error_unknown_identifier(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, "unknown_var + 1", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "unknown_var + 1", &err);
     assert(ast != NULL);
 
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_error_unknown_identifier\n");
 }
 
@@ -213,22 +213,22 @@ static void test_eval_error_unknown_identifier(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_eval_error_unknown_param(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, "$missing_param", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "$missing_param", &err);
     assert(ast != NULL);
 
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_error_unknown_param\n");
 }
 
@@ -237,22 +237,22 @@ static void test_eval_error_unknown_param(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_eval_error_unknown_function(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, "foobar(1, 2)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "foobar(1, 2)", &err);
     assert(ast != NULL);
 
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_UNKNOWN_FUNCTION);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_error_unknown_function\n");
 }
 
@@ -261,33 +261,33 @@ static void test_eval_error_unknown_function(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_eval_error_wrong_arity(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
     /* sqrt takes 1 arg, not 3 */
-    cxpr_ast* ast = cxpr_parse(p, "sqrt(1, 2, 3)", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "sqrt(1, 2, 3)", &err);
     assert(ast != NULL);
 
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_WRONG_ARITY);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* min takes 2 args, not 0 */
-    ast = cxpr_parse(p, "min()", &err);
+    ast = cxpr_expr_ast_parse(p, "min()", &err);
     assert(ast != NULL);
 
     err = (cxpr_error){0};
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_WRONG_ARITY);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_error_wrong_arity\n");
 }
 
@@ -296,33 +296,33 @@ static void test_eval_error_wrong_arity(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_eval_error_division_by_zero(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_register_defaults(reg);
     cxpr_error err = {0};
 
-    cxpr_ast* ast = cxpr_parse(p, "10 / 0", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "10 / 0", &err);
     assert(ast != NULL);
 
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
     assert(err.message != NULL);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
     /* Modulo by zero */
-    ast = cxpr_parse(p, "10 % 0", &err);
+    ast = cxpr_expr_ast_parse(p, "10 % 0", &err);
     assert(ast != NULL);
 
     err = (cxpr_error){0};
     cxpr_test_eval_ast(ast, ctx, reg, &err);
     assert(err.code == CXPR_ERR_DIVISION_BY_ZERO);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_eval_error_division_by_zero\n");
 }
 
@@ -331,17 +331,17 @@ static void test_eval_error_division_by_zero(void) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_error_position(void) {
-    cxpr_parser* p = cxpr_parser_new();
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_error err = {0};
 
     /* Error should be at position of unexpected token */
-    cxpr_ast* ast = cxpr_parse(p, "a @", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "a @", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.line == 1);
     assert(err.column > 1); /* @ is not at column 1 */
 
-    cxpr_parser_free(p);
+    cxpr_expr_parser_free(p);
     printf("  ✓ test_error_position\n");
 }
 
@@ -380,12 +380,12 @@ static void test_parse_error_no_partial_leak(void) {
 #undef BAD
 
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-        cxpr_parser* p = cxpr_parser_new();
+        cxpr_expr_parser* p = cxpr_expr_parser_new();
         cxpr_error err = {0};
-        cxpr_ast* ast = cxpr_parse(p, cases[i], &err);
+        cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, cases[i], &err);
         assert(ast == NULL);
         assert(err.code != CXPR_OK);
-        cxpr_parser_free(p);
+        cxpr_expr_parser_free(p);
     }
     printf("  ✓ test_parse_error_no_partial_leak\n");
 }

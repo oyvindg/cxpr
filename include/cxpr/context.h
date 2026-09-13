@@ -34,6 +34,8 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx);
  * @return Newly allocated overlay context, or NULL on allocation failure.
  */
 cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
+void cxpr_context_set_history_offset(cxpr_context* ctx, size_t offset);
+bool cxpr_context_history_offset(const cxpr_context* ctx, size_t* out_offset);
 
 /**
  * @brief Set a numeric runtime variable.

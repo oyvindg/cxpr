@@ -4,6 +4,7 @@
  */
 
 #include "core.h"
+#include "registry/internal.h"
 #include <cxpr/basket.h>
 #include <math.h>
 #include <string.h>
@@ -108,7 +109,7 @@ static bool cxpr_basket_merge_unique(char*** names, size_t* count, const char* n
     return true;
 }
 
-static bool cxpr_basket_collect_free_roles(const cxpr_ast* node,
+static bool cxpr_basket_collect_free_roles(const cxpr_expr_ast* node,
                                            const cxpr_context* ctx,
                                            char*** names,
                                            size_t* count) {
@@ -116,9 +117,9 @@ static bool cxpr_basket_collect_free_roles(const cxpr_ast* node,
 
     if (!node || !names || !count) return true;
 
-    switch (cxpr_ast_type(node)) {
+    switch (cxpr_expr_ast_kind_of(node)) {
         case CXPR_NODE_VARIABLE: {
-            const char* role = cxpr_ast_variable_name(node);
+            const char* role = cxpr_expr_ast_param_name(node);
             cxpr_basket_role_binding binding = {0};
             bool ok = cxpr_basket_load_role_binding(ctx, role, &binding);
             if (!ok || binding.bound_count <= 1) {
@@ -132,30 +133,30 @@ static bool cxpr_basket_collect_free_roles(const cxpr_ast* node,
             return ok;
         }
         case CXPR_NODE_BINARY_OP:
-            return cxpr_basket_collect_free_roles(cxpr_ast_left(node), ctx, names, count) &&
-                   cxpr_basket_collect_free_roles(cxpr_ast_right(node), ctx, names, count);
+            return cxpr_basket_collect_free_roles(cxpr_expr_ast_binary_left(node), ctx, names, count) &&
+                   cxpr_basket_collect_free_roles(cxpr_expr_ast_binary_right(node), ctx, names, count);
         case CXPR_NODE_UNARY_OP:
-            return cxpr_basket_collect_free_roles(cxpr_ast_operand(node), ctx, names, count);
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_basket_collect_free_roles(cxpr_ast_lookback_target(node), ctx, names, count) &&
-                   cxpr_basket_collect_free_roles(cxpr_ast_lookback_index(node), ctx, names, count);
+            return cxpr_basket_collect_free_roles(cxpr_expr_ast_unary_operand(node), ctx, names, count);
+        case CXPR_NODE_INDEX:
+            return cxpr_basket_collect_free_roles(cxpr_expr_ast_index_target(node), ctx, names, count) &&
+                   cxpr_basket_collect_free_roles(cxpr_expr_ast_index_expression(node), ctx, names, count);
         case CXPR_NODE_TERNARY:
-            return cxpr_basket_collect_free_roles(cxpr_ast_ternary_condition(node), ctx, names, count) &&
-                   cxpr_basket_collect_free_roles(cxpr_ast_ternary_true_branch(node), ctx, names, count) &&
-                   cxpr_basket_collect_free_roles(cxpr_ast_ternary_false_branch(node), ctx, names, count);
+            return cxpr_basket_collect_free_roles(cxpr_expr_ast_ternary_condition(node), ctx, names, count) &&
+                   cxpr_basket_collect_free_roles(cxpr_expr_ast_ternary_true(node), ctx, names, count) &&
+                   cxpr_basket_collect_free_roles(cxpr_expr_ast_ternary_false(node), ctx, names, count);
         case CXPR_NODE_FUNCTION_CALL: {
-            const char* fn = cxpr_ast_function_name(node);
-            const size_t argc = cxpr_ast_function_argc(node);
+            const char* fn = cxpr_expr_ast_call_name(node);
+            const size_t argc = cxpr_expr_ast_call_arg_count(node);
             if (argc == 1 && cxpr_basket_is_builtin(fn)) return true;
             for (i = 0; i < argc; ++i) {
-                if (!cxpr_basket_collect_free_roles(cxpr_ast_function_arg(node, i), ctx, names, count)) return false;
+                if (!cxpr_basket_collect_free_roles(cxpr_expr_ast_call_arg(node, i), ctx, names, count)) return false;
             }
             return true;
         }
         case CXPR_NODE_PRODUCER_ACCESS: {
-            const size_t argc = cxpr_ast_producer_argc(node);
+            const size_t argc = cxpr_expr_ast_producer_arg_count(node);
             for (i = 0; i < argc; ++i) {
-                if (!cxpr_basket_collect_free_roles(cxpr_ast_producer_arg(node, i), ctx, names, count)) return false;
+                if (!cxpr_basket_collect_free_roles(cxpr_expr_ast_producer_arg(node, i), ctx, names, count)) return false;
             }
             return true;
         }
@@ -172,12 +173,6 @@ static void cxpr_basket_free_names(char** names, size_t count) {
 }
 
 static cxpr_value cxpr_basket_eval_error(cxpr_error* err, const char* message);
-
-static bool cxpr_basket_value_truthy(cxpr_value value) {
-    return value.type == CXPR_VALUE_BOOL ? value.b :
-           value.type == CXPR_VALUE_NUMBER ? (value.d != 0.0) :
-           false;
-}
 
 static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
                                                   const cxpr_value* results,
@@ -203,14 +198,20 @@ static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
 
     if (strcmp(fn, "any") == 0) {
         for (i = 0; i < count; ++i) {
-            if (cxpr_basket_value_truthy(results[i])) return cxpr_bool(true);
+            if (results[i].type != CXPR_VALUE_BOOL) {
+                return cxpr_basket_eval_error(err, "any() requires boolean results");
+            }
+            if (results[i].b) return cxpr_bool(true);
         }
         return cxpr_bool(false);
     }
 
     if (strcmp(fn, "all") == 0) {
         for (i = 0; i < count; ++i) {
-            if (!cxpr_basket_value_truthy(results[i])) return cxpr_bool(false);
+            if (results[i].type != CXPR_VALUE_BOOL) {
+                return cxpr_basket_eval_error(err, "all() requires boolean results");
+            }
+            if (!results[i].b) return cxpr_bool(false);
         }
         return cxpr_bool(true);
     }
@@ -234,13 +235,13 @@ static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
     return cxpr_basket_eval_error(err, "Unsupported basket builtin");
 }
 
-static bool cxpr_basket_eval_direct_args(const cxpr_ast* call_ast,
+static bool cxpr_basket_eval_direct_args(const cxpr_expr_ast* call_ast,
                                          const cxpr_context* ctx,
                                          const cxpr_registry* reg,
                                          const char* fn,
                                          cxpr_error* err,
                                          cxpr_value* out) {
-    size_t argc = cxpr_ast_function_argc(call_ast);
+    size_t argc = cxpr_expr_ast_call_arg_count(call_ast);
     size_t i;
 
     if (!out) return false;
@@ -263,7 +264,7 @@ static bool cxpr_basket_eval_direct_args(const cxpr_ast* call_ast,
 
         for (i = 0; i < argc; ++i) {
             double number = 0.0;
-            if (!cxpr_eval_ast_number(cxpr_ast_function_arg(call_ast, i), ctx, reg, &number, err)) {
+            if (!cxpr_eval_ast_number(cxpr_expr_ast_call_arg(call_ast, i), ctx, reg, &number, err)) {
                 free(values);
                 *out = cxpr_num(cxpr_basket_nan());
                 return false;
@@ -286,35 +287,35 @@ static void cxpr_basket_cleanup_expanded_call(cxpr_value* results,
     cxpr_basket_free_names(free_roles, free_role_count);
 }
 
-static bool cxpr_basket_ast_uses_aggregates_impl(const cxpr_ast* ast) {
+static bool cxpr_basket_ast_uses_aggregates_impl(const cxpr_expr_ast* ast) {
     size_t i;
 
     if (!ast) return false;
-    switch (cxpr_ast_type(ast)) {
+    switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_FUNCTION_CALL: {
-            const char* name = cxpr_ast_function_name(ast);
-            const size_t argc = cxpr_ast_function_argc(ast);
+            const char* name = cxpr_expr_ast_call_name(ast);
+            const size_t argc = cxpr_expr_ast_call_arg_count(ast);
             if (argc == 1 && cxpr_basket_is_builtin(name)) return true;
             for (i = 0; i < argc; ++i) {
-                if (cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_function_arg(ast, i))) return true;
+                if (cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_call_arg(ast, i))) return true;
             }
             return false;
         }
         case CXPR_NODE_BINARY_OP:
-            return cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_left(ast)) ||
-                   cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_right(ast));
+            return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_binary_left(ast)) ||
+                   cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_binary_right(ast));
         case CXPR_NODE_UNARY_OP:
-            return cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_operand(ast));
-        case CXPR_NODE_LOOKBACK:
-            return cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_lookback_target(ast)) ||
-                   cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_lookback_index(ast));
+            return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_unary_operand(ast));
+        case CXPR_NODE_INDEX:
+            return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_index_target(ast)) ||
+                   cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_index_expression(ast));
         case CXPR_NODE_TERNARY:
-            return cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_ternary_condition(ast)) ||
-                   cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_ternary_true_branch(ast)) ||
-                   cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_ternary_false_branch(ast));
+            return cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_ternary_condition(ast)) ||
+                   cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_ternary_true(ast)) ||
+                   cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_ternary_false(ast));
         case CXPR_NODE_PRODUCER_ACCESS:
-            for (i = 0; i < cxpr_ast_producer_argc(ast); ++i) {
-                if (cxpr_basket_ast_uses_aggregates_impl(cxpr_ast_producer_arg(ast, i))) return true;
+            for (i = 0; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
+                if (cxpr_basket_ast_uses_aggregates_impl(cxpr_expr_ast_producer_arg(ast, i))) return true;
             }
             return false;
         default:
@@ -330,7 +331,7 @@ static cxpr_value cxpr_basket_eval_error(cxpr_error* err, const char* message) {
     return cxpr_num(cxpr_basket_nan());
 }
 
-static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
+static cxpr_value cxpr_basket_eval_call(const cxpr_expr_ast* call_ast,
                                         const cxpr_context* ctx,
                                         const cxpr_registry* reg,
                                         void* userdata,
@@ -342,8 +343,8 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
     cxpr_value direct;
 
     (void)userdata;
-    fn = cxpr_ast_function_name(call_ast);
-    argc = cxpr_ast_function_argc(call_ast);
+    fn = cxpr_expr_ast_call_name(call_ast);
+    argc = cxpr_expr_ast_call_arg_count(call_ast);
 
     if (argc != 1) {
         if (fn && (strcmp(fn, "avg") == 0 || strcmp(fn, "min") == 0 || strcmp(fn, "max") == 0)) {
@@ -356,10 +357,10 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
     }
 
     if (fn && strcmp(fn, "count") == 0) {
-        const cxpr_ast* arg_ast = cxpr_ast_function_arg(call_ast, 0);
-        const char* role = cxpr_ast_variable_name(arg_ast);
+        const cxpr_expr_ast* arg_ast = cxpr_expr_ast_call_arg(call_ast, 0);
+        const char* role = cxpr_expr_ast_param_name(arg_ast);
         double bound_count;
-        if (!arg_ast || cxpr_ast_type(arg_ast) != CXPR_NODE_VARIABLE || !role) {
+        if (!arg_ast || cxpr_expr_ast_kind_of(arg_ast) != CXPR_NODE_VARIABLE || !role) {
             return cxpr_basket_eval_error(err, "count() requires a role variable like count($pair)");
         }
         if (!cxpr_basket_load_role_binding(ctx, role, &binding)) {
@@ -371,7 +372,7 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_ast* call_ast,
     }
 
     {
-        const cxpr_ast* arg_ast = cxpr_ast_function_arg(call_ast, 0);
+        const cxpr_expr_ast* arg_ast = cxpr_expr_ast_call_arg(call_ast, 0);
         char** free_roles = NULL;
         size_t free_role_count = 0;
         cxpr_value result = {0};
@@ -441,30 +442,32 @@ void cxpr_register_basket_builtins(cxpr_registry* reg) {
     cxpr_registry_add_ast(reg, "any", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_ast(reg, "all", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_ast(reg, "count", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_add_ast(reg, "min", cxpr_basket_eval_call, 1, 8, CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_add_ast(reg, "max", cxpr_basket_eval_call, 1, 8, CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_add_ast(reg, "min", cxpr_basket_eval_call, 1, 8,
+                          CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_add_ast(reg, "max", cxpr_basket_eval_call, 1, 8,
+                          CXPR_VALUE_NUMBER, NULL, NULL);
 }
 
-bool cxpr_ast_uses_basket_aggregates(const cxpr_ast* ast) {
+bool cxpr_expr_ast_uses_basket_aggregates(const cxpr_expr_ast* ast) {
     return cxpr_basket_ast_uses_aggregates_impl(ast);
 }
 
 bool cxpr_expression_uses_basket_aggregates(const char* source) {
-    cxpr_parser* parser;
+    cxpr_expr_parser* parser;
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     bool uses;
 
     if (!source) return false;
-    parser = cxpr_parser_new();
+    parser = cxpr_expr_parser_new();
     if (!parser) return false;
-    ast = cxpr_parse(parser, source, &err);
+    ast = cxpr_expr_ast_parse(parser, source, &err);
     if (!ast) {
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
         return false;
     }
-    uses = cxpr_ast_uses_basket_aggregates(ast);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    uses = cxpr_expr_ast_uses_basket_aggregates(ast);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     return uses;
 }

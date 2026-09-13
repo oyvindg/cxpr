@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include <cxpr/provider.h>
+#include <cxpr/typecheck.h>
 
 static const cxpr_provider_fn_spec* const* test_provider_fn_specs(
     const void* userdata,
@@ -196,11 +197,11 @@ static void test_provider_signatures_register_record_output_struct_producer(void
         &vtable,
     };
     cxpr_registry* reg = cxpr_registry_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
-    cxpr_program* prog;
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* prog;
     cxpr_value value = {0};
 
     assert(reg != NULL);
@@ -214,17 +215,17 @@ static void test_provider_signatures_register_record_output_struct_producer(void
             .runtime_required_scalar = test_runtime_required_scalar,
         });
 
-    ast = cxpr_parse(parser, "record_fn(3, 5).signal", &err);
+    ast = cxpr_expr_ast_parse(parser, "record_fn(3, 5).signal", &err);
     if (ast == NULL) abort();
-    prog = cxpr_compile(ast, reg, &err);
+    prog = cxpr_expr_compile(ast, reg, &err);
     if (prog == NULL) abort();
-    if (!cxpr_eval_program(prog, ctx, reg, &value, &err)) abort();
+    if (!cxpr_expr_compiled_eval(prog, ctx, reg, &value, &err)) abort();
     if (err.code != CXPR_OK || value.type != CXPR_VALUE_NUMBER || value.d != 25.0) abort();
 
-    cxpr_program_free(prog);
-    cxpr_ast_free(ast);
+    cxpr_expr_compiled_free(prog);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_registry_free(reg);
 }
 
@@ -331,7 +332,7 @@ static int expr_provider_expr_param_spec_for(
         .kinds = ema_kinds,
         .count = CXPR_ARRAY_COUNT(ema_names),
         .min_count = 2u,
-        .lookback_sugar_name = NULL,
+        .lookback_sugar_name = "legacy-index",
         .has_timeframe_param = 0,
     };
     return 1;
@@ -365,25 +366,25 @@ static double host_provider_scalar(const char* name,
 static void test_provider_host_runtime_supplies_expression_data(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_host_config host = {
         .runtime_required_scalar = host_provider_scalar,
         .userdata = NULL,
     };
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     double out = 0.0;
 
     assert(reg && ctx && parser);
     cxpr_register_provider_signatures(reg, &expr_provider, &host);
-    ast = cxpr_parse(parser, "ema(10) + close() + atr(3)", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(10) + close() + atr(3)", &err);
     assert(ast != NULL);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(fabs(out - 125.0) < 1e-12);
 
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
 }
@@ -407,6 +408,8 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(expr_spec.count == 2u);
     assert(expr_spec.kinds[0] == CXPR_EXPR_ARG_SCALAR_SOURCE);
     assert(expr_spec.kinds[1] == CXPR_EXPR_ARG_NUMERIC);
+    assert(strcmp(expr_spec.index_sugar_name, "legacy-index") == 0);
+    assert(expr_spec.lookback_sugar_name == expr_spec.index_sugar_name);
 
     assert(cxpr_register_provider_fn_spec(reg, ema, NULL) != 0);
     assert(cxpr_registry_lookup(reg, "ema", &min_args, &max_args) != 0);
@@ -414,34 +417,43 @@ static void test_provider_registration_helpers_are_directly_covered(void) {
     assert(max_args == 3u);
 
     {
-        cxpr_parser* parser = cxpr_parser_new();
+        cxpr_expr_parser* parser = cxpr_expr_parser_new();
         cxpr_context* ctx = cxpr_context_new();
         cxpr_error err = {0};
-        cxpr_ast* ast;
+        cxpr_expr_ast* ast;
+        cxpr_expr_ast* bool_ast;
         double out = 0.0;
 
         assert(parser != NULL);
         assert(ctx != NULL);
-        ast = cxpr_parse(parser, "ema(10)", &err);
+        ast = cxpr_expr_ast_parse(parser, "ema(10)", &err);
         assert(ast != NULL);
         assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
         assert(isnan(out));
-        cxpr_ast_free(ast);
+        cxpr_expr_ast_free(ast);
+
+        err = (cxpr_error){0};
+        bool_ast = cxpr_expr_ast_parse(parser, "ema(10) and true", &err);
+        assert(bool_ast != NULL);
+        assert(!cxpr_typecheck_bool_root(bool_ast, reg, &err));
+        assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+        cxpr_expr_ast_free(bool_ast);
+
         cxpr_context_free(ctx);
-        cxpr_parser_free(parser);
+        cxpr_expr_parser_free(parser);
     }
 
     cxpr_registry_free(reg);
 }
 
 static void test_runtime_call_helpers_are_directly_covered(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_runtime_call call = {0};
-    const cxpr_ast* source_arg;
+    const cxpr_expr_ast* source_arg;
     double values[1] = {0.0};
 
     assert(parser != NULL);
@@ -449,7 +461,7 @@ static void test_runtime_call_helpers_are_directly_covered(void) {
     assert(reg != NULL);
     cxpr_register_defaults(reg);
 
-    ast = cxpr_parse(parser, "ema(close, period=10, selector=\"daily\")", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(close, period=10, selector=\"daily\")", &err);
     assert(ast != NULL);
     assert(cxpr_parse_runtime_call(ast, &call) != 0);
     assert(call.kind == CXPR_RUNTIME_CALL_FUNCTION);
@@ -462,8 +474,8 @@ static void test_runtime_call_helpers_are_directly_covered(void) {
 
     source_arg = cxpr_provider_runtime_call_arg(&expr_provider, ast, 0u);
     assert(source_arg != NULL);
-    assert(cxpr_ast_type(source_arg) == CXPR_NODE_IDENTIFIER);
-    assert(strcmp(cxpr_ast_identifier_name(source_arg), "close") == 0);
+    assert(cxpr_expr_ast_kind_of(source_arg) == CXPR_NODE_IDENTIFIER);
+    assert(strcmp(cxpr_expr_ast_identifier_name(source_arg), "close") == 0);
 
     assert(cxpr_provider_eval_runtime_call_number_args(
         &expr_provider,
@@ -477,64 +489,64 @@ static void test_runtime_call_helpers_are_directly_covered(void) {
     assert(err.code == CXPR_OK);
     assert(values[0] == 10.0);
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_resolve_expression_scope(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_resolved_scope scope;
 
     assert(parser != NULL);
 
-    ast = cxpr_parse(parser, "ema(close, period=10, selector=\"daily\") > close", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(close, period=10, selector=\"daily\") > close", &err);
     assert(ast != NULL);
     if (!cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     if (strcmp(scope.scope_name, "selector") != 0) abort();
     if (strcmp(scope.scope_value, "daily") != 0) abort();
     if (scope.origin == NULL) abort();
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(parser, "high(\"weekly\") > low", &err);
+    ast = cxpr_expr_ast_parse(parser, "high(\"weekly\") > low", &err);
     assert(ast != NULL);
     if (!cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
     if (strcmp(scope.scope_name, "selector") != 0) abort();
     if (strcmp(scope.scope_value, "weekly") != 0) abort();
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(parser, "foo(\"daily\")", &err);
+    ast = cxpr_expr_ast_parse(parser, "foo(\"daily\")", &err);
     assert(ast != NULL);
     if (cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    ast = cxpr_parse(parser, "close > 10 ? \"daily\" : \"weekly\"", &err);
+    ast = cxpr_expr_ast_parse(parser, "close > 10 ? \"daily\" : \"weekly\"", &err);
     assert(ast != NULL);
     if (cxpr_resolve_expression_scope(&expr_provider, ast, &scope)) abort();
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
 
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_binary_op(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
-    const cxpr_ast* source_arg;
+    const cxpr_expr_ast* source_arg;
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "ema(atr(14) / close, 10)", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(atr(14) / close, 10)", &err);
     assert(ast != NULL);
-    assert(cxpr_ast_type(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
 
-    source_arg = cxpr_ast_function_arg(ast, 0);
+    source_arg = cxpr_expr_ast_call_arg(ast, 0);
     assert(source_arg != NULL);
-    assert(cxpr_ast_type(source_arg) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_expr_ast_kind_of(source_arg) == CXPR_NODE_BINARY_OP);
 
     memset(&plan, 0, sizeof(plan));
     ok = cxpr_parse_provider_source_plan_ast(&expr_provider, source_arg, &plan);
@@ -547,19 +559,19 @@ static void test_source_plan_expression_binary_op(void) {
     assert(strstr(plan.canonical, "__div__") != NULL);
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_via_smoothing(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "ema(atr(14) / close, 10)", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(atr(14) / close, 10)", &err);
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
@@ -573,25 +585,25 @@ static void test_source_plan_expression_via_smoothing(void) {
     assert(plan.arg_count == 1u);
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_with_lookback(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
-    const cxpr_ast* source_arg;
+    const cxpr_expr_ast* source_arg;
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "ema(atr(14)[3] / close[3], 5)", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(atr(14)[3] / close[3], 5)", &err);
     assert(ast != NULL);
 
-    source_arg = cxpr_ast_function_arg(ast, 0);
+    source_arg = cxpr_expr_ast_call_arg(ast, 0);
     assert(source_arg != NULL);
-    assert(cxpr_ast_type(source_arg) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_expr_ast_kind_of(source_arg) == CXPR_NODE_BINARY_OP);
 
     memset(&plan, 0, sizeof(plan));
     ok = cxpr_parse_provider_source_plan_ast(&expr_provider, source_arg, &plan);
@@ -601,21 +613,21 @@ static void test_source_plan_expression_with_lookback(void) {
     assert(strstr(plan.canonical, "[3]") != NULL);
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_expression_simple_binary(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "high - low", &err);
+    ast = cxpr_expr_ast_parse(parser, "high - low", &err);
     assert(ast != NULL);
-    assert(cxpr_ast_type(ast) == CXPR_NODE_BINARY_OP);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
 
     memset(&plan, 0, sizeof(plan));
     ok = cxpr_parse_provider_source_plan_ast(&expr_provider, ast, &plan);
@@ -627,20 +639,20 @@ static void test_source_plan_expression_simple_binary(void) {
     assert(strstr(plan.canonical, "low") != NULL);
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_field_with_selector_and_lookback(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
     double values[1] = {0.0};
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "close(\"abc\")[7]", &err);
+    ast = cxpr_expr_ast_parse(parser, "close(\"abc\")[7]", &err);
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
@@ -659,20 +671,20 @@ static void test_source_plan_field_with_selector_and_lookback(void) {
     if (err.code != CXPR_OK || values[0] != 7.0) abort();
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_smoothing_with_selector_and_lookback(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
     double values[2] = {0.0, 0.0};
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "ema(close(\"abc\"), 10)[7]", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(close(\"abc\"), 10)[7]", &err);
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
@@ -697,19 +709,19 @@ static void test_source_plan_smoothing_with_selector_and_lookback(void) {
     if (err.code != CXPR_OK || values[0] != 10.0 || values[1] != 7.0) abort();
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_source_plan_smoothing_with_named_source_arg(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_error err = {0};
-    cxpr_ast* ast;
+    cxpr_expr_ast* ast;
     cxpr_source_plan_ast plan;
     int ok;
 
     assert(parser != NULL);
-    ast = cxpr_parse(parser, "ema(source=close, period=10)", &err);
+    ast = cxpr_expr_ast_parse(parser, "ema(source=close, period=10)", &err);
     assert(ast != NULL);
 
     memset(&plan, 0, sizeof(plan));
@@ -720,8 +732,8 @@ static void test_source_plan_smoothing_with_named_source_arg(void) {
     if (plan.arg_count != 1u) abort();
 
     cxpr_free_source_plan_ast(&plan);
-    cxpr_ast_free(ast);
-    cxpr_parser_free(parser);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
 }
 
 int main(void) {

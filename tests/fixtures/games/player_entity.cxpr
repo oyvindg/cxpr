@@ -1,0 +1,62 @@
+# Stateful player entity fixture.
+# Two players may spawn at the same position and still need independent state.
+
+model player_entity {
+    kind = "game_entity"
+    lifecycle = "scoped"
+    instance = "explicit_id"
+    identity_arg = "entity_id"
+}
+
+in {
+    entity_id,
+    spawn_x,
+    spawn_y,
+    move_x,
+    move_y,
+    damage,
+    heal,
+    stamina_use,
+    reset
+}
+
+$max_health = 100
+$max_stamina = 50
+$stamina_recover = 3
+$move_scale = 0.10
+
+state {
+    initialized = 0
+    x = 0
+    y = 0
+    health = 100
+    stamina = 50
+    tick_count = 0
+}
+
+next_x = reset > 0 ? spawn_x : initialized > 0 ? x + move_x * $move_scale : spawn_x
+next_y = reset > 0 ? spawn_y : initialized > 0 ? y + move_y * $move_scale : spawn_y
+next_health = reset > 0 ? $max_health : clamp(health - damage + heal, 0, $max_health)
+next_stamina = reset > 0 ? $max_stamina : clamp(stamina - stamina_use + $stamina_recover, 0, $max_stamina)
+next_tick_count = reset > 0 ? 0 : tick_count + 1
+
+alive = next_health > 0
+exhausted = next_stamina <= 0
+
+initialized := 1
+x := next_x
+y := next_y
+health := next_health
+stamina := next_stamina
+tick_count := next_tick_count
+
+out {
+    entity_id,
+    x,
+    y,
+    health,
+    stamina,
+    alive,
+    exhausted,
+    tick_count
+}

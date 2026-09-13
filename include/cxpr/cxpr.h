@@ -1,6 +1,6 @@
 /**
  * @file cxpr.h
- * @brief C API for cxpr expression evaluator.
+ * @brief C API for cxpr expression and model compiler infrastructure.
  *
  * Pure C11 interface for maximum portability and FFI compatibility.
  */
@@ -10,18 +10,41 @@
 
 #include <cxpr/version.h>
 #include <cxpr/types.h>
-#include <cxpr/ast.h>
+#include <cxpr/token.h>
+#include <cxpr/expr/ast.h>
+#include <cxpr/parser.h>
+#include <cxpr/analysis.h>
+#include <cxpr/eval.h>
+#include <cxpr/snapshot.h>
+#include <cxpr/expr/compiled.h>
 #include <cxpr/codegen.h>
+#include <cxpr/generated.h>
+#include <cxpr/execution.h>
+#include <cxpr/doc.h>
+#include <cxpr/doc/ast.h>
+#include <cxpr/model/model.h>
+#include <cxpr/model/compiled.h>
+#include <cxpr/model/imports.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>
-#include <cxpr/ir_view.h>
+#include <cxpr/ir.h>
 #include <cxpr/registry.h>
+#include <cxpr/history.h>
 #include <cxpr/basket.h>
+#include <cxpr/bulk.h>
 #include <cxpr/evaluator.h>
 #include <cxpr/expression.h>
 #include <cxpr/provider.h>
-#include <cxpr/runtime_call.h>
-#include <cxpr/source_plan.h>
+#include <cxpr/model/plugin.h>
+#include <cxpr/plugins/c.h>
+#include <cxpr/plugins/cuda.h>
+#include <cxpr/plugins/graph.h>
+#include <cxpr/plugins/meta.h>
+#include <cxpr/runtime.h>
+#include <cxpr/source.h>
 #include <cxpr/thread.h>
+#include <cxpr/typecheck.h>
+#include <cxpr/window.h>
+#include <cxpr/resample.h>
 
 #endif /* CXPR_H */

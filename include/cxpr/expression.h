@@ -7,7 +7,7 @@
 #define CXPR_EXPRESSION_H
 
 #include <cxpr/types.h>
-#include <cxpr/ast.h>
+#include <cxpr/expr/ast.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +18,30 @@ typedef struct {
     const char* name;
     const char* expression;
 } cxpr_expression_def;
+
+/**
+ * @brief Resolve one parameter name while rewriting expression source.
+ * @param name Parameter name without `$`; dotted names are passed through as-is.
+ * @param userdata Caller-supplied lookup context.
+ * @return Replacement source text, or NULL to leave this parameter reference unchanged.
+ */
+typedef const char* (*cxpr_expression_param_lookup_fn)(const char* name, void* userdata);
+
+/**
+ * @brief Inline known `$param` references in expression source.
+ *
+ * This is a lexical source rewrite that preserves quoted strings and supports
+ * dotted parameter names such as `$risk.floor`. The callback decides which
+ * names are known and returns source text to splice into the expression.
+ *
+ * @param expression Expression source string.
+ * @param lookup Parameter lookup callback.
+ * @param userdata Caller-supplied lookup context.
+ * @return Newly allocated rewritten source, or NULL on invalid input/allocation failure.
+ */
+char* cxpr_expression_inline_params(const char* expression,
+                                    cxpr_expression_param_lookup_fn lookup,
+                                    void* userdata);
 
 /**
  * @brief Add one named expression.
@@ -104,7 +128,7 @@ bool cxpr_expression_get_bool(const cxpr_evaluator* evaluator, const char* name,
  * @param found Optional flag set when the expression exists.
  * @return Borrowed compiled program, or NULL when absent or not compiled.
  */
-const cxpr_program* cxpr_expression_program(const cxpr_evaluator* evaluator,
+const cxpr_expr_compiled* cxpr_expression_program(const cxpr_evaluator* evaluator,
                                             const char* name,
                                             bool* found);
 /**

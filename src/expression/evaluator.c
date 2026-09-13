@@ -8,7 +8,11 @@
 #include "../eval/internal.h"
 #include "../limits.h"
 
+#include <cxpr/analysis.h>
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static void cxpr_expression_wrap_compile_error(const cxpr_expression_entry* entry,
                                                cxpr_error* err) {
@@ -18,6 +22,23 @@ static void cxpr_expression_wrap_compile_error(const cxpr_expression_entry* entr
     if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
     snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
     snprintf(message, sizeof(message), "Expression '%s': %s", entry->name, detail);
+    err->message = message;
+}
+
+static void cxpr_expression_wrap_eval_error(const cxpr_expression_entry* entry,
+                                            cxpr_error* err) {
+    static CXPR_THREAD_LOCAL char message[1024];
+    char detail[384];
+
+    if (!entry || !entry->name || !err || err->code == CXPR_OK) return;
+    snprintf(detail, sizeof(detail), "%s", err->message ? err->message : cxpr_error_string(err->code));
+    snprintf(
+        message,
+        sizeof(message),
+        "Expression '%s' eval failed: %s; expr: %s",
+        entry->name,
+        detail,
+        entry->expression ? entry->expression : "");
     err->message = message;
 }
 
@@ -38,7 +59,7 @@ static bool cxpr_expression_entry_used_as_struct_prefix(
         size_t nrefs;
 
         if (i == entry_index || !evaluator->expressions[i].ast) continue;
-        nrefs = cxpr_ast_references(evaluator->expressions[i].ast, refs, 256);
+        nrefs = cxpr_expr_ast_references(evaluator->expressions[i].ast, refs, 256);
         for (size_t r = 0; r < nrefs && r < 256; ++r) {
             if (refs[r] &&
                 strncmp(refs[r], name, name_len) == 0 &&
@@ -57,11 +78,11 @@ static int cxpr_expression_eval_struct_alias(
     cxpr_value* out,
     cxpr_error* err) {
     cxpr_func_entry* fn;
-    const cxpr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
+    const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
     const cxpr_struct_value* produced;
 
     if (!entry || !entry->ast || !ctx || !reg || !out) return 0;
-    if (cxpr_ast_type(entry->ast) != CXPR_NODE_FUNCTION_CALL) return 0;
+    if (cxpr_expr_ast_kind_of(entry->ast) != CXPR_NODE_FUNCTION_CALL) return 0;
 
     fn = cxpr_eval_cached_function_entry(entry->ast, reg);
     if (!fn || !fn->struct_producer) return 0;
@@ -69,9 +90,9 @@ static int cxpr_expression_eval_struct_alias(
 
     produced = cxpr_eval_struct_result(
         fn,
-        cxpr_ast_function_name(entry->ast),
+        cxpr_expr_ast_call_name(entry->ast),
         ordered_args,
-        cxpr_ast_function_argc(entry->ast),
+        cxpr_expr_ast_call_arg_count(entry->ast),
         NULL,
         ctx,
         reg,
@@ -116,7 +137,7 @@ cxpr_evaluator* cxpr_evaluator_new(const cxpr_registry* reg) {
         return NULL;
     }
     evaluator->registry = reg;
-    evaluator->parser = cxpr_parser_new();
+    evaluator->parser = cxpr_expr_parser_new();
     if (!evaluator->parser) {
         free(evaluator->expressions);
         free(evaluator);
@@ -131,12 +152,12 @@ void cxpr_evaluator_free(cxpr_evaluator* evaluator) {
         cxpr_expression_result_dispose(&evaluator->expressions[i].result);
         free(evaluator->expressions[i].name);
         free(evaluator->expressions[i].expression);
-        cxpr_ast_free(evaluator->expressions[i].ast);
-        cxpr_program_free(evaluator->expressions[i].program);
+        cxpr_expr_ast_free(evaluator->expressions[i].ast);
+        cxpr_expr_compiled_free(evaluator->expressions[i].program);
     }
     free(evaluator->expressions);
     free(evaluator->eval_order);
-    cxpr_parser_free(evaluator->parser);
+    cxpr_expr_parser_free(evaluator->parser);
     free(evaluator);
 }
 
@@ -153,13 +174,24 @@ bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {
 
     for (size_t i = 0; i < evaluator->count; i++) {
         cxpr_expression_entry* entry = &evaluator->expressions[i];
-        cxpr_program_free(entry->program);
-        entry->program = cxpr_compile(entry->ast, evaluator->registry, err);
+        cxpr_analysis analysis = {0};
+        cxpr_expr_compiled_free(entry->program);
+        entry->program = NULL;
+        if (!cxpr_analyze(entry->ast, evaluator->registry, &analysis, err)) {
+            cxpr_expression_wrap_compile_error(entry, err);
+            evaluator->compiled = false;
+            return false;
+        }
+        entry->program = cxpr_expr_compile(entry->ast, evaluator->registry, err);
         if (!entry->program) {
             cxpr_expression_wrap_compile_error(entry, err);
             evaluator->compiled = false;
             return false;
         }
+    }
+    for (size_t i = 0; i < evaluator->count; i++) {
+        evaluator->expressions[i].used_as_struct_prefix =
+            cxpr_expression_entry_used_as_struct_prefix(evaluator, i);
     }
 
     evaluator->compiled = true;
@@ -202,7 +234,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         cxpr_error eval_err = {0};
         cxpr_value value = {0};
 
-        if (cxpr_expression_entry_used_as_struct_prefix(evaluator, idx)) {
+        if (entry->used_as_struct_prefix) {
             int struct_alias = cxpr_expression_eval_struct_alias(
                 entry,
                 ctx,
@@ -216,19 +248,22 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
                 return;
             }
             if (struct_alias == 0 && entry->program) {
-                (void)cxpr_eval_program(entry->program, ctx, evaluator->registry, &value, &eval_err);
+                (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
             } else if (struct_alias == 0) {
                 (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
             }
         } else if (entry->program) {
-            (void)cxpr_eval_program(entry->program, ctx, evaluator->registry, &value, &eval_err);
+            (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
         } else {
             (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
         }
         if (eval_err.code != CXPR_OK) {
             cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
-            if (err) *err = eval_err;
+            if (err) {
+                *err = eval_err;
+                cxpr_expression_wrap_eval_error(entry, err);
+            }
             return;
         }
 
@@ -245,6 +280,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
                 err->message = "Expression result has unsupported value type";
+                cxpr_expression_wrap_eval_error(entry, err);
             }
             return;
         }
@@ -253,7 +289,10 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         if (eval_err.code != CXPR_OK) {
             cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);
-            if (err) *err = eval_err;
+            if (err) {
+                *err = eval_err;
+                cxpr_expression_wrap_eval_error(entry, err);
+            }
             return;
         }
         entry->evaluated = true;

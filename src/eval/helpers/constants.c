@@ -6,7 +6,7 @@
 #include "internal.h" // IWYU pragma: keep
 #include "limits.h"
 
-bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out) {
+bool cxpr_eval_constant_double(const cxpr_expr_ast* ast, double* out) {
     double left;
     double right;
 
@@ -59,7 +59,7 @@ bool cxpr_eval_constant_double(const cxpr_ast* ast, double* out) {
     }
 }
 
-static bool cxpr_eval_const_or_param_double(const cxpr_ast* ast,
+static bool cxpr_eval_const_or_param_double(const cxpr_expr_ast* ast,
                                             const cxpr_context* ctx,
                                             double* out) {
     double left;
@@ -124,8 +124,8 @@ static bool cxpr_eval_const_or_param_double(const cxpr_ast* ast,
     }
 }
 
-const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast,
-                                                     const cxpr_ast* const* ordered_args,
+const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_expr_ast* ast,
+                                                     const cxpr_expr_ast* const* ordered_args,
                                                      size_t argc,
                                                      const cxpr_context* ctx,
                                                      const cxpr_registry* reg,
@@ -133,7 +133,7 @@ const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast,
                                                      size_t local_cap,
                                                      char** heap_buf,
                                                      cxpr_error* err) {
-    cxpr_ast* mutable_ast = (cxpr_ast*)ast;
+    cxpr_expr_ast* mutable_ast = (cxpr_expr_ast*)ast;
     const char* key;
     double values[CXPR_MAX_CALL_ARGS];
 
@@ -142,12 +142,12 @@ const char* cxpr_eval_prepare_const_key_for_producer(const cxpr_ast* ast,
         argc > CXPR_MAX_CALL_ARGS) {
         return NULL;
     }
-    if (!cxpr_ast_producer_has_named_args(ast) &&
+    if (!cxpr_expr_ast_producer_has_named_args(ast) &&
         ast->data.producer_access.cached_const_key_ready &&
         ast->data.producer_access.cached_const_key) {
         return ast->data.producer_access.cached_const_key;
     }
-    if (!cxpr_ast_producer_has_named_args(ast) &&
+    if (!cxpr_expr_ast_producer_has_named_args(ast) &&
         !ast->data.producer_access.cached_const_key_ready) {
         mutable_ast->data.producer_access.cached_const_key_ready = true;
         if (argc == 0u) {

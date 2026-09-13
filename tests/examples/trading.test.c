@@ -13,7 +13,7 @@ static cxpr_value fn_cross_below(const cxpr_value* args, size_t argc, void* user
 int main(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
     cxpr_error err = {0};
 
@@ -51,7 +51,7 @@ int main(void) {
     assert(err.code == CXPR_OK);
     assert(cxpr_expression_get_bool(evaluator, "entry", NULL) == false);
 
-    cxpr_ast* ast = cxpr_parse(
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         parser,
         "cross_below(ema_fast, ema_slow, prev_ema_fast, prev_ema_slow) or atr / close > $max_vol_ratio",
         &err
@@ -118,9 +118,9 @@ int main(void) {
         cxpr_evaluator_free(evaluator);
     }
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_evaluator_free(evaluator);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
 

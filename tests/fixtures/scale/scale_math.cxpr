@@ -1,0 +1,7 @@
+# Host-neutral leaf helpers for the realistic scale fixture.
+
+fn clamp01(x) = x < 0 ? 0 : x > 1 ? 1 : x
+fn signed_square(x) = x < 0 ? 0 - x * x : x * x
+fn blend(a, b, weight) =
+    a * (1 - (weight < 0 ? 0 : weight > 1 ? 1 : weight)) +
+    b * (weight < 0 ? 0 : weight > 1 ? 1 : weight)

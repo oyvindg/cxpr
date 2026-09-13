@@ -1,0 +1,3 @@
+model ir_context_churn
+in { a, b, c, d, e, x, y, z }
+out result = a + b * c - d / e + x * y - z

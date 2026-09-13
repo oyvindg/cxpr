@@ -5,7 +5,7 @@
 
 #include "internal.h"
 
-unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_registry* reg,
+unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                              size_t depth) {
     unsigned char left_kind;
     unsigned char right_kind;
@@ -27,7 +27,8 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_reg
     case CXPR_NODE_FIELD_ACCESS:
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_PRODUCER_ACCESS:
-    case CXPR_NODE_LOOKBACK:
+    case CXPR_NODE_INDEX:
+    case CXPR_NODE_RECORD:
         return CXPR_IR_RESULT_UNKNOWN;
 
     case CXPR_NODE_UNARY_OP:
@@ -110,7 +111,8 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_ast* ast, const cxpr_reg
         }
 
         entry = cxpr_registry_find(reg, ast->data.function_call.name);
-        if (!entry || entry->ast_func || (entry->struct_fields && !entry->struct_producer) ||
+        if (!entry || entry->ast_func || entry->model_producer ||
+            (entry->struct_fields && !entry->struct_producer) ||
             (entry->struct_producer && !entry->sync_func)) {
             return CXPR_IR_RESULT_UNKNOWN;
         }

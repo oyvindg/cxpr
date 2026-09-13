@@ -2,7 +2,7 @@
  * @file codegen.h
  * @brief Transpile cxpr ASTs into C (and C-like, e.g. CUDA/WGSL) source.
  *
- * `cxpr_ast_to_c` renders one expression AST as a C expression string;
+ * `cxpr_expr_ast_to_c` renders one expression AST as a C expression string;
  * `cxpr_exprset_to_c` renders a set of interdependent named expressions as a
  * block of C declarations, ordered so every reference follows its definition.
  *
@@ -16,7 +16,7 @@
 #ifndef CXPR_CODEGEN_H
 #define CXPR_CODEGEN_H
 
-#include <cxpr/ast.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/types.h>
 
 #include <stdbool.h>
@@ -27,13 +27,13 @@ extern "C" {
 
 #define CXPR_C_TARGET_API_VERSION 1u
 
-typedef char* (*cxpr_c_emit_leaf_at_offset_fn)(const cxpr_ast* ast,
+typedef char* (*cxpr_c_emit_leaf_at_offset_fn)(const cxpr_expr_ast* ast,
                                                unsigned lookback_offset,
                                                void* userdata,
                                                cxpr_error* err);
 
 typedef bool (*cxpr_c_emit_offset_fn)(void* userdata,
-                                      const cxpr_ast* ast,
+                                      const cxpr_expr_ast* ast,
                                       int lookback_offset,
                                       cxpr_error* err);
 
@@ -49,13 +49,18 @@ typedef bool (*cxpr_c_emit_offset_fn)(void* userdata,
  * handled node, set `*handled` true, populate @p err, and return NULL. Set
  * `*handled` false (return value ignored) to fall back to cxpr's default
  * emission. The target may recurse into sub-arguments via
- * `cxpr_ast_to_c_at_offset` to keep nested operator/lookback handling in cxpr.
+ * `cxpr_expr_ast_to_c_at_offset` to keep nested operator/lookback handling in cxpr.
  */
-typedef char* (*cxpr_c_emit_call_at_offset_fn)(const cxpr_ast* ast,
+typedef char* (*cxpr_c_emit_call_at_offset_fn)(const cxpr_expr_ast* ast,
                                                unsigned lookback_offset,
                                                void* userdata,
                                                bool* handled,
                                                cxpr_error* err);
+
+typedef char* (*cxpr_c_emit_lookback_at_offset_fn)(const cxpr_expr_ast* ast,
+                                                   unsigned lookback_offset,
+                                                   void* userdata,
+                                                   cxpr_error* err);
 
 /**
  * @brief Target description for a C-like backend (plain C, CUDA, WGSL, ...).
@@ -77,7 +82,23 @@ typedef struct cxpr_c_target {
     unsigned api_version;
     cxpr_c_emit_leaf_at_offset_fn emit_leaf_at_offset;
     cxpr_c_emit_call_at_offset_fn emit_call_at_offset;
+    cxpr_c_emit_lookback_at_offset_fn emit_lookback_at_offset;
 } cxpr_c_target;
+
+/** @brief Source category for one generated cxpr_expr_compiled C function argument. */
+typedef enum {
+    CXPR_C_PROGRAM_ARG_VAR = 0,   /**< Binds IR LOAD_VAR by name. */
+    CXPR_C_PROGRAM_ARG_PARAM = 1, /**< Binds IR LOAD_PARAM by name. */
+    CXPR_C_PROGRAM_ARG_LOCAL = 2  /**< Binds IR LOAD_LOCAL by zero-based local_index. */
+} cxpr_c_program_arg_kind;
+
+/** @brief One explicit argument binding for `cxpr_expr_compiled_to_c_function`. */
+typedef struct cxpr_c_program_arg {
+    cxpr_c_program_arg_kind kind;
+    const char* name;      /**< cxpr symbol/param name; optional for LOCAL. */
+    const char* c_name;    /**< C parameter name. NULL derives a safe identifier from name/kind. */
+    size_t local_index;    /**< LOAD_LOCAL index when kind is LOCAL. */
+} cxpr_c_program_arg;
 
 /**
  * @brief Transpile a single AST into a C expression string.
@@ -96,12 +117,64 @@ typedef struct cxpr_c_target {
  * @return Newly allocated C expression string (free with `free`), or NULL on
  *         an unsupported node, operator, or function.
  */
-char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
+char* cxpr_expr_ast_to_c(const cxpr_expr_ast* ast, const cxpr_c_target* target, cxpr_error* err);
+
+/**
+ * @brief Emit a scalar `cxpr_expr_compiled` IR as a standalone C function.
+ *
+ * This is an optimization/codegen backend, not a replacement for IR execution.
+ * It supports deterministic scalar IR opcodes such as constants, explicit
+ * variables/params/locals, arithmetic, comparisons, math builtins lowered to
+ * opcodes, and IR jumps. Unsupported dynamic calls return NULL with @p err set,
+ * allowing callers to fall back to the interpreter.
+ *
+ * @param prog Compiled program to emit.
+ * @param qualifiers Leading function qualifiers, e.g. "static inline"; NULL emits none.
+ * @param return_type C return type, e.g. "double" or "bool"; NULL defaults to "double".
+ * @param function_name C function name.
+ * @param args Explicit bindings for LOAD_VAR/LOAD_PARAM/LOAD_LOCAL.
+ * @param arg_count Number of argument bindings.
+ * @param err Optional error output.
+ * @return Newly allocated C function source (free with `free`), or NULL on unsupported IR.
+ */
+char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
+                                 const char* qualifiers,
+                                 const char* return_type,
+                                 const char* function_name,
+                                 const cxpr_c_program_arg* args,
+                                 size_t arg_count,
+                                 cxpr_error* err);
+
+/** Stable status values emitted by checked scalar C functions. */
+typedef enum cxpr_c_eval_status {
+    CXPR_C_EVAL_OK = 0,
+    CXPR_C_EVAL_INVALID_INDEX = 1,
+    CXPR_C_EVAL_INDEX_OUT_OF_RANGE = 2,
+    CXPR_C_EVAL_UNSUPPORTED_RESULT = 3
+} cxpr_c_eval_status;
+
+#ifndef CXPR_C_CHECKED_RESULT_DEFINED
+#define CXPR_C_CHECKED_RESULT_DEFINED 1
+typedef struct cxpr_c_checked_result {
+    double value;
+    unsigned status; /**< One of @ref cxpr_c_eval_status. */
+} cxpr_c_checked_result;
+#endif
+
+/**
+ * Emit an array-capable scalar function returning `{ value, status }`.
+ * Existing scalar codegen remains ABI-compatible. Aggregate results are
+ * reported as `CXPR_C_EVAL_UNSUPPORTED_RESULT` rather than coerced silently.
+ */
+char* cxpr_expr_compiled_to_c_checked_function(
+    const cxpr_expr_compiled* prog, const char* qualifiers,
+    const char* function_name, const cxpr_c_program_arg* args,
+    size_t arg_count, cxpr_error* err);
 
 /**
  * @brief Transpile a single AST into a C expression string at a lookback offset.
  *
- * As `cxpr_ast_to_c`, but every leaf/lookback is resolved relative to
+ * As `cxpr_expr_ast_to_c`, but every leaf/lookback is resolved relative to
  * @p lookback_offset (added to any `expr[n]` offsets encountered). Intended for
  * targets whose `emit_call_at_offset` recurses into sub-arguments: pass the
  * offset handed to the hook so nested lookback stays correct.
@@ -112,7 +185,7 @@ char* cxpr_ast_to_c(const cxpr_ast* ast, const cxpr_c_target* target, cxpr_error
  * @param err Optional error output, populated on failure.
  * @return Newly allocated C expression string (free with `free`), or NULL on error.
  */
-char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
+char* cxpr_expr_ast_to_c_at_offset(const cxpr_expr_ast* ast, unsigned lookback_offset,
                               const cxpr_c_target* target, cxpr_error* err);
 
 /**
@@ -123,7 +196,7 @@ char* cxpr_ast_to_c_at_offset(const cxpr_ast* ast, unsigned lookback_offset,
  * to @p current_offset, then delegate emission of the target expression to the
  * host callback. The host owns concrete leaf layout.
  */
-bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
+bool cxpr_codegen_emit_lookback_offset(const cxpr_expr_ast* ast,
                                        int current_offset,
                                        cxpr_c_emit_offset_fn emit,
                                        void* userdata,
@@ -132,7 +205,7 @@ bool cxpr_codegen_emit_lookback_offset(const cxpr_ast* ast,
 /** @brief One named expression for set transpilation. */
 typedef struct cxpr_c_named_expr {
     const char* name;       /**< Identifier the expression is bound to. */
-    const cxpr_ast* ast;    /**< Parsed expression. */
+    const cxpr_expr_ast* ast;    /**< Parsed expression. */
 } cxpr_c_named_expr;
 
 /**

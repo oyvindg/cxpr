@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include <cxpr/source_plan.h>
+#include <cxpr/source.h>
 
 #include <stddef.h>
 #include <stdint.h>

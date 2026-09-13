@@ -61,7 +61,7 @@ static cxpr_value fn_cross_below(const cxpr_value* args, size_t argc, void* user
 }
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -81,18 +81,18 @@ int main(void) {
     cxpr_context_set_param(ctx, "min_volume",    1000000.0);
     cxpr_context_set_param(ctx, "max_vol_ratio",       0.03);
 
-    cxpr_ast* ast = cxpr_parse(
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
         parser,
         "cross_below(ema_fast, ema_slow, prev_ema_fast, prev_ema_slow) or atr / close > $max_vol_ratio",
         &err
     );
 
-    printf("signal=%d\n", cxpr_ast_eval_bool(ast, ctx, reg, &err));
+    printf("signal=%d\n", cxpr_expr_ast_eval_bool(ast, ctx, reg, &err));
 
-    cxpr_ast_free(ast);
+    cxpr_expr_ast_free(ast);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
     return 0;
 }
 ```

@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <cxpr/ast.h>
+#include <cxpr/expr/ast.h>
 #include <cxpr/context.h>
 #include <cxpr/registry.h>
 
@@ -62,6 +62,23 @@ typedef enum {
     CXPR_PROVIDER_FN_REWRITES_HISTORY = 1u << 2, /**< Function may revise previously emitted values. */
 } cxpr_provider_fn_flags;
 
+/** @brief Capability flags for direct provider sources. */
+typedef enum {
+    CXPR_PROVIDER_SOURCE_RESAMPLE = 1u << 0, /**< Host can bind fixed-duration materialized variants. */
+} cxpr_provider_source_flags;
+
+/** @brief Provider-owned policy used when materializing coarser source series. */
+typedef enum {
+    CXPR_PROVIDER_MATERIALIZE_UNSPECIFIED = 0,
+    CXPR_PROVIDER_MATERIALIZE_FIRST,
+    CXPR_PROVIDER_MATERIALIZE_LAST,
+    CXPR_PROVIDER_MATERIALIZE_MIN,
+    CXPR_PROVIDER_MATERIALIZE_MAX,
+    CXPR_PROVIDER_MATERIALIZE_SUM,
+    CXPR_PROVIDER_MATERIALIZE_MEAN,
+    CXPR_PROVIDER_MATERIALIZE_LINEAR,
+} cxpr_provider_materialization;
+
 /**
  * @brief Generic function metadata exported by one provider.
  *
@@ -82,6 +99,7 @@ typedef struct {
     const cxpr_provider_field_descriptor* fields;      /**< Record output field metadata, or NULL. */
     size_t field_count;                                /**< Number of entries in @p fields. */
     int primary_field_index;                           /**< Preferred default field index, or -1. */
+    cxpr_value_type return_type;                       /**< Declared scalar result type, or NUMBER when unset. */
     unsigned flags;                                    /**< Bitwise OR of `cxpr_provider_fn_flags`. */
     const cxpr_provider_scope_spec* scope;             /**< Optional scoped-series scope metadata. */
 } cxpr_provider_fn_spec;
@@ -97,6 +115,9 @@ typedef struct {
     size_t min_args;                              /**< Minimum accepted argument count. */
     size_t max_args;                              /**< Maximum accepted argument count. */
     const cxpr_provider_scope_spec* scope;        /**< Optional scoped-series scope metadata. */
+    cxpr_value_type value_type;                   /**< Materialized element type; NUMBER when unset. */
+    unsigned flags;                              /**< Bitwise OR of `cxpr_provider_source_flags`. */
+    cxpr_provider_materialization materialization; /**< Host/provider policy, not expression syntax. */
 } cxpr_provider_source_spec;
 
 /**
@@ -249,7 +270,7 @@ typedef enum cxpr_expr_arg_kind {
  * Arrays are provider-owned and borrowed by the caller. `defaults` may be NULL,
  * or may contain NULL entries for parameters without defaults. `kinds` may be
  * NULL when all arguments are numeric. `has_timeframe_param` is retained for
- * compatibility with cxta-style timeframe selectors; generic providers should
+ * compatibility with host-style timeframe selectors; generic providers should
  * prefer @ref cxpr_provider_scope_spec for scope metadata.
  */
 typedef struct cxpr_expr_param_spec {
@@ -258,7 +279,8 @@ typedef struct cxpr_expr_param_spec {
     const cxpr_expr_arg_kind* kinds; /**< Parallel argument kinds, or NULL for all-numeric. */
     size_t count;                    /**< Number of named parameters. */
     size_t min_count;                /**< Minimum required named parameters. */
-    const char* lookback_sugar_name; /**< Optional subscript sugar target, such as `obv()[n]`. */
+    const char* index_sugar_name;    /**< Optional neutral subscript target, such as `obv()[n]`. */
+    const char* lookback_sugar_name; /**< Deprecated alias for index_sugar_name; providers may set either. */
     int has_timeframe_param;         /**< Non-zero when a trailing timeframe selector is supported. */
 } cxpr_expr_param_spec;
 

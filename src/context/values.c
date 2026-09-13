@@ -5,6 +5,28 @@
 
 #include "internal.h"
 
+#include <math.h>
+
+static const char* const CXPR_CONTEXT_HISTORY_OFFSET_KEY =
+    "__cxpr_engine_lookback_offset";
+
+void cxpr_context_set_history_offset(cxpr_context* ctx, size_t offset) {
+    if (!ctx || (double)offset > 9007199254740992.0) return;
+    cxpr_context_set(ctx, CXPR_CONTEXT_HISTORY_OFFSET_KEY, (double)offset);
+}
+
+bool cxpr_context_history_offset(const cxpr_context* ctx, size_t* out_offset) {
+    bool found = false;
+    double value;
+    if (out_offset) *out_offset = 0u;
+    if (!ctx) return false;
+    value = cxpr_context_get(ctx, CXPR_CONTEXT_HISTORY_OFFSET_KEY, &found);
+    if (!found || value < 0.0 || !isfinite(value) || floor(value) != value ||
+        value > (double)SIZE_MAX) return false;
+    if (out_offset) *out_offset = (size_t)value;
+    return true;
+}
+
 static cxpr_bool_map_entry* cxpr_bool_map_find(cxpr_bool_map* map, const char* name) {
     if (!map || !name) return NULL;
     for (size_t i = 0u; i < map->count; ++i) {
@@ -178,6 +200,7 @@ void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
     if (ctx && name) cxpr_bool_map_remove(&ctx->bools, name);
     if (ctx && name) cxpr_string_map_remove(&ctx->strings, name);
     if (ctx && name) cxpr_context_remove_array(&ctx->arrays, name);
+    if (ctx && name) cxpr_context_remove_struct(&ctx->structs, name);
     cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
                             ctx->variable_ptr_cache, &ctx->variables_version,
                             name, hash, value);
@@ -192,6 +215,7 @@ void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
     cxpr_string_map_remove(&ctx->strings, name);
     cxpr_context_remove_array(&ctx->arrays, name);
+    cxpr_context_remove_struct(&ctx->structs, name);
     if (cxpr_bool_map_set(&ctx->bools, name, value)) ctx->variables_version++;
 }
 
@@ -199,6 +223,7 @@ void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* va
     if (!ctx || !name) return;
     cxpr_bool_map_remove(&ctx->bools, name);
     cxpr_context_remove_array(&ctx->arrays, name);
+    cxpr_context_remove_struct(&ctx->structs, name);
     if (cxpr_string_map_set(&ctx->strings, name, value)) ctx->variables_version++;
 }
 
@@ -216,12 +241,16 @@ void cxpr_context_set_value(cxpr_context* ctx, const char* name, const cxpr_valu
         cxpr_context_set_string(ctx, name, value->str);
         return;
     case CXPR_VALUE_STRUCT:
+        cxpr_bool_map_remove(&ctx->bools, name);
+        cxpr_string_map_remove(&ctx->strings, name);
+        cxpr_context_remove_array(&ctx->arrays, name);
         cxpr_context_set_struct(ctx, name, value->s);
         return;
     case CXPR_VALUE_ARRAY:
         if (!value->a) return;
         cxpr_bool_map_remove(&ctx->bools, name);
         cxpr_string_map_remove(&ctx->strings, name);
+        cxpr_context_remove_struct(&ctx->structs, name);
         cxpr_context_store_array(&ctx->arrays, name, value->a);
         ctx->variables_version++;
         return;
@@ -318,6 +347,7 @@ void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
     if (ctx && name) cxpr_bool_map_remove(&ctx->bool_params, name);
     if (ctx && name) cxpr_string_map_remove(&ctx->string_params, name);
     if (ctx && name) cxpr_context_remove_array(&ctx->array_params, name);
+    if (ctx && name) cxpr_context_remove_struct(&ctx->structs, name);
     cxpr_context_set_hashed(ctx, &ctx->params, ctx->param_cache,
                             ctx->param_ptr_cache, &ctx->params_version,
                             name, hash, value);
@@ -342,6 +372,7 @@ void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value
     if (!ctx || !name) return;
     cxpr_string_map_remove(&ctx->string_params, name);
     cxpr_context_remove_array(&ctx->array_params, name);
+    cxpr_context_remove_struct(&ctx->structs, name);
     if (cxpr_bool_map_set(&ctx->bool_params, name, value)) ctx->params_version++;
 }
 
@@ -349,6 +380,7 @@ void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const ch
     if (!ctx || !name) return;
     cxpr_bool_map_remove(&ctx->bool_params, name);
     cxpr_context_remove_array(&ctx->array_params, name);
+    cxpr_context_remove_struct(&ctx->structs, name);
     if (cxpr_string_map_set(&ctx->string_params, name, value)) ctx->params_version++;
 }
 
@@ -365,10 +397,20 @@ void cxpr_context_set_param_value(cxpr_context* ctx, const char* name, const cxp
     case CXPR_VALUE_STRING:
         cxpr_context_set_param_string(ctx, name, value->str);
         return;
+    case CXPR_VALUE_STRUCT:
+        cxpr_bool_map_remove(&ctx->bool_params, name);
+        cxpr_string_map_remove(&ctx->string_params, name);
+        cxpr_context_remove_array(&ctx->array_params, name);
+        if (value->s) {
+            cxpr_context_store_struct(&ctx->structs, name, value->s);
+            ctx->params_version++;
+        }
+        return;
     case CXPR_VALUE_ARRAY:
         if (!value->a) return;
         cxpr_bool_map_remove(&ctx->bool_params, name);
         cxpr_string_map_remove(&ctx->string_params, name);
+        cxpr_context_remove_struct(&ctx->structs, name);
         cxpr_context_store_array(&ctx->array_params, name, value->a);
         ctx->params_version++;
         return;

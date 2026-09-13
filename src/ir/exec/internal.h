@@ -83,6 +83,7 @@ bool cxpr_ir_call_memo_set(const cxpr_context* ctx,
                            cxpr_value value);
 /** @brief Execute one expression-defined function on the scalar-only IR path. */
 cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
+                                       const cxpr_expr_ast* call_ast,
                                        const cxpr_context* ctx,
                                        const cxpr_registry* reg,
                                        const cxpr_value* args,
@@ -93,14 +94,14 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                               size_t local_count, cxpr_error* err);
 /** @brief Execute the scalar fast-path IR interpreter. */
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                                const cxpr_registry* reg, const double* locals,
+                                const cxpr_registry* reg, double* locals,
                                 size_t local_count, cxpr_error* err);
 /** @brief Execute a boolean fast-path IR program with separate number/bool stacks. */
 bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                             const cxpr_registry* reg, const double* locals,
                             size_t local_count, bool* out_value, cxpr_error* err);
-/** @brief Evaluate a public `cxpr_program` to a typed runtime value. */
-cxpr_value cxpr_eval_program_value(const cxpr_program* prog, const cxpr_context* ctx,
+/** @brief Evaluate a public `cxpr_expr_compiled` to a typed runtime value. */
+cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
                                    const cxpr_registry* reg, cxpr_error* err);
 
 #endif /* CXPR_IR_EXEC_INTERNAL_H */

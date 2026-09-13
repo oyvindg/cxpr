@@ -1,0 +1,43 @@
+# Syntax contract for host-materialized temporal series.
+#
+# `resample(source, interval)` selects a provider-backed series at build time.
+# It does not aggregate samples inside the scalar evaluator. The same construct
+# is deliberately used for trading, telemetry, and operations data.
+
+model timeframe_multi_domain
+
+in { close, temperature, requests, path }
+
+hourly_close = resample(close, every="1h")
+daily_close = resample(close, "1d")
+hourly_temperature = resample(temperature, "1h")
+five_minute_requests = resample(requests, "5m")
+
+# Lookbacks are relative to the selected materialized series, not host ticks.
+previous_hourly_close = resample(close, "1h")[1]
+previous_hourly_temperature = resample(temperature, "1h")[1]
+previous_hourly_close_derived = hourly_close[1]
+
+# Gaming: [1] is the previous 500 ms sample; [2] is approximately one second
+# earlier when evaluated on aligned buckets.
+path_500ms_ago = resample(path, "500ms")[1]
+path_1s_ago = resample(path, "500ms")[2]
+
+# Downstream functions consume the selected series normally. These calls are
+# part of the syntax contract; provider registration supplies their semantics.
+hourly_close_rsi = rsi(hourly_close, 14)
+daily_close_rsi = rsi(daily_close, 14)
+hourly_temperature_mean = mean(window(hourly_temperature, 24))
+request_burst = five_minute_requests > mean(window(five_minute_requests, 12))
+nested_hourly_close_rsi = rsi(resample(close, every="1h"), 14)
+
+out {
+    hourly_close_rsi,
+    daily_close_rsi,
+    hourly_temperature_mean,
+    request_burst,
+    previous_hourly_close,
+    previous_hourly_temperature,
+    path_500ms_ago,
+    path_1s_ago
+}

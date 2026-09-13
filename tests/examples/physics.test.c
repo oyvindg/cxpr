@@ -6,7 +6,7 @@
 #define EPSILON 1e-12
 
 int main(void) {
-    cxpr_parser* parser = cxpr_parser_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_context* ctx = cxpr_context_new();
     cxpr_error err = {0};
@@ -27,9 +27,9 @@ int main(void) {
     double vals[] = {1.2, -0.5, 0.8, 1.1};
     cxpr_context_set_fields(ctx, "body", fields, vals, 4);
 
-    cxpr_ast* energy = cxpr_parse(parser, "0.5 * mass * velocity^2", &err);
-    cxpr_ast* speed = cxpr_parse(parser, "sqrt(body.vx^2 + body.vy^2)", &err);
-    cxpr_ast* alarm = cxpr_parse(
+    cxpr_expr_ast* energy = cxpr_expr_ast_parse(parser, "0.5 * mass * velocity^2", &err);
+    cxpr_expr_ast* speed = cxpr_expr_ast_parse(parser, "sqrt(body.vx^2 + body.vy^2)", &err);
+    cxpr_expr_ast* alarm = cxpr_expr_ast_parse(
         parser,
         "abs(acceleration) > $max_acceleration or temperature >= $meltdown_limit",
         &err
@@ -45,12 +45,12 @@ int main(void) {
     cxpr_context_set(ctx, "acceleration", 12.0);
     assert(cxpr_test_eval_ast_bool(alarm, ctx, reg, &err) == true);
 
-    cxpr_ast_free(alarm);
-    cxpr_ast_free(speed);
-    cxpr_ast_free(energy);
+    cxpr_expr_ast_free(alarm);
+    cxpr_expr_ast_free(speed);
+    cxpr_expr_ast_free(energy);
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
-    cxpr_parser_free(parser);
+    cxpr_expr_parser_free(parser);
 
     printf("  \342\234\223 physics example\n");
     return 0;

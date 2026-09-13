@@ -5,6 +5,7 @@
 
 #include "internal.h"
 #include <math.h>
+#include <stdio.h>
 
 #if !defined(__GNUC__) && !defined(__clang__)
 #error "cxpr fast IR executor requires GCC/Clang computed goto support"
@@ -20,6 +21,24 @@
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic ignored "-Wpedantic"
 #endif
+
+static const char* cxpr_ir_unknown_param_message(const cxpr_ir_instr* instr) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!instr || !instr->name || instr->name[0] == '\0') {
+        return "Unknown parameter variable";
+    }
+    snprintf(message, sizeof(message), "Unknown parameter variable '%s'", instr->name);
+    return message;
+}
+
+static const char* cxpr_ir_unknown_identifier_message(const cxpr_ir_instr* instr) {
+    static CXPR_THREAD_LOCAL char message[256];
+    if (!instr || !instr->name || instr->name[0] == '\0') {
+        return "Unknown identifier";
+    }
+    snprintf(message, sizeof(message), "Unknown identifier '%s'", instr->name);
+    return message;
+}
 
 static inline double cxpr_ir_exec_lookup_scalar_fast(const cxpr_context* ctx,
                                                      const cxpr_ir_instr* instr,
@@ -106,7 +125,7 @@ static inline bool cxpr_ir_exec_lookup_root_cached(const cxpr_context* ctx,
 }
 
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                                const cxpr_registry* reg, const double* locals,
+                                const cxpr_registry* reg, double* locals,
                                 size_t local_count, cxpr_error* err) {
     double stack[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
@@ -179,7 +198,12 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         [CXPR_OP_JUMP] = &&op_jump,
         [CXPR_OP_JUMP_IF_FALSE] = &&op_jump_if_false,
         [CXPR_OP_JUMP_IF_TRUE] = &&op_jump_if_true,
-        [CXPR_OP_RETURN] = &&op_return
+        [CXPR_OP_LOOKBACK_PUSH] = &&op_unsupported,
+        [CXPR_OP_LOOKBACK_POP] = &&op_unsupported,
+        [CXPR_OP_LOOKBACK_RESOLVE] = &&op_unsupported,
+        [CXPR_OP_STORE_LOCAL] = &&op_store_local,
+        [CXPR_OP_RETURN] = &&op_return,
+        [CXPR_OP_INDEX] = &&op_unsupported
     };
     const cxpr_ir_instr* instr;
     double a, b, value;
@@ -192,7 +216,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
             return cxpr_ir_runtime_error(err, "IR program fell off end without return").d; \
         }                                                                           \
         instr = &program->code[ip];                                                 \
-        if ((unsigned)instr->op > (unsigned)CXPR_OP_RETURN) {                       \
+        if ((unsigned)instr->op > (unsigned)CXPR_OP_INDEX) {                        \
             goto op_unsupported;                                                    \
         }                                                                           \
         goto *dispatch[instr->op];                                                  \
@@ -226,11 +250,11 @@ op_load_var: {
     if (fast_var_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
-            return cxpr_ir_make_not_found(err, "Unknown identifier").d;
+            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
-        if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier").d;
+        if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
     }
     stack[sp++] = value;
     CXPR_FAST_NEXT();
@@ -241,11 +265,11 @@ op_load_var_square: {
     if (fast_var_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
-            return cxpr_ir_make_not_found(err, "Unknown identifier").d;
+            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
-        if (!found) return cxpr_ir_make_not_found(err, "Unknown identifier").d;
+        if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
     }
     stack[sp++] = value * value;
     CXPR_FAST_NEXT();
@@ -256,11 +280,11 @@ op_load_param: {
     if (fast_param_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
-            return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
+            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
-        if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
+        if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
     }
     stack[sp++] = value;
     CXPR_FAST_NEXT();
@@ -271,11 +295,11 @@ op_load_param_square: {
     if (fast_param_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
-            return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
+            return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
-        if (!found) return cxpr_ir_make_not_found(err, "Unknown parameter variable").d;
+        if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
     }
     stack[sp++] = value * value;
     CXPR_FAST_NEXT();
@@ -461,7 +485,7 @@ op_call_defined: {
     for (size_t i = 0; i < instr->index; ++i) {
         scalar_args[i] = cxpr_num(stack[sp - instr->index + i]);
     }
-    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, instr->payload, ctx, reg,
                                          scalar_args, instr->index, err);
     if (err && err->code != CXPR_OK) return NAN;
     sp -= instr->index;
@@ -491,6 +515,10 @@ op_jump_if_true:
         ip = instr->index;
         CXPR_FAST_DISPATCH();
     }
+    CXPR_FAST_NEXT();
+op_store_local:
+    if (instr->index >= local_count) return cxpr_ir_runtime_error(err, "Unknown local variable").d;
+    locals[instr->index] = stack[--sp];
     CXPR_FAST_NEXT();
 op_return:
     if (sp != 1) return cxpr_ir_runtime_error(err, "IR stack imbalance on return").d;
@@ -585,7 +613,12 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         [CXPR_OP_JUMP] = &&opb_jump,
         [CXPR_OP_JUMP_IF_FALSE] = &&opb_jump_if_false,
         [CXPR_OP_JUMP_IF_TRUE] = &&opb_jump_if_true,
-        [CXPR_OP_RETURN] = &&opb_return
+        [CXPR_OP_LOOKBACK_PUSH] = &&opb_unsupported,
+        [CXPR_OP_LOOKBACK_POP] = &&opb_unsupported,
+        [CXPR_OP_LOOKBACK_RESOLVE] = &&opb_unsupported,
+        [CXPR_OP_STORE_LOCAL] = &&opb_unsupported,
+        [CXPR_OP_RETURN] = &&opb_return,
+        [CXPR_OP_INDEX] = &&opb_unsupported
     };
     const cxpr_ir_instr* instr;
     double a, b, value;
@@ -600,7 +633,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
             return false;                                                           \
         }                                                                           \
         instr = &program->code[ip];                                                 \
-        if ((unsigned)instr->op > (unsigned)CXPR_OP_RETURN) {                       \
+        if ((unsigned)instr->op > (unsigned)CXPR_OP_INDEX) {                        \
             goto opb_unsupported;                                                   \
         }                                                                           \
         goto *dispatch[instr->op];                                                  \
@@ -640,13 +673,13 @@ opb_load_var: {
     if (fast_var_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
-            (void)cxpr_ir_make_not_found(err, "Unknown identifier");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
             return false;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
         if (!found) {
-            (void)cxpr_ir_make_not_found(err, "Unknown identifier");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
             return false;
         }
     }
@@ -659,13 +692,13 @@ opb_load_var_square: {
     if (fast_var_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
-            (void)cxpr_ir_make_not_found(err, "Unknown identifier");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
             return false;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
         if (!found) {
-            (void)cxpr_ir_make_not_found(err, "Unknown identifier");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
             return false;
         }
     }
@@ -678,13 +711,13 @@ opb_load_param: {
     if (fast_param_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
-            (void)cxpr_ir_make_not_found(err, "Unknown parameter variable");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             return false;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
         if (!found) {
-            (void)cxpr_ir_make_not_found(err, "Unknown parameter variable");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             return false;
         }
     }
@@ -697,13 +730,13 @@ opb_load_param_square: {
     if (fast_param_map) {
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
-            (void)cxpr_ir_make_not_found(err, "Unknown parameter variable");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             return false;
         }
     } else {
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
         if (!found) {
-            (void)cxpr_ir_make_not_found(err, "Unknown parameter variable");
+            (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             return false;
         }
     }
@@ -920,7 +953,7 @@ opb_call_defined: {
     for (size_t i = 0; i < instr->index; ++i) {
         scalar_args[i] = cxpr_num(nstack[nsp - instr->index + i]);
     }
-    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, ctx, reg,
+    result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, instr->payload, ctx, reg,
                                          scalar_args, instr->index, err);
     if (err && err->code != CXPR_OK) return false;
     nsp -= instr->index;

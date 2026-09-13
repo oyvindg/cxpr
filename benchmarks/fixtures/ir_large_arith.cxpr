@@ -1,0 +1,11 @@
+model ir_large_arith
+in { a, b, c, d, e, f, g, h, i, j, x, y, z, m, n }
+out result =
+    ((a * b + c * d - e * f + g * h - i * j) *
+     (x + y * 0.5 - z * 0.25 + m * 0.125 - n * 0.0625)) +
+    ((a + c + e + g + i + x + z + n) *
+     (b - d + f - h + j - y + m)) -
+    ((a * a + b * b + c * c + d * d + e * e) /
+     (1 + abs(n))) +
+    ((f * g * 0.01) + (h * i * 0.02) + (j * x * 0.03) +
+     (y * z * 0.04) + (m * n * 0.05))

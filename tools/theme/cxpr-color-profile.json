@@ -1,0 +1,27 @@
+{
+  "name": "cxpr-default",
+  "version": 1,
+  "description": "Shared CXPR token color profile for text editor integrations.",
+  "tokens": {
+    "type": "#4EC9B0",
+    "function": "#DCDCAA",
+    "import": "#DCDCAA",
+    "importPath": "#D7BA7D",
+    "parameter": "#4FC1FF",
+    "namedArgument": "#9D9D9D",
+    "assignment": "#569CD6",
+    "block": "#C586C0",
+    "plotBlock": "#D7BA7D",
+    "property": "#9CDCFE",
+    "reference": "#569CD6",
+    "input": "#4EC9B0",
+    "state": "#E06C75",
+    "variable": "#9CDCFE",
+    "string": "#CE9178",
+    "number": "#B5CEA8",
+    "operator": "#D4D4D4",
+    "keyword": "#C586C0",
+    "punctuation": "#D4D4D4",
+    "comment": "#6A9955"
+  }
+}

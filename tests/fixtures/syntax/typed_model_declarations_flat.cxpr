@@ -1,0 +1,33 @@
+# Syntax contract for flat explicit model declaration types.
+#
+# This is the block-free counterpart to typed_model_declarations.cxpr. Both
+# forms must lower to the same declaration model and apply the same explicit
+# type validation and fallback inference rules.
+# Buffer declarations have no `=` initializer. A staged `:=` update evaluates
+# once per tick and atomically pushes at commit; reads see the previous commit.
+#
+# This executable fixture is validated and compiled by the model test suite.
+
+model typed_model_declarations_flat
+
+in source: series<number>
+in enabled: series<bool>
+in $period: int = 14 { min = 1, max = 512 }
+
+state average: number = 0
+state initialized: bool = false
+state observed: buffer<number, samples = 64>
+
+# Backward-compatible fallback: infer `number` from the initializer.
+state ticks = 0
+
+next_average = initialized ? average + (source - average) / $period : source
+next_ticks = ticks + 1
+
+average := next_average
+initialized := true
+ticks := next_ticks
+observed := source
+
+out value: series<number> = next_average
+out ready: series<bool> = enabled and initialized
