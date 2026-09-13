@@ -336,6 +336,7 @@ static bool cxpr_eval_values_equal(cxpr_value left, cxpr_value right, bool* out)
         return true;
     case CXPR_VALUE_TIMESTAMP:
     case CXPR_VALUE_DURATION:
+    case CXPR_VALUE_INT64:
         *out = left.i64 == right.i64;
         return true;
     default:
@@ -482,6 +483,12 @@ static cxpr_value cxpr_eval_unary_op(const cxpr_expr_ast* ast, const cxpr_contex
 
     switch (ast->data.unary_op.op) {
     case CXPR_TOK_MINUS:
+        if (operand.type == CXPR_VALUE_INT64) {
+            if (operand.i64 == INT64_MIN)
+                return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                       "int64 negation overflow");
+            return cxpr_int64(-operand.i64);
+        }
         if (!cxpr_require_type(operand, CXPR_VALUE_NUMBER, err,
                                "Unary minus requires double")) {
             return cxpr_num(NAN);
@@ -519,6 +526,9 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
         return cxpr_num(ast->data.number.value);
+
+    case CXPR_NODE_INT64:
+        return cxpr_int64(ast->data.integer.value);
 
     case CXPR_NODE_BOOL:
         return cxpr_bool(ast->data.boolean.value);

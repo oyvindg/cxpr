@@ -5,9 +5,9 @@
 #include <cxpr/generated.h>
 
 static void tick(void* state,
-                 const double* inputs,
-                 const double* params,
-                 double* outputs) {
+                 const cxpr_value* inputs,
+                 const cxpr_value* params,
+                 cxpr_value* outputs) {
     (void)state;
     (void)params;
     outputs[0] = inputs[0];

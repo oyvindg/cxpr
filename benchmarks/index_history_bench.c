@@ -84,30 +84,30 @@ static double time_direct_history(const double* values, int64_t cursor) {
 
 static double time_generated_history(void) {
     cxpr_bench_generated_close1_state state = {0};
-    const double params[1] = {0.0};
-    double input[1] = {10.0};
-    double output[1] = {0.0};
+    const cxpr_value params[1] = {CXPR_VALUE_NUMBER_INIT(0.0)};
+    cxpr_value input[1] = {CXPR_VALUE_NUMBER_INIT(10.0)};
+    cxpr_value output[1] = {CXPR_VALUE_NUMBER_INIT(0.0)};
     cxpr_bench_generated_close1(&state, input, params, output);
     long long start = now_ns();
     for (size_t i = 0u; i < ITERATIONS; ++i) {
-        input[0] = 11.0 + (double)(i & 1u);
+        input[0] = cxpr_num(11.0 + (double)(i & 1u));
         cxpr_bench_generated_close1(&state, input, params, output);
-        sink += output[0];
+        sink += output[0].d;
     }
     return (double)(now_ns() - start) / (double)ITERATIONS;
 }
 
 static double time_generated_producer_history(void) {
     cxpr_bench_generated_producer_history_state state = {0};
-    const double params[1] = {0.0};
-    double input[1] = {10.0};
-    double output[1] = {0.0};
+    const cxpr_value params[1] = {CXPR_VALUE_NUMBER_INIT(0.0)};
+    cxpr_value input[1] = {CXPR_VALUE_NUMBER_INIT(10.0)};
+    cxpr_value output[1] = {CXPR_VALUE_NUMBER_INIT(0.0)};
     cxpr_bench_generated_producer_history(&state, input, params, output);
     long long start = now_ns();
     for (size_t i = 0u; i < ITERATIONS; ++i) {
-        input[0] = 11.0 + (double)(i & 1u);
+        input[0] = cxpr_num(11.0 + (double)(i & 1u));
         cxpr_bench_generated_producer_history(&state, input, params, output);
-        sink += output[0];
+        sink += output[0].d;
     }
     return (double)(now_ns() - start) / (double)ITERATIONS;
 }

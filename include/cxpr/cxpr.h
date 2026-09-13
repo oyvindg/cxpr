@@ -32,6 +32,8 @@
 #include <cxpr/history.h>
 #include <cxpr/basket.h>
 #include <cxpr/bulk.h>
+#include <cxpr/bulk_snapshot.h>
+#include <cxpr/bulk_state_store.h>
 #include <cxpr/evaluator.h>
 #include <cxpr/expression.h>
 #include <cxpr/provider.h>

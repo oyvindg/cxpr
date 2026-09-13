@@ -57,6 +57,7 @@ static int cxpr_value_numeric_binary_op(cxpr_valop op, double a, double b,
 
 static bool cxpr_value_is_struct_scalar_operand(cxpr_value value) {
     return value.type == CXPR_VALUE_NUMBER ||
+           value.type == CXPR_VALUE_INT64 ||
            value.type == CXPR_VALUE_TIMESTAMP ||
            value.type == CXPR_VALUE_DURATION;
 }
@@ -151,6 +152,33 @@ static int cxpr_value_binary_op_impl(cxpr_valop op, cxpr_value a, cxpr_value b,
                                      cxpr_value* out, cxpr_error* err) {
     if (a.type == CXPR_VALUE_STRUCT || b.type == CXPR_VALUE_STRUCT) {
         return cxpr_value_struct_binary_op(op, a, b, out, err);
+        }
+
+    if (a.type == CXPR_VALUE_INT64 && b.type == CXPR_VALUE_INT64) {
+        int64_t value;
+        switch (op) {
+        case CXPR_VALOP_ADD:
+            if (__builtin_add_overflow(a.i64, b.i64, &value))
+                return cxpr_value_op_type_error(err, "int64 addition overflow");
+            *out = cxpr_int64(value); return 1;
+        case CXPR_VALOP_SUB:
+            if (__builtin_sub_overflow(a.i64, b.i64, &value))
+                return cxpr_value_op_type_error(err, "int64 subtraction overflow");
+            *out = cxpr_int64(value); return 1;
+        case CXPR_VALOP_MUL:
+            if (__builtin_mul_overflow(a.i64, b.i64, &value))
+                return cxpr_value_op_type_error(err, "int64 multiplication overflow");
+            *out = cxpr_int64(value); return 1;
+        case CXPR_VALOP_DIV:
+            if (b.i64 == 0) return cxpr_value_op_div_zero(err);
+            if (a.i64 == INT64_MIN && b.i64 == -1)
+                return cxpr_value_op_type_error(err, "int64 division overflow");
+            *out = cxpr_int64(a.i64 / b.i64); return 1;
+        case CXPR_VALOP_LT: *out = cxpr_bool(a.i64 < b.i64); return 1;
+        case CXPR_VALOP_LTE: *out = cxpr_bool(a.i64 <= b.i64); return 1;
+        case CXPR_VALOP_GT: *out = cxpr_bool(a.i64 > b.i64); return 1;
+        case CXPR_VALOP_GTE: *out = cxpr_bool(a.i64 >= b.i64); return 1;
+        }
     }
 
     if (a.type == CXPR_VALUE_NUMBER && b.type == CXPR_VALUE_NUMBER) {
@@ -167,6 +195,8 @@ static int cxpr_value_binary_op_impl(cxpr_valop op, cxpr_value a, cxpr_value b,
 
 int cxpr_value_binary_op(cxpr_valop op, cxpr_value a, cxpr_value b,
                          cxpr_value* out, cxpr_error* err) {
+    const bool a_integer = a.type == CXPR_VALUE_INT64;
+    const bool b_integer = b.type == CXPR_VALUE_INT64;
     const bool a_temporal =
         a.type == CXPR_VALUE_TIMESTAMP || a.type == CXPR_VALUE_DURATION;
     const bool b_temporal =
@@ -177,7 +207,15 @@ int cxpr_value_binary_op(cxpr_valop op, cxpr_value a, cxpr_value b,
     if (!out) return cxpr_value_op_type_error(err, "Invalid result destination");
 
     /* Pure numeric operands are left to the caller's own fast numeric path. */
-    if (!a_temporal && !b_temporal && !a_struct && !b_struct) return 0;
+    if (!a_temporal && !b_temporal && !a_struct && !b_struct &&
+        !a_integer && !b_integer) return 0;
+
+    if (a_integer || b_integer) {
+        if (a_integer && b_integer)
+            return cxpr_value_binary_op_impl(op, a, b, out, err);
+        return cxpr_value_op_type_error(err,
+                                        "int64 arithmetic requires two int64 operands");
+    }
 
     if (a_struct || b_struct) {
         return cxpr_value_struct_binary_op(op, a, b, out, err);

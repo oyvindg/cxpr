@@ -20,6 +20,7 @@ static bool cxpr_model_c_child_is_used(const size_t* child_call_child_indices,
 
 static const char* cxpr_model_c_common_helpers_source(void) {
     return "#include <cxpr/model/runtime.h>\n\n"
+           "#include <cxpr/types.h>\n"
            "#include <stdint.h>\n\n";
 }
 
@@ -76,7 +77,9 @@ bool cxpr_model_c_emit_child_model_helpers(
                                 program->children[i].name ? program->children[i].name : "(unnamed)",
                                 child->outputs[field_i] ? child->outputs[field_i] : "(unnamed)");
             cxpr_model_c_printf(b,
-                                "static inline double %s(uint8_t* restrict _cx_child_initialized, double* restrict _cx_child_outputs, %s_state* restrict _cx_child_state",
+                                "static inline %s %s(uint8_t* restrict _cx_child_initialized, cxpr_value* restrict _cx_child_outputs, %s_state* restrict _cx_child_state",
+                                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_BOOL ? "bool" :
+                                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
                                 helper_name,
                                 tick_name);
             for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
@@ -87,7 +90,10 @@ bool cxpr_model_c_emit_child_model_helpers(
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                     return false;
                 }
-                cxpr_model_c_printf(b, ", double %s", input_name);
+                cxpr_model_c_printf(b, ", %s %s",
+                    cxpr_model_compiled_input_result_kind(child, in_i) == CXPR_MODEL_RESULT_BOOL ? "bool" :
+                    cxpr_model_compiled_input_result_kind(child, in_i) == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
+                    input_name);
                 free(input_name);
             }
             for (size_t p = 0u; p < child->constant_count; ++p) {
@@ -98,29 +104,38 @@ bool cxpr_model_c_emit_child_model_helpers(
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                     return false;
                 }
-                cxpr_model_c_printf(b, ", double %s", param_name);
+                cxpr_model_c_printf(b, ", %s %s",
+                    child->constants[p].result_kind == CXPR_MODEL_RESULT_BOOL ? "bool" :
+                    child->constants[p].result_kind == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
+                    param_name);
                 free(param_name);
             }
             cxpr_model_c_puts(b, ") {\n");
-            cxpr_model_c_printf(b, "    double _cx_child_inputs[%zu] = {",
+            cxpr_model_c_printf(b, "    cxpr_value _cx_child_inputs[%zu] = {",
                                 child->input_count ? child->input_count : 1u);
             for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
                 char* input_name = cxpr_model_c_safe_name(child->inputs[in_i]);
                 if (in_i > 0u) cxpr_model_c_puts(b, ", ");
-                cxpr_model_c_puts(b, input_name ? input_name : "0.0");
+                cxpr_model_c_printf(b, "%s(%s)",
+                    cxpr_model_compiled_input_result_kind(child, in_i) == CXPR_MODEL_RESULT_BOOL ? "cxpr_bool" :
+                    cxpr_model_compiled_input_result_kind(child, in_i) == CXPR_MODEL_RESULT_INT64 ? "cxpr_int64" : "cxpr_num",
+                    input_name ? input_name : "0");
                 free(input_name);
             }
-            if (child->input_count == 0u) cxpr_model_c_puts(b, "0.0");
+            if (child->input_count == 0u) cxpr_model_c_puts(b, "cxpr_num(0.0)");
             cxpr_model_c_puts(b, "};\n");
-            cxpr_model_c_printf(b, "    double _cx_child_params[%zu] = {",
+            cxpr_model_c_printf(b, "    cxpr_value _cx_child_params[%zu] = {",
                                 child->constant_count ? child->constant_count : 1u);
             for (size_t p = 0u; p < child->constant_count; ++p) {
                 char* param_name = cxpr_model_c_prefixed_name("param_", child->constants[p].name);
                 if (p > 0u) cxpr_model_c_puts(b, ", ");
-                cxpr_model_c_puts(b, param_name ? param_name : "0.0");
+                cxpr_model_c_printf(b, "%s(%s)",
+                    child->constants[p].result_kind == CXPR_MODEL_RESULT_BOOL ? "cxpr_bool" :
+                    child->constants[p].result_kind == CXPR_MODEL_RESULT_INT64 ? "cxpr_int64" : "cxpr_num",
+                    param_name ? param_name : "0");
                 free(param_name);
             }
-            if (child->constant_count == 0u) cxpr_model_c_puts(b, "0.0");
+            if (child->constant_count == 0u) cxpr_model_c_puts(b, "cxpr_num(0.0)");
             cxpr_model_c_puts(b, "};\n");
             cxpr_model_c_puts(b, "    if (*_cx_child_initialized == 0u) {\n");
             cxpr_model_c_printf(b,
@@ -128,7 +143,9 @@ bool cxpr_model_c_emit_child_model_helpers(
                                 tick_name);
             cxpr_model_c_puts(b, "        *_cx_child_initialized = 1u;\n");
             cxpr_model_c_puts(b, "    }\n");
-            cxpr_model_c_printf(b, "    return _cx_child_outputs[%zu];\n", field_i);
+            cxpr_model_c_printf(b, "    return _cx_child_outputs[%zu].%s;\n", field_i,
+                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_BOOL ? "b" :
+                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_INT64 ? "i64" : "d");
             cxpr_model_c_puts(b, "}\n\n");
             free(helper_name);
         }

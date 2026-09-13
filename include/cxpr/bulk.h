@@ -17,13 +17,13 @@ extern "C" {
 
 /** One strided scalar column. A zero stride broadcasts element zero. */
 typedef struct cxpr_bulk_const_column {
-    const double* values;
+    const cxpr_value* values;
     size_t stride;
 } cxpr_bulk_const_column;
 
 /** One writable strided scalar column. Stride must be non-zero for multiple elements. */
 typedef struct cxpr_bulk_column {
-    double* values;
+    cxpr_value* values;
     size_t stride;
 } cxpr_bulk_column;
 
@@ -45,7 +45,7 @@ typedef struct cxpr_bulk_column {
 typedef struct cxpr_bulk_view {
     const cxpr_bulk_const_column* inputs;
     size_t input_count;
-    const double* params;
+    const cxpr_value* params;
     size_t param_count;
     cxpr_bulk_column* outputs;
     size_t output_count;

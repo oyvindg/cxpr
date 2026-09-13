@@ -27,6 +27,9 @@ struct cxpr_expr_ast {
             double value;
         } number;
         struct {
+            int64_t value;
+        } integer;
+        struct {
             bool value;
         } boolean;
         struct {

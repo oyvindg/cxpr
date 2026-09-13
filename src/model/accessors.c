@@ -157,6 +157,8 @@ void cxpr_model_free(cxpr_model* model) {
     free(model->record_functions);
     for (size_t i = 0; i < model->input_count; ++i) free(model->inputs[i]);
     free(model->inputs);
+    free(model->input_declared_types);
+    free(model->input_element_types);
     free(model->input_spans);
     free(model->input_has_spans);
     for (size_t i = 0; i < model->constant_count; ++i) {
@@ -173,6 +175,8 @@ void cxpr_model_free(cxpr_model* model) {
     free(model->bindings);
     for (size_t i = 0; i < model->output_count; ++i) free(model->outputs[i]);
     free(model->outputs);
+    free(model->output_declared_types);
+    free(model->output_element_types);
     free(model->output_spans);
     free(model->output_has_spans);
     for (size_t i = 0; i < model->anonymous_output_count; ++i) {

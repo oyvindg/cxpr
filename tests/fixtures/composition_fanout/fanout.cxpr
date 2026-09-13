@@ -1,0 +1,14 @@
+model fanout
+
+use producer
+use consumer_a
+use consumer_b
+
+in close
+
+produced = producer(close)
+a = consumer_a(produced.value).value
+b = consumer_b(produced.value).value
+producer_evaluations = produced.evaluations
+
+out { a, b, producer_evaluations }

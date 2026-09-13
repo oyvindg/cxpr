@@ -37,6 +37,7 @@ typedef enum {
     CXPR_MODEL_RESULT_UNKNOWN = 0,
     CXPR_MODEL_RESULT_NUMBER = 1,
     CXPR_MODEL_RESULT_BOOL = 2,
+    CXPR_MODEL_RESULT_INT64 = 3,
 } cxpr_model_result_kind;
 
 /** Build-time type attached to a model declaration. */
@@ -508,7 +509,7 @@ char* cxpr_model_compiled_generate_function_c(const cxpr_model_compiled* program
  *
  * Generated ABI for models without `resample`:
  * `typedef struct fn_state fn_state;`
- * `void fn(fn_state* state, const double* inputs, const double* params, double* outputs)`.
+ * `void fn(fn_state* state, const cxpr_value* inputs, const cxpr_value* params, cxpr_value* outputs)`.
  * Models with resample requirements use the additive suffix
  * `, const cxpr_resample_view* views, size_t primary_cursor`. Requirement
  * accessors below define the stable view-slot order. Existing models retain
@@ -518,7 +519,9 @@ char* cxpr_model_compiled_generate_function_c(const cxpr_model_compiled* program
  * first-use init guard. Callers must zero the complete state object before its
  * first tick or call the generated init function explicitly.
  * Inputs and outputs use model declaration order. Params use model constant
- * order. The generated `state` object owns model scratch/state storage.
+ * order. Scalar values cross the boundary through the tagged `cxpr_value`
+ * union, preserving bool and int64_t without conversion through double. The
+ * generated `state` object owns model scratch/state storage.
  */
 char* cxpr_model_compiled_generate_c(const cxpr_model_compiled* program,
                                             const char* qualifiers,
@@ -628,6 +631,9 @@ bool cxpr_model_session_get_bool(const cxpr_model_session* session,
 bool cxpr_model_session_get_number(const cxpr_model_session* session,
                                       const char* name,
                                       double* out_value);
+bool cxpr_model_session_get_int64(const cxpr_model_session* session,
+                                  const char* name,
+                                  int64_t* out_value);
 bool cxpr_model_session_is_rising(const cxpr_model_session* session, const char* name);
 bool cxpr_model_session_is_falling(const cxpr_model_session* session, const char* name);
 bool cxpr_model_session_is_changed(const cxpr_model_session* session, const char* name);

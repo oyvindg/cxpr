@@ -831,40 +831,40 @@ static double time_ir(const cxpr_expr_compiled* program, cxpr_context* ctx, cons
     return total;
 }
 
-static void fill_inputs_abcde(double* inputs) {
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
-    inputs[4] = 5.5;
+static void fill_inputs_abcde(cxpr_value* inputs) {
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
+    inputs[4] = cxpr_num(5.5);
 }
 
-static void fill_inputs_abcdefghi(double* inputs) {
+static void fill_inputs_abcdefghi(cxpr_value* inputs) {
     fill_inputs_abcde(inputs);
-    inputs[5] = 6.5;
-    inputs[6] = 7.5;
-    inputs[7] = 8.5;
-    inputs[8] = 9.5;
+    inputs[5] = cxpr_num(6.5);
+    inputs[6] = cxpr_num(7.5);
+    inputs[7] = cxpr_num(8.5);
+    inputs[8] = cxpr_num(9.5);
 }
 
-static void fill_inputs_context_churn(double* inputs, size_t i) {
+static void fill_inputs_context_churn(cxpr_value* inputs, size_t i) {
     const double t = (double)(i % 1000) * 0.001;
-    inputs[0] = 1.5 + t;
-    inputs[1] = 2.5 + t * 2.0;
-    inputs[2] = 3.5 + t * 3.0;
-    inputs[3] = 4.5 + t * 4.0;
-    inputs[4] = 5.5 + t * 5.0;
-    inputs[5] = 11.5 - t;
-    inputs[6] = 12.5 + t * 0.5;
-    inputs[7] = 13.5 - t * 0.25;
+    inputs[0] = cxpr_num(1.5 + t);
+    inputs[1] = cxpr_num(2.5 + t * 2.0);
+    inputs[2] = cxpr_num(3.5 + t * 3.0);
+    inputs[3] = cxpr_num(4.5 + t * 4.0);
+    inputs[4] = cxpr_num(5.5 + t * 5.0);
+    inputs[5] = cxpr_num(11.5 - t);
+    inputs[6] = cxpr_num(12.5 + t * 0.5);
+    inputs[7] = cxpr_num(13.5 - t * 0.25);
 }
 
 static double time_c_simple_arith(size_t iterations, double* out_total) {
     cxpr_bench_ir_simple_arith_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_simple_arith_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_simple_arith_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_simple_arith;
-    double inputs[5];
-    double outputs[1] = {0};
+    cxpr_value inputs[5];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -872,7 +872,7 @@ static double time_c_simple_arith(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -881,10 +881,10 @@ static double time_c_simple_arith(size_t iterations, double* out_total) {
 
 static double time_c_nested_expr(size_t iterations, double* out_total) {
     cxpr_bench_ir_nested_expr_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_nested_expr_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_nested_expr_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_nested_expr;
-    double inputs[9];
-    double outputs[1] = {0};
+    cxpr_value inputs[9];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -892,7 +892,7 @@ static double time_c_nested_expr(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -901,21 +901,21 @@ static double time_c_nested_expr(size_t iterations, double* out_total) {
 
 static double time_c_function_call(size_t iterations, double* out_total) {
     cxpr_bench_ir_function_call_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_function_call_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_function_call_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_function_call;
-    double inputs[4];
-    double outputs[1] = {0};
+    cxpr_value inputs[4];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -924,10 +924,10 @@ static double time_c_function_call(size_t iterations, double* out_total) {
 
 static double time_c_defined_fn(size_t iterations, double* out_total) {
     cxpr_bench_ir_defined_fn_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_defined_fn_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_defined_fn_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_defined_fn;
-    double inputs[5];
-    double outputs[1] = {0};
+    cxpr_value inputs[5];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -935,7 +935,7 @@ static double time_c_defined_fn(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -944,24 +944,24 @@ static double time_c_defined_fn(size_t iterations, double* out_total) {
 
 static double time_c_defined_chain(size_t iterations, double* out_total) {
     cxpr_bench_ir_defined_chain_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_defined_chain_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_defined_chain_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_defined_chain;
-    double inputs[7];
-    double outputs[1] = {0};
+    cxpr_value inputs[7];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
-    inputs[4] = 5.5;
-    inputs[5] = 6.5;
-    inputs[6] = 7.5;
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
+    inputs[4] = cxpr_num(5.5);
+    inputs[5] = cxpr_num(6.5);
+    inputs[6] = cxpr_num(7.5);
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -970,25 +970,25 @@ static double time_c_defined_chain(size_t iterations, double* out_total) {
 
 static double time_c_deep_defined(size_t iterations, double* out_total) {
     cxpr_bench_ir_deep_defined_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_deep_defined_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_deep_defined_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_deep_defined;
-    double inputs[8];
-    double outputs[1] = {0};
+    cxpr_value inputs[8];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
-    inputs[4] = 5.5;
-    inputs[5] = 6.5;
-    inputs[6] = 7.5;
-    inputs[7] = 8.5;
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
+    inputs[4] = cxpr_num(5.5);
+    inputs[5] = cxpr_num(6.5);
+    inputs[6] = cxpr_num(7.5);
+    inputs[7] = cxpr_num(8.5);
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -997,69 +997,69 @@ static double time_c_deep_defined(size_t iterations, double* out_total) {
 
 static double time_c_complex_signal(size_t iterations, double* out_total) {
     cxpr_bench_ir_complex_signal_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_complex_signal_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_complex_signal_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_complex_signal;
-    double inputs[14];
-    double outputs[1] = {0};
+    cxpr_value inputs[14];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
-    inputs[4] = 5.5;
-    inputs[5] = 6.5;
-    inputs[6] = 7.5;
-    inputs[7] = 8.5;
-    inputs[8] = 9.5;
-    inputs[9] = 11.5;
-    inputs[10] = 12.5;
-    inputs[11] = 13.5;
-    inputs[12] = 14.5;
-    inputs[13] = -15.5;
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
+    inputs[4] = cxpr_num(5.5);
+    inputs[5] = cxpr_num(6.5);
+    inputs[6] = cxpr_num(7.5);
+    inputs[7] = cxpr_num(8.5);
+    inputs[8] = cxpr_num(9.5);
+    inputs[9] = cxpr_num(11.5);
+    inputs[10] = cxpr_num(12.5);
+    inputs[11] = cxpr_num(13.5);
+    inputs[12] = cxpr_num(14.5);
+    inputs[13] = cxpr_num(-15.5);
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
     return (double)(end - start) / (double)iterations;
 }
 
-static void fill_inputs_large(double* inputs) {
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
-    inputs[4] = 5.5;
-    inputs[5] = 6.5;
-    inputs[6] = 7.5;
-    inputs[7] = 8.5;
-    inputs[8] = 9.5;
-    inputs[9] = 10.5;
-    inputs[10] = 11.5;
-    inputs[11] = 12.5;
-    inputs[12] = 13.5;
-    inputs[13] = 14.5;
-    inputs[14] = -15.5;
+static void fill_inputs_large(cxpr_value* inputs) {
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
+    inputs[4] = cxpr_num(5.5);
+    inputs[5] = cxpr_num(6.5);
+    inputs[6] = cxpr_num(7.5);
+    inputs[7] = cxpr_num(8.5);
+    inputs[8] = cxpr_num(9.5);
+    inputs[9] = cxpr_num(10.5);
+    inputs[10] = cxpr_num(11.5);
+    inputs[11] = cxpr_num(12.5);
+    inputs[12] = cxpr_num(13.5);
+    inputs[13] = cxpr_num(14.5);
+    inputs[14] = cxpr_num(-15.5);
 }
 
 #define DEFINE_LARGE_C_BENCH(suffix)                                                \
 static double time_c_##suffix(size_t iterations, double* out_total) {               \
     cxpr_bench_ir_##suffix##_state state = {0};                                     \
-    void (*volatile tick)(cxpr_bench_ir_##suffix##_state*, const double*,           \
-                          const double*, double*) = cxpr_bench_ir_##suffix;          \
-    double inputs[15];                                                               \
-    double outputs[1] = {0};                                                         \
+    void (*volatile tick)(cxpr_bench_ir_##suffix##_state*, const cxpr_value*,       \
+                          const cxpr_value*, cxpr_value*) = cxpr_bench_ir_##suffix;  \
+    cxpr_value inputs[15];                                                               \
+    cxpr_value outputs[1] = {0};                                                         \
     double total = 0.0;                                                              \
     long long start, end;                                                            \
     fill_inputs_large(inputs);                                                       \
     start = now_ns();                                                                \
     for (size_t i = 0u; i < iterations; ++i) {                                      \
         tick(&state, inputs, NULL, outputs);                                         \
-        total += outputs[0];                                                         \
+        total += outputs[0].d;                                                         \
     }                                                                                \
     end = now_ns();                                                                  \
     *out_total = total;                                                              \
@@ -1070,21 +1070,21 @@ DEFINE_LARGE_C_BENCH(large_arith)
 DEFINE_LARGE_C_BENCH(large_branch)
 DEFINE_LARGE_C_BENCH(large_math)
 
-static void fill_inputs_mixed(double* inputs) {
-    inputs[0] = 1.5;
-    inputs[1] = 2.5;
-    inputs[2] = 3.5;
-    inputs[3] = 4.5;
-    inputs[4] = 5.5;
-    inputs[5] = -15.5;
+static void fill_inputs_mixed(cxpr_value* inputs) {
+    inputs[0] = cxpr_num(1.5);
+    inputs[1] = cxpr_num(2.5);
+    inputs[2] = cxpr_num(3.5);
+    inputs[3] = cxpr_num(4.5);
+    inputs[4] = cxpr_num(5.5);
+    inputs[5] = cxpr_num(-15.5);
 }
 
 static double time_c_mixed_expr(size_t iterations, double* out_total) {
     cxpr_bench_ir_mixed_expr_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_mixed_expr_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_mixed_expr_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_mixed_expr;
-    double inputs[6];
-    double outputs[1] = {0};
+    cxpr_value inputs[6];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1092,7 +1092,7 @@ static double time_c_mixed_expr(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1101,10 +1101,10 @@ static double time_c_mixed_expr(size_t iterations, double* out_total) {
 
 static double time_c_mixed_pipe(size_t iterations, double* out_total) {
     cxpr_bench_ir_mixed_pipe_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_mixed_pipe_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_mixed_pipe_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_mixed_pipe;
-    double inputs[6];
-    double outputs[1] = {0};
+    cxpr_value inputs[6];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1112,32 +1112,32 @@ static double time_c_mixed_pipe(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
     return (double)(end - start) / (double)iterations;
 }
 
-static void fill_inputs_struct_unary(double* inputs) {
-    inputs[0] = 2.0;
-    inputs[1] = 4.0;
-    inputs[2] = 8.0;
+static void fill_inputs_struct_unary(cxpr_value* inputs) {
+    inputs[0] = cxpr_num(2.0);
+    inputs[1] = cxpr_num(4.0);
+    inputs[2] = cxpr_num(8.0);
 }
 
-static void fill_inputs_struct_binary(double* inputs) {
+static void fill_inputs_struct_binary(cxpr_value* inputs) {
     fill_inputs_struct_unary(inputs);
-    inputs[3] = 3.0;
-    inputs[4] = 5.0;
-    inputs[5] = 7.0;
+    inputs[3] = cxpr_num(3.0);
+    inputs[4] = cxpr_num(5.0);
+    inputs[5] = cxpr_num(7.0);
 }
 
 static double time_c_struct_scalar_mul(size_t iterations, double* out_total) {
     cxpr_bench_ir_struct_scalar_mul_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_struct_scalar_mul;
-    double inputs[3];
-    double outputs[1] = {0};
+    cxpr_value inputs[3];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1145,7 +1145,7 @@ static double time_c_struct_scalar_mul(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1154,10 +1154,10 @@ static double time_c_struct_scalar_mul(size_t iterations, double* out_total) {
 
 static double time_c_scalar_struct_mul(size_t iterations, double* out_total) {
     cxpr_bench_ir_scalar_struct_mul_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_scalar_struct_mul;
-    double inputs[3];
-    double outputs[1] = {0};
+    cxpr_value inputs[3];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1165,7 +1165,7 @@ static double time_c_scalar_struct_mul(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1174,10 +1174,10 @@ static double time_c_scalar_struct_mul(size_t iterations, double* out_total) {
 
 static double time_c_struct_struct_mul(size_t iterations, double* out_total) {
     cxpr_bench_ir_struct_struct_mul_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_struct_struct_mul;
-    double inputs[6];
-    double outputs[1] = {0};
+    cxpr_value inputs[6];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1185,7 +1185,7 @@ static double time_c_struct_struct_mul(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1194,10 +1194,10 @@ static double time_c_struct_struct_mul(size_t iterations, double* out_total) {
 
 static double time_c_struct_struct_add(size_t iterations, double* out_total) {
     cxpr_bench_ir_struct_struct_add_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_struct_struct_add;
-    double inputs[6];
-    double outputs[1] = {0};
+    cxpr_value inputs[6];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1205,7 +1205,7 @@ static double time_c_struct_struct_add(size_t iterations, double* out_total) {
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1214,10 +1214,10 @@ static double time_c_struct_struct_add(size_t iterations, double* out_total) {
 
 static double time_c_struct_scalar_mul_all_fields(size_t iterations, double* out_total) {
     cxpr_bench_ir_struct_scalar_mul_all_fields_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_all_fields_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_struct_scalar_mul_all_fields_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_struct_scalar_mul_all_fields;
-    double inputs[3];
-    double outputs[1] = {0};
+    cxpr_value inputs[3];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1225,7 +1225,7 @@ static double time_c_struct_scalar_mul_all_fields(size_t iterations, double* out
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1234,10 +1234,10 @@ static double time_c_struct_scalar_mul_all_fields(size_t iterations, double* out
 
 static double time_c_scalar_struct_mul_all_fields(size_t iterations, double* out_total) {
     cxpr_bench_ir_scalar_struct_mul_all_fields_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_all_fields_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_scalar_struct_mul_all_fields_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_scalar_struct_mul_all_fields;
-    double inputs[3];
-    double outputs[1] = {0};
+    cxpr_value inputs[3];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1245,7 +1245,7 @@ static double time_c_scalar_struct_mul_all_fields(size_t iterations, double* out
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1254,10 +1254,10 @@ static double time_c_scalar_struct_mul_all_fields(size_t iterations, double* out
 
 static double time_c_struct_struct_mul_all_fields(size_t iterations, double* out_total) {
     cxpr_bench_ir_struct_struct_mul_all_fields_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_all_fields_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_mul_all_fields_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_struct_struct_mul_all_fields;
-    double inputs[6];
-    double outputs[1] = {0};
+    cxpr_value inputs[6];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1265,7 +1265,7 @@ static double time_c_struct_struct_mul_all_fields(size_t iterations, double* out
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1274,10 +1274,10 @@ static double time_c_struct_struct_mul_all_fields(size_t iterations, double* out
 
 static double time_c_struct_struct_add_all_fields(size_t iterations, double* out_total) {
     cxpr_bench_ir_struct_struct_add_all_fields_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_all_fields_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_struct_struct_add_all_fields_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_struct_struct_add_all_fields;
-    double inputs[6];
-    double outputs[1] = {0};
+    cxpr_value inputs[6];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1285,7 +1285,7 @@ static double time_c_struct_struct_add_all_fields(size_t iterations, double* out
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1294,10 +1294,10 @@ static double time_c_struct_struct_add_all_fields(size_t iterations, double* out
 
 static double time_c_context_churn(size_t iterations, double* out_total) {
     cxpr_bench_ir_context_churn_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_context_churn_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_context_churn_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_context_churn;
-    double inputs[8];
-    double outputs[1] = {0};
+    cxpr_value inputs[8];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
@@ -1305,7 +1305,7 @@ static double time_c_context_churn(size_t iterations, double* out_total) {
     for (size_t i = 0; i < iterations; ++i) {
         fill_inputs_context_churn(inputs, i);
         tick(&state, inputs, NULL, outputs);
-        total += outputs[0];
+        total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1314,19 +1314,19 @@ static double time_c_context_churn(size_t iterations, double* out_total) {
 
 static double time_c_lookback_leaf(size_t iterations, double* out_total) {
     cxpr_bench_ir_lookback_leaf_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_lookback_leaf_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_lookback_leaf_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_lookback_leaf;
-    double inputs[1];
-    double outputs[1] = {0};
+    cxpr_value inputs[1];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         if (i > 0u && i % LOOKBACK_BARS == 0u) state = (cxpr_bench_ir_lookback_leaf_state){0};
-        inputs[0] = g_close[i % LOOKBACK_BARS];
+        inputs[0] = cxpr_num(g_close[i % LOOKBACK_BARS]);
         tick(&state, inputs, NULL, outputs);
-        if (isfinite(outputs[0])) total += outputs[0];
+        if (isfinite(outputs[0].d)) total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;
@@ -1335,20 +1335,20 @@ static double time_c_lookback_leaf(size_t iterations, double* out_total) {
 
 static double time_c_lookback_mixed(size_t iterations, double* out_total) {
     cxpr_bench_ir_lookback_mixed_state state = {0};
-    void (*volatile tick)(cxpr_bench_ir_lookback_mixed_state*, const double*, const double*, double*) =
+    void (*volatile tick)(cxpr_bench_ir_lookback_mixed_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
         cxpr_bench_ir_lookback_mixed;
-    double inputs[2];
-    double outputs[1] = {0};
+    cxpr_value inputs[2];
+    cxpr_value outputs[1] = {0};
     double total = 0.0;
     long long start, end;
 
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         if (i > 0u && i % LOOKBACK_BARS == 0u) state = (cxpr_bench_ir_lookback_mixed_state){0};
-        inputs[0] = g_close[i % LOOKBACK_BARS];
-        inputs[1] = g_high[i % LOOKBACK_BARS];
+        inputs[0] = cxpr_num(g_close[i % LOOKBACK_BARS]);
+        inputs[1] = cxpr_num(g_high[i % LOOKBACK_BARS]);
         tick(&state, inputs, NULL, outputs);
-        if (isfinite(outputs[0])) total += outputs[0];
+        if (isfinite(outputs[0].d)) total += outputs[0].d;
     }
     end = now_ns();
     *out_total = total;

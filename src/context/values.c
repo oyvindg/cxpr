@@ -88,6 +88,47 @@ static bool cxpr_bool_map_get(const cxpr_bool_map* map, const char* name, bool* 
     return false;
 }
 
+static cxpr_int64_map_entry* cxpr_int64_map_find(cxpr_int64_map* map, const char* name) {
+    if (!map || !name) return NULL;
+    for (size_t i = 0u; i < map->count; ++i)
+        if (strcmp(map->entries[i].name, name) == 0) return &map->entries[i];
+    return NULL;
+}
+
+static bool cxpr_int64_map_set(cxpr_int64_map* map, const char* name, int64_t value) {
+    cxpr_int64_map_entry* entry = cxpr_int64_map_find(map, name);
+    if (entry) { entry->value = value; return true; }
+    if (map->count == map->capacity) {
+        size_t capacity = map->capacity ? map->capacity * 2u : 8u;
+        cxpr_int64_map_entry* grown = realloc(map->entries, capacity * sizeof(*grown));
+        if (!grown) return false;
+        map->entries = grown; map->capacity = capacity;
+    }
+    map->entries[map->count].name = cxpr_strdup(name);
+    if (!map->entries[map->count].name) return false;
+    map->entries[map->count++].value = value;
+    return true;
+}
+
+static void cxpr_int64_map_remove(cxpr_int64_map* map, const char* name) {
+    if (!map || !name) return;
+    for (size_t i = 0u; i < map->count; ++i) if (strcmp(map->entries[i].name, name) == 0) {
+        free(map->entries[i].name);
+        if (i + 1u < map->count) memmove(&map->entries[i], &map->entries[i + 1u],
+                                         (map->count - i - 1u) * sizeof(*map->entries));
+        --map->count; return;
+    }
+}
+
+static int64_t cxpr_int64_map_get(const cxpr_int64_map* map, const char* name, bool* found) {
+    if (found) *found = false;
+    if (!map || !name) return 0;
+    for (size_t i = 0u; i < map->count; ++i) if (strcmp(map->entries[i].name, name) == 0) {
+        if (found) *found = true; return map->entries[i].value;
+    }
+    return 0;
+}
+
 static cxpr_string_map_entry* cxpr_string_map_find(cxpr_string_map* map, const char* name) {
     if (!map || !name) return NULL;
     for (size_t i = 0u; i < map->count; ++i) {
@@ -198,6 +239,7 @@ static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
 void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
                                 unsigned long hash, double value) {
     if (ctx && name) cxpr_bool_map_remove(&ctx->bools, name);
+    if (ctx && name) cxpr_int64_map_remove(&ctx->int64s, name);
     if (ctx && name) cxpr_string_map_remove(&ctx->strings, name);
     if (ctx && name) cxpr_context_remove_array(&ctx->arrays, name);
     if (ctx && name) cxpr_context_remove_struct(&ctx->structs, name);
@@ -214,9 +256,19 @@ void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
 void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
     cxpr_string_map_remove(&ctx->strings, name);
+    cxpr_int64_map_remove(&ctx->int64s, name);
     cxpr_context_remove_array(&ctx->arrays, name);
     cxpr_context_remove_struct(&ctx->structs, name);
     if (cxpr_bool_map_set(&ctx->bools, name, value)) ctx->variables_version++;
+}
+
+void cxpr_context_set_int64(cxpr_context* ctx, const char* name, int64_t value) {
+    if (!ctx || !name) return;
+    cxpr_bool_map_remove(&ctx->bools, name);
+    cxpr_string_map_remove(&ctx->strings, name);
+    cxpr_context_remove_array(&ctx->arrays, name);
+    cxpr_context_remove_struct(&ctx->structs, name);
+    if (cxpr_int64_map_set(&ctx->int64s, name, value)) ctx->variables_version++;
 }
 
 void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* value) {
@@ -236,6 +288,9 @@ void cxpr_context_set_value(cxpr_context* ctx, const char* name, const cxpr_valu
         return;
     case CXPR_VALUE_BOOL:
         cxpr_context_set_bool(ctx, name, value->b);
+        return;
+    case CXPR_VALUE_INT64:
+        cxpr_context_set_int64(ctx, name, value->i64);
         return;
     case CXPR_VALUE_STRING:
         cxpr_context_set_string(ctx, name, value->str);
@@ -334,6 +389,11 @@ bool cxpr_context_get_local_bool(const cxpr_context* ctx, const char* name, bool
     return cxpr_bool_map_get(&ctx->bools, name, found);
 }
 
+int64_t cxpr_context_get_local_int64(const cxpr_context* ctx, const char* name, bool* found) {
+    if (!ctx || !name) { if (found) *found = false; return 0; }
+    return cxpr_int64_map_get(&ctx->int64s, name, found);
+}
+
 const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx || !name) {
         if (found) *found = false;
@@ -345,6 +405,7 @@ const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* n
 void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
                                       unsigned long hash, double value) {
     if (ctx && name) cxpr_bool_map_remove(&ctx->bool_params, name);
+    if (ctx && name) cxpr_int64_map_remove(&ctx->int64_params, name);
     if (ctx && name) cxpr_string_map_remove(&ctx->string_params, name);
     if (ctx && name) cxpr_context_remove_array(&ctx->array_params, name);
     if (ctx && name) cxpr_context_remove_struct(&ctx->structs, name);
@@ -371,9 +432,17 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
 void cxpr_context_set_param_bool(cxpr_context* ctx, const char* name, bool value) {
     if (!ctx || !name) return;
     cxpr_string_map_remove(&ctx->string_params, name);
+    cxpr_int64_map_remove(&ctx->int64_params, name);
     cxpr_context_remove_array(&ctx->array_params, name);
     cxpr_context_remove_struct(&ctx->structs, name);
     if (cxpr_bool_map_set(&ctx->bool_params, name, value)) ctx->params_version++;
+}
+
+void cxpr_context_set_param_int64(cxpr_context* ctx, const char* name, int64_t value) {
+    if (!ctx || !name) return;
+    cxpr_bool_map_remove(&ctx->bool_params, name);
+    cxpr_string_map_remove(&ctx->string_params, name);
+    if (cxpr_int64_map_set(&ctx->int64_params, name, value)) ctx->params_version++;
 }
 
 void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const char* value) {
@@ -393,6 +462,9 @@ void cxpr_context_set_param_value(cxpr_context* ctx, const char* name, const cxp
         return;
     case CXPR_VALUE_BOOL:
         cxpr_context_set_param_bool(ctx, name, value->b);
+        return;
+    case CXPR_VALUE_INT64:
+        cxpr_context_set_param_int64(ctx, name, value->i64);
         return;
     case CXPR_VALUE_STRING:
         cxpr_context_set_param_string(ctx, name, value->str);
@@ -463,6 +535,11 @@ bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name
         return false;
     }
     return cxpr_bool_map_get(&ctx->bool_params, name, found);
+}
+
+int64_t cxpr_context_get_local_param_int64(const cxpr_context* ctx, const char* name, bool* found) {
+    if (!ctx || !name) { if (found) *found = false; return 0; }
+    return cxpr_int64_map_get(&ctx->int64_params, name, found);
 }
 
 const char* cxpr_context_get_local_param_string(const cxpr_context* ctx, const char* name,

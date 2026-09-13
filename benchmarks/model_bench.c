@@ -13,10 +13,10 @@
 
 static volatile double g_sink = 0.0;
 
-void cxpr_bench_rsi_state_tick_c(double* slots,
-                                 const double* inputs,
-                                 const double* params,
-                                 double* outputs);
+void cxpr_bench_rsi_state_tick_c(void* state,
+                                 const cxpr_value* inputs,
+                                 const cxpr_value* params,
+                                 cxpr_value* outputs);
 
 static char* read_fixture(const char* relative_path) {
     char path[1024];
@@ -467,20 +467,20 @@ static double time_rsi_state_strategy_fixture_tick(size_t iterations) {
 
 static double time_rsi_state_strategy_fixture_c_tick(size_t iterations) {
     double slots[128] = {0};
-    const double params[] = {3.0, 60.0, 45.0};
-    double inputs[2] = {0};
-    double outputs[5] = {0};
+    const cxpr_value params[] = {CXPR_VALUE_NUMBER_INIT(3.0), CXPR_VALUE_NUMBER_INIT(60.0), CXPR_VALUE_NUMBER_INIT(45.0)};
+    cxpr_value inputs[2] = {0};
+    cxpr_value outputs[5] = {0};
     long long start;
     double total = 0.0;
 
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         const double wave = (double)(i % 17u);
-        inputs[0] = 100.0 + wave;
-        inputs[1] = 99.0 + wave * 0.2;
+        inputs[0] = cxpr_num(100.0 + wave);
+        inputs[1] = cxpr_num(99.0 + wave * 0.2);
         cxpr_bench_rsi_state_tick_c(slots, inputs, params, outputs);
-        total += outputs[0] != 0.0 ? 1.0 : 0.0;
-        total += outputs[2];
+        total += outputs[0].b != 0 ? 1.0 : 0.0;
+        total += outputs[2].d;
     }
 
     g_sink += total;
@@ -489,20 +489,20 @@ static double time_rsi_state_strategy_fixture_c_tick(size_t iterations) {
 
 static double time_rsi_state_strategy_fixture_c_inline_tick(size_t iterations) {
     cxpr_bench_rsi_state_tick_inline_c_state state = {0};
-    const double params[] = {3.0, 60.0, 45.0};
-    double inputs[2] = {0};
-    double outputs[5] = {0};
+    const cxpr_value params[] = {CXPR_VALUE_NUMBER_INIT(3.0), CXPR_VALUE_NUMBER_INIT(60.0), CXPR_VALUE_NUMBER_INIT(45.0)};
+    cxpr_value inputs[2] = {0};
+    cxpr_value outputs[5] = {0};
     long long start;
     double total = 0.0;
 
     start = now_ns();
     for (size_t i = 0; i < iterations; ++i) {
         const double wave = (double)(i % 17u);
-        inputs[0] = 100.0 + wave;
-        inputs[1] = 99.0 + wave * 0.2;
+        inputs[0] = cxpr_num(100.0 + wave);
+        inputs[1] = cxpr_num(99.0 + wave * 0.2);
         cxpr_bench_rsi_state_tick_inline_c(&state, inputs, params, outputs);
-        total += outputs[0] != 0.0 ? 1.0 : 0.0;
-        total += outputs[2];
+        total += outputs[0].b != 0 ? 1.0 : 0.0;
+        total += outputs[2].d;
     }
 
     g_sink += total;

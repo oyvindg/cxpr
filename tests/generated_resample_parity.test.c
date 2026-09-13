@@ -17,21 +17,21 @@ int main(void) {
         {five_minute, five_alignment, 5u, 5u},
     };
     generated_resample_tick_state state;
-    double inputs[] = {999.0};
-    double outputs[] = {NAN};
+    cxpr_value inputs[] = {CXPR_VALUE_NUMBER_INIT(999.0)};
+    cxpr_value outputs[] = {CXPR_VALUE_NUMBER_INIT(NAN)};
     memset(&state, 0, sizeof(state));
     /* First aligned bucket has no target-series [1] history. */
     generated_resample_tick(&state, inputs, NULL, outputs, views, 0u);
-    assert(isnan(outputs[0]));
+    assert(isnan(outputs[0].d));
     generated_resample_tick(&state, inputs, NULL, outputs, views, 1u);
-    assert(isnan(outputs[0]));
+    assert(isnan(outputs[0].d));
     /* Cursor 2 is the first primary row aligned to the next hourly bucket. */
     generated_resample_tick(&state, inputs, NULL, outputs, views, 2u);
-    assert(outputs[0] == 411.0);
+    assert(outputs[0].d == 411.0);
     generated_resample_tick(&state, inputs, NULL, outputs, views, 3u);
-    assert(outputs[0] == 412.0);
+    assert(outputs[0].d == 412.0);
     generated_resample_tick(&state, inputs, NULL, outputs, views, 4u);
-    assert(outputs[0] == 419.0);
+    assert(outputs[0].d == 419.0);
     assert(cxpr_resample_view_validate(&views[0]) == CXPR_RESAMPLE_VIEW_OK);
     views[0].values = NULL;
     assert(cxpr_resample_view_validate(&views[0]) ==
@@ -39,17 +39,17 @@ int main(void) {
     assert(strstr(cxpr_resample_view_status_message(
         CXPR_RESAMPLE_VIEW_VALUES_REQUIRED), "values buffer") != NULL);
     generated_resample_tick(&state, inputs, NULL, outputs, views, 4u);
-    assert(isnan(outputs[0]));
+    assert(isnan(outputs[0].d));
     views[0].values = hourly;
     views[0].alignment = NULL;
     assert(cxpr_resample_view_validate(&views[0]) ==
            CXPR_RESAMPLE_VIEW_ALIGNMENT_REQUIRED);
     views[0].alignment = NULL;
     generated_resample_tick(&state, inputs, NULL, outputs, views, 4u);
-    assert(isnan(outputs[0]));
+    assert(isnan(outputs[0].d));
     views[0].alignment = gap_alignment;
     generated_resample_tick(&state, inputs, NULL, outputs, views, 4u);
-    assert(isnan(outputs[0]));
+    assert(isnan(outputs[0].d));
     puts("generated resample C current/[1] CSE parity OK");
     return 0;
 }

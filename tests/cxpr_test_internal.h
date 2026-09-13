@@ -24,6 +24,8 @@ typedef struct {
     const char* start;
     size_t length;
     double number_value;
+    int64_t int64_value;
+    bool is_int64;
     size_t position;
     size_t line;
     size_t column;
@@ -43,6 +45,7 @@ cxpr_token cxpr_lexer_peek(cxpr_lexer* lexer);
 
 typedef enum {
     CXPR_OP_PUSH_CONST,
+    CXPR_OP_PUSH_INT64,
     CXPR_OP_PUSH_BOOL,
     CXPR_OP_PUSH_STRING,
     CXPR_OP_BUILD_ARRAY,
@@ -109,6 +112,7 @@ typedef struct {
     const struct cxpr_func_entry* func;
     union {
         double value;
+        int64_t int64_value;
         unsigned long hash;
         size_t index;
         const cxpr_expr_ast* ast;

@@ -27,6 +27,10 @@ static void cxpr_context_destroy_storage(cxpr_context* ctx) {
     free(ctx->bools.entries);
     for (size_t i = 0u; i < ctx->bool_params.count; ++i) free(ctx->bool_params.entries[i].name);
     free(ctx->bool_params.entries);
+    for (size_t i = 0u; i < ctx->int64s.count; ++i) free(ctx->int64s.entries[i].name);
+    free(ctx->int64s.entries);
+    for (size_t i = 0u; i < ctx->int64_params.count; ++i) free(ctx->int64_params.entries[i].name);
+    free(ctx->int64_params.entries);
     for (size_t i = 0u; i < ctx->strings.count; ++i) {
         free(ctx->strings.entries[i].name);
         free(ctx->strings.entries[i].value);
@@ -66,6 +70,8 @@ static bool cxpr_context_can_cache_empty_overlay(const cxpr_context* ctx) {
            ctx->bool_params.count == 0u &&
            ctx->bools.entries == NULL &&
            ctx->bool_params.entries == NULL &&
+           ctx->int64s.entries == NULL &&
+           ctx->int64_params.entries == NULL &&
            ctx->strings.count == 0u &&
            ctx->string_params.count == 0u &&
            ctx->strings.entries == NULL &&
@@ -105,6 +111,8 @@ cxpr_context* cxpr_context_new(void) {
     ctx->bool_params.entries = NULL;
     ctx->bool_params.capacity = 0u;
     ctx->bool_params.count = 0u;
+    ctx->int64s = (cxpr_int64_map){0};
+    ctx->int64_params = (cxpr_int64_map){0};
     ctx->strings.entries = NULL;
     ctx->strings.capacity = 0u;
     ctx->strings.count = 0u;
@@ -249,6 +257,28 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
             clone->bool_params.count++;
         }
     }
+    if (ctx->int64s.count > 0u) {
+        clone->int64s.entries = calloc(ctx->int64s.count, sizeof(*clone->int64s.entries));
+        if (!clone->int64s.entries) { cxpr_context_free(clone); free(var_clone); free(param_clone); return NULL; }
+        clone->int64s.capacity = ctx->int64s.count;
+        for (size_t i = 0u; i < ctx->int64s.count; ++i) {
+            clone->int64s.entries[i].name = cxpr_strdup(ctx->int64s.entries[i].name);
+            if (!clone->int64s.entries[i].name) { cxpr_context_free(clone); free(var_clone); free(param_clone); return NULL; }
+            clone->int64s.entries[i].value = ctx->int64s.entries[i].value;
+            clone->int64s.count++;
+        }
+    }
+    if (ctx->int64_params.count > 0u) {
+        clone->int64_params.entries = calloc(ctx->int64_params.count, sizeof(*clone->int64_params.entries));
+        if (!clone->int64_params.entries) { cxpr_context_free(clone); free(var_clone); free(param_clone); return NULL; }
+        clone->int64_params.capacity = ctx->int64_params.count;
+        for (size_t i = 0u; i < ctx->int64_params.count; ++i) {
+            clone->int64_params.entries[i].name = cxpr_strdup(ctx->int64_params.entries[i].name);
+            if (!clone->int64_params.entries[i].name) { cxpr_context_free(clone); free(var_clone); free(param_clone); return NULL; }
+            clone->int64_params.entries[i].value = ctx->int64_params.entries[i].value;
+            clone->int64_params.count++;
+        }
+    }
     if (ctx->strings.count > 0u) {
         clone->strings.entries =
             (cxpr_string_map_entry*)calloc(ctx->strings.count, sizeof(cxpr_string_map_entry));
@@ -316,6 +346,10 @@ void cxpr_context_clear(cxpr_context* ctx) {
     ctx->bools.count = 0u;
     for (size_t i = 0u; i < ctx->bool_params.count; ++i) free(ctx->bool_params.entries[i].name);
     ctx->bool_params.count = 0u;
+    for (size_t i = 0u; i < ctx->int64s.count; ++i) free(ctx->int64s.entries[i].name);
+    ctx->int64s.count = 0u;
+    for (size_t i = 0u; i < ctx->int64_params.count; ++i) free(ctx->int64_params.entries[i].name);
+    ctx->int64_params.count = 0u;
     for (size_t i = 0u; i < ctx->strings.count; ++i) {
         free(ctx->strings.entries[i].name);
         free(ctx->strings.entries[i].value);

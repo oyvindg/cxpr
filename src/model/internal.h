@@ -101,6 +101,8 @@ struct cxpr_model {
     cxpr_model_record_function* record_functions;
     size_t record_function_count;
     char** inputs;
+    cxpr_model_decl_type* input_declared_types;
+    cxpr_model_element_type* input_element_types;
     cxpr_source_span* input_spans;
     bool* input_has_spans;
     size_t input_count;
@@ -109,6 +111,8 @@ struct cxpr_model {
     cxpr_model_binding* bindings;
     size_t binding_count;
     char** outputs;
+    cxpr_model_decl_type* output_declared_types;
+    cxpr_model_element_type* output_element_types;
     cxpr_source_span* output_spans;
     bool* output_has_spans;
     size_t output_count;
@@ -153,6 +157,10 @@ typedef struct {
     bool current;
     bool has_number_current;
     bool has_number_previous;
+    int64_t int64_current;
+    int64_t int64_previous;
+    bool has_int64_current;
+    bool has_int64_previous;
     bool has_previous;
     bool has_current;
 } cxpr_model_output_state;

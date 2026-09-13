@@ -84,6 +84,8 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     free(program->bindings);
     for (size_t i = 0; i < program->input_count; ++i) free(program->inputs[i]);
     free(program->inputs);
+    free(program->input_declared_types);
+    free(program->input_element_types);
     free(program->source_arg);
     free(program->invalid_input_guard);
     for (size_t i = 0; i < program->child_count; ++i) {
@@ -102,6 +104,8 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     free(program->resample_requirements);
     for (size_t i = 0; i < program->output_count; ++i) free(program->outputs[i]);
     free(program->outputs);
+    free(program->output_declared_types);
+    free(program->output_element_types);
     if (program->owns_registry) cxpr_registry_free(program->registry);
     free(program);
 }
@@ -415,6 +419,10 @@ cxpr_model_result_kind cxpr_model_compiled_output_result_kind(
     const cxpr_model_compiled* program,
     size_t index) {
     const char* name = cxpr_model_compiled_output_name(program, index);
+    if (program && index < program->output_count &&
+        program->output_declared_types &&
+        program->output_declared_types[index] == CXPR_MODEL_DECL_INT)
+        return CXPR_MODEL_RESULT_INT64;
     return program
                ? cxpr_model_slot_result_kind_by_name(
                      program->fused_outputs, program->fused_output_count, name)
@@ -425,6 +433,10 @@ cxpr_model_result_kind cxpr_model_compiled_input_result_kind(
     const cxpr_model_compiled* program,
     size_t index) {
     const char* name = cxpr_model_compiled_input_name(program, index);
+    if (program && index < program->input_count &&
+        program->input_declared_types &&
+        program->input_declared_types[index] == CXPR_MODEL_DECL_INT)
+        return CXPR_MODEL_RESULT_INT64;
     return program
                ? cxpr_model_slot_result_kind_by_name(
                      program->fused_inputs, program->fused_input_count, name)

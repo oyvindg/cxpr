@@ -85,6 +85,7 @@ void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* va
  * @param value Typed value to clone and store.
  */
 void cxpr_context_set_value(cxpr_context* ctx, const char* name, const cxpr_value* value);
+void cxpr_context_set_int64(cxpr_context* ctx, const char* name, int64_t value);
 /**
  * @brief Look up a numeric runtime variable.
  * @param ctx Context to query.
@@ -153,6 +154,7 @@ void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const ch
  * @param value Typed value to clone and store.
  */
 void cxpr_context_set_param_value(cxpr_context* ctx, const char* name, const cxpr_value* value);
+void cxpr_context_set_param_int64(cxpr_context* ctx, const char* name, int64_t value);
 
 /** @brief Pre-bound variable slot for hot-loop writes. */
 typedef struct {

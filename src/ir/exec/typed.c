@@ -219,6 +219,9 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_PUSH_CONST:
             CXPR_TYPED_PUSH(cxpr_num(instr->value));
             break;
+        case CXPR_OP_PUSH_INT64:
+            CXPR_TYPED_PUSH(cxpr_int64(instr->int64_value));
+            break;
         case CXPR_OP_PUSH_BOOL:
             CXPR_TYPED_PUSH(cxpr_bool(instr->value != 0.0));
             break;
@@ -493,7 +496,8 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 if (a.type != b.type ||
                     (a.type != CXPR_VALUE_NUMBER && a.type != CXPR_VALUE_BOOL &&
                      a.type != CXPR_VALUE_STRING && a.type != CXPR_VALUE_NULL &&
-                     a.type != CXPR_VALUE_TIMESTAMP && a.type != CXPR_VALUE_DURATION)) {
+                     a.type != CXPR_VALUE_TIMESTAMP && a.type != CXPR_VALUE_DURATION &&
+                     a.type != CXPR_VALUE_INT64)) {
                     if (err) {
                         err->code = CXPR_ERR_TYPE_MISMATCH;
                         err->message = "Equality requires matching scalar operands";
@@ -567,6 +571,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_CEIL:
         case CXPR_OP_ROUND:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
+            if (instr->op == CXPR_OP_NEG && a.type == CXPR_VALUE_INT64) {
+                if (a.i64 == INT64_MIN)
+                    return cxpr_ir_runtime_error(err, "int64 negation overflow");
+                CXPR_TYPED_PUSH(cxpr_int64(-a.i64));
+                break;
+            }
             if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
                                       "Numeric intrinsic requires double operand")) {
                 return cxpr_num(NAN);

@@ -64,7 +64,8 @@ typedef enum {
     CXPR_VALUE_NULL = 4,
     CXPR_VALUE_TIMESTAMP = 5,
     CXPR_VALUE_DURATION = 6,
-    CXPR_VALUE_ARRAY = 7
+    CXPR_VALUE_ARRAY = 7,
+    CXPR_VALUE_INT64 = 8
 } cxpr_value_type;
 
 /** @brief Typed runtime value used by evaluation and struct fields. */
@@ -79,6 +80,10 @@ typedef struct cxpr_value {
         cxpr_array_value* a;
     };
 } cxpr_value;
+
+#define CXPR_VALUE_NUMBER_INIT(value_) { .type = CXPR_VALUE_NUMBER, .d = (value_) }
+#define CXPR_VALUE_BOOL_INIT(value_) { .type = CXPR_VALUE_BOOL, .b = (value_) }
+#define CXPR_VALUE_INT64_INIT(value_) { .type = CXPR_VALUE_INT64, .i64 = (value_) }
 
 /** @brief Owned collection of named typed fields. */
 struct cxpr_struct_value {
@@ -110,6 +115,11 @@ static inline cxpr_value cxpr_num(double d) {
 static inline cxpr_value cxpr_bool(bool b) {
     return (cxpr_value){ .type = CXPR_VALUE_BOOL, .b = b };
 }
+
+static inline cxpr_value cxpr_int64(int64_t value) {
+    return (cxpr_value){ .type = CXPR_VALUE_INT64, .i64 = value };
+}
+
 
 /**
  * @brief Construct a struct `cxpr_value`.

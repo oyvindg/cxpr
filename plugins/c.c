@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 typedef struct cxpr_c_buf {
     char* data;
@@ -79,6 +80,8 @@ static const char* cxpr_c_generated_type_name(cxpr_model_result_kind kind) {
             return "CXPR_GENERATED_VALUE_NUMBER";
         case CXPR_MODEL_RESULT_BOOL:
             return "CXPR_GENERATED_VALUE_BOOL";
+        case CXPR_MODEL_RESULT_INT64:
+            return "CXPR_GENERATED_VALUE_INT64";
         default:
             /*
              * The generated tick ABI transports every scalar as double.
@@ -243,16 +246,23 @@ char* cxpr_c_plugin_artifact_from_program(
         const cxpr_model_result_kind kind =
             cxpr_c_call_param_result_kind(program, name);
         bool found = false;
-        const double value = cxpr_context_get_param(defaults_ctx, name, &found);
+        cxpr_value value = cxpr_context_get_param_typed(defaults_ctx, name, &found);
+        char default_expr[96];
+        if (kind == CXPR_MODEL_RESULT_INT64 && found && value.type == CXPR_VALUE_INT64)
+            snprintf(default_expr, sizeof(default_expr), "{ .type = CXPR_VALUE_INT64, .i64 = INT64_C(%" PRId64 ") }", value.i64);
+        else if (kind == CXPR_MODEL_RESULT_BOOL && found && value.type == CXPR_VALUE_BOOL)
+            snprintf(default_expr, sizeof(default_expr), "{ .type = CXPR_VALUE_BOOL, .b = %s }", value.b ? "true" : "false");
+        else
+            snprintf(default_expr, sizeof(default_expr), "{ .type = CXPR_VALUE_NUMBER, .d = %.17g }", value.type == CXPR_VALUE_NUMBER ? value.d : 0.0);
         if (!cxpr_c_appendf(
                 &out,
                 "    .param_names[%zu] = \"%s\",\n"
                 "    .param_types[%zu] = %s,\n"
-                "    .param_defaults[%zu] = %.17g,\n"
+                "    .param_defaults[%zu] = %s,\n"
                 "    .param_has_default[%zu] = %uu,\n",
                 i, name ? name : "",
                 i, cxpr_c_generated_type_name(kind),
-                i, value, i, found ? 1u : 0u)) {
+                i, default_expr, i, found ? 1u : 0u)) {
             goto oom;
         }
     }

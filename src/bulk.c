@@ -60,8 +60,8 @@ cxpr_bulk_status cxpr_bulk_run_range(
     size_t begin,
     size_t count) {
     cxpr_bulk_status status = cxpr_bulk_validate(descriptor, view);
-    double inputs[CXPR_GENERATED_MODEL_MAX_INPUTS];
-    double outputs[CXPR_GENERATED_MODEL_MAX_OUTPUTS];
+    cxpr_value inputs[CXPR_GENERATED_MODEL_MAX_INPUTS];
+    cxpr_value outputs[CXPR_GENERATED_MODEL_MAX_OUTPUTS];
     size_t end;
     size_t i;
     size_t j;

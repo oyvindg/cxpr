@@ -1,0 +1,14 @@
+model producer {
+    source_arg = "source"
+    lifecycle = "scoped"
+}
+
+in source
+
+state evaluations = 0
+
+next_evaluations = evaluations + 1
+value = source + next_evaluations
+
+out evaluations := next_evaluations
+out value

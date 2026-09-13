@@ -330,6 +330,20 @@ bool cxpr_model_lookback_resolver(const cxpr_expr_ast* target,
     return true;
 }
 
+static void cxpr_model_output_state_set_int64(cxpr_model_output_state* state,
+                                              int64_t value) {
+    if (!state) return;
+    state->int64_previous = state->int64_current;
+    state->has_int64_previous = state->has_int64_current;
+    state->int64_current = value;
+    state->has_int64_current = true;
+    state->has_number_current = false;
+    state->previous = state->current;
+    state->has_previous = state->has_current;
+    state->current = value != 0;
+    state->has_current = true;
+}
+
 static void cxpr_model_session_refresh_outputs(const cxpr_model_compiled* program,
                                                cxpr_model_session* session) {
     if (!program || !session) return;
@@ -356,6 +370,22 @@ static void cxpr_model_session_refresh_outputs(const cxpr_model_compiled* progra
                     &session->outputs[i], session->pending_values[j].b);
                 goto next_output;
             }
+            if (session->pending_values[j].type == CXPR_VALUE_INT64) {
+                cxpr_model_output_state_set_int64(
+                    &session->outputs[i], session->pending_values[j].i64);
+                goto next_output;
+            }
+        }
+        {
+            cxpr_value typed = cxpr_context_get_typed(
+                session->ctx, program->outputs[i], &found);
+            if (found && typed.type == CXPR_VALUE_INT64) {
+                cxpr_model_output_state_set_int64(&session->outputs[i], typed.i64);
+                cxpr_value_free(&typed);
+                goto next_output;
+            }
+            cxpr_value_free(&typed);
+            found = false;
         }
         if (!found) {
             numeric = cxpr_context_get(session->ctx, program->outputs[i], &numeric_found);
@@ -995,8 +1025,11 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     }
     for (size_t i = 0u; i < child->output_count; ++i) {
         double number = 0.0;
+        int64_t integer = 0;
         bool boolean = false;
-        if (cxpr_model_session_get_number(child_session, child->outputs[i], &number)) {
+        if (cxpr_model_session_get_int64(child_session, child->outputs[i], &integer)) {
+            fields[i] = cxpr_int64(integer);
+        } else if (cxpr_model_session_get_number(child_session, child->outputs[i], &number)) {
             fields[i] = cxpr_num(number);
         } else if (cxpr_model_session_get_bool(child_session, child->outputs[i], &boolean)) {
             fields[i] = cxpr_bool(boolean);

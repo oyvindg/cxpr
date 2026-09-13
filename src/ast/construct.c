@@ -42,6 +42,14 @@ cxpr_expr_ast* cxpr_expr_ast_number_new(double value) {
     return node;
 }
 
+cxpr_expr_ast* cxpr_expr_ast_int64_new(int64_t value) {
+    cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
+    if (!node) return NULL;
+    node->type = CXPR_NODE_INT64;
+    node->data.integer.value = value;
+    return node;
+}
+
 cxpr_expr_ast* cxpr_expr_ast_bool_new(bool value) {
     cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;

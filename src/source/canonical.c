@@ -7,6 +7,7 @@
 
 #include <cxpr/expr/ast.h>
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,6 +117,10 @@ int cxpr_source_plan_render_ast_canonical(const cxpr_expr_ast* ast, char** out_t
     switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_NUMBER:
             snprintf(buffer, sizeof(buffer), "%.17g", cxpr_expr_ast_number_value(ast));
+            return cxpr_source_canonical_text_append(out_text, buffer);
+        case CXPR_NODE_INT64:
+            snprintf(buffer, sizeof(buffer), "%" PRId64 "i64",
+                     cxpr_expr_ast_int64_value(ast));
             return cxpr_source_canonical_text_append(out_text, buffer);
         case CXPR_NODE_BOOL:
             return cxpr_source_canonical_text_append(

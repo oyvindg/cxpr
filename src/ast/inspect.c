@@ -59,6 +59,10 @@ double cxpr_expr_ast_number_value(const cxpr_expr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_NUMBER) ? ast->data.number.value : 0.0;
 }
 
+int64_t cxpr_expr_ast_int64_value(const cxpr_expr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_INT64) ? ast->data.integer.value : 0;
+}
+
 bool cxpr_expr_ast_bool_value(const cxpr_expr_ast* ast) {
     return ast && ast->type == CXPR_NODE_BOOL && ast->data.boolean.value;
 }

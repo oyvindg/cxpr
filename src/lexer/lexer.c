@@ -9,6 +9,8 @@
 
 #include "internal.h"
 #include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,6 +90,8 @@ static cxpr_token cxpr_make_token(cxpr_token_type type, const char* start, size_
     tok.start = start;
     tok.length = length;
     tok.number_value = 0.0;
+    tok.int64_value = 0;
+    tok.is_int64 = false;
     tok.position = position;
     tok.line = line;
     tok.column = column;
@@ -101,6 +105,8 @@ static cxpr_token cxpr_make_error_token(const char* message, const cxpr_lexer* l
     tok.start = message;
     tok.length = strlen(message);
     tok.number_value = 0.0;
+    tok.int64_value = 0;
+    tok.is_int64 = false;
     tok.position = lexer->position;
     tok.line = lexer->line;
     tok.column = lexer->column;
@@ -186,6 +192,7 @@ static cxpr_token cxpr_lexer_number(cxpr_lexer* lexer) {
     cxpr_token tok;
     char buf[64];
     size_t len;
+    bool integer_syntax = true;
 
     /* Integer part */
     while (isdigit((unsigned char)*lexer->current)) {
@@ -194,6 +201,7 @@ static cxpr_token cxpr_lexer_number(cxpr_lexer* lexer) {
 
     /* Decimal part */
     if (*lexer->current == '.' && isdigit((unsigned char)lexer->current[1])) {
+        integer_syntax = false;
         cxpr_lexer_advance(lexer); /* skip '.' */
         while (isdigit((unsigned char)*lexer->current)) {
             cxpr_lexer_advance(lexer);
@@ -202,6 +210,7 @@ static cxpr_token cxpr_lexer_number(cxpr_lexer* lexer) {
 
     /* Scientific notation */
     if (*lexer->current == 'e' || *lexer->current == 'E') {
+        integer_syntax = false;
         cxpr_lexer_advance(lexer);
         if (*lexer->current == '+' || *lexer->current == '-') {
             cxpr_lexer_advance(lexer);
@@ -214,11 +223,32 @@ static cxpr_token cxpr_lexer_number(cxpr_lexer* lexer) {
         }
     }
 
+    len = (size_t)(lexer->current - start);
+    if (integer_syntax && lexer->current[0] == 'i' &&
+        lexer->current[1] == '6' && lexer->current[2] == '4' &&
+        !isalnum((unsigned char)lexer->current[3]) && lexer->current[3] != '_') {
+        cxpr_lexer_advance(lexer);
+        cxpr_lexer_advance(lexer);
+        cxpr_lexer_advance(lexer);
+    }
     tok = cxpr_make_token(CXPR_TOK_NUMBER, start, (size_t)(lexer->current - start),
                           start_pos, start_line, start_col);
 
-    /* Parse the number value */
-    len = (size_t)(lexer->current - start);
+    if (integer_syntax && tok.length == len + 3u) {
+        char* end = NULL;
+        if (len >= sizeof(buf)) return cxpr_make_error_token("int64 literal is too long", lexer);
+        memcpy(buf, start, len);
+        buf[len] = '\0';
+        errno = 0;
+        tok.int64_value = strtoimax(buf, &end, 10);
+        if (errno == ERANGE || !end || *end != '\0')
+            return cxpr_make_error_token("int64 literal is out of range", lexer);
+        tok.is_int64 = true;
+        return tok;
+    }
+
+    /* Parse the number value. */
+    len = tok.length;
     if (len >= sizeof(buf)) len = sizeof(buf) - 1;
     memcpy(buf, start, len);
     buf[len] = '\0';

@@ -15,6 +15,8 @@ typedef struct {
     const char* start;
     size_t length;
     double number_value;
+    int64_t int64_value;
+    bool is_int64;
     size_t position;
     size_t line;
     size_t column;

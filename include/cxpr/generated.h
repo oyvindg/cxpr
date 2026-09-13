@@ -8,13 +8,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <cxpr/types.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /** @brief ABI version implemented by generated model descriptors. */
-#define CXPR_GENERATED_MODEL_ABI_VERSION 4u
+#define CXPR_GENERATED_MODEL_ABI_VERSION 5u
 /** @brief Maximum number of inputs represented by a descriptor. */
 #define CXPR_GENERATED_MODEL_MAX_INPUTS 64u
 /** @brief Maximum number of outputs represented by a descriptor. */
@@ -25,9 +26,9 @@ extern "C" {
 /** @brief Evaluate one generated-model tick. */
 typedef void (*cxpr_generated_tick_fn)(
     void* state,
-    const double* inputs,
-    const double* params,
-    double* outputs);
+    const cxpr_value* inputs,
+    const cxpr_value* params,
+    cxpr_value* outputs);
 
 /** Pre-materialized temporal series consumed by generated resample models. */
 #ifndef CXPR_RESAMPLE_VIEW_ABI_VERSION
@@ -87,9 +88,9 @@ static inline int cxpr_resample_view_valid(const cxpr_resample_view* view) {
 /** @brief Evaluate one generated-model tick with pre-bound temporal series. */
 typedef void (*cxpr_generated_resample_tick_fn)(
     void* state,
-    const double* inputs,
-    const double* params,
-    double* outputs,
+    const cxpr_value* inputs,
+    const cxpr_value* params,
+    cxpr_value* outputs,
     const cxpr_resample_view* views,
     size_t primary_cursor);
 
@@ -102,7 +103,8 @@ typedef void (*cxpr_generated_reset_fn)(void* state);
 typedef enum cxpr_generated_value_type {
     CXPR_GENERATED_VALUE_UNKNOWN = 0,
     CXPR_GENERATED_VALUE_NUMBER = 1,
-    CXPR_GENERATED_VALUE_BOOL = 2
+    CXPR_GENERATED_VALUE_BOOL = 2,
+    CXPR_GENERATED_VALUE_INT64 = 3
 } cxpr_generated_value_type;
 
 /**
@@ -140,7 +142,7 @@ typedef struct cxpr_generated_model_descriptor {
     /** Scalar type for each ordered parameter. */
     cxpr_generated_value_type param_types[CXPR_GENERATED_MODEL_MAX_PARAMS];
     /** Default value for each parameter that has a default. */
-    double param_defaults[CXPR_GENERATED_MODEL_MAX_PARAMS];
+    cxpr_value param_defaults[CXPR_GENERATED_MODEL_MAX_PARAMS];
     /** Non-zero for parameters with an entry in @ref param_defaults. */
     unsigned char param_has_default[CXPR_GENERATED_MODEL_MAX_PARAMS];
 } cxpr_generated_model_descriptor;
@@ -164,21 +166,24 @@ static inline int cxpr_generated_model_descriptor_abi_valid(
     for (i = 0u; i < descriptor->input_count; ++i) {
         if (!descriptor->input_names[i] ||
             (descriptor->input_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
-             descriptor->input_types[i] != CXPR_GENERATED_VALUE_BOOL)) {
+             descriptor->input_types[i] != CXPR_GENERATED_VALUE_BOOL &&
+             descriptor->input_types[i] != CXPR_GENERATED_VALUE_INT64)) {
             return 0;
         }
     }
     for (i = 0u; i < descriptor->output_count; ++i) {
         if (!descriptor->output_names[i] ||
             (descriptor->output_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
-             descriptor->output_types[i] != CXPR_GENERATED_VALUE_BOOL)) {
+             descriptor->output_types[i] != CXPR_GENERATED_VALUE_BOOL &&
+             descriptor->output_types[i] != CXPR_GENERATED_VALUE_INT64)) {
             return 0;
         }
     }
     for (i = 0u; i < descriptor->param_count; ++i) {
         if (!descriptor->param_names[i] ||
             (descriptor->param_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
-             descriptor->param_types[i] != CXPR_GENERATED_VALUE_BOOL)) {
+             descriptor->param_types[i] != CXPR_GENERATED_VALUE_BOOL &&
+             descriptor->param_types[i] != CXPR_GENERATED_VALUE_INT64)) {
             return 0;
         }
     }

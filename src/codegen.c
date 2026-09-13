@@ -9,6 +9,7 @@
 #include "core.h"
 #include "lookback.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -358,6 +359,13 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
         char num[32];
         cxpr_cg_format_double(num, sizeof(num), cxpr_expr_ast_number_value(ast));
         cxpr_cg_puts(b, num);
+        return 1;
+    }
+    case CXPR_NODE_INT64: {
+        char integer[48];
+        snprintf(integer, sizeof(integer), "INT64_C(%" PRId64 ")",
+                 cxpr_expr_ast_int64_value(ast));
+        cxpr_cg_puts(b, integer);
         return 1;
     }
     case CXPR_NODE_BOOL:

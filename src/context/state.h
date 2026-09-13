@@ -50,6 +50,13 @@ typedef struct {
     size_t count;
 } cxpr_bool_map;
 
+typedef struct { char* name; int64_t value; } cxpr_int64_map_entry;
+typedef struct {
+    cxpr_int64_map_entry* entries;
+    size_t capacity;
+    size_t count;
+} cxpr_int64_map;
+
 /** @brief One owned named string binding stored in an internal string map. */
 typedef struct {
     char* name;
@@ -136,6 +143,8 @@ struct cxpr_context {
     cxpr_hashmap params;
     cxpr_bool_map bools;
     cxpr_bool_map bool_params;
+    cxpr_int64_map int64s;
+    cxpr_int64_map int64_params;
     cxpr_string_map strings;
     cxpr_string_map string_params;
     cxpr_struct_map structs;

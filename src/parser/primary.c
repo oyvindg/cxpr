@@ -383,9 +383,11 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
     cxpr_expr_ast* node = NULL;
     const cxpr_token start_token = p->current;
     if (cxpr_expr_parser_check(p, CXPR_TOK_NUMBER)) {
-        const double val = p->current.number_value;
+        const cxpr_token token = p->current;
         cxpr_expr_parser_advance(p);
-        node = cxpr_expr_ast_number_new(val);
+        node = token.is_int64
+            ? cxpr_expr_ast_int64_new(token.int64_value)
+            : cxpr_expr_ast_number_new(token.number_value);
     } else if (cxpr_expr_parser_check(p, CXPR_TOK_TRUE) || cxpr_expr_parser_check(p, CXPR_TOK_FALSE)) {
         const bool value = (p->current.type == CXPR_TOK_TRUE);
         cxpr_expr_parser_advance(p);

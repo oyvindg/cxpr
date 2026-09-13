@@ -32,6 +32,8 @@ cxpr_expr_ast* cxpr_expr_ast_clone(const cxpr_expr_ast* ast);
  * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_expr_ast* cxpr_expr_ast_number_new(double value);
+/** Construct an exact signed 64-bit integer literal node. */
+cxpr_expr_ast* cxpr_expr_ast_int64_new(int64_t value);
 /**
  * @brief Construct a boolean literal node.
  * @param value Literal boolean value.
@@ -163,6 +165,7 @@ cxpr_expr_ast* cxpr_expr_ast_ternary_new(cxpr_expr_ast* condition, cxpr_expr_ast
 
 typedef enum {
     CXPR_NODE_NUMBER,
+    CXPR_NODE_INT64,
     CXPR_NODE_BOOL,
     CXPR_NODE_ARRAY,
     CXPR_NODE_RECORD,
@@ -205,6 +208,8 @@ bool cxpr_expr_ast_source_span(const cxpr_expr_ast* ast, cxpr_source_span* out_s
  * @return Literal numeric value.
  */
 double cxpr_expr_ast_number_value(const cxpr_expr_ast* ast);
+/** Return an integer literal payload, or zero for another node kind. */
+int64_t cxpr_expr_ast_int64_value(const cxpr_expr_ast* ast);
 /**
  * @brief Return the boolean payload of a boolean literal node.
  * @param ast Boolean node to inspect.

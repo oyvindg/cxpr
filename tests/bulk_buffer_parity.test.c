@@ -53,8 +53,8 @@ int main(void) {
     cxpr_model_session* sessions[ELEMENT_COUNT];
     cxpr_bulk_const_column inputs[1];
     cxpr_bulk_column outputs[3];
-    double input_values[ELEMENT_COUNT];
-    double output_values[3][ELEMENT_COUNT];
+    cxpr_value input_values[ELEMENT_COUNT];
+    cxpr_value output_values[3][ELEMENT_COUNT];
     void* states;
     size_t state_size;
     char* source = read_fixture();
@@ -98,7 +98,7 @@ int main(void) {
         }
         for (tick = 0u; tick < TICK_COUNT; ++tick) {
             for (element = 0u; element < ELEMENT_COUNT; ++element)
-                input_values[element] = streams[element][tick];
+                input_values[element] = cxpr_num(streams[element][tick]);
             assert(cxpr_bulk_run(descriptor, &view) == CXPR_BULK_OK);
             for (element = 0u; element < ELEMENT_COUNT; ++element) {
                 double expected[3];
@@ -108,15 +108,15 @@ int main(void) {
                 assert(cxpr_model_session_get_number(sessions[element], "newest", &expected[0]));
                 assert(cxpr_model_session_get_number(sessions[element], "oldest", &expected[1]));
                 assert(cxpr_model_session_get_number(sessions[element], "window_sum", &expected[2]));
-                assert_same(output_values[0][element], expected[0]);
-                assert_same(output_values[1][element], expected[1]);
-                assert_same(output_values[2][element], expected[2]);
+                assert_same(output_values[0][element].d, expected[0]);
+                assert_same(output_values[1][element].d, expected[1]);
+                assert_same(output_values[2][element].d, expected[2]);
             }
         }
     }
 
-    assert(output_values[0][0] != output_values[0][1]);
-    assert(output_values[0][1] != output_values[0][2]);
+    assert(output_values[0][0].d != output_values[0][1].d);
+    assert(output_values[0][1].d != output_values[0][2].d);
     for (element = 0u; element < ELEMENT_COUNT; ++element)
         cxpr_model_session_free(sessions[element]);
     free(states);

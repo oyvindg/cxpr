@@ -69,16 +69,16 @@ static long long now_ns(void) {
     return (long long)time.tv_sec * 1000000000LL + time.tv_nsec;
 }
 
-static void set_inputs(cxpr_context* context, double* inputs, size_t tick) {
-    inputs[0] = 50.0 + sin((double)tick * 0.031) * 8.0 + (double)(tick % 7u) * 0.1;
-    inputs[1] = 49.0 + cos((double)tick * 0.023) * 6.0;
-    inputs[2] = sin((double)tick * 0.017);
-    inputs[3] = (double)tick;
+static void set_inputs(cxpr_context* context, cxpr_value* inputs, size_t tick) {
+    inputs[0] = cxpr_num(50.0 + sin((double)tick * 0.031) * 8.0 + (double)(tick % 7u) * 0.1);
+    inputs[1] = cxpr_num(49.0 + cos((double)tick * 0.023) * 6.0);
+    inputs[2] = cxpr_num(sin((double)tick * 0.017));
+    inputs[3] = cxpr_num((double)tick);
     if (!context) return;
-    cxpr_context_set(context, "input_a", inputs[0]);
-    cxpr_context_set(context, "input_b", inputs[1]);
-    cxpr_context_set(context, "control", inputs[2]);
-    cxpr_context_set(context, "clock", inputs[3]);
+    cxpr_context_set(context, "input_a", inputs[0].d);
+    cxpr_context_set(context, "input_b", inputs[1].d);
+    cxpr_context_set(context, "control", inputs[2].d);
+    cxpr_context_set(context, "clock", inputs[3].d);
 }
 
 static void assert_close(double generated, double reference) {
@@ -110,9 +110,9 @@ int main(void) {
     cxpr_model_session* session;
     cxpr_context* context;
     void* generated_state;
-    double params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {0};
-    double inputs[4];
-    double outputs[7];
+    cxpr_value params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {{0}};
+    cxpr_value inputs[4];
+    cxpr_value outputs[7];
     long long reference_start;
     long long reference_ns;
     long long generated_start;
@@ -152,14 +152,14 @@ int main(void) {
         descriptor->tick(generated_state, inputs, params, outputs);
         if (i < 12u) continue;
         assert(cxpr_model_session_get_bool(session, "active", &reference_bool));
-        assert((outputs[0] != 0.0) == reference_bool);
+        assert(outputs[0].b == reference_bool);
         assert(cxpr_model_session_get_bool(session, "inactive", &reference_bool));
-        assert((outputs[1] != 0.0) == reference_bool);
+        assert(outputs[1].b == reference_bool);
         for (output = 0u; output < 5u; ++output) {
             double reference;
             assert(cxpr_model_session_get_number(
                 session, numeric_outputs[output], &reference));
-            assert_close(outputs[output + 2u], reference);
+            assert_close(outputs[output + 2u].d, reference);
         }
     }
 
@@ -182,7 +182,7 @@ int main(void) {
     for (i = 0u; i < ticks; ++i) {
         set_inputs(NULL, inputs, i);
         descriptor->tick(generated_state, inputs, params, outputs);
-        if (i >= 12u) sink += outputs[2];
+        if (i >= 12u) sink += outputs[2].d;
     }
     generated_ns = now_ns() - generated_start;
 

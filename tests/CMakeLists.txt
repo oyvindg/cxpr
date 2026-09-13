@@ -209,6 +209,32 @@ if(CXPR_BUILD_CUDA_TESTS)
 endif()
 
 if(TARGET cxpr_model_codegen)
+    set(CXPR_COMPOSITION_FANOUT_FIXTURE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/composition_fanout")
+    set(CXPR_COMPOSITION_FANOUT_GENERATED_C
+        "${CMAKE_CURRENT_BINARY_DIR}/composition_fanout.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_COMPOSITION_FANOUT_GENERATED_C}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_COMPOSITION_FANOUT_FIXTURE_DIR}/fanout.cxpr"
+            --output "${CXPR_COMPOSITION_FANOUT_GENERATED_C}"
+            --function cxpr_composition_fanout_tick
+        DEPENDS
+            cxpr_model_codegen
+            "${CXPR_COMPOSITION_FANOUT_FIXTURE_DIR}/fanout.cxpr"
+            "${CXPR_COMPOSITION_FANOUT_FIXTURE_DIR}/producer.cxpr"
+            "${CXPR_COMPOSITION_FANOUT_FIXTURE_DIR}/consumer_a.cxpr"
+            "${CXPR_COMPOSITION_FANOUT_FIXTURE_DIR}/consumer_b.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_composition_fanout_fixture
+        DEPENDS "${CXPR_COMPOSITION_FANOUT_GENERATED_C}")
+    add_dependencies(test_composition_bulk_codegen_e2e
+        generate_cxpr_composition_fanout_fixture)
+    target_include_directories(test_composition_bulk_codegen_e2e PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_definitions(test_composition_bulk_codegen_e2e PRIVATE
+        CXPR_COMPOSITION_FANOUT_FIXTURE_DIR="${CXPR_COMPOSITION_FANOUT_FIXTURE_DIR}")
+
     set(CXPR_BULK_GRID_EXAMPLE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/../examples/bulk_grid")
     set(CXPR_BULK_GRID_GENERATED_DIR

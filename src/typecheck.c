@@ -21,7 +21,8 @@ typedef enum cxpr_typecheck_static_type {
     CXPR_STATIC_NULL = CXPR_VALUE_NULL,
     CXPR_STATIC_TIMESTAMP = CXPR_VALUE_TIMESTAMP,
     CXPR_STATIC_DURATION = CXPR_VALUE_DURATION,
-    CXPR_STATIC_ARRAY = CXPR_VALUE_ARRAY
+    CXPR_STATIC_ARRAY = CXPR_VALUE_ARRAY,
+    CXPR_STATIC_INT64 = CXPR_VALUE_INT64
 } cxpr_typecheck_static_type;
 
 static const char* cxpr_typecheck_type_name(cxpr_typecheck_static_type type) {
@@ -35,6 +36,7 @@ static const char* cxpr_typecheck_type_name(cxpr_typecheck_static_type type) {
     case CXPR_STATIC_TIMESTAMP: return "timestamp";
     case CXPR_STATIC_DURATION: return "duration";
     case CXPR_STATIC_ARRAY: return "array";
+    case CXPR_STATIC_INT64: return "int64";
     default: return "invalid";
     }
 }
@@ -162,11 +164,13 @@ static bool cxpr_typecheck_record_shapes_match(const cxpr_expr_ast* left,
 }
 
 static bool cxpr_typecheck_is_numeric(cxpr_typecheck_static_type type) {
-    return type == CXPR_STATIC_NUMBER || type == CXPR_STATIC_UNKNOWN;
+    return type == CXPR_STATIC_NUMBER || type == CXPR_STATIC_INT64 ||
+           type == CXPR_STATIC_UNKNOWN;
 }
 
 static bool cxpr_typecheck_is_struct_arithmetic_operand(cxpr_typecheck_static_type type) {
     return type == CXPR_STATIC_NUMBER ||
+           type == CXPR_STATIC_INT64 ||
            type == CXPR_STATIC_STRUCT ||
            type == CXPR_STATIC_UNKNOWN;
 }
@@ -272,9 +276,17 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_expr_as
             cxpr_typecheck_struct_shape_error(err, cxpr_typecheck_op_name(op));
             return CXPR_STATIC_ERROR;
         }
-        return (lt == CXPR_STATIC_STRUCT || rt == CXPR_STATIC_STRUCT)
-                   ? CXPR_STATIC_STRUCT
-                   : CXPR_STATIC_NUMBER;
+        if (lt == CXPR_STATIC_STRUCT || rt == CXPR_STATIC_STRUCT)
+            return CXPR_STATIC_STRUCT;
+        if (lt == CXPR_STATIC_INT64 && rt == CXPR_STATIC_INT64)
+            return CXPR_STATIC_INT64;
+        if (lt != CXPR_STATIC_UNKNOWN && rt != CXPR_STATIC_UNKNOWN && lt != rt) {
+            cxpr_typecheck_error(err, cxpr_typecheck_op_name(op),
+                                 "matching numeric types", "right operand", right, rt);
+            return CXPR_STATIC_ERROR;
+        }
+        return lt == CXPR_STATIC_INT64 || rt == CXPR_STATIC_INT64
+                   ? CXPR_STATIC_INT64 : CXPR_STATIC_NUMBER;
     case CXPR_TOK_PERCENT:
     case CXPR_TOK_POWER:
         if (!cxpr_typecheck_is_numeric(lt)) {
@@ -398,6 +410,7 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
 
     switch (ast->type) {
     case CXPR_NODE_NUMBER: return CXPR_STATIC_NUMBER;
+    case CXPR_NODE_INT64: return CXPR_STATIC_INT64;
     case CXPR_NODE_BOOL: return CXPR_STATIC_BOOL;
     case CXPR_NODE_STRING: return CXPR_STATIC_STRING;
     case CXPR_NODE_ARRAY: return CXPR_STATIC_ARRAY;

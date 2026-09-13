@@ -263,7 +263,7 @@ char* cxpr_model_compiled_generate_c_outputs(
     if (qualifiers && qualifiers[0]) cxpr_model_c_printf(&b, "%s ", qualifiers);
     cxpr_model_c_printf(
         &b,
-        "void %s(double* _cx_slots, const double* _cx_inputs, const double* _cx_params, double* _cx_outputs) {\n",
+        "void %s(double* _cx_slots, const cxpr_value* _cx_inputs, const cxpr_value* _cx_params, cxpr_value* _cx_outputs) {\n",
         safe_name);
     free(safe_name);
     safe_name = NULL;
@@ -271,8 +271,9 @@ char* cxpr_model_compiled_generate_c_outputs(
         cxpr_model_c_printf(&b, "    double _cx_v%zu;\n", i);
     }
     for (size_t i = 0u; i < program->fused_input_count; ++i) {
-        cxpr_model_c_printf(&b, "    _cx_slots[%zu] = _cx_inputs[%zu];\n",
-                            program->fused_inputs[i].slot, i);
+        cxpr_model_c_printf(&b, "    _cx_slots[%zu] = _cx_inputs[%zu].%s;\n",
+                            program->fused_inputs[i].slot, i,
+                            program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "b" : "d");
     }
 
     for (size_t i = 0u; i < program->fused_ir.count; ++i) {
@@ -306,7 +307,7 @@ char* cxpr_model_compiled_generate_c_outputs(
                                      "Unknown model C parameter", 0, 0);
                 goto fail;
             }
-            cxpr_model_c_printf(&b, "    _cx_v%zu = _cx_params[%zu];\n", sp, param_index);
+            cxpr_model_c_printf(&b, "    _cx_v%zu = _cx_params[%zu].d;\n", sp, param_index);
             break;
         }
         case CXPR_OP_LOAD_PARAM_SQUARE: {
@@ -316,7 +317,7 @@ char* cxpr_model_compiled_generate_c_outputs(
                                      "Unknown model C parameter", 0, 0);
                 goto fail;
             }
-            cxpr_model_c_printf(&b, "    _cx_v%zu = _cx_params[%zu] * _cx_params[%zu];\n",
+            cxpr_model_c_printf(&b, "    _cx_v%zu = _cx_params[%zu].d * _cx_params[%zu].d;\n",
                                 sp, param_index, param_index);
             break;
         }
@@ -496,8 +497,10 @@ char* cxpr_model_compiled_generate_c_outputs(
     }
     for (size_t out_i = 0u; out_i < (output_indices ? output_count : program->fused_output_count); ++out_i) {
         size_t i = output_indices ? output_indices[out_i] : out_i;
-        cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = _cx_slots[%zu];\n",
-                            out_i, program->fused_outputs[i].slot);
+        cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s(_cx_slots[%zu]);\n",
+                            out_i,
+                            program->fused_outputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "cxpr_bool" : "cxpr_num",
+                            program->fused_outputs[i].slot);
     }
     cxpr_model_c_puts(&b, "}\n");
     if (b.oom) {

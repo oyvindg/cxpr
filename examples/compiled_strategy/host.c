@@ -58,10 +58,10 @@ int main(void) {
     cxpr_model_session* session;
     cxpr_context* context;
     void* generated_state;
-    double params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {0};
-    double inputs[3];
-    double outputs[4];
-    double first_outputs[4];
+    cxpr_value params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {{0}};
+    cxpr_value inputs[3];
+    cxpr_value outputs[4];
+    cxpr_value first_outputs[4];
     size_t i;
 
     assert(source);
@@ -93,13 +93,13 @@ int main(void) {
         double delta;
         double total;
 
-        inputs[0] = sin((double)i * 0.071) + (double)(i % 11u) * 0.03;
-        inputs[1] = cos((double)i * 0.047) * 0.7;
-        inputs[2] = (double)i;
+        inputs[0] = cxpr_num(sin((double)i * 0.071) + (double)(i % 11u) * 0.03);
+        inputs[1] = cxpr_num(cos((double)i * 0.047) * 0.7);
+        inputs[2] = cxpr_num((double)i);
 
-        cxpr_context_set(context, "input_a", inputs[0]);
-        cxpr_context_set(context, "input_b", inputs[1]);
-        cxpr_context_set(context, "clock", inputs[2]);
+        cxpr_context_set(context, "input_a", inputs[0].d);
+        cxpr_context_set(context, "input_b", inputs[1].d);
+        cxpr_context_set(context, "clock", inputs[2].d);
         assert(cxpr_model_session_tick(compiled, session, NULL, &error));
 
         descriptor->tick(generated_state, inputs, params, outputs);
@@ -113,18 +113,22 @@ int main(void) {
         assert(cxpr_model_session_get_number(session, "delta", &delta));
         assert(cxpr_model_session_get_number(session, "total", &total));
 
-        assert((outputs[0] != 0.0) == crossed);
-        assert((outputs[1] != 0.0) == active);
-        assert_close(outputs[2], delta);
-        assert_close(outputs[3], total);
+        assert(outputs[0].b == crossed);
+        assert(outputs[1].b == active);
+        assert_close(outputs[2].d, delta);
+        assert_close(outputs[3].d, total);
     }
 
     descriptor->reset(generated_state);
-    inputs[0] = sin(0.0);
-    inputs[1] = cos(0.0) * 0.7;
-    inputs[2] = 0.0;
+    inputs[0] = cxpr_num(sin(0.0));
+    inputs[1] = cxpr_num(cos(0.0) * 0.7);
+    inputs[2] = cxpr_num(0.0);
     descriptor->tick(generated_state, inputs, params, outputs);
-    for (i = 0u; i < 4u; ++i) assert_close(outputs[i], first_outputs[i]);
+    for (i = 0u; i < 4u; ++i) {
+        assert(outputs[i].type == first_outputs[i].type);
+        if (outputs[i].type == CXPR_VALUE_BOOL) assert(outputs[i].b == first_outputs[i].b);
+        else assert_close(outputs[i].d, first_outputs[i].d);
+    }
 
     printf("compiled_strategy: 512 ticks, 4 outputs, engine/generated-C parity OK\n");
     free(generated_state);

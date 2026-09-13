@@ -67,6 +67,13 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         }
     }
     {
+        int64_t int_value = cxpr_context_get_local_int64(ctx, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return cxpr_int64(int_value);
+        }
+    }
+    {
         const char* string_value = cxpr_context_get_local_string(ctx, name, &local_found);
         if (local_found) {
             if (found) *found = true;
@@ -132,6 +139,13 @@ cxpr_value cxpr_context_get_param_typed(const cxpr_context* ctx, const char* nam
         if (local_found) {
             if (found) *found = true;
             return cxpr_bool(bool_value);
+        }
+    }
+    {
+        int64_t int_value = cxpr_context_get_local_param_int64(ctx, name, &local_found);
+        if (local_found) {
+            if (found) *found = true;
+            return cxpr_int64(int_value);
         }
     }
     {

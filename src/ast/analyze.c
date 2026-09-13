@@ -64,6 +64,8 @@ static cxpr_expr_type cxpr_expr_ast_analyze_node(const cxpr_expr_ast* ast,
     switch (ast->type) {
         case CXPR_NODE_NUMBER:
             return CXPR_EXPR_NUMBER;
+        case CXPR_NODE_INT64:
+            return CXPR_EXPR_NUMBER;
         case CXPR_NODE_BOOL:
             return CXPR_EXPR_BOOL;
         case CXPR_NODE_ARRAY:

@@ -30,6 +30,8 @@ void cxpr_context_clear_entry_cache(cxpr_context_entry_cache* cache);
 bool cxpr_context_get_local_bool(const cxpr_context* ctx, const char* name, bool* found);
 /** @brief Look up a bool param only on this exact context, without parent fallback. */
 bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name, bool* found);
+int64_t cxpr_context_get_local_int64(const cxpr_context* ctx, const char* name, bool* found);
+int64_t cxpr_context_get_local_param_int64(const cxpr_context* ctx, const char* name, bool* found);
 /** @brief Look up a string binding only on this exact context, without parent fallback. */
 const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* name, bool* found);
 /** @brief Look up a string param only on this exact context, without parent fallback. */

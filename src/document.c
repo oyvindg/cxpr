@@ -480,6 +480,36 @@ static bool cxpr_doc_model_append_name_list(char*** values,
     return true;
 }
 
+static bool cxpr_doc_model_append_typed_name_list(
+    char*** values, cxpr_model_decl_type** declared_types,
+    cxpr_model_element_type** element_types, size_t* count,
+    const char* names, bool unique, const char* type_text, cxpr_error* err) {
+    const size_t old_count = count ? *count : 0u;
+    cxpr_model_decl_type declared_type;
+    cxpr_model_element_type element_type;
+    cxpr_model_decl_type* grown_declared;
+    cxpr_model_element_type* grown_elements;
+    if (!cxpr_document_parse_decl_type(
+            type_text, &declared_type, &element_type, NULL) ||
+        !cxpr_doc_model_append_name_list(values, count, names, unique, err)) return false;
+    if (*count == old_count) return true;
+    grown_declared = realloc(*declared_types, *count * sizeof(**declared_types));
+    grown_elements = realloc(*element_types, *count * sizeof(**element_types));
+    if (!grown_declared || !grown_elements) {
+        if (grown_declared) *declared_types = grown_declared;
+        if (grown_elements) *element_types = grown_elements;
+        cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return false;
+    }
+    *declared_types = grown_declared;
+    *element_types = grown_elements;
+    for (size_t i = old_count; i < *count; ++i) {
+        (*declared_types)[i] = declared_type;
+        (*element_types)[i] = element_type;
+    }
+    return true;
+}
+
 static bool cxpr_doc_model_append_struct_input_block(cxpr_model* model,
                                                           const cxpr_doc_ast_node* node,
                                                           cxpr_error* err) {
@@ -1266,8 +1296,10 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
                            model, node, "param",
                            CXPR_MODEL_METADATA_TARGET_PARAM);
             }
-            return cxpr_doc_model_append_name_list(
-                &model->inputs, &model->input_count, name, false, err);
+            return cxpr_doc_model_append_typed_name_list(
+                &model->inputs, &model->input_declared_types,
+                &model->input_element_types, &model->input_count, name, false,
+                cxpr_doc_ast_node_value(node), err);
         case CXPR_DOC_AST_PARAM_DECL:
             return cxpr_doc_model_append_constant(model, node, false) &&
                    cxpr_document_lower_metadata_children(
@@ -1290,8 +1322,10 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
         case CXPR_DOC_AST_OUTPUT_STATE_UPDATE:
             return cxpr_doc_model_append_binding(
                        model, CXPR_MODEL_BINDING_STATE_UPDATE, node) &&
-                   cxpr_doc_model_append_unique_string(
-                       &model->outputs, &model->output_count, name);
+                   cxpr_doc_model_append_typed_name_list(
+                       &model->outputs, &model->output_declared_types,
+                       &model->output_element_types, &model->output_count,
+                       name, true, cxpr_doc_ast_node_value(node), err);
         case CXPR_DOC_AST_OUTPUT_DECL:
             if (cxpr_doc_ast_node_expr(node) &&
                 cxpr_doc_model_has_state(model, name)) {
@@ -1305,13 +1339,17 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
             }
             if (cxpr_doc_ast_node_expr(node) ||
                 cxpr_doc_ast_node_child_count(node) > 0u) {
-                return cxpr_doc_model_append_unique_string(
-                           &model->outputs, &model->output_count, name) &&
+                return cxpr_doc_model_append_typed_name_list(
+                           &model->outputs, &model->output_declared_types,
+                           &model->output_element_types, &model->output_count,
+                           name, true, cxpr_doc_ast_node_value(node), err) &&
                        cxpr_document_lower_metadata_children(
                            model, node, "output", CXPR_MODEL_METADATA_TARGET_OUTPUT);
             }
-            return cxpr_doc_model_append_name_list(
-                &model->outputs, &model->output_count, name, true, err);
+            return cxpr_doc_model_append_typed_name_list(
+                &model->outputs, &model->output_declared_types,
+                &model->output_element_types, &model->output_count, name, true,
+                cxpr_doc_ast_node_value(node), err);
         case CXPR_DOC_AST_ANONYMOUS_OUTPUT:
             return cxpr_doc_model_append_anonymous_output(model, node);
         case CXPR_DOC_AST_HOST_FIELD:

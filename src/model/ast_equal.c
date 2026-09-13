@@ -13,6 +13,8 @@ bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right)
     switch (cxpr_expr_ast_kind_of(left)) {
     case CXPR_NODE_NUMBER:
         return fabs(cxpr_expr_ast_number_value(left) - cxpr_expr_ast_number_value(right)) < 1e-12;
+    case CXPR_NODE_INT64:
+        return cxpr_expr_ast_int64_value(left) == cxpr_expr_ast_int64_value(right);
     case CXPR_NODE_BOOL:
         return cxpr_expr_ast_bool_value(left) == cxpr_expr_ast_bool_value(right);
     case CXPR_NODE_STRING:

@@ -41,6 +41,8 @@ cxpr_value cxpr_value_clone(const cxpr_value* value) {
         return cxpr_num(value->d);
     case CXPR_VALUE_BOOL:
         return cxpr_bool(value->b);
+    case CXPR_VALUE_INT64:
+        return cxpr_int64(value->i64);
     case CXPR_VALUE_STRUCT:
         return cxpr_struct(cxpr_struct_value_new(
             value->s ? (const char* const*)value->s->field_names : NULL,

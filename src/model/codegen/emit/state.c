@@ -39,7 +39,8 @@ bool cxpr_model_c_emit_runtime_state_typedef(
             cxpr_model_c_printf(
                 b, "    %s %s;\n",
                 program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_BOOL
-                    ? "uint8_t" : "double", field_name);
+                    ? "uint8_t" : program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_INT64
+                    ? "int64_t" : "double", field_name);
         }
         free(field_name);
     }
@@ -71,7 +72,7 @@ bool cxpr_model_c_emit_runtime_state_typedef(
         }
         cxpr_model_c_printf(b, "    %s_state child_call_%zu_state;\n", child_tick_name, i);
         cxpr_model_c_printf(b, "    uint8_t child_call_%zu_initialized;\n", i);
-        cxpr_model_c_printf(b, "    double child_call_%zu_outputs[%zu];\n",
+        cxpr_model_c_printf(b, "    cxpr_value child_call_%zu_outputs[%zu];\n",
                             i,
                             program->children[child_index].program &&
                                     program->children[child_index].program->output_count

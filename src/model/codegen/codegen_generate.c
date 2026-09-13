@@ -165,12 +165,12 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     if (program->resample_requirement_count > 0u) {
         cxpr_model_c_printf(
             &b,
-            "void %s(%s_state* restrict _cx_state, const double* restrict _cx_inputs, const double* restrict _cx_params, double* restrict _cx_outputs, const cxpr_resample_view* restrict _cx_resample_views, size_t _cx_primary_cursor) {\n",
+            "void %s(%s_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs, const cxpr_resample_view* restrict _cx_resample_views, size_t _cx_primary_cursor) {\n",
             safe_name, safe_name);
     } else {
         cxpr_model_c_printf(
             &b,
-            "void %s(%s_state* restrict _cx_state, const double* restrict _cx_inputs, const double* restrict _cx_params, double* restrict _cx_outputs) {\n",
+            "void %s(%s_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs) {\n",
             safe_name, safe_name);
     }
 
@@ -187,7 +187,12 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     for (size_t i = 0u; i < program->fused_input_count; ++i) {
         char* name = cxpr_model_c_prefixed_name("_cx_input_", program->fused_inputs[i].name);
         if (!name) goto oom;
-        cxpr_model_c_printf(&b, "    const double _cx_input_%zu = _cx_inputs[%zu];\n", i, i);
+        cxpr_model_c_printf(&b, "    const %s _cx_input_%zu = _cx_inputs[%zu].%s;\n",
+            program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "bool" :
+            program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
+            i, i,
+            program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "b" :
+            program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "i64" : "d");
         free(name);
     }
     if (!literal_param_values || literal_param_count < program->constant_count) {
@@ -197,28 +202,32 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             char max_raw[64];
             cxpr_model_c_format_double(min_raw, sizeof(min_raw), param->min_value);
             cxpr_model_c_format_double(max_raw, sizeof(max_raw), param->max_value);
-            if (param->has_min_value && param->has_max_value) {
+            if (param->result_kind == CXPR_MODEL_RESULT_INT64) {
+                cxpr_model_c_printf(&b, "    const int64_t _cx_param_%zu = _cx_params[%zu].i64;\n", i, i);
+            } else if (param->result_kind == CXPR_MODEL_RESULT_BOOL) {
+                cxpr_model_c_printf(&b, "    const bool _cx_param_%zu = _cx_params[%zu].b;\n", i, i);
+            } else if (param->has_min_value && param->has_max_value) {
                 cxpr_model_c_printf(
                     &b,
-                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu]) ? "
-                    "fmax(%s, fmin(%s, _cx_params[%zu])) : _cx_params[%zu];\n",
+                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu].d) ? "
+                    "fmax(%s, fmin(%s, _cx_params[%zu].d)) : _cx_params[%zu].d;\n",
                     i, i, min_raw, max_raw, i, i);
             } else if (param->has_min_value) {
                 cxpr_model_c_printf(
                     &b,
-                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu]) ? "
-                    "fmax(%s, _cx_params[%zu]) : _cx_params[%zu];\n",
+                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu].d) ? "
+                    "fmax(%s, _cx_params[%zu].d) : _cx_params[%zu].d;\n",
                     i, i, min_raw, i, i);
             } else if (param->has_max_value) {
                 cxpr_model_c_printf(
                     &b,
-                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu]) ? "
-                    "fmin(%s, _cx_params[%zu]) : _cx_params[%zu];\n",
+                    "    const double _cx_param_%zu = isfinite(_cx_params[%zu].d) ? "
+                    "fmin(%s, _cx_params[%zu].d) : _cx_params[%zu].d;\n",
                     i, i, max_raw, i, i);
             } else {
                 cxpr_model_c_printf(
                     &b,
-                    "    const double _cx_param_%zu = _cx_params[%zu];\n", i, i);
+                    "    const double _cx_param_%zu = _cx_params[%zu].d;\n", i, i);
             }
         }
     }
@@ -231,7 +240,10 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             free(field_name);
             goto fail;
         }
-        cxpr_model_c_printf(&b, "    const double %s = _cx_state->%s;\n", name, field_name);
+        cxpr_model_c_printf(&b, "    const %s %s = _cx_state->%s;\n",
+            program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "bool" :
+            program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
+            name, field_name);
         free(name);
         free(field_name);
     }
@@ -297,7 +309,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         }
         for (size_t i = 0u; i < program->constant_count; ++i) {
             cxpr_model_c_printf(
-                &b, "        isfinite(_cx_params[%zu]) &&\n", i);
+                &b, "        isfinite(_cx_param_%zu) &&\n", i);
         }
         if (cxpr_expr_ast_kind_of(program->bindings[guard_index].ast) == CXPR_NODE_BOOL &&
             cxpr_expr_ast_bool_value(program->bindings[guard_index].ast)) {
@@ -307,7 +319,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         }
         cxpr_model_c_printf(&b, "    if (CXPR_UNLIKELY(!%s)) {\n", guard_name);
         for (size_t i = 0u; i < emitted_output_count; ++i) {
-            cxpr_model_c_printf(&b, "        _cx_outputs[%zu] = NAN;\n", i);
+            cxpr_model_c_printf(&b, "        _cx_outputs[%zu] = cxpr_num(NAN);\n", i);
         }
         cxpr_model_c_puts(&b, "        return;\n    }\n");
         skip_bindings[guard_index] = true;
@@ -365,6 +377,8 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                     &b, "    const %s %s = %s;\n",
                     program->bindings[i].result_kind == CXPR_MODEL_RESULT_BOOL
                         ? "bool"
+                        : program->bindings[i].result_kind == CXPR_MODEL_RESULT_INT64
+                        ? "int64_t"
                         : "double",
                     name, common);
                 if (owns_name) free(name);
@@ -459,6 +473,8 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             &b, "    const %s %s = %s;\n",
             program->bindings[i].result_kind == CXPR_MODEL_RESULT_BOOL
                 ? "bool"
+                : program->bindings[i].result_kind == CXPR_MODEL_RESULT_INT64
+                ? "int64_t"
                 : "double",
             name, expr);
         free(expr);
@@ -512,14 +528,20 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                 goto oom;
             }
             cxpr_model_c_emit_source_comment(&b, ".cxpr", cxpr_model_c_source_for_name(program, name));
-            cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = _cx_state->%s;\n",
-                                out_i, field_name);
+            cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s(_cx_state->%s);\n",
+                                out_i,
+                                program->fused_outputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "cxpr_bool" :
+                                program->fused_outputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "cxpr_int64" : "cxpr_num",
+                                field_name);
             free(field_name);
         } else {
             char* local_name = cxpr_model_c_safe_name(name);
             if (!local_name) goto oom;
             cxpr_model_c_emit_source_comment(&b, ".cxpr", cxpr_model_c_source_for_name(program, name));
-            cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s;\n", out_i, local_name);
+            cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s(%s);\n", out_i,
+                                program->fused_outputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "cxpr_bool" :
+                                program->fused_outputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "cxpr_int64" : "cxpr_num",
+                                local_name);
             free(local_name);
         }
     }

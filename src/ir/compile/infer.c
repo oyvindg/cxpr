@@ -16,6 +16,8 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxp
     if (!ast || depth > CXPR_IR_INFER_DEPTH_LIMIT) return CXPR_IR_RESULT_UNKNOWN;
 
     switch (ast->type) {
+    case CXPR_NODE_INT64:
+        return CXPR_IR_RESULT_UNKNOWN;
     case CXPR_NODE_NUMBER:
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:

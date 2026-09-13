@@ -56,7 +56,7 @@ static void test_complete_artifact_descriptor_metadata(void) {
     assert(strstr(artifact, "memset(state, 0, sizeof(artifact_tick_state));") != NULL);
     assert(strstr(artifact, ".param_names[0] = \"threshold\"") != NULL);
     assert(strstr(artifact, ".param_types[0] = CXPR_GENERATED_VALUE_NUMBER") != NULL);
-    assert(strstr(artifact, ".param_defaults[0] = 3") != NULL);
+    assert(strstr(artifact, ".param_defaults[0] = { .type = CXPR_VALUE_NUMBER, .d = 3 }") != NULL);
     assert(strstr(artifact, ".param_has_default[0] = 1u") != NULL);
     assert(strstr(artifact, ".input_names[0] = \"close\"") != NULL);
     assert(strstr(artifact, ".input_types[0] = CXPR_GENERATED_VALUE_NUMBER") != NULL);

@@ -27,6 +27,7 @@ extern "C" {
 typedef enum {
     CXPR_IR_OP_UNKNOWN = 0,
     CXPR_IR_OP_PUSH_CONST,
+    CXPR_IR_OP_PUSH_INT64,
     CXPR_IR_OP_PUSH_BOOL,
     CXPR_IR_OP_PUSH_STRING,
     CXPR_IR_OP_BUILD_ARRAY,
@@ -103,6 +104,7 @@ typedef struct {
     const char* aux_name;   /**< Secondary symbol, typically a selected field. */
     const char* func_name;  /**< Registered function/producer name for call ops. */
     double value;           /**< PUSH_CONST or PUSH_BOOL payload. */
+    int64_t int64_value;    /**< PUSH_INT64 payload. */
     size_t index;           /**< LOAD_LOCAL or jump target operand. */
     size_t arg_count;       /**< Function/producer argument count or array element count. */
     unsigned long hash;     /**< Cached lookup hash for load ops. */

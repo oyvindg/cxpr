@@ -2370,7 +2370,7 @@ static void test_session_direct_record_producer_lookback(void) {
                 err.message ? err.message : "(null)");
     }
     assert(code != NULL);
-    assert(strstr(code, "const double entry ="));
+    assert(strstr(code, "const bool entry ="));
     assert(strstr(code, "history_"));
     assert(!strstr(code, "_cx_slots["));
     free(code);
@@ -3078,6 +3078,89 @@ static void test_imported_producer_repeated_calls_cache_same_args(void) {
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_repeated_calls_cache_same_args\n");
+}
+
+static void test_imported_producer_output_fans_out_to_two_consumers(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* producer = parse_model_ok(
+        "model producer { source_arg = \"source\", lifecycle = \"scoped\" }\n"
+        "in source\n"
+        "state evaluations = 0\n"
+        "next_evaluations = evaluations + 1\n"
+        "value = source + next_evaluations\n"
+        "evaluations := next_evaluations\n"
+        "out { value, next_evaluations }\n");
+    cxpr_model* consumer_a = parse_model_ok(
+        "model consumer_a { source_arg = \"source\" }\n"
+        "in source\n"
+        "value = source + 100\n"
+        "out value\n");
+    cxpr_model* consumer_b = parse_model_ok(
+        "model consumer_b { source_arg = \"source\" }\n"
+        "in source\n"
+        "value = source * 2\n"
+        "out value\n");
+    cxpr_model_compiled* producer_program = cxpr_model_compile(producer, NULL, &err);
+    cxpr_model_compiled* consumer_a_program = cxpr_model_compile(consumer_a, NULL, &err);
+    cxpr_model_compiled* consumer_b_program = cxpr_model_compile(consumer_b, NULL, &err);
+    cxpr_model_import imports[3];
+    cxpr_model* parent;
+    cxpr_model_compiled* parent_program;
+    cxpr_model_session* session;
+    cxpr_context* ctx;
+
+    assert(producer_program != NULL);
+    assert(consumer_a_program != NULL);
+    assert(consumer_b_program != NULL);
+    imports[0] = (cxpr_model_import){.name = "producer", .program = producer_program};
+    imports[1] = (cxpr_model_import){.name = "consumer_a", .program = consumer_a_program};
+    imports[2] = (cxpr_model_import){.name = "consumer_b", .program = consumer_b_program};
+    parent = parse_model_ok(
+        "model fanout\n"
+        "use producer\n"
+        "use consumer_a\n"
+        "use consumer_b\n"
+        "in close\n"
+        "produced = producer(close)\n"
+        "a = consumer_a(produced.value).value\n"
+        "b = consumer_b(produced.value).value\n"
+        "producer_evaluations = produced.next_evaluations\n"
+        "out { a, b, producer_evaluations }\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 3u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "producer fan-out compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    ctx = cxpr_model_session_context(session);
+
+    cxpr_context_set(ctx, "close", 10.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "a", &value) && value == 111.0);
+    assert(cxpr_model_session_get_number(session, "b", &value) && value == 22.0);
+    assert(cxpr_model_session_get_number(session, "producer_evaluations", &value) &&
+           value == 1.0);
+
+    cxpr_context_set(ctx, "close", 20.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "a", &value) && value == 122.0);
+    assert(cxpr_model_session_get_number(session, "b", &value) && value == 44.0);
+    assert(cxpr_model_session_get_number(session, "producer_evaluations", &value) &&
+           value == 2.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(consumer_b_program);
+    cxpr_model_compiled_free(consumer_a_program);
+    cxpr_model_compiled_free(producer_program);
+    cxpr_model_free(consumer_b);
+    cxpr_model_free(consumer_a);
+    cxpr_model_free(producer);
+    printf("  ✓ test_imported_producer_output_fans_out_to_two_consumers\n");
 }
 
 static void test_imported_stateful_producer_calls_keep_independent_state(void) {
@@ -4399,7 +4482,7 @@ static void test_rsi_state_strategy_fixture_emits_c_tick(void) {
     if (!code) fprintf(stderr, "model C tick emit failed: %s\n", err.message);
     assert(code != NULL);
     assert(strstr(code, "typedef struct cxpr_rsi_state_tick_state"));
-    assert(strstr(code, "static inline void cxpr_rsi_state_tick(cxpr_rsi_state_tick_state* restrict _cx_state, const double* restrict _cx_inputs, const double* restrict _cx_params, double* restrict _cx_outputs)"));
+    assert(strstr(code, "static inline void cxpr_rsi_state_tick(cxpr_rsi_state_tick_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs)"));
     assert(strstr(code, "static inline double cxpr_fn_cxpr_rsi_state_tick_rsi"));
     assert(strstr(code, "const double change ="));
     assert(strstr(code, "cxpr_fn_cxpr_rsi_state_tick_rsi(next_avg_gain, next_avg_loss)"));
@@ -4638,6 +4721,41 @@ static void test_typed_declaration_fixtures_are_accepted(void) {
     printf("  ✓ test_typed_declaration_fixtures_are_accepted\n");
 }
 
+static void test_int64_state_and_generated_boundary_are_exact(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model exact_counter\n"
+        "state visits: int = 9007199254740993i64\n"
+        "visits := visits + 1i64\n"
+        "out result: int = visits\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    cxpr_model_session* session;
+    char* code;
+    int64_t visits = 0;
+    assert(program && err.code == CXPR_OK);
+    assert(cxpr_model_compiled_state_default_result_kind(program, 0) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_output_result_kind(program, 0) ==
+           CXPR_MODEL_RESULT_INT64);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_int64(session, "result", &visits));
+    assert(visits == INT64_C(9007199254740994));
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "exact_counter_tick", &err);
+    assert(code);
+    assert(strstr(code, "int64_t state_visits;"));
+    assert(strstr(code, "const cxpr_value* restrict _cx_inputs"));
+    assert(strstr(code, "cxpr_int64(result)"));
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_int64_state_and_generated_boundary_are_exact\n");
+}
+
 int main(void) {
     test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
@@ -4728,6 +4846,7 @@ int main(void) {
     test_imported_producer_explicit_call_params_hide_internal_params();
     test_imported_producer_implicit_market_inputs_precede_no_params();
     test_imported_producer_repeated_calls_cache_same_args();
+    test_imported_producer_output_fans_out_to_two_consumers();
     test_imported_stateful_producer_calls_keep_independent_state();
     test_stateful_producer_history_queries_do_not_replay();
     test_imported_producer_default_singleton_shares_state();
@@ -4753,6 +4872,7 @@ int main(void) {
     test_rsi_state_strategy_fixture();
     test_rsi_state_strategy_fixture_emits_c_tick();
     test_rsi_state_strategy_fixture_matches_golden_values();
+    test_int64_state_and_generated_boundary_are_exact();
     printf("All model parser tests passed.\n");
     return 0;
 }

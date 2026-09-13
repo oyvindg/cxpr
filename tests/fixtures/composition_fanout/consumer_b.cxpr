@@ -1,0 +1,7 @@
+model consumer_b { source_arg = "source" }
+
+in source
+
+value = source * 2
+
+out value

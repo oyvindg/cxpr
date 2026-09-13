@@ -174,6 +174,9 @@ bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry*
     case CXPR_NODE_NUMBER:
         *out = cxpr_num(ast->data.number.value);
         return true;
+    case CXPR_NODE_INT64:
+        *out = cxpr_int64(ast->data.integer.value);
+        return true;
 
     case CXPR_NODE_BOOL:
         *out = cxpr_bool(ast->data.boolean.value);
@@ -371,6 +374,8 @@ bool cxpr_ir_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right) {
     switch (left->type) {
     case CXPR_NODE_NUMBER:
         return left->data.number.value == right->data.number.value;
+    case CXPR_NODE_INT64:
+        return left->data.integer.value == right->data.integer.value;
 
     case CXPR_NODE_BOOL:
         return left->data.boolean.value == right->data.boolean.value;

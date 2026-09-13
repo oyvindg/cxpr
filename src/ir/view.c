@@ -10,6 +10,7 @@
 static cxpr_ir_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
     switch (op) {
     case CXPR_OP_PUSH_CONST: return CXPR_IR_OP_PUSH_CONST;
+    case CXPR_OP_PUSH_INT64: return CXPR_IR_OP_PUSH_INT64;
     case CXPR_OP_PUSH_BOOL: return CXPR_IR_OP_PUSH_BOOL;
     case CXPR_OP_PUSH_STRING: return CXPR_IR_OP_PUSH_STRING;
     case CXPR_OP_BUILD_ARRAY: return CXPR_IR_OP_BUILD_ARRAY;
@@ -138,6 +139,7 @@ bool cxpr_expr_compiled_ir_instruction(const cxpr_expr_compiled* program,
         out->value = instr->value;
         out->has_value = true;
     }
+    if (instr->op == CXPR_OP_PUSH_INT64) out->int64_value = instr->int64_value;
 
     if (cxpr_ir_view_opcode_has_hash(instr->op)) {
         out->hash = instr->hash;

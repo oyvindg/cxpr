@@ -42,6 +42,7 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
     if (!ast || depth > CXPR_IR_INFER_DEPTH_LIMIT) {
         return CXPR_MODEL_RESULT_UNKNOWN;
     }
+    if (ast->type == CXPR_NODE_INT64) return CXPR_MODEL_RESULT_INT64;
     if (ast->type == CXPR_NODE_PRODUCER_ACCESS && reg) {
         cxpr_func_entry* entry =
             cxpr_registry_find(reg, ast->data.producer_access.name);
@@ -86,17 +87,13 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
         case CXPR_TOK_LTE:
         case CXPR_TOK_GT:
         case CXPR_TOK_GTE:
-            return left == CXPR_MODEL_RESULT_NUMBER &&
-                           right == CXPR_MODEL_RESULT_NUMBER
-                       ? CXPR_MODEL_RESULT_BOOL
-                       : CXPR_MODEL_RESULT_UNKNOWN;
+            return CXPR_MODEL_RESULT_BOOL;
         case CXPR_TOK_AND:
         case CXPR_TOK_OR:
-            return left == CXPR_MODEL_RESULT_BOOL &&
-                           right == CXPR_MODEL_RESULT_BOOL
-                       ? CXPR_MODEL_RESULT_BOOL
-                       : CXPR_MODEL_RESULT_UNKNOWN;
+            return CXPR_MODEL_RESULT_BOOL;
         default:
+            if (left == CXPR_MODEL_RESULT_INT64 && right == CXPR_MODEL_RESULT_INT64)
+                return CXPR_MODEL_RESULT_INT64;
             break;
         }
     }

@@ -227,6 +227,15 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                             },
                             err);
 
+    case CXPR_NODE_INT64:
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_PUSH_INT64,
+                                .int64_value = ast->data.integer.value,
+                                .name = NULL,
+                            },
+                            err);
+
     case CXPR_NODE_BOOL:
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){

@@ -32,6 +32,15 @@ bool cxpr_model_session_get_number(const cxpr_model_session* session,
     return true;
 }
 
+bool cxpr_model_session_get_int64(const cxpr_model_session* session,
+                                  const char* name,
+                                  int64_t* out_value) {
+    const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
+    if (!state || !state->has_int64_current) return false;
+    if (out_value) *out_value = state->int64_current;
+    return true;
+}
+
 bool cxpr_model_session_is_rising(const cxpr_model_session* session, const char* name) {
     const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
     return state && state->has_current && state->current &&

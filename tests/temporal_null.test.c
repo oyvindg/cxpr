@@ -145,6 +145,18 @@ static void test_temporal_arithmetic(void) {
     printf("  temporal arithmetic OK\n");
 }
 
+static void test_exact_int64_arithmetic(void) {
+    cxpr_value v = eval_typed("9007199254740993i64 + 2i64");
+    assert(v.type == CXPR_VALUE_INT64);
+    assert(v.i64 == INT64_C(9007199254740995));
+
+    v = eval_typed("9007199254740993i64 > 9007199254740992i64");
+    assert(v.type == CXPR_VALUE_BOOL && v.b);
+
+    assert_eval_error("9223372036854775807i64 + 1i64");
+    printf("  exact int64 arithmetic OK\n");
+}
+
 static void test_temporal_ordering(void) {
     cxpr_value v;
 
@@ -259,6 +271,7 @@ static void test_math_builtins(void) {
 int main(void) {
     printf("temporal_null tests:\n");
     test_temporal_arithmetic();
+    test_exact_int64_arithmetic();
     test_temporal_ordering();
     test_temporal_errors();
     test_temporal_struct_fields();

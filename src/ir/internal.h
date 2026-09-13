@@ -23,6 +23,7 @@
  */
 typedef enum {
     CXPR_OP_PUSH_CONST,
+    CXPR_OP_PUSH_INT64,
     CXPR_OP_PUSH_BOOL,
     CXPR_OP_PUSH_STRING,
     CXPR_OP_BUILD_ARRAY,
@@ -106,6 +107,7 @@ typedef struct {
     const cxpr_func_entry* func;
     union {
         double value;        /* PUSH_CONST, PUSH_BOOL */
+        int64_t int64_value; /* PUSH_INT64 */
         unsigned long hash;  /* LOAD_VAR, LOAD_PARAM, LOAD_FIELD, LOAD_CHAIN */
         size_t index;        /* LOAD_LOCAL, CALL_*, CALL_DEFINED, CALL_PRODUCER, JUMP* */
         const cxpr_expr_ast* ast; /* CALL_AST */
