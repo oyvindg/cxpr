@@ -209,6 +209,28 @@ if(CXPR_BUILD_CUDA_TESTS)
 endif()
 
 if(TARGET cxpr_model_codegen)
+    set(CXPR_DYNAMIC_HOST_FIXTURE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/dynamic_host")
+    set(CXPR_DYNAMIC_HOST_GENERATED_C
+        "${CMAKE_CURRENT_BINARY_DIR}/dynamic_host.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_DYNAMIC_HOST_GENERATED_C}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_DYNAMIC_HOST_FIXTURE_DIR}/root.cxpr"
+            --output "${CXPR_DYNAMIC_HOST_GENERATED_C}"
+            --function dynamic_host_tick
+        DEPENDS
+            cxpr_model_codegen
+            "${CXPR_DYNAMIC_HOST_FIXTURE_DIR}/root.cxpr"
+            "${CXPR_DYNAMIC_HOST_FIXTURE_DIR}/counter.cxpr"
+            "${CXPR_DYNAMIC_HOST_FIXTURE_DIR}/accumulator.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_dynamic_host_fixture
+        DEPENDS "${CXPR_DYNAMIC_HOST_GENERATED_C}")
+    add_dependencies(test_dynamic_host_e2e generate_cxpr_dynamic_host_fixture)
+    target_include_directories(test_dynamic_host_e2e PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+
     set(CXPR_COMPOSITION_FANOUT_FIXTURE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/composition_fanout")
     set(CXPR_COMPOSITION_FANOUT_GENERATED_C

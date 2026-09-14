@@ -1,0 +1,10 @@
+model counter {
+    source_arg = "source"
+    lifecycle = "scoped"
+}
+
+in source
+
+state visits: int = 9007199254740993i64
+
+out visits := visits + 1i64

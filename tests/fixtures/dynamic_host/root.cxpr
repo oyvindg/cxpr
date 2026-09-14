@@ -1,0 +1,14 @@
+model dynamic_host_root
+
+use counter
+use accumulator
+
+in delta
+
+counted = counter(delta)
+accumulated = accumulator(delta)
+total = accumulated.total
+visits: int = counted.visits
+visit_echo: int = counted.visits
+
+out { total, visits, visit_echo }

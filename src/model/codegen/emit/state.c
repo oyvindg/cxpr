@@ -250,6 +250,12 @@ bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
                 "    _cx_state->%s.count = 0u;\n",
                 program->state_defaults[i].buffer_samples, field_name,
                 field_name, field_name);
+        } else if (program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_INT64 &&
+                   cxpr_expr_ast_kind_of(program->state_defaults[i].ast) ==
+                       CXPR_NODE_INT64) {
+            cxpr_model_c_printf(
+                b, "    _cx_state->%s = INT64_C(%lld);\n", field_name,
+                (long long)cxpr_expr_ast_int64_value(program->state_defaults[i].ast));
         } else {
             cxpr_model_c_printf(
                 b, "    _cx_state->%s = %s;\n", field_name,

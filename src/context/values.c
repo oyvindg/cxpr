@@ -124,7 +124,8 @@ static int64_t cxpr_int64_map_get(const cxpr_int64_map* map, const char* name, b
     if (found) *found = false;
     if (!map || !name) return 0;
     for (size_t i = 0u; i < map->count; ++i) if (strcmp(map->entries[i].name, name) == 0) {
-        if (found) *found = true; return map->entries[i].value;
+        if (found) *found = true;
+        return map->entries[i].value;
     }
     return 0;
 }

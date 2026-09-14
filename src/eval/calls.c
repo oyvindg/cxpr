@@ -635,6 +635,7 @@ static cxpr_expr_ast* cxpr_eval_substitute_defined_args(
 
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
+    case CXPR_NODE_INT64:
     case CXPR_NODE_BOOL:
     case CXPR_NODE_STRING:
     case CXPR_NODE_VARIABLE:

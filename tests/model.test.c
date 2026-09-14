@@ -4747,6 +4747,7 @@ static void test_int64_state_and_generated_boundary_are_exact(void) {
         program, "static inline", "exact_counter_tick", &err);
     assert(code);
     assert(strstr(code, "int64_t state_visits;"));
+    assert(strstr(code, "state_visits = INT64_C(9007199254740993);"));
     assert(strstr(code, "const cxpr_value* restrict _cx_inputs"));
     assert(strstr(code, "cxpr_int64(result)"));
     free(code);

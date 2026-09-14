@@ -61,6 +61,9 @@ unsigned long cxpr_eval_ast_hash(const cxpr_expr_ast* ast) {
             hash = cxpr_eval_hash_mix(hash, v.u);
         }
         break;
+    case CXPR_NODE_INT64:
+        hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.integer.value);
+        break;
     case CXPR_NODE_BOOL:
         hash = cxpr_eval_hash_mix(hash, ast->data.boolean.value ? 1u : 0u);
         break;
@@ -149,6 +152,8 @@ bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
     switch (lhs->type) {
     case CXPR_NODE_NUMBER:
         return lhs->data.number.value == rhs->data.number.value;
+    case CXPR_NODE_INT64:
+        return lhs->data.integer.value == rhs->data.integer.value;
     case CXPR_NODE_BOOL:
         return lhs->data.boolean.value == rhs->data.boolean.value;
     case CXPR_NODE_ARRAY:
@@ -237,6 +242,7 @@ bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg) 
     if (!ast) return false;
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
+    case CXPR_NODE_INT64:
     case CXPR_NODE_BOOL:
     case CXPR_NODE_IDENTIFIER:
     case CXPR_NODE_VARIABLE:

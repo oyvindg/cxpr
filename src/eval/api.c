@@ -45,6 +45,7 @@ static bool cxpr_eval_apply_literal_offset(cxpr_expr_ast** slot, double offset) 
     if (!slot || !(ast = *slot) || offset == 0.0) return true;
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
+    case CXPR_NODE_INT64:
     case CXPR_NODE_BOOL:
     case CXPR_NODE_STRING:
     case CXPR_NODE_VARIABLE:

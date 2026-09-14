@@ -1,0 +1,10 @@
+model accumulator {
+    source_arg = "source"
+    lifecycle = "scoped"
+}
+
+in source
+
+state total = 0
+
+out total := total + source
