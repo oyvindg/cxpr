@@ -10,7 +10,8 @@
 
 void cxpr_context_set_struct(cxpr_context* ctx, const char* name,
                              const cxpr_struct_value* value) {
-    if (!ctx) return;
+    if (!ctx || !name || !value) return;
+    cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_STRUCT);
     cxpr_context_store_struct(&ctx->structs, name, value);
 }
 
@@ -123,6 +124,22 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
     if (ctx->parent) return cxpr_context_get_typed(ctx->parent, name, found);
     if (found) *found = false;
     return cxpr_num(0.0);
+}
+
+bool cxpr_context_array_elem_borrow(const cxpr_context* ctx, const char* name,
+                                    size_t offset, cxpr_value* out_borrowed) {
+    const cxpr_array_value* array_value;
+
+    if (!ctx || !name || !out_borrowed) return false;
+    array_value = cxpr_context_lookup_array_map(&ctx->arrays, name);
+    if (array_value) {
+        if (offset >= array_value->count) return false;
+        *out_borrowed = array_value->values[offset];
+        return true;
+    }
+    return ctx->parent
+        ? cxpr_context_array_elem_borrow(ctx->parent, name, offset, out_borrowed)
+        : false;
 }
 
 cxpr_value cxpr_context_get_param_typed(const cxpr_context* ctx, const char* name, bool* found) {

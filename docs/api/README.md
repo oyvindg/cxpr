@@ -49,7 +49,7 @@ hot paths and running the benchmarks.
 | Contract | Current value | Header |
 | --- | ---: | --- |
 | Library version | 3.1.0 | `<cxpr/version.h>` |
-| Generated model descriptor ABI | 4 | `<cxpr/generated.h>` |
+| Generated model descriptor ABI | 5 | `<cxpr/generated.h>` |
 | Generated resample view ABI | 1 | `<cxpr/generated.h>` |
 | Public IR view API | 1 | `<cxpr/ir.h>` |
 | C target API | 1 | `<cxpr/codegen.h>` |

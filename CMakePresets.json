@@ -2,7 +2,7 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 20,
+    "minor": 21,
     "patch": 0
   },
   "configurePresets": [
@@ -117,7 +117,7 @@
       "name": "asan",
       "configurePreset": "asan",
       "environment": {
-        "ASAN_OPTIONS": "detect_leaks=0"
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"
       },
       "output": {
         "outputOnFailure": true
@@ -126,6 +126,9 @@
     {
       "name": "ubsan",
       "configurePreset": "ubsan",
+      "environment": {
+        "UBSAN_OPTIONS": "halt_on_error=1"
+      },
       "output": {
         "outputOnFailure": true
       }

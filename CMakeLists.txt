@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/cxpr/version.h" CXPR_VERSION_DEFINES
     REGEX "^#define CXPR_VERSION_(MAJOR|MINOR|PATCH) [0-9]+$"
@@ -127,6 +127,8 @@ if(CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN)
 
     list(APPEND CXPR_SANITIZER_FLAGS -fno-omit-frame-pointer)
 
+    target_compile_options(cxpr PRIVATE ${CXPR_SANITIZER_FLAGS})
+    target_link_options(cxpr PRIVATE ${CXPR_SANITIZER_FLAGS})
     add_compile_options(${CXPR_SANITIZER_FLAGS})
     add_link_options(${CXPR_SANITIZER_FLAGS})
 endif()
@@ -170,6 +172,12 @@ if(CXPR_BUILD_TESTS)
     add_executable(cxpr_example_ast_snapshot_cytoscape
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/ast_snapshot_cytoscape.c")
     target_link_libraries(cxpr_example_ast_snapshot_cytoscape PRIVATE cxpr)
+
+    add_executable(cxpr_example_generated_descriptor_host
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/generated_descriptor_host.c")
+    target_link_libraries(cxpr_example_generated_descriptor_host PRIVATE cxpr)
+    add_test(NAME examples_generated_descriptor_host
+             COMMAND "$<TARGET_FILE:cxpr_example_generated_descriptor_host>")
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

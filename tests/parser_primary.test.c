@@ -23,6 +23,23 @@ static void test_parser_primary_forms(void) {
     p = cxpr_expr_parser_new();
     assert(p);
     err = (cxpr_error){0};
+    ast = cxpr_expr_ast_parse(
+        p,
+        "{ period = 20 { optimize = [30, 40] }, "
+        "exit = { buffer_mult = 0.03 { optimize { min = 0.01, max = 0.05 } } } }",
+        &err);
+    assert(ast);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_RECORD);
+    assert(cxpr_expr_ast_record_field_count(ast) == 2u);
+    assert(strcmp(cxpr_expr_ast_record_field_name(ast, 0u), "period") == 0);
+    assert(strcmp(cxpr_expr_ast_record_field_name(ast, 1u), "exit") == 0);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
+
+    p = cxpr_expr_parser_new();
+    assert(p);
+    err = (cxpr_error){0};
     ast = cxpr_expr_ast_parse(p, "body.velocity.x[2]", &err);
     assert(ast);
     assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX);
