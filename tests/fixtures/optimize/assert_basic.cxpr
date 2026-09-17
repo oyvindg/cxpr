@@ -1,0 +1,29 @@
+# Demonstrates `assert` — model invariants over $params.
+# An assert is a MODEL INVARIANT: if it fails, the configuration is invalid
+# during normal execution as well as optimization (spec §4).
+
+model assert_basic
+
+in close
+
+$fast = 12
+$slow = 26
+
+assert $fast > 0 {
+    description = "Fast period must be positive"
+}
+
+assert $slow > 0 {
+    description = "Slow period must be positive"
+}
+
+assert $fast < $slow {
+    description = "Fast period must be shorter than slow period"
+}
+
+fast = ema(close, $fast)
+slow = ema(close, $slow)
+
+signal = fast > slow
+
+out signal
