@@ -23,6 +23,19 @@ static void cxpr_ir_wrap_defined_function_error(cxpr_func_entry* entry, cxpr_err
     err->message = message;
 }
 
+static const cxpr_expr_ast* cxpr_ir_defined_call_arg(const cxpr_expr_ast* call_ast,
+                                                     size_t index) {
+    if (call_ast && call_ast->type == CXPR_NODE_FUNCTION_CALL &&
+        index < call_ast->data.function_call.argc) {
+        return call_ast->data.function_call.args[index];
+    }
+    if (call_ast && call_ast->type == CXPR_NODE_PRODUCER_ACCESS &&
+        index < call_ast->data.producer_access.argc) {
+        return call_ast->data.producer_access.args[index];
+    }
+    return NULL;
+}
+
 static bool cxpr_ir_call_instr_memoable(const cxpr_ir_instr* instr) {
     const cxpr_expr_ast* ast = instr ? (const cxpr_expr_ast*)instr->payload : NULL;
 
@@ -263,27 +276,24 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
             return cxpr_num(NAN);
         }
         for (size_t i = 0; i < argc; ++i) {
-            const cxpr_expr_ast* arg_ast =
-                (call_ast &&
-                 call_ast->type == CXPR_NODE_FUNCTION_CALL &&
-                 i < call_ast->data.function_call.argc)
-                    ? call_ast->data.function_call.args[i]
-                    : NULL;
+            const cxpr_expr_ast* arg_ast = cxpr_ir_defined_call_arg(call_ast, i);
             if (entry->defined_param_fields &&
                 entry->defined_param_fields[i] &&
                 entry->defined_param_field_counts[i] > 0u &&
                 args[i].type != CXPR_VALUE_STRUCT &&
                 arg_ast &&
                 arg_ast->type == CXPR_NODE_IDENTIFIER) {
-                const char* root = arg_ast->data.identifier.name;
                 for (size_t f = 0u; f < entry->defined_param_field_counts[i]; ++f) {
                     bool found = false;
                     char key[256];
                     double field_value;
-                    snprintf(key, sizeof(key), "%s.%s", root, entry->defined_param_fields[i][f]);
+                    const char* root = arg_ast->data.identifier.name;
+                    snprintf(key, sizeof(key), "%s.%s", root,
+                             entry->defined_param_fields[i][f]);
                     field_value = cxpr_context_get(ctx, key, &found);
                     if (!found) {
-                        snprintf(key, sizeof(key), "%s_%s", root, entry->defined_param_fields[i][f]);
+                        snprintf(key, sizeof(key), "%s_%s", root,
+                                 entry->defined_param_fields[i][f]);
                         field_value = cxpr_context_get(ctx, key, &found);
                     }
                     if (!found) {
@@ -294,9 +304,7 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                         cxpr_context_free(tmp);
                         return cxpr_num(NAN);
                     }
-                    snprintf(key,
-                             sizeof(key),
-                             "%s.%s",
+                    snprintf(key, sizeof(key), "%s.%s",
                              entry->defined_param_names[i],
                              entry->defined_param_fields[i][f]);
                     cxpr_context_set(tmp, key, field_value);

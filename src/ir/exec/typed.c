@@ -41,11 +41,22 @@ static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
         return false;
     }
     if (cxpr_expr_ast_kind_of(target) == CXPR_NODE_IDENTIFIER) {
-        bool found = false;
-        cxpr_value runtime_target = cxpr_context_get_typed(
-            ctx, cxpr_expr_ast_identifier_name(target), &found);
-        if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
-            if (!runtime_target.a || offset >= runtime_target.a->count) {
+        cxpr_value borrowed;
+        if (cxpr_context_array_elem_borrow(
+                ctx, cxpr_expr_ast_identifier_name(target), offset, &borrowed)) {
+            *out = cxpr_value_clone(&borrowed);
+            return true;
+        }
+        {
+            bool found = false;
+            cxpr_value runtime_target = cxpr_context_get_typed(
+                ctx, cxpr_expr_ast_identifier_name(target), &found);
+            if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
+                if (runtime_target.a && offset < runtime_target.a->count) {
+                    *out = cxpr_value_clone(&runtime_target.a->values[offset]);
+                    cxpr_value_free(&runtime_target);
+                    return true;
+                }
                 cxpr_value_free(&runtime_target);
                 if (err) {
                     err->code = CXPR_ERR_INVALID_INDEX;
@@ -53,11 +64,8 @@ static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
                 }
                 return false;
             }
-            *out = cxpr_value_clone(&runtime_target.a->values[offset]);
             cxpr_value_free(&runtime_target);
-            return true;
         }
-        cxpr_value_free(&runtime_target);
     }
     if (cxpr_expr_ast_kind_of(target) != CXPR_NODE_IDENTIFIER &&
         reg->lookback_resolver) {
@@ -90,7 +98,10 @@ static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
                                            const cxpr_registry* reg,
                                            cxpr_value* out,
                                            cxpr_error* err) {
-    const cxpr_expr_ast* borrowed = instr ? (const cxpr_expr_ast*)instr->payload : NULL;
+    const cxpr_expr_ast* borrowed =
+        instr && instr->op != CXPR_OP_LOOKBACK_RESOLVE
+            ? (const cxpr_expr_ast*)instr->payload
+            : NULL;
     cxpr_expr_ast target = {0};
     cxpr_expr_ast* target_ptr = (cxpr_expr_ast*)borrowed;
     char field_key[256];
@@ -99,6 +110,69 @@ static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
     size_t depth = 0u;
 
     if (!instr) return false;
+    if (instr->op == CXPR_OP_LOOKBACK_RESOLVE) {
+        const cxpr_ir_lookback_payload* payload =
+            (const cxpr_ir_lookback_payload*)instr->payload;
+        cxpr_expr_ast index_ast = {0};
+        bool identifier;
+
+        if (!payload || !payload->target || !reg) return false;
+        identifier = payload->kind == CXPR_IR_LOOKBACK_IDENT_ARRAY;
+        if (identifier && payload->key) {
+            cxpr_value element;
+            if (cxpr_context_array_elem_borrow(ctx, payload->key, offset, &element)) {
+                *out = cxpr_value_clone(&element);
+                return true;
+            }
+            {
+                bool found = false;
+                cxpr_value runtime_target = cxpr_context_get_typed(ctx, payload->key, &found);
+                if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
+                    if (runtime_target.a && offset < runtime_target.a->count) {
+                        *out = cxpr_value_clone(&runtime_target.a->values[offset]);
+                        cxpr_value_free(&runtime_target);
+                        return true;
+                    }
+                    cxpr_value_free(&runtime_target);
+                    if (err) {
+                        err->code = CXPR_ERR_INVALID_INDEX;
+                        err->message = "Array index out of range";
+                    }
+                    return false;
+                }
+                cxpr_value_free(&runtime_target);
+            }
+        }
+        if (offset > (size_t)INT64_MAX) return false;
+        index_ast.type = CXPR_NODE_NUMBER;
+        index_ast.data.number.value = (double)offset;
+        if (!identifier && payload->resolver &&
+            reg == payload->compile_registry &&
+            reg->lookback_resolver == payload->resolver &&
+            reg->lookback_userdata == payload->resolver_userdata) {
+            if (payload->resolver(payload->target, &index_ast, ctx, reg,
+                                  payload->resolver_userdata, out, err)) {
+                return !(err && err->code != CXPR_OK);
+            }
+            if (err && err->code != CXPR_OK) return false;
+        }
+        if (payload->capability && reg == payload->compile_registry) {
+            if (payload->capability(payload->target, (int64_t)offset, ctx, reg,
+                                    payload->capability_userdata, out, err)) {
+                return !(err && err->code != CXPR_OK);
+            }
+            if (err && err->code == CXPR_OK) {
+                err->code = CXPR_ERR_TYPE_MISMATCH;
+                err->message = "Index capability failed to resolve its owned target";
+            }
+            return false;
+        }
+        if (payload->capability_handled && reg == payload->compile_registry) {
+            return false;
+        }
+        return cxpr_ir_resolve_lookback_target(
+            payload->target, offset, ctx, reg, out, err);
+    }
     if (borrowed) {
         return cxpr_ir_resolve_lookback_target(borrowed, offset, ctx, reg, out, err);
     }
@@ -682,7 +756,8 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 break;
             }
             result = cxpr_ir_call_defined_scalar((cxpr_func_entry*)instr->func, instr->payload, ctx, reg,
-                                                 &stack[sp - instr->index], instr->index, err);
+                                                 &stack[sp - instr->index], instr->index,
+                                                 err);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             sp -= instr->index;
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
@@ -802,65 +877,15 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             break;
         case CXPR_OP_LOOKBACK_RESOLVE:
             {
-                const cxpr_expr_ast* target = (const cxpr_expr_ast*)instr->payload;
-                cxpr_expr_ast index_ast = {0};
                 result = cxpr_num(NAN);
-                if (!reg ||
-                    (!reg->lookback_resolver &&
-                     reg->index_capability_count == 0u) ||
-                    !target) {
-                    return cxpr_ir_runtime_error(
-                        err, "Index requires registry capability or lookback resolver");
-                }
                 if (((size_t)-1) - lookback_offset < instr->index) {
                     return cxpr_ir_runtime_error(err, "Lookback offset overflow");
                 }
-                index_ast.type = CXPR_NODE_NUMBER;
-                index_ast.data.number.value = (double)(lookback_offset + instr->index);
-                {
-                    bool handled = false;
-                    bool resolved = false;
-                    if (target->type == CXPR_NODE_IDENTIFIER) {
-                        bool found = false;
-                        cxpr_value runtime_target = cxpr_context_get_typed(
-                            ctx, target->data.identifier.name, &found);
-                        if (found && runtime_target.type == CXPR_VALUE_ARRAY &&
-                            runtime_target.a &&
-                            lookback_offset + instr->index < runtime_target.a->count) {
-                            result = cxpr_value_clone(
-                                &runtime_target.a->values[lookback_offset + instr->index]);
-                            resolved = true;
-                        } else if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
-                            if (err) {
-                                err->code = CXPR_ERR_INVALID_INDEX;
-                                err->message = "Array index out of range";
-                            }
-                        }
-                        cxpr_value_free(&runtime_target);
-                    }
-                    if (target->type != CXPR_NODE_IDENTIFIER &&
-                        reg->lookback_resolver && !resolved) {
-                        resolved = reg->lookback_resolver(
-                            target, &index_ast, ctx, reg,
-                            reg->lookback_userdata, &result, err);
-                    }
-                    if (!resolved && (!err || err->code == CXPR_OK)) {
-                        resolved = cxpr_registry_resolve_index_capability(
-                            reg, target,
-                            (int64_t)(lookback_offset + instr->index),
-                            ctx, &result, err, &handled);
-                    }
-                    if (!resolved && !handled &&
-                        target->type == CXPR_NODE_IDENTIFIER &&
-                        reg->lookback_resolver) {
-                        resolved = reg->lookback_resolver(
-                            target, &index_ast, ctx, reg,
-                            reg->lookback_userdata, &result, err);
-                    }
-                    if (!resolved) {
-                        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-                        return cxpr_ir_runtime_error(err, "Lookback resolver failed");
-                    }
+                if (!cxpr_ir_resolve_lookback_instr(
+                        instr, lookback_offset + instr->index,
+                        ctx, reg, &result, err)) {
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    return cxpr_ir_runtime_error(err, "Lookback resolver failed");
                 }
                 if (err && err->code != CXPR_OK) return cxpr_num(NAN);
                 CXPR_TYPED_PUSH(result);

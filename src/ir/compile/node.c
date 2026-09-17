@@ -24,17 +24,42 @@ static bool cxpr_ir_index_has_literal_array_base(const cxpr_expr_ast* target) {
     return target && target->type == CXPR_NODE_ARRAY;
 }
 
-static bool cxpr_ir_simple_lookback_target(const cxpr_expr_ast* ast) {
-    if (!ast) return false;
-    switch (ast->type) {
-    case CXPR_NODE_IDENTIFIER:
-    case CXPR_NODE_FIELD_ACCESS:
-    case CXPR_NODE_CHAIN_ACCESS:
-    case CXPR_NODE_PRODUCER_ACCESS:
-        return true;
-    default:
-        return false;
+static cxpr_ir_lookback_payload* cxpr_ir_lookback_payload_new(
+    const cxpr_expr_ast* target, const cxpr_registry* reg) {
+    cxpr_ir_lookback_payload* payload =
+        (cxpr_ir_lookback_payload*)calloc(1u, sizeof(*payload));
+    const cxpr_index_capability_entry* capability;
+    cxpr_error ignored = {0};
+    bool handled = false;
+
+    if (!payload) return NULL;
+    payload->target = target;
+    payload->compile_registry = reg;
+    if (target && target->type == CXPR_NODE_IDENTIFIER) {
+        payload->kind = CXPR_IR_LOOKBACK_IDENT_ARRAY;
+        payload->key = target->data.identifier.name;
+    } else if (target && target->type == CXPR_NODE_FIELD_ACCESS) {
+        payload->kind = CXPR_IR_LOOKBACK_PRODUCER_FIELD_CHAIN;
+        payload->key = target->data.field_access.full_key;
+    } else if (target && target->type == CXPR_NODE_CHAIN_ACCESS) {
+        payload->kind = CXPR_IR_LOOKBACK_PRODUCER_FIELD_CHAIN;
+        payload->key = target->data.chain_access.full_key;
+        payload->segments = target->data.chain_access.path;
+        payload->segment_count = target->data.chain_access.depth;
+    } else {
+        payload->kind = CXPR_IR_LOOKBACK_RESOLVER;
     }
+    capability = cxpr_registry_select_index_capability(reg, target, &ignored, &handled);
+    if (capability && ignored.code == CXPR_OK) {
+        payload->capability = capability->resolve;
+        payload->capability_userdata = capability->userdata;
+    }
+    payload->capability_handled = handled;
+    if (reg) {
+        payload->resolver = reg->lookback_resolver;
+        payload->resolver_userdata = reg->lookback_userdata;
+    }
+    return payload;
 }
 
 static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
@@ -494,6 +519,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
         }
         if (cxpr_lookback_literal_offset(
                 ast->data.index.index, &offset, NULL, NULL)) {
+            cxpr_ir_lookback_payload* payload;
             while (target && target->type == CXPR_NODE_INDEX) {
                 unsigned inner_offset;
                 unsigned summed;
@@ -506,30 +532,24 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                 offset = summed;
                 target = target->data.index.target;
             }
-            if (!cxpr_ir_simple_lookback_target(target)) {
-                return cxpr_ir_emit(program,
-                                    (cxpr_ir_instr){
-                                        .op = CXPR_OP_LOOKBACK_RESOLVE,
-                                        .index = offset,
-                                        .payload = target,
-                                    },
-                                    err);
+            payload = cxpr_ir_lookback_payload_new(target, reg);
+            if (!payload) {
+                if (err) {
+                    err->code = CXPR_ERR_OUT_OF_MEMORY;
+                    err->message = "Out of memory";
+                }
+                return false;
             }
             if (!cxpr_ir_emit(program,
                               (cxpr_ir_instr){
-                                  .op = CXPR_OP_LOOKBACK_PUSH,
+                                  .op = CXPR_OP_LOOKBACK_RESOLVE,
                                   .index = offset,
-                              },
-                              err)) {
+                                  .payload = payload,
+                              }, err)) {
+                free(payload);
                 return false;
             }
-            if (!cxpr_ir_compile_node(target, program, reg,
-                                      local_names, local_count, subst, inline_depth, err)) {
-                return false;
-            }
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){ .op = CXPR_OP_LOOKBACK_POP },
-                                err);
+            return true;
         }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){

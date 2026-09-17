@@ -78,6 +78,8 @@ bool cxpr_hashmap_set(cxpr_hashmap* map, const char* key, double value);
  */
 bool cxpr_hashmap_set_prehashed(cxpr_hashmap* map, const char* key,
                                 unsigned long hash, double value);
+/** @brief Remove one key while preserving open-addressing probe chains. */
+bool cxpr_hashmap_remove(cxpr_hashmap* map, const char* key);
 /**
  * @brief Look up one key using on-demand hashing.
  * @param map Map to query.

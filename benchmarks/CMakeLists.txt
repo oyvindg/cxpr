@@ -10,6 +10,7 @@ set(CXPR_BENCH_IR_MODELS
     defined_chain
     deep_defined
     complex_signal
+    struct_call
     large_arith
     large_branch
     large_math
