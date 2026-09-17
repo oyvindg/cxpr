@@ -1,4 +1,6 @@
 build*
+!tools/vscode-cxpr/scripts/
+!tools/vscode-cxpr/scripts/build-vsix.js
 !src/eval/snapshot/build.c
 plans/
 examples/ast_snapshot_cytoscape/*.json
