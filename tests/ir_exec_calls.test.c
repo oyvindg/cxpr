@@ -64,6 +64,7 @@ static void test_ir_exec_call_helpers(void) {
     value = cxpr_ir_call_producer(&entry, "pair", ctx, args, 2, &err);
     assert(err.code == CXPR_OK);
     assert(value.type == CXPR_VALUE_STRUCT);
+    cxpr_value_free(&value);
 
     value = cxpr_ir_call_producer_field(&entry, "pair", ctx, args, 2, "diff", &err);
     assert(err.code == CXPR_OK);

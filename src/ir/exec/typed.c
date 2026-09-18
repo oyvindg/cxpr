@@ -404,7 +404,10 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     }
                 } else {
                     result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
-                    if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
+                    if (!found) {
+                        cxpr_ir_release_owned_stack_values(stack, stack_owned, 0u, sp);
+                        return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
+                    }
                 }
             }
             CXPR_TYPED_PUSH(result);

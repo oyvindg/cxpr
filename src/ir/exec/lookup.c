@@ -117,6 +117,8 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
             } else {
                 value = cxpr_context_get_field(ctx, root, dot + 1, &found);
             }
+            if (produced.type == CXPR_VALUE_STRUCT || produced.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&produced);
             if (found) return value;
         }
     }
