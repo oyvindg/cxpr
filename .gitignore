@@ -2,3 +2,5 @@ build*
 !src/eval/snapshot/build.c
 plans/
 examples/ast_snapshot_cytoscape/*.json
+tools/vscode-cxpr/dist/
+tools/vscode-cxpr/node_modules/
