@@ -6,7 +6,10 @@
 #include <cstdlib>
 #include <vector>
 
-#include "cxpr_rolling_buffer_generated.cuh"
+#include "cuda_rolling_buffer_fixture.cuh"
+#include "cuda_test_helpers.cuh"
+
+using cxpr_cuda_test::device_buffer;
 
 static char* read_fixture(void) {
     FILE* file = std::fopen(CXPR_ROLLING_BUFFER_FIXTURE, "rb");
@@ -23,31 +26,14 @@ static char* read_fixture(void) {
     return text;
 }
 
-static void check(cudaError_t status, const char* operation) {
-    if (status == cudaSuccess) return;
-    std::fprintf(stderr, "%s: %s\n", operation, cudaGetErrorString(status));
-    std::exit(2);
-}
-
-__global__ static void rolling_buffer_bulk(
-    cxpr_rolling_buffer_tick_state* states, const double* inputs,
-    double* outputs, size_t count) {
-    const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    double element_outputs[3];
-    if (i >= count) return;
-    cxpr_rolling_buffer_tick(&states[i], &inputs[i], nullptr, element_outputs);
-    for (size_t output = 0u; output < 3u; ++output)
-        outputs[output * count + i] = element_outputs[output];
-}
-
 int main(void) {
     constexpr size_t count = 257u;
     constexpr size_t ticks = 7u;
     std::vector<double> inputs(count), actual(3u * count), expected(3u * count);
     std::vector<cxpr_model_session*> sessions(count);
-    cxpr_rolling_buffer_tick_state* device_states = nullptr;
-    double* device_inputs = nullptr;
-    double* device_outputs = nullptr;
+    device_buffer<cxpr_rolling_buffer_tick_state> device_states(count, "allocate states");
+    device_buffer<double> device_inputs(count, "allocate inputs");
+    device_buffer<double> device_outputs(actual.size(), "allocate outputs");
     cxpr_error error = {};
     char* source = read_fixture();
     cxpr_registry* registry = cxpr_registry_new();
@@ -64,21 +50,15 @@ int main(void) {
         if (!sessions[i]) return 2;
     }
 
-    check(cudaMalloc(&device_states, count * sizeof(*device_states)), "allocate states");
-    check(cudaMalloc(&device_inputs, count * sizeof(*device_inputs)), "allocate inputs");
-    check(cudaMalloc(&device_outputs, actual.size() * sizeof(double)), "allocate outputs");
-    check(cudaMemset(device_states, 0, count * sizeof(*device_states)), "reset states");
+    device_states.clear("reset states");
 
     for (size_t tick = 0u; tick < ticks; ++tick) {
         for (size_t i = 0u; i < count; ++i) inputs[i] = (double)(1000u * i + tick + 1u);
-        check(cudaMemcpy(device_inputs, inputs.data(), count * sizeof(double),
-                         cudaMemcpyHostToDevice), "copy inputs");
-        rolling_buffer_bulk<<<(unsigned)((count + 255u) / 256u), 256>>>(
-            device_states, device_inputs, device_outputs, count);
-        check(cudaGetLastError(), "launch rolling-buffer kernel");
-        check(cudaDeviceSynchronize(), "synchronize rolling-buffer kernel");
-        check(cudaMemcpy(actual.data(), device_outputs, actual.size() * sizeof(double),
-                         cudaMemcpyDeviceToHost), "copy outputs");
+        device_inputs.upload(inputs.data(), count, "copy inputs");
+        cxpr_cuda_rolling_buffer_step<<<cxpr_cuda_test::blocks(count), 256>>>(
+            device_states.data(), device_inputs.data(), device_outputs.data(), count);
+        cxpr_cuda_test::synchronize("run rolling-buffer kernel");
+        device_outputs.download(actual.data(), actual.size(), "copy outputs");
         for (size_t i = 0u; i < count; ++i) {
             double host_outputs[3];
             cxpr_context_set(cxpr_model_session_context(sessions[i]), "sample", inputs[i]);
@@ -99,9 +79,6 @@ int main(void) {
             }
         }
     }
-    cudaFree(device_outputs);
-    cudaFree(device_inputs);
-    cudaFree(device_states);
     for (size_t i = 0u; i < count; ++i) cxpr_model_session_free(sessions[i]);
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);

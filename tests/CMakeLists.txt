@@ -171,6 +171,7 @@ if(CXPR_BUILD_CUDA_TESTS)
     add_dependencies(test_cuda_bulk_runtime generate_cxpr_cuda_bulk_fixture)
     target_include_directories(test_cuda_bulk_runtime PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_bulk_runtime PRIVATE cxpr)
     set_target_properties(test_cuda_bulk_runtime PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
     add_test(NAME cuda_bulk_runtime COMMAND $<TARGET_FILE:test_cuda_bulk_runtime>)
@@ -206,10 +207,62 @@ if(CXPR_BUILD_CUDA_TESTS)
     add_dependencies(cxpr_cuda_bulk_benchmark generate_cxpr_cuda_bulk_fixture)
     target_include_directories(cxpr_cuda_bulk_benchmark PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(cxpr_cuda_bulk_benchmark PRIVATE cxpr)
     target_compile_options(cxpr_cuda_bulk_benchmark PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
     set_target_properties(cxpr_cuda_bulk_benchmark PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_bulk_benchmark_smoke
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_benchmark> 262144 50 256 3)
+    set_tests_properties(cuda_bulk_benchmark_smoke PROPERTIES LABELS "cuda;benchmark")
+
+    set(CXPR_CUDA_OPTIMIZE_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_optimize_candidate_generated.cuh")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_OPTIMIZE_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/optimize/cuda_candidate.cxpr"
+            "${CXPR_CUDA_OPTIMIZE_GENERATED}"
+            cxpr_optimize_candidate_tick
+        DEPENDS cxpr_cuda_bulk_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/optimize/cuda_candidate.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_optimize_fixture
+        DEPENDS "${CXPR_CUDA_OPTIMIZE_GENERATED}")
+    add_executable(test_cuda_optimize_runtime cuda_optimize_runtime.cu)
+    add_dependencies(test_cuda_optimize_runtime generate_cxpr_cuda_optimize_fixture)
+    target_include_directories(test_cuda_optimize_runtime PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_optimize_runtime PRIVATE cxpr)
+    target_compile_definitions(test_cuda_optimize_runtime PRIVATE
+        CXPR_CUDA_OPTIMIZE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/optimize/cuda_candidate.cxpr")
+    set_target_properties(test_cuda_optimize_runtime PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_optimize_runtime COMMAND $<TARGET_FILE:test_cuda_optimize_runtime>)
+    set_tests_properties(cuda_optimize_runtime PROPERTIES LABELS "cuda")
+
+    set(CXPR_CUDA_RESAMPLE_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_resample_generated.cu")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_RESAMPLE_GENERATED}"
+        COMMAND ${CMAKE_COMMAND} -E env
+            CXPR_CUDA_SOURCE_OUT=${CXPR_CUDA_RESAMPLE_GENERATED}
+            $<TARGET_FILE:test_cuda_index_contract>
+        DEPENDS test_cuda_index_contract
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_resample_fixture
+        DEPENDS "${CXPR_CUDA_RESAMPLE_GENERATED}")
+    add_executable(test_cuda_resample_runtime cuda_resample_runtime.cu)
+    add_dependencies(test_cuda_resample_runtime generate_cxpr_cuda_resample_fixture)
+    target_include_directories(test_cuda_resample_runtime PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_resample_runtime PRIVATE cxpr)
+    target_compile_definitions(test_cuda_resample_runtime PRIVATE
+        CXPR_CUDA_RESAMPLE_GENERATED="${CXPR_CUDA_RESAMPLE_GENERATED}")
+    set_target_properties(test_cuda_resample_runtime PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_resample_runtime COMMAND $<TARGET_FILE:test_cuda_resample_runtime>)
+    set_tests_properties(cuda_resample_runtime PROPERTIES LABELS "cuda")
 endif()
 
 if(TARGET cxpr_model_codegen)

@@ -2507,6 +2507,33 @@ static void test_model_c_init_explicitly_zeros_state_storage(void) {
     printf("  ✓ test_model_c_init_explicitly_zeros_state_storage\n");
 }
 
+static void test_model_c_init_preserves_numeric_state_default(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model state_default\n"
+        "state value = 5.5\n"
+        "out value\n");
+    cxpr_model_compiled* program =
+        cxpr_model_compile_with_options(model, NULL, &options, &err);
+    char* code;
+
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "state_default_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "_cx_state->state_value = 5.5;") != NULL);
+
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_c_init_preserves_numeric_state_default\n");
+}
+
 static void test_model_c_single_value_history_has_no_cursor(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -4837,6 +4864,7 @@ int main(void) {
     test_session_direct_record_producer_lookback();
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
     test_model_c_init_explicitly_zeros_state_storage();
+    test_model_c_init_preserves_numeric_state_default();
     test_model_c_single_value_history_has_no_cursor();
     test_model_c_history_ring_layout_and_initialization();
     test_compile_imported_producer_infers_missing_child_inputs();

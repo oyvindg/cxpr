@@ -320,6 +320,12 @@ bool cxpr_model_compiled_seed_defaults(const cxpr_model_compiled* program,
                                       const cxpr_registry* reg,
                                       cxpr_error* err);
 
+/** @brief Evaluate load-time parameter assertions against a seeded context. */
+bool cxpr_model_compiled_check_asserts(const cxpr_model_compiled* program,
+                                       const cxpr_context* ctx,
+                                       const cxpr_registry* reg,
+                                       cxpr_error* err);
+
 /**
  * @brief Evaluate all model bindings in dependency order.
  *
@@ -595,6 +601,11 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
 void cxpr_model_session_free(cxpr_model_session* session);
 /** @brief Return the session-owned context for host input writes and output reads. */
 cxpr_context* cxpr_model_session_context(cxpr_model_session* session);
+/** @brief Override a numeric model parameter in a newly-created session. */
+bool cxpr_model_session_set_param(cxpr_model_session* session,
+                                  const char* name,
+                                  double value,
+                                  cxpr_error* err);
 /**
  * @brief Evaluate one deterministic model tick with the reference/tooling runtime.
  *

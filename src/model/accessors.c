@@ -167,6 +167,18 @@ void cxpr_model_free(cxpr_model* model) {
         cxpr_expr_ast_free(model->constants[i].expr);
     }
     free(model->constants);
+    for (size_t i = 0; i < model->assert_count; ++i) {
+        free(model->asserts[i].source);
+        free(model->asserts[i].description);
+        cxpr_expr_ast_free(model->asserts[i].expr);
+    }
+    free(model->asserts);
+    for (size_t i = 0; i < model->optimize_constraint_count; ++i) {
+        free(model->optimize_constraints[i].source);
+        free(model->optimize_constraints[i].description);
+        cxpr_expr_ast_free(model->optimize_constraints[i].expr);
+    }
+    free(model->optimize_constraints);
     for (size_t i = 0; i < model->binding_count; ++i) {
         free(model->bindings[i].name);
         free(model->bindings[i].source);
@@ -529,6 +541,9 @@ static const char* cxpr_model_metadata_find_field_value(const char* body,
             if (*probe == '{') {
                 if (out_block) *out_block = true;
                 return cxpr_metadata_skip_ws(probe + 1);
+            }
+            if (!*probe || (limit && probe >= limit) || *probe == ',' || *probe == '}') {
+                return "true";
             }
         }
         cursor = cxpr_metadata_field_value_end_bounded(cursor, limit);

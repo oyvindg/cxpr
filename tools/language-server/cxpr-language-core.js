@@ -44,6 +44,7 @@ const CXPR_DEFAULT_TOKEN_COLORS = {
 
 const CXPR_KEYWORDS = [
   "and",
+  "assert",
   "as",
   "or",
   "not",
@@ -57,6 +58,7 @@ const CXPR_KEYWORDS = [
   "model",
   "name",
   "out",
+  "optimize",
   "return",
   "state",
   "update",

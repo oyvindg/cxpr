@@ -31,8 +31,9 @@ typedef struct cxpr_bulk_column {
  * Host-owned buffers for a range of independent generated-model evaluations.
  *
  * Inputs and outputs use structure-of-arrays layout. `states` contains one
- * model state block per element; `state_stride` is measured in bytes. Params
- * are shared by the whole launch. Boolean scalars use 0.0/1.0. Hosts
+ * model state block per element; `state_stride` is measured in bytes. A zero
+ * `param_stride` shares params across the launch; otherwise it is the number
+ * of `cxpr_value` entries between per-element parameter blocks. Boolean scalars use 0.0/1.0. Hosts
  * materialize neighbors, coordinates,
  * tensors, or complex components as ordinary named scalar input columns.
  *
@@ -52,6 +53,7 @@ typedef struct cxpr_bulk_view {
     void* states;
     size_t state_stride;
     size_t element_count;
+    size_t param_stride;
 } cxpr_bulk_view;
 
 typedef enum cxpr_bulk_status {
