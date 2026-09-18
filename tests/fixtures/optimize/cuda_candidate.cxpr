@@ -1,0 +1,14 @@
+model cuda_candidate
+
+in sample
+
+$gain = 1 {
+    optimize { values = [1, 2, 4, 8] }
+}
+
+state total = 0
+total := total + sample * $gain
+
+out total {
+    optimize { maximize }
+}

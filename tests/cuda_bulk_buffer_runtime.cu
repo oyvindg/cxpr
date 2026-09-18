@@ -33,11 +33,13 @@ __global__ static void rolling_buffer_bulk(
     cxpr_rolling_buffer_tick_state* states, const double* inputs,
     double* outputs, size_t count) {
     const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    double element_outputs[3];
+    cxpr_value element_inputs[1];
+    cxpr_value element_outputs[3];
     if (i >= count) return;
-    cxpr_rolling_buffer_tick(&states[i], &inputs[i], nullptr, element_outputs);
+    element_inputs[0] = cxpr_num(inputs[i]);
+    cxpr_rolling_buffer_tick(&states[i], element_inputs, nullptr, element_outputs);
     for (size_t output = 0u; output < 3u; ++output)
-        outputs[output * count + i] = element_outputs[output];
+        outputs[output * count + i] = element_outputs[output].d;
 }
 
 int main(void) {

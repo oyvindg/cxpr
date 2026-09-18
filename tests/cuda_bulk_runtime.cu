@@ -23,16 +23,19 @@ __global__ static void klein_gordon_bulk(
     double* energy, size_t count) {
     const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i == 0u || i + 1u >= count) return;
-    const double inputs[5] = {
-        phi[i], momentum[i], phi[i - 1u], phi[i + 1u], source[i]};
-    const double params[5] = {0.001, 0.01, 1.0, 0.1, 0.02};
-    double outputs[4];
+    const cxpr_value inputs[5] = {
+        cxpr_num(phi[i]), cxpr_num(momentum[i]), cxpr_num(phi[i - 1u]),
+        cxpr_num(phi[i + 1u]), cxpr_num(source[i])};
+    const cxpr_value params[5] = {
+        cxpr_num(0.001), cxpr_num(0.01), cxpr_num(1.0),
+        cxpr_num(0.1), cxpr_num(0.02)};
+    cxpr_value outputs[4];
     cxpr_klein_gordon_tick_state state = {};
     cxpr_klein_gordon_tick(&state, inputs, params, outputs);
-    next_phi[i] = outputs[0];
-    next_momentum[i] = outputs[1];
-    acceleration[i] = outputs[2];
-    energy[i] = outputs[3];
+    next_phi[i] = outputs[0].d;
+    next_momentum[i] = outputs[1].d;
+    acceleration[i] = outputs[2].d;
+    energy[i] = outputs[3].d;
 }
 
 int main(void) {
