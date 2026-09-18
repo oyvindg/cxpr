@@ -344,6 +344,17 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 return cxpr_strdup(raw);
             }
         }
+        if (lookback_offset == 0u) {
+            snprintf(raw, sizeof(raw),
+                "((_cx_primary_cursor < _cx_resample_views[%zu].primary_count && "
+                "_cx_resample_views[%zu].values && "
+                "_cx_resample_views[%zu].alignment && "
+                "_cx_resample_views[%zu].alignment[_cx_primary_cursor] < "
+                "_cx_resample_views[%zu].value_count) ? "
+                "_cx_resample_views[%zu].values[_cx_resample_views[%zu].alignment[_cx_primary_cursor]] : NAN)",
+                slot, slot, slot, slot, slot, slot, slot);
+            return cxpr_strdup(raw);
+        }
         snprintf(raw, sizeof(raw),
             "((_cx_primary_cursor < _cx_resample_views[%zu].primary_count && "
             "_cx_resample_views[%zu].values && "

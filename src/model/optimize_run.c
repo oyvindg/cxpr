@@ -41,8 +41,12 @@ static bool cxpr_optimize_replay(const cxpr_model_compiled* program,
     }
     for (size_t i = 0u; i < program->optimize_objective_count; ++i) {
         bool found = false;
-        objectives[i] = cxpr_context_get(
-            session->ctx, program->optimize_objectives[i].name, &found);
+        found = cxpr_model_session_get_number(
+            session, program->optimize_objectives[i].name, &objectives[i]);
+        if (!found) {
+            objectives[i] = cxpr_context_get(
+                session->ctx, program->optimize_objectives[i].name, &found);
+        }
         if (!found) {
             cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                  "Optimize objective was not produced", 0, 0);

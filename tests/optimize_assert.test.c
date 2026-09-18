@@ -112,11 +112,37 @@ static void test_serial_candidate_runner_selects_best_allowed_candidate(void) {
     cxpr_doc_free(doc);
 }
 
+static void test_candidate_objective_reads_committed_state_output(void) {
+    const char* source =
+        "model state_objective\n"
+        "in sample\n"
+        "$gain = 1 { optimize { values = [1] } }\n"
+        "state total = 5\n"
+        "total := total + sample * $gain\n"
+        "out total { optimize { maximize } }\n";
+    const char* names[] = {"sample"};
+    const double values[] = {1.0, 2.0, 3.0};
+    cxpr_model_optimize_inputs inputs = {names, values, 1u, 3u};
+    cxpr_model_optimize_result result = {0};
+    cxpr_error err = {0};
+    cxpr_doc* doc;
+    cxpr_model_compiled* program = compile_source(source, &doc, &err);
+
+    assert(program != NULL);
+    assert(cxpr_model_optimize(program, &inputs, NULL, &result, &err));
+    assert(result.candidate_count == 1u);
+    assert(result.candidates[0].objectives[0] == 11.0);
+    cxpr_model_optimize_result_free(&result);
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+}
+
 int main(void) {
     test_assert_passes_and_reports_description();
     test_optimize_constraint_is_inert_and_introspectable();
     test_assert_rejects_runtime_identifiers();
     test_serial_candidate_runner_selects_best_allowed_candidate();
+    test_candidate_objective_reads_committed_state_output();
     printf("All optimize/assert tests passed.\n");
     return 0;
 }

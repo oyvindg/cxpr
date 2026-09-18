@@ -193,6 +193,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             i, i,
             program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "b" :
             program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "i64" : "d");
+        cxpr_model_c_printf(&b, "    (void)_cx_input_%zu;\n", i);
         free(name);
     }
     if (!literal_param_values || literal_param_count < program->constant_count) {
@@ -260,14 +261,22 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         const cxpr_model_resample_cse* cse = &ast_target_data.resample_cse[i];
         if (cse->uses < 2u) continue;
         cxpr_model_c_printf(&b,
-            "    const size_t _cx_resample_cursor_%zu_%u = (_cx_primary_cursor < _cx_resample_views[%zu].primary_count && _cx_resample_views[%zu].alignment) ? _cx_resample_views[%zu].alignment[_cx_primary_cursor] : (size_t)-1;\n"
-            "    const double _cx_resample_value_%zu_%u = (_cx_resample_views[%zu].values && _cx_resample_cursor_%zu_%u >= %uu && _cx_resample_cursor_%zu_%u - %uu < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].values[_cx_resample_cursor_%zu_%u - %uu] : NAN;\n",
-            cse->slot, cse->lookback, cse->slot, cse->slot, cse->slot,
-            cse->slot, cse->lookback,
-            cse->slot,
-            cse->slot, cse->lookback, cse->lookback,
-            cse->slot, cse->lookback, cse->lookback,
-            cse->slot, cse->slot, cse->slot, cse->lookback, cse->lookback);
+            "    const size_t _cx_resample_cursor_%zu_%u = (_cx_primary_cursor < _cx_resample_views[%zu].primary_count && _cx_resample_views[%zu].alignment) ? _cx_resample_views[%zu].alignment[_cx_primary_cursor] : (size_t)-1;\n",
+            cse->slot, cse->lookback, cse->slot, cse->slot, cse->slot);
+        if (cse->lookback == 0u) {
+            cxpr_model_c_printf(&b,
+                "    const double _cx_resample_value_%zu_0 = (_cx_resample_views[%zu].values && _cx_resample_cursor_%zu_0 < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].values[_cx_resample_cursor_%zu_0] : NAN;\n",
+                cse->slot, cse->slot, cse->slot, cse->slot, cse->slot,
+                cse->slot);
+        } else {
+            cxpr_model_c_printf(&b,
+                "    const double _cx_resample_value_%zu_%u = (_cx_resample_views[%zu].values && _cx_resample_cursor_%zu_%u >= %uu && _cx_resample_cursor_%zu_%u - %uu < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].values[_cx_resample_cursor_%zu_%u - %uu] : NAN;\n",
+                cse->slot, cse->lookback, cse->slot,
+                cse->slot, cse->lookback, cse->lookback,
+                cse->slot, cse->lookback, cse->lookback,
+                cse->slot, cse->slot, cse->slot, cse->lookback,
+                cse->lookback);
+        }
     }
     for (size_t i = 0u; i < ast_target_data.child_call_count; ++i) {
         cxpr_model_c_printf(&b, "    _cx_state->child_call_%zu_initialized = 0u;\n", i);
