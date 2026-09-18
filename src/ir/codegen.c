@@ -586,15 +586,34 @@ char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
                 if (name && strcmp(name, "min") == 0) fn = "fmin";
                 else if (name && strcmp(name, "max") == 0) fn = "fmax";
                 else fn = NULL;
-                if (!fn || instr->index == 0u) {
+                if (!name || instr->index == 0u) {
                     cxpr_ir_c_fail(err, CXPR_ERR_UNKNOWN_FUNCTION,
                                    "Unsupported native variadic call in C backend");
                     goto fail;
                 }
                 cxpr_ir_c_printf(&b, "    { double _cx_acc = _cx_s[_cx_sp - %zuu];\n", instr->index);
-                for (size_t arg = 1u; arg < instr->index; ++arg) {
-                    cxpr_ir_c_printf(&b, "      _cx_acc = %s(_cx_acc, _cx_s[_cx_sp - %zuu]);\n",
-                                     fn, instr->index - arg);
+                if (strcmp(name, "argmin") == 0 || strcmp(name, "argmax") == 0) {
+                    cxpr_ir_c_puts(&b, "      double _cx_best = _cx_acc; _cx_acc = 0.0;\n");
+                    for (size_t arg = 1u; arg < instr->index; ++arg) {
+                        cxpr_ir_c_printf(&b,
+                            "      if (_cx_s[_cx_sp - %zuu] %c _cx_best) { _cx_best = _cx_s[_cx_sp - %zuu]; _cx_acc = %zu.0; }\n",
+                            instr->index - arg, name[3] == 'm' ? '<' : '>',
+                            instr->index - arg, arg);
+                    }
+                } else if (strcmp(name, "sum") == 0) {
+                    for (size_t arg = 1u; arg < instr->index; ++arg) {
+                        cxpr_ir_c_printf(&b, "      _cx_acc += _cx_s[_cx_sp - %zuu];\n",
+                                         instr->index - arg);
+                    }
+                } else if (fn) {
+                    for (size_t arg = 1u; arg < instr->index; ++arg) {
+                        cxpr_ir_c_printf(&b, "      _cx_acc = %s(_cx_acc, _cx_s[_cx_sp - %zuu]);\n",
+                                         fn, instr->index - arg);
+                    }
+                } else {
+                    cxpr_ir_c_fail(err, CXPR_ERR_UNKNOWN_FUNCTION,
+                                   "Unsupported native variadic call in C backend");
+                    goto fail;
                 }
                 cxpr_ir_c_printf(&b, "      _cx_sp -= %zuu; _cx_s[_cx_sp++] = _cx_acc; }\n",
                                  instr->index);

@@ -1,5 +1,4 @@
-// Requires R6 (argmin/argmax + fast-arity sum). Basic aggregate behaviour.
-// See plans/field_pathfinding_requirements.md.
+// R6 argmin/argmax + fixed-arity sum. Basic aggregate behaviour.
 model argmin_argmax
 
 in { a, b, c, d }

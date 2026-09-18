@@ -732,7 +732,10 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 err);
         }
 
-        if ((strcmp(fname, "min") == 0 || strcmp(fname, "max") == 0) &&
+        if ((strcmp(fname, "min") == 0 || strcmp(fname, "max") == 0 ||
+             strcmp(fname, "argmin") == 0 || strcmp(fname, "argmax") == 0 ||
+             strcmp(fname, "sum") == 0) &&
+            !entry->defined_body &&
             ast->data.function_call.argc >= 1 &&
             ast->data.function_call.argc <= 8) {
             size_t i;

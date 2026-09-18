@@ -1,7 +1,6 @@
-// Requires R6 (argmin). Sentinel saturation (R7) is a plain `fn`, no builtin.
+// R6 argmin with R7 sentinel saturation as a plain `fn`, not a builtin.
 // Reference cell-model for the agnostic `grid_relax` interop descriptor
 // (4-neighbour). This IS the interop spec other consumers copy.
-// See plans/field_pathfinding_requirements.md.
 model grid_relax_4nabo
 
 // Host halo-gathers per cell as scalar columns. Blocked / out-of-bounds

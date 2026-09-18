@@ -1,8 +1,7 @@
 # Pathfinding fixtures (R6–R8)
 
-Fixtures backing the field-based pathfinding requirements (see
-`plans/field_pathfinding_requirements.md`). They exercise the agnostic
-primitives that turn a distance field into a flow field:
+Fixtures for the agnostic primitives that turn a distance field into a flow
+field:
 
 - **R6** — `argmin` / `argmax` / fast-arity `sum` (new builtins)
 - **R7** — sentinel/∞ convention: an `$INF` constant + `fn sadd(a, b) = min(a + b, $INF)`.
@@ -10,13 +9,13 @@ primitives that turn a distance field into a flow field:
   and needs no codegen change. R7 is convention/documentation, not language work.
 - **R8** — host-side bulk all-reduce for convergence
 
-Because R7 is just a `fn`, the only actual codegen blocker is `argmin` (R6). So:
+R7 remains a plain `fn`; R6 is implemented by scalar folds in tree-eval, IR,
+generated C, and the CUDA-inherited C path. Therefore:
 
 - `sentinel.cxpr`, `grid_dist_4nabo.cxpr`, and `examples/bulk_grid/distance_field_cell.cxpr`
-  **compile and run today** (no `argmin`). `pathfinding_sentinel.test.c` runs ungated.
+  compile and run without direction selection. `pathfinding_sentinel.test.c` runs ungated.
 - `grid_relax_4nabo.cxpr`, `grid_relax_8nabo.cxpr`, and
-  `examples/bulk_grid/flow_field_cell.cxpr` add `dir = argmin(...)` and therefore need
-  R6; they are exercised only by the R6-gated stub (`CXPR_PATHFINDING_R6_READY`).
+  `examples/bulk_grid/flow_field_cell.cxpr` add `dir = argmin(...)` and exercise R6.
 
 ## Direction convention (B4)
 

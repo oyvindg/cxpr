@@ -318,6 +318,41 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
         return 1;
     }
 
+    /* sum: fixed-arity scalar left fold. Parentheses preserve source order. */
+    if (strcmp(name, "sum") == 0 && argc >= 1) {
+        for (size_t i = 1; i < argc; ++i) cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+        for (size_t i = 1; i < argc; ++i) {
+            cxpr_cg_puts(b, " + ");
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, i), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_putc(b, ')');
+        }
+        return 1;
+    }
+
+    /* argmin/argmax: scalar-only tournament. Strict comparisons make ties keep
+     * the lower source index. The largest supported basket has only 8 values. */
+    if ((strcmp(name, "argmin") == 0 || strcmp(name, "argmax") == 0) && argc >= 1) {
+        const char* op = strcmp(name, "argmin") == 0 ? " <= " : " >= ";
+        char index_literal[32];
+        for (size_t candidate = 0; candidate + 1 < argc; ++candidate) {
+            cxpr_cg_putc(b, '(');
+            for (size_t other = candidate + 1; other < argc; ++other) {
+                if (other > candidate + 1) cxpr_cg_puts(b, " && ");
+                if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, candidate), lookback_offset, b, target, err)) return 0;
+                cxpr_cg_puts(b, op);
+                if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, other), lookback_offset, b, target, err)) return 0;
+            }
+            cxpr_cg_puts(b, " ? ");
+            snprintf(index_literal, sizeof(index_literal), "%zu.0 : ", candidate);
+            cxpr_cg_puts(b, index_literal);
+        }
+        snprintf(index_literal, sizeof(index_literal), "%zu.0", argc - 1);
+        cxpr_cg_puts(b, index_literal);
+        for (size_t candidate = 0; candidate + 1 < argc; ++candidate) cxpr_cg_putc(b, ')');
+        return 1;
+    }
+
     const char* mapped = NULL;
     if (target && target->map_function) mapped = target->map_function(name, argc, target->userdata);
     if (!mapped) mapped = cxpr_cg_default_function(name, argc);
