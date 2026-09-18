@@ -9,28 +9,13 @@
 #include <vector>
 
 #include "cxpr_optimize_candidate_generated.cuh"
+#include "cuda_optimize_legacy_oracle.cuh"
+#include "cuda_test_helpers.cuh"
 
-static void check(cudaError_t status, const char* operation) {
-    if (status == cudaSuccess) return;
-    std::fprintf(stderr, "%s: %s\n", operation, cudaGetErrorString(status));
-    std::exit(2);
-}
-
-/* Migration oracle: preserve the original hand-written replay path. */
-__global__ static void replay_candidates_legacy(
-    cxpr_optimize_candidate_tick_state* states, const cxpr_value* params,
-    const cxpr_value* inputs, const unsigned char* active,
-    size_t candidate_count, size_t tick_count, cxpr_value* outputs) {
-    const size_t candidate = blockIdx.x * blockDim.x + threadIdx.x;
-    if (candidate >= candidate_count || active[candidate] == 0u) return;
-    for (size_t tick = 0u; tick < tick_count; ++tick)
-        cxpr_optimize_candidate_tick(
-            &states[candidate], &inputs[tick], &params[candidate * 2u],
-            &outputs[candidate * 2u]);
-}
+using cxpr_cuda_test::device_buffer;
 
 CXPR_CUDA_DEFINE_CANDIDATE_REPLAY_KERNEL(
-    replay_candidates_generated, cxpr_optimize_candidate_tick_state,
+    replay_candidates, cxpr_optimize_candidate_tick_state,
     cxpr_optimize_candidate_tick)
 
 static char* read_fixture(void) {
@@ -74,13 +59,16 @@ int main(void) {
     std::vector<cxpr_value> legacy(candidate_count * output_count, cxpr_num(NAN));
     std::vector<cxpr_value> generated(candidate_count * output_count, cxpr_num(NAN));
     std::vector<cxpr_value> chunked(candidate_count * output_count, cxpr_num(NAN));
-    cxpr_optimize_candidate_tick_state *legacy_states = nullptr,
-                                       *generated_states = nullptr,
-                                       *chunked_states = nullptr;
-    cxpr_value *device_params = nullptr, *device_inputs = nullptr,
-               *legacy_outputs = nullptr, *generated_outputs = nullptr,
-               *chunked_outputs = nullptr;
-    unsigned char* device_active = nullptr;
+    device_buffer<cxpr_optimize_candidate_tick_state>
+        legacy_states(candidate_count, "allocate legacy states"),
+        generated_states(candidate_count, "allocate generated states"),
+        chunked_states(candidate_count, "allocate chunked states");
+    device_buffer<cxpr_value> device_params(params.size(), "allocate params");
+    device_buffer<cxpr_value> device_inputs(inputs.size(), "allocate inputs");
+    device_buffer<unsigned char> device_active(active.size(), "allocate active mask");
+    device_buffer<cxpr_value> legacy_outputs(legacy.size(), "allocate legacy outputs");
+    device_buffer<cxpr_value> generated_outputs(generated.size(), "allocate generated outputs");
+    device_buffer<cxpr_value> chunked_outputs(chunked.size(), "allocate chunked outputs");
 
     for (size_t gain = 0u, candidate = 0u; gain < 3u; ++gain) {
         for (size_t bias = 0u; bias < 2u; ++bias, ++candidate) {
@@ -91,53 +79,35 @@ int main(void) {
     }
     for (size_t tick = 0u; tick < tick_count; ++tick) inputs[tick] = cxpr_num(samples[tick]);
 
-#define ALLOC(ptr, bytes, label) check(cudaMalloc(&(ptr), (bytes)), (label))
-    ALLOC(legacy_states, candidate_count * sizeof(*legacy_states), "allocate legacy states");
-    ALLOC(generated_states, candidate_count * sizeof(*generated_states), "allocate generated states");
-    ALLOC(chunked_states, candidate_count * sizeof(*chunked_states), "allocate chunked states");
-    ALLOC(device_params, params.size() * sizeof(*device_params), "allocate params");
-    ALLOC(device_inputs, inputs.size() * sizeof(*device_inputs), "allocate inputs");
-    ALLOC(device_active, active.size(), "allocate active mask");
-    ALLOC(legacy_outputs, legacy.size() * sizeof(*legacy_outputs), "allocate legacy outputs");
-    ALLOC(generated_outputs, generated.size() * sizeof(*generated_outputs), "allocate generated outputs");
-    ALLOC(chunked_outputs, chunked.size() * sizeof(*chunked_outputs), "allocate chunked outputs");
-#undef ALLOC
-    check(cudaMemset(legacy_states, 0, candidate_count * sizeof(*legacy_states)), "reset legacy states");
-    check(cudaMemset(generated_states, 0, candidate_count * sizeof(*generated_states)), "reset generated states");
-    check(cudaMemset(chunked_states, 0, candidate_count * sizeof(*chunked_states)), "reset chunked states");
-    check(cudaMemcpy(device_params, params.data(), params.size() * sizeof(*device_params),
-                     cudaMemcpyHostToDevice), "copy params");
-    check(cudaMemcpy(device_inputs, inputs.data(), inputs.size() * sizeof(*device_inputs),
-                     cudaMemcpyHostToDevice), "copy inputs");
-    check(cudaMemcpy(device_active, active.data(), active.size(), cudaMemcpyHostToDevice),
-          "copy active mask");
-    check(cudaMemcpy(legacy_outputs, legacy.data(), legacy.size() * sizeof(*legacy_outputs),
-                     cudaMemcpyHostToDevice), "initialize legacy outputs");
-    check(cudaMemcpy(generated_outputs, generated.data(), generated.size() * sizeof(*generated_outputs),
-                     cudaMemcpyHostToDevice), "initialize generated outputs");
-    check(cudaMemcpy(chunked_outputs, chunked.data(), chunked.size() * sizeof(*chunked_outputs),
-                     cudaMemcpyHostToDevice), "initialize chunked outputs");
+    legacy_states.clear("reset legacy states");
+    generated_states.clear("reset generated states");
+    chunked_states.clear("reset chunked states");
+    device_params.upload(params.data(), params.size(), "copy params");
+    device_inputs.upload(inputs.data(), inputs.size(), "copy inputs");
+    device_active.upload(active.data(), active.size(), "copy active mask");
+    legacy_outputs.upload(legacy.data(), legacy.size(), "initialize legacy outputs");
+    generated_outputs.upload(generated.data(), generated.size(), "initialize generated outputs");
+    chunked_outputs.upload(chunked.data(), chunked.size(), "initialize chunked outputs");
 
-    replay_candidates_legacy<<<1u, 32u>>>(
-        legacy_states, device_params, device_inputs, device_active,
-        candidate_count, tick_count, legacy_outputs);
-    replay_candidates_generated<<<1u, 32u>>>(
-        generated_states, device_params, param_count, device_inputs, 1u, tick_count,
-        device_active, generated_outputs, output_count, 0u, candidate_count);
-    replay_candidates_generated<<<1u, 32u>>>(
-        chunked_states, device_params, param_count, device_inputs, 1u, tick_count,
-        device_active, chunked_outputs, output_count, 0u, 2u);
-    replay_candidates_generated<<<1u, 32u>>>(
-        chunked_states, device_params, param_count, device_inputs, 1u, tick_count,
-        device_active, chunked_outputs, output_count, 2u, candidate_count - 2u);
-    check(cudaGetLastError(), "launch candidate parity kernels");
-    check(cudaDeviceSynchronize(), "synchronize candidate parity kernels");
-    check(cudaMemcpy(legacy.data(), legacy_outputs, legacy.size() * sizeof(*legacy_outputs),
-                     cudaMemcpyDeviceToHost), "copy legacy outputs");
-    check(cudaMemcpy(generated.data(), generated_outputs, generated.size() * sizeof(*generated_outputs),
-                     cudaMemcpyDeviceToHost), "copy generated outputs");
-    check(cudaMemcpy(chunked.data(), chunked_outputs, chunked.size() * sizeof(*chunked_outputs),
-                     cudaMemcpyDeviceToHost), "copy chunked outputs");
+    cxpr_cuda_replay_candidates_legacy<<<1u, 32u>>>(
+        legacy_states.data(), device_params.data(), device_inputs.data(),
+        device_active.data(), candidate_count, tick_count, legacy_outputs.data());
+    replay_candidates<<<1u, 32u>>>(
+        generated_states.data(), device_params.data(), param_count,
+        device_inputs.data(), 1u, tick_count, device_active.data(),
+        generated_outputs.data(), output_count, 0u, candidate_count);
+    replay_candidates<<<1u, 32u>>>(
+        chunked_states.data(), device_params.data(), param_count,
+        device_inputs.data(), 1u, tick_count, device_active.data(),
+        chunked_outputs.data(), output_count, 0u, 2u);
+    replay_candidates<<<1u, 32u>>>(
+        chunked_states.data(), device_params.data(), param_count,
+        device_inputs.data(), 1u, tick_count, device_active.data(),
+        chunked_outputs.data(), output_count, 2u, candidate_count - 2u);
+    cxpr_cuda_test::synchronize("run candidate parity kernels");
+    legacy_outputs.download(legacy.data(), legacy.size(), "copy legacy outputs");
+    generated_outputs.download(generated.data(), generated.size(), "copy generated outputs");
+    chunked_outputs.download(chunked.data(), chunked.size(), "copy chunked outputs");
 
     for (size_t candidate = 0u; candidate < candidate_count; ++candidate) {
         for (size_t output = 0u; output < output_count; ++output) {
@@ -183,9 +153,6 @@ int main(void) {
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     std::free(source);
-    cudaFree(chunked_outputs); cudaFree(generated_outputs); cudaFree(legacy_outputs);
-    cudaFree(device_active); cudaFree(device_inputs); cudaFree(device_params);
-    cudaFree(chunked_states); cudaFree(generated_states); cudaFree(legacy_states);
     std::puts("CUDA generated/legacy/CPU optimizer parity and chunking OK");
     return 0;
 }

@@ -5,37 +5,13 @@
 #include <cstdlib>
 #include <vector>
 
-#include "cxpr_klein_gordon_generated.cuh"
+#include "cuda_klein_gordon_fixture.cuh"
+#include "cuda_test_helpers.cuh"
 
-static void check(cudaError_t status, const char* operation) {
-    if (status == cudaSuccess) return;
-    std::fprintf(stderr, "%s: %s\n", operation, cudaGetErrorString(status));
-    std::exit(2);
-}
+using cxpr_cuda_test::device_buffer;
 
 static double host_abs(double value) {
     return value < 0.0 ? -value : value;
-}
-
-__global__ static void klein_gordon_bulk(
-    const double* phi, const double* momentum, const double* source,
-    double* next_phi, double* next_momentum, double* acceleration,
-    double* energy, size_t count) {
-    const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i == 0u || i + 1u >= count) return;
-    const cxpr_value inputs[5] = {
-        cxpr_num(phi[i]), cxpr_num(momentum[i]), cxpr_num(phi[i - 1u]),
-        cxpr_num(phi[i + 1u]), cxpr_num(source[i])};
-    const cxpr_value params[5] = {
-        cxpr_num(0.001), cxpr_num(0.01), cxpr_num(1.0),
-        cxpr_num(0.1), cxpr_num(0.02)};
-    cxpr_value outputs[4];
-    cxpr_klein_gordon_tick_state state = {};
-    cxpr_klein_gordon_tick(&state, inputs, params, outputs);
-    next_phi[i] = outputs[0].d;
-    next_momentum[i] = outputs[1].d;
-    acceleration[i] = outputs[2].d;
-    energy[i] = outputs[3].d;
 }
 
 int main(void) {
@@ -47,31 +23,30 @@ int main(void) {
     constexpr double damping = 0.02;
     std::vector<double> phi(count), momentum(count), source(count), actual_phi(count),
         actual_momentum(count), actual_acceleration(count), actual_energy(count);
-    double *d_phi = nullptr, *d_momentum = nullptr, *d_source = nullptr,
-           *d_next_phi = nullptr, *d_next_momentum = nullptr,
-           *d_acceleration = nullptr, *d_energy = nullptr;
+    device_buffer<double> d_phi(count, "allocate phi");
+    device_buffer<double> d_momentum(count, "allocate momentum");
+    device_buffer<double> d_source(count, "allocate source");
+    device_buffer<double> d_next_phi(count, "allocate next phi");
+    device_buffer<double> d_next_momentum(count, "allocate next momentum");
+    device_buffer<double> d_acceleration(count, "allocate acceleration");
+    device_buffer<double> d_energy(count, "allocate energy");
     for (size_t i = 0u; i < count; ++i) {
         const double x = (double)i * dx;
         phi[i] = std::sin(0.37 * x) + 0.1 * std::cos(0.11 * x);
         momentum[i] = 0.2 * std::cos(0.23 * x);
         source[i] = 0.05 * std::sin(0.07 * x);
     }
-#define ALLOC(p) check(cudaMalloc(&(p), count * sizeof(double)), "cudaMalloc " #p)
-    ALLOC(d_phi); ALLOC(d_momentum); ALLOC(d_source); ALLOC(d_next_phi);
-    ALLOC(d_next_momentum); ALLOC(d_acceleration); ALLOC(d_energy);
-#undef ALLOC
-    check(cudaMemcpy(d_phi, phi.data(), count * sizeof(double), cudaMemcpyHostToDevice), "copy phi");
-    check(cudaMemcpy(d_momentum, momentum.data(), count * sizeof(double), cudaMemcpyHostToDevice), "copy momentum");
-    check(cudaMemcpy(d_source, source.data(), count * sizeof(double), cudaMemcpyHostToDevice), "copy source");
-    klein_gordon_bulk<<<(unsigned)((count + 255u) / 256u), 256>>>(
-        d_phi, d_momentum, d_source, d_next_phi, d_next_momentum,
-        d_acceleration, d_energy, count);
-    check(cudaGetLastError(), "launch Klein-Gordon bulk kernel");
-    check(cudaDeviceSynchronize(), "synchronize Klein-Gordon bulk kernel");
-    check(cudaMemcpy(actual_phi.data(), d_next_phi, count * sizeof(double), cudaMemcpyDeviceToHost), "copy next phi");
-    check(cudaMemcpy(actual_momentum.data(), d_next_momentum, count * sizeof(double), cudaMemcpyDeviceToHost), "copy next momentum");
-    check(cudaMemcpy(actual_acceleration.data(), d_acceleration, count * sizeof(double), cudaMemcpyDeviceToHost), "copy acceleration");
-    check(cudaMemcpy(actual_energy.data(), d_energy, count * sizeof(double), cudaMemcpyDeviceToHost), "copy energy");
+    d_phi.upload(phi.data(), count, "copy phi");
+    d_momentum.upload(momentum.data(), count, "copy momentum");
+    d_source.upload(source.data(), count, "copy source");
+    cxpr_cuda_klein_gordon_step<false><<<cxpr_cuda_test::blocks(count), 256>>>(
+        d_phi.data(), d_momentum.data(), d_source.data(), d_next_phi.data(),
+        d_next_momentum.data(), d_acceleration.data(), d_energy.data(), count);
+    cxpr_cuda_test::synchronize("run Klein-Gordon bulk kernel");
+    d_next_phi.download(actual_phi.data(), count, "copy next phi");
+    d_next_momentum.download(actual_momentum.data(), count, "copy next momentum");
+    d_acceleration.download(actual_acceleration.data(), count, "copy acceleration");
+    d_energy.download(actual_energy.data(), count, "copy energy");
 
     for (size_t i = 1u; i + 1u < count; ++i) {
         const double laplacian = (phi[i - 1u] - 2.0 * phi[i] + phi[i + 1u]) / (dx * dx);
@@ -93,8 +68,6 @@ int main(void) {
             return 1;
         }
     }
-    cudaFree(d_energy); cudaFree(d_acceleration); cudaFree(d_next_momentum);
-    cudaFree(d_next_phi); cudaFree(d_source); cudaFree(d_momentum); cudaFree(d_phi);
     std::printf("CUDA bulk Klein-Gordon parity OK (%zu cells)\n", count);
     return 0;
 }
