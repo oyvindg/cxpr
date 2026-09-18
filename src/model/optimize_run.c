@@ -66,11 +66,11 @@ void cxpr_model_optimize_result_free(cxpr_model_optimize_result* result) {
     *result = (cxpr_model_optimize_result){0};
 }
 
-bool cxpr_model_optimize(const cxpr_model_compiled* program,
-                         const cxpr_model_optimize_inputs* inputs,
-                         const cxpr_model_optimize_options* options,
-                         cxpr_model_optimize_result* result,
-                         cxpr_error* err) {
+static bool cxpr_model_optimize_cpu(const cxpr_model_compiled* program,
+                                    const cxpr_model_optimize_inputs* inputs,
+                                    const cxpr_model_optimize_options* options,
+                                    cxpr_model_optimize_result* result,
+                                    cxpr_error* err) {
     size_t total = 1u;
     size_t* indices = NULL;
     double best = 0.0;
@@ -186,4 +186,53 @@ fail:
     free(indices);
     cxpr_model_optimize_result_free(result);
     return false;
+}
+
+bool cxpr_model_optimize_with_backend(
+    const cxpr_model_compiled* program,
+    const cxpr_model_optimize_inputs* inputs,
+    const cxpr_model_optimize_options* options,
+    const cxpr_model_optimize_backend* backend,
+    cxpr_model_optimize_result* result,
+    cxpr_error* err) {
+    const cxpr_model_optimize_backend_kind requested =
+        options ? options->backend : CXPR_OPT_BACKEND_AUTO;
+    const bool valid_backend = backend &&
+        backend->api_version == CXPR_OPTIMIZE_BACKEND_API_VERSION && backend->run;
+    const bool available = valid_backend &&
+        (!backend->available || backend->available(backend->userdata));
+
+    if (err) *err = (cxpr_error){0};
+    if (!program || !inputs || !result || program->optimize_dimension_count == 0u ||
+        program->optimize_objective_count == 0u) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Optimization requires dimensions and objectives", 0, 0);
+        return false;
+    }
+    *result = (cxpr_model_optimize_result){0};
+    if (requested != CXPR_OPT_BACKEND_AUTO &&
+        requested != CXPR_OPT_BACKEND_CPU &&
+        requested != CXPR_OPT_BACKEND_HOST) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Unknown optimize backend", 0, 0);
+        return false;
+    }
+    if (requested == CXPR_OPT_BACKEND_HOST && !available) {
+        cxpr_model_set_error(err, CXPR_ERR_UNAVAILABLE,
+                             "Requested optimize host backend is unavailable", 0, 0);
+        return false;
+    }
+    if (requested != CXPR_OPT_BACKEND_CPU && available) {
+        return backend->run(backend->userdata, program, inputs, options, result, err);
+    }
+    return cxpr_model_optimize_cpu(program, inputs, options, result, err);
+}
+
+bool cxpr_model_optimize(const cxpr_model_compiled* program,
+                         const cxpr_model_optimize_inputs* inputs,
+                         const cxpr_model_optimize_options* options,
+                         cxpr_model_optimize_result* result,
+                         cxpr_error* err) {
+    return cxpr_model_optimize_with_backend(
+        program, inputs, options, NULL, result, err);
 }

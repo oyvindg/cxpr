@@ -137,12 +137,84 @@ static void test_candidate_objective_reads_committed_state_output(void) {
     cxpr_doc_free(doc);
 }
 
+typedef struct {
+    int available;
+    int run_count;
+} fake_backend_state;
+
+static bool fake_backend_available(void* userdata) {
+    return ((fake_backend_state*)userdata)->available != 0;
+}
+
+static bool fake_backend_run(
+    void* userdata, const cxpr_model_compiled* program,
+    const cxpr_model_optimize_inputs* inputs,
+    const cxpr_model_optimize_options* options,
+    cxpr_model_optimize_result* result, cxpr_error* err) {
+    cxpr_model_optimize_options cpu_options = options ? *options
+                                                      : (cxpr_model_optimize_options){0};
+    ((fake_backend_state*)userdata)->run_count++;
+    cpu_options.backend = CXPR_OPT_BACKEND_CPU;
+    return cxpr_model_optimize(program, inputs, &cpu_options, result, err);
+}
+
+static void test_host_backend_selection_and_fallback(void) {
+    const char* source =
+        "model backend_selection\n"
+        "$value = 1 { optimize { values = [1, 2] } }\n"
+        "score = $value { optimize { maximize } }\n"
+        "out score\n";
+    cxpr_model_optimize_inputs inputs = {0};
+    cxpr_model_optimize_options options = {0};
+    cxpr_model_optimize_result result = {0};
+    cxpr_error err = {0};
+    cxpr_doc* doc;
+    cxpr_model_compiled* program = compile_source(source, &doc, &err);
+    fake_backend_state state = {1, 0};
+    const cxpr_model_optimize_backend backend = {
+        CXPR_OPTIMIZE_BACKEND_API_VERSION,
+        &state,
+        fake_backend_available,
+        fake_backend_run,
+    };
+
+    inputs.tick_count = 1u;
+    assert(program != NULL);
+    assert(cxpr_model_optimize_with_backend(
+        program, &inputs, &options, &backend, &result, &err));
+    assert(state.run_count == 1);
+    assert(result.candidates[result.best_index].params[0] == 2.0);
+    cxpr_model_optimize_result_free(&result);
+
+    options.backend = CXPR_OPT_BACKEND_CPU;
+    assert(cxpr_model_optimize_with_backend(
+        program, &inputs, &options, &backend, &result, &err));
+    assert(state.run_count == 1);
+    cxpr_model_optimize_result_free(&result);
+
+    state.available = 0;
+    options.backend = CXPR_OPT_BACKEND_AUTO;
+    assert(cxpr_model_optimize_with_backend(
+        program, &inputs, &options, &backend, &result, &err));
+    assert(state.run_count == 1);
+    cxpr_model_optimize_result_free(&result);
+
+    options.backend = CXPR_OPT_BACKEND_HOST;
+    assert(!cxpr_model_optimize_with_backend(
+        program, &inputs, &options, &backend, &result, &err));
+    assert(err.code == CXPR_ERR_UNAVAILABLE);
+
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+}
+
 int main(void) {
     test_assert_passes_and_reports_description();
     test_optimize_constraint_is_inert_and_introspectable();
     test_assert_rejects_runtime_identifiers();
     test_serial_candidate_runner_selects_best_allowed_candidate();
     test_candidate_objective_reads_committed_state_output();
+    test_host_backend_selection_and_fallback();
     printf("All optimize/assert tests passed.\n");
     return 0;
 }
