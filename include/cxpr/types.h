@@ -98,6 +98,7 @@ typedef struct cxpr_value {
 #define CXPR_VALUE_NUMBER_INIT(value_) { .type = CXPR_VALUE_NUMBER, .d = (value_) }
 #define CXPR_VALUE_BOOL_INIT(value_) { .type = CXPR_VALUE_BOOL, .b = (value_) }
 #define CXPR_VALUE_INT64_INIT(value_) { .type = CXPR_VALUE_INT64, .i64 = (value_) }
+#define CXPR_VALUE_NULL_INIT { .type = CXPR_VALUE_NULL, .i64 = 0 }
 
 #ifndef CXPR_HOST_DEVICE
 #if defined(__CUDACC__) || defined(__CUDACC_RTC__)
@@ -127,7 +128,7 @@ struct cxpr_array_value {
  */
 #ifndef CXPR_TYPES_DEVICE_ONLY
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_num(double d) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_NUMBER;
     value.d = d;
     return value;
@@ -139,14 +140,14 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_num(double d) {
  * @return Value tagged as `CXPR_VALUE_BOOL`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_bool(bool b) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_BOOL;
     value.b = b;
     return value;
 }
 
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_int64(int64_t value) {
-    cxpr_value result = {CXPR_VALUE_NULL};
+    cxpr_value result = CXPR_VALUE_NULL_INIT;
     result.type = CXPR_VALUE_INT64;
     result.i64 = value;
     return result;
@@ -159,7 +160,7 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_int64(int64_t value) {
  * @return Value tagged as `CXPR_VALUE_STRUCT`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_STRUCT;
     value.s = s;
     return value;
@@ -171,7 +172,7 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
  * @return Value tagged as `CXPR_VALUE_STRING`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_string(const char* str) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_STRING;
     value.str = str ? str : "";
     return value;
@@ -182,7 +183,7 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_string(const char* str) {
  * @return Value tagged as `CXPR_VALUE_NULL`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_null(void) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_NULL;
     return value;
 }
@@ -193,7 +194,7 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_null(void) {
  * @return Value tagged as `CXPR_VALUE_TIMESTAMP`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_TIMESTAMP;
     value.i64 = unix_ns;
     return value;
@@ -205,7 +206,7 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
  * @return Value tagged as `CXPR_VALUE_DURATION`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_duration(int64_t nanoseconds) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_DURATION;
     value.i64 = nanoseconds;
     return value;
@@ -217,7 +218,7 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_duration(int64_t nanoseconds) {
  * @return Value tagged as `CXPR_VALUE_ARRAY`.
  */
 static CXPR_HOST_DEVICE inline cxpr_value cxpr_array(cxpr_array_value* a) {
-    cxpr_value value = {CXPR_VALUE_NULL};
+    cxpr_value value = CXPR_VALUE_NULL_INIT;
     value.type = CXPR_VALUE_ARRAY;
     value.a = a;
     return value;
