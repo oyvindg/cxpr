@@ -1,0 +1,26 @@
+// Flow-field relaxation cell -- distance field + movement intent.
+// Requires R6 (argmin). Sentinel saturation (R7) is a plain `fn`, no builtin, so the
+// only thing that keeps this from compiling on release/3.2.0 is `argmin`.
+//
+// Identical relaxation to distance_field_cell.cxpr, plus `dir`: the argmin over the
+// same candidate distances gives a direction code the host maps to a cell (B4).
+// `dir` is only valid when next_dist < $INF (B3).
+model flow_field_cell
+
+in { d_n, d_s, d_e, d_w, cost, is_wall, is_goal }
+
+$INF = 1e18
+
+fn sadd(a, b) = min(a + b, $INF)
+
+cand_n = sadd(d_n, cost)
+cand_s = sadd(d_s, cost)
+cand_e = sadd(d_e, cost)
+cand_w = sadd(d_w, cost)
+
+next_dist = is_wall > 0 ? $INF : is_goal > 0 ? 0 : min(cand_n, cand_s, cand_e, cand_w)
+
+// 0=N, 1=S, 2=E, 3=W. Same sub-expressions as the value, so the index matches.
+dir = argmin(cand_n, cand_s, cand_e, cand_w)
+
+out { next_dist, dir }
