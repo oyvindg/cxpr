@@ -86,33 +86,28 @@ static bool cxpr_history_value_at(const cxpr_history_numeric_state* state,
     return true;
 }
 
-static bool cxpr_history_numeric_resolve(const cxpr_expr_ast* target,
-                                         const cxpr_expr_ast* index_ast,
-                                         const cxpr_context* ctx,
-                                         const cxpr_registry* reg,
-                                         void* userdata,
-                                         cxpr_value* out,
-                                         cxpr_error* err) {
-    const cxpr_history_numeric_state* state =
-        (const cxpr_history_numeric_state*)userdata;
-    const char** references = NULL;
+static bool cxpr_history_numeric_resolve_offset(
+    const cxpr_history_numeric_state* state, const cxpr_expr_ast* target,
+    int64_t offset, const cxpr_context* ctx, const cxpr_registry* reg,
+    cxpr_value* out, cxpr_error* err) {
+    const char* local_references[16];
+    const char** references = local_references;
     size_t reference_count;
     bool has_history_source = false;
-    cxpr_value index_value = cxpr_null();
-    int64_t offset;
     int64_t cursor;
     cxpr_context* shifted = NULL;
 
-    if (!state || !target || !index_ast || !out ||
-        (!state->cursor && !state->view)) {
+    if (!state || !target || !out || (!state->cursor && !state->view)) {
         return false;
     }
     reference_count = cxpr_expr_ast_references(target, NULL, 0u);
     if (reference_count == 0u) return false;
-    references = (const char**)malloc(reference_count * sizeof(*references));
-    if (!references) {
-        return cxpr_history_error(err, CXPR_ERR_OUT_OF_MEMORY,
-                                  "Failed to allocate history references");
+    if (reference_count > sizeof(local_references) / sizeof(local_references[0])) {
+        references = (const char**)malloc(reference_count * sizeof(*references));
+        if (!references) {
+            return cxpr_history_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                      "Failed to allocate history references");
+        }
     }
     cxpr_expr_ast_references(target, references, reference_count);
     for (size_t i = 0u; i < reference_count; ++i) {
@@ -125,28 +120,13 @@ static bool cxpr_history_numeric_resolve(const cxpr_expr_ast* target,
         }
     }
     if (!has_history_source) {
-        free(references);
+        if (references != local_references) free(references);
         return false;
     }
-    if (!cxpr_eval_ast(index_ast, ctx, reg, &index_value, err)) {
-        free(references);
-        return true;
-    }
-    if (index_value.type != CXPR_VALUE_NUMBER || !isfinite(index_value.d) ||
-        index_value.d < 0.0 || floor(index_value.d) != index_value.d ||
-        index_value.d > (double)INT64_MAX) {
-        cxpr_value_free(&index_value);
-        free(references);
-        return cxpr_history_error(
-            err, CXPR_ERR_INVALID_INDEX,
-            "History offset must be a finite non-negative integer");
-    }
-    offset = (int64_t)index_value.d;
-    cxpr_value_free(&index_value);
     cursor = state->cursor ? *state->cursor : 0;
     shifted = cxpr_context_overlay_new(ctx);
     if (!shifted) {
-        free(references);
+        if (references != local_references) free(references);
         return cxpr_history_error(err, CXPR_ERR_OUT_OF_MEMORY,
                                   "Failed to allocate shifted history context");
     }
@@ -160,12 +140,12 @@ static bool cxpr_history_numeric_resolve(const cxpr_expr_ast* target,
         if (!cxpr_history_value_at(
                 state, &source, source_cursor, offset, &value, err)) {
             cxpr_context_free(shifted);
-            free(references);
+            if (references != local_references) free(references);
             return true;
         }
         cxpr_context_set(shifted, source.name, value.d);
     }
-    free(references);
+    if (references != local_references) free(references);
     if (!cxpr_eval_ast(target, shifted, reg, out, err)) {
         cxpr_context_free(shifted);
         return true;
@@ -181,17 +161,18 @@ static bool cxpr_history_numeric_index(const cxpr_expr_ast* target,
                                        void* userdata,
                                        cxpr_value* out,
                                        cxpr_error* err) {
-    cxpr_expr_ast* index_ast = cxpr_expr_ast_number_new((double)index);
-    bool resolved;
-    if (!index_ast) {
-        return cxpr_history_error(
-            err, CXPR_ERR_OUT_OF_MEMORY,
-            "Failed to allocate history index expression");
+    const cxpr_history_numeric_state* state =
+        (const cxpr_history_numeric_state*)userdata;
+    if (target && cxpr_expr_ast_kind_of(target) == CXPR_NODE_IDENTIFIER && state) {
+        cxpr_history_numeric_source source;
+        int64_t cursor = state->cursor ? *state->cursor : 0;
+        if (cxpr_history_find_source(
+                state, cxpr_expr_ast_identifier_name(target), &source, &cursor)) {
+            return cxpr_history_value_at(state, &source, cursor, index, out, err);
+        }
     }
-    resolved = cxpr_history_numeric_resolve(
-        target, index_ast, ctx, reg, userdata, out, err);
-    cxpr_expr_ast_free(index_ast);
-    return resolved;
+    return cxpr_history_numeric_resolve_offset(
+        state, target, index, ctx, reg, out, err);
 }
 
 static void cxpr_history_numeric_free(void* userdata) {

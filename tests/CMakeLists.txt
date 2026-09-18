@@ -31,6 +31,10 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
        "${CMAKE_CURRENT_SOURCE_DIR}/scale_parity_benchmark.test.c")
         continue()
     endif()
+    if(NOT TARGET cxpr_model_codegen AND test_file MATCHES
+       "(bulk_buffer_parity|bulk_codegen_e2e|composition_bulk_codegen_e2e|dynamic_host_e2e)\\.test\\.c$")
+        continue()
+    endif()
     file(RELATIVE_PATH test_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${test_file}")
     string(REPLACE ".test.c" "" test_base "${test_rel}")
     string(REPLACE "/" "_" test_base "${test_base}")
@@ -376,9 +380,4 @@ if(TARGET cxpr_model_codegen)
     add_test(
         NAME cxpr_compiled_strategy_example
         COMMAND $<TARGET_FILE:cxpr_compiled_strategy_example>)
-endif()
-
-if(CXPR_ENABLE_ASAN)
-    set_tests_properties(${CXPR_C_TEST_NAMES} PROPERTIES
-        ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
 endif()

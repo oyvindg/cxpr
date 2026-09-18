@@ -43,7 +43,7 @@ that registry concurrently.
 Compile-time library version macros do not validate a loaded generated
 artifact. Use the validator associated with each versioned transport:
 
-- `cxpr_generated_model_descriptor_abi_valid()` for descriptor ABI 4;
+- `cxpr_generated_model_descriptor_abi_valid()` for descriptor ABI 5;
 - `cxpr_resample_view_validate()` for resample view ABI 1;
 - `cxpr_debug_map_validate()` for debug-map ABI 1;
 - the version constants and validation functions documented by public IR and
@@ -67,4 +67,3 @@ The language and runtime do not infer domain policy. In particular, hosts must
 provide source data required by `resample`, reject missing bindings, and own
 all CPU/GPU scheduling. See [Providers and resampling](providers-sources-resample.md),
 [Generated C](generated-c.md), and [Bulk and grid](bulk.md).
-

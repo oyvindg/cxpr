@@ -233,6 +233,7 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
         cxpr_expression_entry* entry = &evaluator->expressions[idx];
         cxpr_error eval_err = {0};
         cxpr_value value = {0};
+        bool value_owned = false;
 
         if (entry->used_as_struct_prefix) {
             int struct_alias = cxpr_expression_eval_struct_alias(
@@ -249,11 +250,13 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
             }
             if (struct_alias == 0 && entry->program) {
                 (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
+                value_owned = true;
             } else if (struct_alias == 0) {
                 (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
             }
         } else if (entry->program) {
             (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
+            value_owned = true;
         } else {
             (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
         }
@@ -285,7 +288,12 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
             return;
         }
 
-        entry->result = cxpr_expression_result_clone(&value, &eval_err);
+        if (value_owned &&
+            (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)) {
+            entry->result = value;
+        } else {
+            entry->result = cxpr_expression_result_clone(&value, &eval_err);
+        }
         if (eval_err.code != CXPR_OK) {
             cxpr_eval_memo_leave(ctx);
             cxpr_context_set_expression_scope(ctx, previous_scope);

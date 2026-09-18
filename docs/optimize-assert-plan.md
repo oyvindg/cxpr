@@ -328,6 +328,14 @@ metadata for `optimize.minimize` / `optimize.maximize`, keyed by the value name
 (so `out profit { optimize { maximize } }` and a hypothetical state-decl
 annotation collapse to one objective on `profit`).
 
+**Multiple metrics per candidate.** A candidate result is a *vector* of named
+values, not a single scalar. Real hosts collect several metrics per combination
+(e.g. a primary objective plus secondary quality/robustness measures). The API
+must therefore let a candidate report *any* named output value as a readable
+metric (not only the declared objectives), so hosts can rank/filter on secondary
+metrics and apply their own guards. Objectives declare *direction*; metrics are
+just readable outputs.
+
 **Acceptance:** for the full spec §13 example, the API returns dimensions
 `$fast`/`$slow`, constraint `$fast < $slow`, objective `profit`
 (maximize).
@@ -405,13 +413,17 @@ Scale Phase 5 across candidates (spec §9). One batch slot = one candidate.
   accumulation, results copied back at the end (spec §10).
 
 **Acceptance:** bulk optimizer reproduces Phase 5 results bit-for-bit on CPU;
-CUDA parity test matches within tolerance.
+CUDA parity test matches within tolerance; **and CUDA throughput is within an
+agreed factor of any existing host-side grid optimizer being replaced** (see §9 —
+for a replacement, performance parity is a first-class acceptance criterion, not
+just numeric parity).
 
 **Checklist**
 - [ ] Extend `cxpr_bulk_view` (`include/cxpr/bulk.h:45`) with per-element params (a strided `params` column or `param_stride`), stride-0 = shared for backward compat; update `cxpr_bulk_validate`.
 - [ ] Thread per-element params through `cxpr_bulk_run_range` (`src/bulk.c:57`) into `descriptor->tick`.
-- [ ] Add a candidate→bulk driver: expand candidates → fill per-slot params + fresh state (`cxpr_bulk_reset_range`) → replay sequence → gather objective output columns → select best.
-- [ ] CUDA: one-thread-per-candidate kernel over the generated-C descriptor; device-resident state/accumulation; copy back final objectives (spec §9, §10).
+- [ ] Add a candidate→bulk driver: expand candidates → fill per-slot params + fresh state (`cxpr_bulk_reset_range`) → replay sequence → gather objective output columns → select best. The reference pattern is a host CPU grid runner (`grid_batch.c`) mirrored on CUDA (`grid_batch_cuda.c`).
+- [ ] CUDA: one-thread-per-candidate kernel over the generated-C descriptor (cf. the `grid_batch_synthetic.cu` dispatch shape); device-resident state/accumulation; copy back final objectives (spec §9, §10). The per-model device evaluator is produced by cxpr codegen rather than hand-written kernels.
+- [ ] Benchmark: CUDA candidate throughput on a representative grid; record in `benchmarks/`. When replacing an existing host optimizer, compare against it and fail the milestone if generated code is materially slower (§9 risk).
 - [ ] Tests: CPU bulk vs Phase 5 serial parity; CUDA parity under `CXPR_BUILD_CUDA_TESTS`; chunking invariance (batch boundaries don't change results).
 
 ### Phase 7 — Editor tooling: syntax highlighting for `assert` / `optimize`
@@ -503,7 +515,7 @@ below was verified against the current `build/cxpr_document_tooling` binary.
 | Fixture | Demonstrates | Parses today? |
 | --- | --- | --- |
 | `search_dimensions.cxpr` | range + explicit-values search dims (`$p { optimize { … } }`) | **Yes** |
-| `objectives.cxpr` | binding + state objectives | Binding yes; **state needs Phase 3a** |
+| `objectives.cxpr` | binding objective + output objective (exposed state) | **Yes** (uses `out … { optimize }`) |
 | `assert_basic.cxpr` | assert invariants | After Phase 1 |
 | `optimize_constraint.cxpr` | optimize constraint + asserts | After Phase 1–2 |
 | `ma_cross_optimize.cxpr` | complete spec §13 example (all forms) | After Phases 1–3 |
@@ -533,4 +545,157 @@ single output that carries an objective still uses the trailing metadata block:
   as a modelling requirement, not enforced.
 - **Multi-objective selection** (§11): engine returns the scored candidate set;
   Pareto/weighting is host policy, not model semantics.
+
+---
+
+## 9. Replacing an existing host optimizer & reuse
+
+A concrete driver for this work is **replacing a host's existing bespoke
+optimizer** with the cxpr-native capability, while exposing the same capability
+via public API to any other host. This section captures the general
+replacement pattern; it applies whenever a host has already grown its own
+parameter-search machinery on top of cxpr models.
+
+### 9.1 The typical existing optimizer
+
+Such host optimizers usually have two layers in one subsystem:
+
+1. **Generic search + execution** — grid search over `$params` whose search space
+   is declared in the host's own config format (e.g. `[28, 32, 35]` or
+   `{min, max, step}` — the *same shape* as cxpr `optimize { values | min max
+   step }`), plus, for performance, a CUDA subsystem of hand-written per-operator
+   kernels + descriptors (`cuda/indicators/*.cu` + `*_descriptor.c`), a
+   `fragment_registry`, strategy code generation, and a grid-batch runner: a CPU
+   runner (`grid_batch.c`) mirrored by a CUDA path (`grid_batch_cuda.c` +
+   `grid_batch_synthetic.cu`) of the form "one thread evaluates one parameter
+   combination across the whole input sequence; host owns grid construction and
+   result ranking".
+2. **Domain orchestration** — caching (content-addressed on model + data +
+   settings), best-params storage, data feeds, domain accounting (`portfolio_score.c`),
+   job control, and any overfit / robustness policy.
+
+Frequently the host *already* uses a cxpr model as its objective/fitness
+function (e.g. a `robust_optimizer`-style model computing a score from `$params`
+and metrics). When so, the objective side is low-risk; **search + accelerated
+execution is the heavy part.**
+
+### 9.2 Replace / keep / reuse
+
+| Existing host mechanism | Fate under cxpr optimize |
+| --- | --- |
+| Host-format grid declaration | **Replace** → cxpr metadata (parses today) |
+| Candidate generation + grid batch | **Replace** → Phase 5 runner + Phase 6 bulk/CUDA |
+| Hand-written per-operator CUDA kernels + descriptors + registry (`cuda/indicators/*.cu`, `*_descriptor.c`, `fragment_registry`) | **Replace with codegen** → cxpr generates the device evaluator from the model |
+| `min/max/step` validation, "search key must exist in params" | **Replace** → Phase 3 validation |
+| Grid-batch CUDA dispatch/ranking harness (`grid_batch_cuda.c`, `grid_batch_synthetic.cu`) | **Reuse the pattern** → Phase 6 driver (one thread per candidate) |
+| CPU grid runner (`grid_batch.c`) | **Reuse as reference** → Phase 5 numeric-parity target |
+| Scoring + multi-metric result struct (`portfolio_score.c`) | **Reuse concepts** → Phase 4 multi-metric results |
+| Caching, best-params, feeds, domain accounting, overfit guard | **Keep in the host** → policy on top of the cxpr API |
+
+### 9.3 The biggest win, and the biggest risk
+
+- **Win — codegen replaces hand-maintained CUDA.** A host that hand-writes a
+  kernel + descriptor per operator (`cuda/indicators/*.cu` + `*_descriptor.c`)
+  carries ongoing maintenance cost. cxpr already has model→C/CUDA codegen
+  (`generated.h` descriptor + bulk), so the device evaluator is generated from the
+  model. This is a durable maintenance reduction, not just consolidation — and it
+  is what makes the capability truly generic (any model, not a fixed operator
+  set).
+- **Risk — performance parity.** A mature host's kernels are hand-tuned.
+  Generated code must match them in *throughput*, not only produce the same
+  numbers. This is the crux of whether replacement is worthwhile and is a
+  first-class Phase 6 acceptance criterion (§Phase 6).
+- **Risk — feature parity beyond the spec.** Caching, secondary-metric ranking,
+  robustness guards. Most is host policy that stays in the host, but the API must
+  be rich enough to carry it — hence multi-metric candidate results (Phase 4) and
+  a scored candidate *set* rather than a single winner.
+
+### 9.4 Genericity — "optimize anything"
+
+The engine is domain-agnostic by construction: it only knows *dimensions*
+(`$params` with `optimize` metadata), *constraints* (`optimize <expr>`),
+*objectives* (`optimize { min/max }` on named values) and *metrics* (any named
+output). No domain-specific concept enters the cxpr layer. Every host uses the
+identical API:
+
+```c
+/* domain-agnostic: the model defines the search; the host supplies inputs */
+cxpr_model_optimize(program, inputs, options, &result, err);
 ```
+
+Domain concerns (feeds, accounting, caching, policy) live entirely in the host
+above this call, so a calibration/physics/controller host reuses the same engine
+unchanged. See §10 for how far the genericity goal reaches and where a host must
+still supply semantics.
+
+### 9.5 Migration order (when replacing an existing optimizer)
+
+1. Ship Phases 1–4 (assert, optimize-constraint, validation, introspection) —
+   low risk; the host can start reading search space/objectives from the model.
+2. Build Phase 5 CPU runner; verify numeric parity against the host's existing
+   CPU grid runner (`grid_batch.c`).
+3. Build Phase 6 bulk/CUDA; verify numeric **and throughput** parity.
+4. Run both optimizers in parallel behind a flag until parity holds; then remove
+   the host's bespoke engine, keeping only its orchestration layer on top of the
+   API.
+
+---
+
+## 10. Genericity — "optimize anything"
+
+**Goal:** anything expressible as a cxpr model should be optimizable through the
+same API, with zero domain knowledge in the engine.
+
+### 10.1 Why it is generic by construction
+
+Optimization needs exactly four things, and cxpr already models all four
+generically — none of them are trading concepts:
+
+1. **Dimensions** — `$params` carrying `optimize { min/max/step | values }`.
+2. **Constraints** — `optimize <expr>` (and `assert <expr>` invariants).
+3. **Objective(s)** — `optimize { minimize | maximize }` on any named value.
+4. **Metrics** — any named output the host wants to read/rank on.
+
+The engine's whole job is: *expand candidates → for each, bind params + fresh
+state → replay the host's input sequence → read named metrics → select.* It never
+inspects what the numbers *mean*. The same `cxpr_model_optimize(...)` call
+optimizes a trading strategy, a PID controller, an orbital burn, or a curve fit —
+only the model and the input data differ.
+
+### 10.2 What a host must still supply (the honest limits)
+
+"Optimize anything" holds **only for problems that fit this contract**:
+
+- **Inputs (the "world") come from the host.** The model must be runnable against
+  a host-supplied input sequence — price bars, sensor measurements, boundary
+  conditions. The engine replays inputs; it does not invent them.
+- **The objective must be computable inside the model** (or from its outputs). If
+  the true objective lives outside cxpr (human judgement, a separate simulator),
+  cxpr can only optimize a *proxy* the model computes.
+- **Counterfactual correctness (spec §10).** If a result depends on
+  candidate-specific decisions, the model must *recompute* it per candidate —
+  you cannot feed observed historical outcomes as the objective. This is the
+  single most common way "optimize anything" goes wrong.
+- **Determinism.** Same params + same inputs ⇒ same metrics, or ranking is
+  meaningless. Nondeterministic models are out of scope.
+- **Search space must be enumerable/finite** in this design (grid/values). Search
+  strategies beyond exhaustive grid (random, Bayesian, evolutionary, gradient)
+  are a *future* pluggable layer above the same candidate/metric contract — the
+  API should be shaped so they can be added without changing model semantics.
+
+### 10.3 Design implications to keep the door open
+
+- Keep the engine free of any domain vocabulary — dimensions/constraints/
+  objectives/metrics only.
+- Return a **scored candidate set** plus per-candidate **metric vectors**, not a
+  single scalar winner (multi-objective, host ranking, Pareto).
+- Treat the **search strategy as pluggable** (grid now; the runner takes a
+  candidate *source*, so random/Bayesian/evolutionary can be dropped in later).
+- Keep inputs, accounting, caching, and selection *policy* in the host, above the
+  API — so a non-trading host reuses the engine unchanged.
+
+**Bottom line:** yes — this can and should be fully generic. The boundary is not
+the domain but the *contract*: a deterministic model with `$param` dimensions,
+host-supplied inputs, and a model-computed objective. Everything inside that
+contract optimizes through one API; everything outside it (data, policy, exotic
+search) stays in the host or arrives as a later pluggable layer.

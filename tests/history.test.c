@@ -1,4 +1,5 @@
 #include <cxpr/cxpr.h>
+#include <cxpr/thread.h>
 
 #include "cxpr_test_internal.h"
 
@@ -253,6 +254,7 @@ static void* evaluate_shared_history(void* userdata) {
     }
     cxpr_registry_free(registry);
     cxpr_context_free(context);
+    cxpr_thread_cleanup();
     return NULL;
 }
 

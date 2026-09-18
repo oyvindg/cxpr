@@ -1,0 +1,115 @@
+{
+  "name": "cxpr-language",
+  "displayName": "CXPR Language",
+  "description": "VS Code client for the standalone CXPR language server.",
+  "version": "0.2.17",
+  "private": true,
+  "publisher": "local",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:cxpr"],
+  "main": "./extension.js",
+  "scripts": {
+    "package:vsix": "node scripts/build-vsix.js",
+    "install:extension": "npm run package:vsix && node install-extension.mjs"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.1.1",
+    "vscode-languageserver": "^10.1.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": { "esbuild": "^0.28.2" },
+  "contributes": {
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          { "scope": "entity.name.function.cxpr", "settings": { "foreground": "#DCDCAA" } },
+          { "scope": "entity.name.type.cxpr", "settings": { "foreground": "#4EC9B0" } },
+          { "scope": "variable.parameter.cxpr", "settings": { "foreground": "#4FC1FF" } },
+          { "scope": "variable.other.named-argument.cxpr", "settings": { "foreground": "#9D9D9D" } },
+          { "scope": "variable.other.assignment.cxpr", "settings": { "foreground": "#569CD6" } },
+          { "scope": "variable.other.block-label.cxpr", "settings": { "foreground": "#C586C0" } },
+          { "scope": "variable.other.property.cxpr", "settings": { "foreground": "#9CDCFE" } },
+          { "scope": "variable.other.reference.cxpr", "settings": { "foreground": "#569CD6" } },
+          { "scope": "string.unquoted.import-path.cxpr", "settings": { "foreground": "#D7BA7D" } },
+          { "scope": "string.quoted.cxpr", "settings": { "foreground": "#CE9178" } },
+          { "scope": "constant.numeric.cxpr", "settings": { "foreground": "#B5CEA8" } },
+          { "scope": "keyword.operator.cxpr", "settings": { "foreground": "#D4D4D4" } },
+          { "scope": "keyword.control.cxpr", "settings": { "foreground": "#C586C0" } },
+          { "scope": "comment.line.number-sign.cxpr", "settings": { "foreground": "#6A9955" } }
+        ]
+      },
+      "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+          "function:cxpr": "#DCDCAA",
+          "type:cxpr": "#4EC9B0",
+          "import:cxpr": "#DCDCAA",
+          "importPath:cxpr": "#D7BA7D",
+          "parameter:cxpr": "#4FC1FF",
+          "namedArgument:cxpr": "#9D9D9D",
+          "assignment:cxpr": "#569CD6",
+          "block:cxpr": "#C586C0",
+          "plotBlock:cxpr": "#D7BA7D",
+          "property:cxpr": "#9CDCFE",
+          "reference:cxpr": "#569CD6",
+          "input:cxpr": "#4EC9B0",
+          "state:cxpr": "#E06C75",
+          "variable:cxpr": "#9CDCFE",
+          "string:cxpr": "#CE9178",
+          "number:cxpr": "#B5CEA8",
+          "operator:cxpr": "#D4D4D4",
+          "keyword:cxpr": "#C586C0",
+          "punctuation:cxpr": "#D4D4D4",
+          "comment:cxpr": "#6A9955"
+        }
+      }
+    },
+    "configuration": {
+      "title": "CXPR Language",
+      "properties": {
+        "cxprLanguage.tooling.executable": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to cxpr_document_tooling. When empty, the bundled executable is used, with workspace and PATH fallbacks."
+        }
+      }
+    },
+    "languages": [{
+      "id": "cxpr",
+      "aliases": ["CXPR", "cxpr"],
+      "extensions": [".cxpr"],
+      "configuration": "./syntaxes/cxpr.language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "cxpr",
+      "scopeName": "source.cxpr",
+      "path": "./syntaxes/cxpr.tmLanguage.json"
+    }],
+    "semanticTokenScopes": [{
+      "language": "cxpr",
+      "scopes": {
+        "function": ["entity.name.function.cxpr"],
+        "type": ["entity.name.type.cxpr"],
+        "import": ["entity.name.function.cxpr"],
+        "importPath": ["string.unquoted.import-path.cxpr"],
+        "parameter": ["variable.parameter.cxpr"],
+        "namedArgument": ["variable.other.named-argument.cxpr"],
+        "assignment": ["variable.other.assignment.cxpr"],
+        "block": ["variable.other.block-label.cxpr"],
+        "plotBlock": ["variable.other.block-label.cxpr"],
+        "property": ["variable.other.property.cxpr"],
+        "reference": ["variable.other.reference.cxpr"],
+        "input": ["variable.other.reference.cxpr"],
+        "state": ["variable.other.assignment.cxpr"],
+        "variable": ["variable.other.reference.cxpr"],
+        "string": ["string.quoted.cxpr"],
+        "number": ["constant.numeric.cxpr"],
+        "operator": ["keyword.operator.cxpr"],
+        "keyword": ["keyword.control.cxpr"],
+        "punctuation": ["punctuation.cxpr"],
+        "comment": ["comment.line.number-sign.cxpr"]
+      }
+    }]
+  }
+}

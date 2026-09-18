@@ -1036,7 +1036,10 @@ static bool cxpr_doc_ast_parse_host_fields(cxpr_doc_ast_parser* parser,
                     start,
                     body_offset + rel,
                     body_offset + rel + len);
-                if (!ok) return false;
+                if (!ok) {
+                    free(field);
+                    return false;
+                }
             } else if (*field) {
                 size_t rel = (size_t)(start - body);
                 char* eq = strchr(field, '=');

@@ -1,0 +1,287 @@
+{
+  "scopeName": "source.cxpr",
+  "name": "CXPR",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#hostBlocks"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#documentStrings"
+    },
+    {
+      "include": "#parameters"
+    },
+    {
+      "include": "#assignments"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#properties"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "assignments": {
+      "patterns": [
+        {
+          "match": "^([A-Za-z_][A-Za-z0-9_]*)(\\s*=)",
+          "captures": {
+            "1": {
+              "name": "variable.other.assignment.cxpr"
+            },
+            "2": {
+              "name": "variable.other.assignment.cxpr"
+            }
+          }
+        }
+      ]
+    },
+    "hostBlocks": {
+      "patterns": [
+        {
+          "match": "^\\s*((?!name\\b|model\\b|use\\b|in\\b|fn\\b|update\\b|out\\b|state\\b|meta\\b)[A-Za-z_][A-Za-z0-9_]*)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?(?=\\s*\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.cxpr"
+            },
+            "2": {
+              "name": "variable.other.block-label.cxpr"
+            }
+          }
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.cxpr",
+          "match": "#.*$"
+        },
+        {
+          "name": "comment.line.double-slash.cxpr",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.cxpr",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.cxpr",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cxpr",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.cxpr",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cxpr",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "documentStrings": {
+      "patterns": [
+        {
+          "match": "\\b(type|id|label|description|hover|mode|source|broker|symbol|strategy|aggregate_from|lifecycle|source_arg)\\b(\\s*=\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:[,}\\]#]|//|$))",
+          "captures": {
+            "1": {
+              "name": "variable.other.named-argument.cxpr"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.cxpr"
+            },
+            "3": {
+              "name": "string.unquoted.document.cxpr"
+            }
+          }
+        },
+        {
+          "match": "\\b(books|hedging)\\b(\\s*=\\s*\\[\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:,|\\]))",
+          "captures": {
+            "1": {
+              "name": "variable.other.named-argument.cxpr"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.cxpr"
+            },
+            "3": {
+              "name": "string.unquoted.document.cxpr"
+            }
+          }
+        }
+      ]
+    },
+    "parameters": {
+      "patterns": [
+        {
+          "name": "variable.parameter.cxpr",
+          "match": "\\$[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.cxpr",
+          "match": "\\b(?:bool|buffer|int|number|series)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "meta.function.signature.cxpr",
+          "begin": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.cxpr" },
+            "2": { "name": "entity.name.function.cxpr" }
+          },
+          "end": "\\)",
+          "patterns": [
+            {
+              "name": "variable.parameter.function.cxpr",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+            }
+          ]
+        },
+        {
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "keyword.control.cxpr"
+            },
+            "2": {
+              "name": "entity.name.function.cxpr"
+            }
+          }
+        },
+        {
+          "match": "\\b(name|model)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*(?:\\{|$))",
+          "captures": {
+            "1": {
+              "name": "keyword.control.cxpr"
+            },
+            "2": {
+              "name": "entity.name.type.cxpr"
+            }
+          }
+        },
+        {
+          "match": "\\b(update)\\s+(state)(?=\\s*\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.cxpr"
+            },
+            "2": {
+              "name": "keyword.control.cxpr"
+            }
+          }
+        },
+        {
+          "name": "keyword.control.cxpr",
+          "match": "\\bfrom\\b(?=\\s+[A-Za-z0-9_./-]+)"
+        },
+        {
+          "name": "variable.parameter.function.cxpr",
+          "match": "\\bfrom\\b"
+        },
+        {
+          "name": "variable.other.named-argument.cxpr",
+          "match": "\\boptimize\\b(?=\\s*(?:=|\\{))"
+        },
+        {
+          "match": "\\b(in)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.cxpr"
+            },
+            "2": {
+              "name": "variable.other.reference.cxpr"
+            }
+          }
+        },
+        {
+          "match": "\\b(out|state)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*=)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.cxpr"
+            },
+            "2": {
+              "name": "variable.other.assignment.cxpr"
+            }
+          }
+        },
+        {
+          "name": "keyword.control.cxpr",
+          "match": "\\b(?:and|as|or|not|if|then|else|fn|in|initial|out|return|state|update|use|true|false|null)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.cxpr",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        }
+      ]
+    },
+    "properties": {
+      "patterns": [
+        {
+          "name": "variable.other.property.cxpr",
+          "match": "\\.[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.cxpr",
+          "match": "\\b(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.cxpr",
+          "match": "<=|>=|==|!=|&&|\\|\\||\\|>|[-+*/%^<>=!?:]"
+        }
+      ]
+    }
+  }
+}

@@ -19,7 +19,12 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
                                        const cxpr_registry* reg,
                                        const cxpr_value* args,
                                        size_t argc, cxpr_error* err);
-
+cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
+                                          const char* const* param_names,
+                                          size_t param_count,
+                                          const char* const* field_names,
+                                          const cxpr_expr_ast* const* field_bodies,
+                                          size_t field_count);
 static char* test_strdup(const char* text) {
     size_t len = strlen(text) + 1;
     char* copy = (char*)malloc(len);
@@ -59,6 +64,7 @@ static void test_ir_exec_call_helpers(void) {
     value = cxpr_ir_call_producer(&entry, "pair", ctx, args, 2, &err);
     assert(err.code == CXPR_OK);
     assert(value.type == CXPR_VALUE_STRUCT);
+    cxpr_value_free(&value);
 
     value = cxpr_ir_call_producer_field(&entry, "pair", ctx, args, 2, "diff", &err);
     assert(err.code == CXPR_OK);
@@ -82,8 +88,53 @@ static void test_ir_exec_call_helpers(void) {
     cxpr_context_free(ctx);
 }
 
+static void test_struct_field_binding_fallback_and_error(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    const char* params[] = {"v"};
+    const char* fields[] = {"sum"};
+    cxpr_expr_ast* body = cxpr_expr_ast_parse(parser, "v.x + v.y", &err);
+    const cxpr_expr_ast* bodies[] = {body};
+    cxpr_expr_ast* call;
+    cxpr_func_entry* entry;
+    cxpr_value arg = cxpr_num(0.0);
+    cxpr_value value;
+
+    assert(parser && reg && ctx && body);
+    assert(cxpr_registry_define_record_fn(reg, "project", params, 1u,
+                                          fields, bodies, 1u).code == CXPR_OK);
+    call = cxpr_expr_ast_parse(parser, "project(vector)", &err);
+    assert(call);
+    entry = cxpr_registry_find(reg, "project");
+    assert(entry);
+
+    cxpr_context_set(ctx, "vector.x", 10.0);
+    cxpr_context_set(ctx, "vector_x", 1.0);
+    cxpr_context_set(ctx, "vector_y", 2.0);
+    value = cxpr_ir_call_defined_scalar(entry, call, ctx, reg, &arg, 1u, &err);
+    assert(err.code == CXPR_OK);
+    assert(value.type == CXPR_VALUE_STRUCT);
+    assert(value.s->field_values[0].d == 12.0); /* dot wins for x, underscore supplies y */
+    cxpr_value_free(&value);
+
+    cxpr_context_clear(ctx);
+    err = (cxpr_error){0};
+    value = cxpr_ir_call_defined_scalar(entry, call, ctx, reg, &arg, 1u, &err);
+    assert(value.type == CXPR_VALUE_NUMBER);
+    assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
+
+    cxpr_expr_ast_free(call);
+    cxpr_expr_ast_free(body);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     test_ir_exec_call_helpers();
+    test_struct_field_binding_fallback_and_error();
     printf("  \xE2\x9C\x93 ir_exec_calls\n");
     return 0;
 }
