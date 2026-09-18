@@ -1,7 +1,6 @@
 // R7 sentinel/inf convention (variant b: large finite value + saturation).
 // Saturation is a plain cxpr function -- NOT a builtin -- so no codegen change is
 // needed and this fixture compiles today.
-// See plans/field_pathfinding_requirements.md.
 model sentinel
 
 in { neighbour, cost }

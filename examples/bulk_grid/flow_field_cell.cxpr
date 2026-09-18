@@ -1,6 +1,5 @@
 // Flow-field relaxation cell -- distance field + movement intent.
-// Requires R6 (argmin). Sentinel saturation (R7) is a plain `fn`, no builtin, so the
-// only thing that keeps this from compiling on release/3.2.0 is `argmin`.
+// Uses R6 argmin. Sentinel saturation (R7) is a plain `fn`, not a builtin.
 //
 // Identical relaxation to distance_field_cell.cxpr, plus `dir`: the argmin over the
 // same candidate distances gives a direction code the host maps to a cell (B4).

@@ -57,6 +57,18 @@ field access because a field-access dot follows an expression. A leading sign
 is a unary operator. `null`, `Null`, and `NULL` lex as the numeric NaN sentinel.
 No other capitalization of `null` is special.
 
+Do not use `null`/NaN for blocked or unreachable distances. Field algorithms
+should define a large finite model parameter (conventionally `$INF = 1e18`) and
+use a saturating helper:
+
+```cxpr
+$INF = 1e18
+fn sadd(a, b) = min(a + b, $INF)
+```
+
+This guarantees `sadd($INF, cost) == $INF` and `min($INF, x) == x` for finite,
+non-negative path costs without introducing NaNs in generated C or CUDA output.
+
 Strings use single or double quotes. A backslash causes the following
 character to be skipped while finding the closing quote, but the lexer retains
 the source bytes rather than interpreting C-style escapes:
@@ -73,6 +85,12 @@ Semicolons are accepted only by the document layer as optional trailing
 statement punctuation. The expression lexer itself has no semicolon token.
 
 ## Expressions
+
+The fixed-arity scalar folds `min`, `max`, `sum`, `argmin`, and `argmax` accept
+one through eight arguments. `argmin` and `argmax` return the zero-based index
+of the selected argument as a numeric scalar; exact ties select the lowest
+index. The returned indices 0..7 are exactly representable as `double` (as are
+all integers through 2^53). These folds do not change the scalar model/bulk ABI.
 
 ### Primary forms
 

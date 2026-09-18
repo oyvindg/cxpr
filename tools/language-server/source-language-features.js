@@ -118,7 +118,11 @@ const BUILTIN_FUNCTIONS = new Map([
   ["highest", { returns: "double", signature: "highest(value, samples)", summary: "Returns the highest value in the window." }],
   ["lowest", { returns: "double", signature: "lowest(value, samples)", summary: "Returns the lowest value in the window." }],
   ["window", { returns: "window", signature: "window(value, samples)", summary: "Creates a rolling expression window for reductions such as sum, mean, min, max, stddev, roc, and wma." }],
-  ["sum", { returns: "double", signature: "sum(window(value, samples))", summary: "Returns the sum of values in a rolling expression window." }],
+  ["sum", {
+    returns: "double",
+    signature: "sum(window(value, samples)) | sum(value1, ..., value8)",
+    summary: "Sums a rolling expression window, or folds one to eight scalar values in source order."
+  }],
   ["stddev", { returns: "double", signature: "stddev(window(value, samples))", summary: "Returns the population standard deviation of a rolling expression window." }],
   ["wma", { returns: "double", signature: "wma(window(value, samples))", summary: "Returns the weighted mean of a rolling expression window, weighting newer samples more heavily." }],
   ["mean_absdev", { returns: "double", signature: "mean_absdev(window(value, samples), center)", summary: "Returns the mean absolute deviation from center over a rolling expression window." }],

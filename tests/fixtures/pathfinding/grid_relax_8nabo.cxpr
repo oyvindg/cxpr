@@ -1,7 +1,6 @@
-// Requires R6 (argmin). Sentinel saturation (R7) is a plain `fn`, no builtin.
+// R6 argmin with R7 sentinel saturation as a plain `fn`, not a builtin.
 // 8-neighbour variant of the `grid_relax` interop descriptor. Diagonal cost is
 // supplied separately by the host (typically ~sqrt(2) * cost).
-// See plans/field_pathfinding_requirements.md.
 model grid_relax_8nabo
 
 in { d_n, d_s, d_e, d_w, d_ne, d_nw, d_se, d_sw, cost, cost_diag, is_wall, is_goal }

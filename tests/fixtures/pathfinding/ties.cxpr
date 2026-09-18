@@ -1,6 +1,5 @@
-// Requires R6. Tie-breaking must be deterministic: lowest source-position index
+// Tie-breaking must be deterministic: lowest source-position index
 // wins, both for exact ties and for FMA-sensitive near-ties.
-// See plans/field_pathfinding_requirements.md (R6 cross-backend determinism).
 model ties
 
 in { base, cost }

@@ -68,7 +68,7 @@ static void test_sadd_identity(void) {
     cxpr_model* model;
     cxpr_model_compiled* program = compile_fixture("sentinel.cxpr", &model);
     cxpr_context* ctx = cxpr_context_new();
-    int found = 0;
+    bool found = false;
 
     assert(cxpr_model_compiled_seed_defaults(program, ctx, NULL, &err)); /* $INF */
 
@@ -105,7 +105,7 @@ static void relax_once(cxpr_model_compiled* program, const double* dist,
             double de = (x < GRID_N - 1) ? dist[i + 1]      : INF_SENTINEL;
             double dw = (x > 0)          ? dist[i - 1]      : INF_SENTINEL;
             double next;
-            int found = 0;
+            bool found = false;
 
             cxpr_context_set(ctx, "d_n", dn);
             cxpr_context_set(ctx, "d_s", ds);

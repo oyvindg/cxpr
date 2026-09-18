@@ -1,21 +1,19 @@
 /*
- * R6 -- argmin / argmax / fast-arity sum: cross-backend parity stub.
+ * R6 -- argmin / argmax / fixed-arity sum: cross-backend parity.
  *
  * Asserts bit-identical results across tree-eval and IR, plus a generated-C
  * contract check (nested `?:`, no array node, no UNSUPPORTED_RESULT). CUDA inherits
  * the C path (plugins/cuda.c), so the generated-C contract covers it.
  *
- * GATED: the whole body is compiled only when CXPR_PATHFINDING_R6_READY is set,
- * because argmin/argmax/sum(fast-arity) do not exist on release/3.2.0 yet. Flip the
- * flag on (here or via -DCXPR_PATHFINDING_R6_READY=1) as R6 lands. Until then this
- * test compiles and passes as an explicit SKIP so CI stays green.
+ * The compatibility guard remains available to downstream builds, but R6 is enabled
+ * by default now that all scalar backends implement the folds.
  *
  * See plans/field_pathfinding_requirements.md (R6).
  */
 #include <stdio.h>
 
 #ifndef CXPR_PATHFINDING_R6_READY
-#define CXPR_PATHFINDING_R6_READY 0
+#define CXPR_PATHFINDING_R6_READY 1
 #endif
 
 #ifndef CXPR_TEST_SOURCE_DIR
@@ -37,21 +35,24 @@ static double eval_expr(const char* source, int compiled) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, source, &err);
     cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
     cxpr_value value = {0};
 
-    assert(ast && err.code == CXPR_OK);
+    assert(ast && ctx && reg && err.code == CXPR_OK);
+    cxpr_register_defaults(reg);
     if (compiled) {
-        cxpr_expr_compiled* program = cxpr_expr_compile(ast, NULL, &err);
+        cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
         assert(program);
-        assert(cxpr_expr_compiled_eval(program, ctx, NULL, &value, &err));
+        assert(cxpr_expr_compiled_eval(program, ctx, reg, &value, &err));
         cxpr_expr_compiled_free(program);
     } else {
-        assert(cxpr_eval_ast(ast, ctx, NULL, &value, &err));
+        assert(cxpr_eval_ast(ast, ctx, reg, &value, &err));
     }
     assert(err.code == CXPR_OK);
     assert(value.type == CXPR_VALUE_NUMBER || value.type == CXPR_VALUE_INT64);
 
     cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
     cxpr_expr_ast_free(ast);
     cxpr_expr_parser_free(parser);
     return value.type == CXPR_VALUE_INT64 ? (double)value.i64 : value.d;
@@ -68,8 +69,13 @@ static void assert_rejected(const char* source) {
     cxpr_error err = {0};
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, source, &err);
     if (ast) {
-        cxpr_expr_compiled* program = cxpr_expr_compile(ast, NULL, &err);
+        cxpr_registry* reg = cxpr_registry_new();
+        cxpr_expr_compiled* program;
+        assert(reg);
+        cxpr_register_defaults(reg);
+        program = cxpr_expr_compile(ast, reg, &err);
         assert(program == NULL); /* arity > 8 must fail like min/max */
+        cxpr_registry_free(reg);
         cxpr_expr_ast_free(ast);
     }
     cxpr_expr_parser_free(parser);
