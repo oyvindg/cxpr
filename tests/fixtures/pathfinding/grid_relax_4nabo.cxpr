@@ -1,4 +1,4 @@
-// Requires R6 (argmin) + R7 (sat_add / INF).
+// Requires R6 (argmin). Sentinel saturation (R7) is a plain `fn`, no builtin.
 // Reference cell-model for the agnostic `grid_relax` interop descriptor
 // (4-neighbour). This IS the interop spec other consumers copy.
 // See plans/field_pathfinding_requirements.md.
@@ -10,17 +10,19 @@ in { d_n, d_s, d_e, d_w, cost, is_wall, is_goal }
 
 $INF = 1e18
 
-// Saturating candidate distances: a blocked neighbour (INF) stays INF.
-cand_n = sat_add(d_n, cost)
-cand_s = sat_add(d_s, cost)
-cand_e = sat_add(d_e, cost)
-cand_w = sat_add(d_w, cost)
+// R7 convention: saturating add keeps a blocked neighbour (INF) at INF.
+fn sadd(a, b) = min(a + b, $INF)
+
+cand_n = sadd(d_n, cost)
+cand_s = sadd(d_s, cost)
+cand_e = sadd(d_e, cost)
+cand_w = sadd(d_w, cost)
 
 // Label-correcting relaxation: walls are INF, goals are 0, else the min neighbour.
-next_dist = is_wall ? $INF : is_goal ? 0 : min(cand_n, cand_s, cand_e, cand_w)
+next_dist = is_wall > 0 ? $INF : is_goal > 0 ? 0 : min(cand_n, cand_s, cand_e, cand_w)
 
 // Movement intent as a direction code (B4): 0=N, 1=S, 2=E, 3=W.
-// Only valid when next_dist < INF (B3) -- host must check before trusting it.
+// Only valid when next_dist < $INF (B3) -- host must check before trusting it.
 dir = argmin(cand_n, cand_s, cand_e, cand_w)
 
 out { next_dist, dir }

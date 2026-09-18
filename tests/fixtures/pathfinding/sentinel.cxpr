@@ -1,16 +1,18 @@
-// Requires R7 (sentinel/inf contract, variant b: large finite value + saturating
-// add). See plans/field_pathfinding_requirements.md.
-//
-// $INF is a placeholder for the real R7-defined sentinel constant. sat_add keeps
-// blocked neighbours at INF without overflow/wrap and never introduces NaN.
+// R7 sentinel/inf convention (variant b: large finite value + saturation).
+// Saturation is a plain cxpr function -- NOT a builtin -- so no codegen change is
+// needed and this fixture compiles today.
+// See plans/field_pathfinding_requirements.md.
 model sentinel
 
 in { neighbour, cost }
 
 $INF = 1e18
 
-// A reachable neighbour accumulates cost; a blocked (INF) neighbour stays INF.
-relaxed = sat_add(neighbour, cost)
+// Saturating add: a reachable neighbour accumulates cost; a blocked (INF) neighbour
+// stays INF. $INF is far below DBL_MAX, so `a + b` cannot overflow before min clamps.
+fn sadd(a, b) = min(a + b, $INF)
+
+relaxed = sadd(neighbour, cost)
 
 // min must treat INF as the identity: min(INF, x) == x for finite x.
 best = min(relaxed, $INF)
