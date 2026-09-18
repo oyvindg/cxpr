@@ -78,7 +78,8 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
 
     root_len = (size_t)(dot - instr->name);
     if (root_len == 0 || root_len >= sizeof(root)) {
-        return cxpr_ir_runtime_error(err, "Field access root too long");
+        return cxpr_ir_make_not_found(
+            err, cxpr_ir_unknown_lookup_message("field access", instr->name));
     }
 
     memcpy(root, instr->name, root_len);
