@@ -1,0 +1,11 @@
+// Requires R6 (argmin/argmax + fast-arity sum). Basic aggregate behaviour.
+// See plans/paperland_pathfinding_requirements.md.
+model argmin_argmax
+
+in { a, b, c, d }
+
+lo_index = argmin(a, b, c, d)   // 0-based index of the smallest argument
+hi_index = argmax(a, b, c, d)   // 0-based index of the largest argument
+total    = sum(a, b, c, d)      // fast-arity fold (not the window form)
+
+out { lo_index, hi_index, total }
