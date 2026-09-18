@@ -236,15 +236,34 @@ const char* cxpr_context_get_param_string(const cxpr_context* ctx, const char* n
  * @param ctx Context to query.
  * @param name Binding name.
  * @param found Optional success flag output.
- * @return Number, bool, or struct value on hit; zero-like value on miss.
+ * @return Typed value on hit; zero-like value on miss. Array and struct
+ * values are owned copies and must be released with cxpr_value_free(). Strings
+ * are borrowed from the context; scalar values do not own storage.
  */
 cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, bool* found);
+/**
+ * @brief Borrow one element from an array binding without cloning the array.
+ *
+ * The returned value aliases storage owned by the context. It must not be
+ * passed to cxpr_value_free() and remains valid only until the binding or its
+ * owning context is mutated or destroyed.
+ *
+ * @param ctx Context to query.
+ * @param name Array binding name.
+ * @param offset Zero-based element offset.
+ * @param out_borrowed Output receiving a shallow, borrowed value.
+ * @return true when the array and element exist; false otherwise.
+ */
+bool cxpr_context_array_elem_borrow(const cxpr_context* ctx, const char* name,
+                                    size_t offset, cxpr_value* out_borrowed);
 /**
  * @brief Look up one `$param` binding as a typed cxpr value.
  * @param ctx Context to query.
  * @param name Parameter name without `$`.
  * @param found Optional success flag output.
- * @return Number, bool, string, or array value on hit; zero-like value on miss.
+ * @return Typed value on hit; zero-like value on miss. Array and struct
+ * values are owned copies and must be released with cxpr_value_free(). Strings
+ * are borrowed from the context; scalar values do not own storage.
  */
 cxpr_value cxpr_context_get_param_typed(const cxpr_context* ctx, const char* name, bool* found);
 /**

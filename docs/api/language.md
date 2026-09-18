@@ -529,7 +529,7 @@ The extension provides two complementary layers:
   `*.cxpr` files, and applies the extension's semantic-token color defaults.
 
 The language server source is
-`libs/cxpr/tools/language-server/server.js`. It delegates document analysis to
+`tools/language-server/server.js`. It delegates document analysis to
 the compiled `cxpr_document_tooling` executable, so diagnostics and structural
 information come from the C tooling rather than a JavaScript reimplementation
 of the language. Its current LSP capabilities are incremental document sync,
@@ -540,29 +540,29 @@ listed in `tools/vscode-cxpr/package.json`.
 
 The tooling executable is selected in this order: the VS Code setting
 `cxprLanguage.tooling.executable`, the `CXPR_DOCUMENT_TOOLING` environment
-variable, then conventional workspace paths under `build/libs/cxpr` (including
-`Debug` and `Release` subdirectories). If none exists, the server reports
+variable, the executable bundled in the VSIX, conventional workspace build
+paths, then `PATH`. If none exists, the server reports
 `cxpr_document_tooling executable not found` as a document diagnostic.
 
 Build the server before packaging the extension:
 
 ```sh
-cd libs/cxpr/tools/language-server
+cd tools/language-server
 npm install
 npm run build
 
-cd ../../../../tools/vscode-cxpr
+cd tools/vscode-cxpr
 npm install
 npm run package:vsix
 ```
 
-The server build uses esbuild and writes
-`libs/cxpr/tools/language-server/dist/server.js`. The VSIX script requires the
-`zip` CLI, bundles `extension.js`, copies that built server, constructs the
-VSIX manifest, and writes
-`tools/vscode-cxpr/dist/cxpr-language-0.1.0.vsix` for the current package
-version. It fails with an actionable message when esbuild, zip, or the built
-server is missing.
+The server build uses esbuild and writes `tools/language-server/dist/server.js`.
+The VSIX script requires the `zip` CLI, bundles `extension.js`, copies the
+built server and `cxpr_document_tooling`, constructs the VSIX manifest, and
+writes `tools/vscode-cxpr/dist/cxpr-language-<version>.vsix`. It fails with an
+actionable message when esbuild, zip, the server, or the tooling executable is
+missing. The bundled executable targets the platform on which the VSIX is
+built.
 
 Install or replace the local extension with:
 

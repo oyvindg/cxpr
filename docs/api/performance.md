@@ -63,6 +63,23 @@ Generated C is consistently the fastest path; IR is a modest win over AST for
 scalars and lookback, and the gap widens dramatically once generated C flattens
 typed-struct work.
 
+### Index and history lookback (ns/eval)
+
+Median of five Release runs on the same host, 2026-09-16. This focused
+benchmark is built as `cxpr_bench_index_history`.
+
+| Case | direct C | AST | IR | generated C | AST/IR |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| array index | 2.98 | 181.23 | 95.80 | 3.45 | 1.89x |
+| `close[1]` | 2.98 | 103.90 | 73.70 | 2.96 | 1.41x |
+| producer field `[1]` | — | 1650.20 | 1527.82 | 3.00 | 1.08x |
+
+The resolved IR payload removes per-evaluation target parsing and dispatch
+selection. Exact numeric history lookups also bypass temporary AST, reference,
+and overlay allocation. Compared with the previous focused baseline,
+`close[1]` IR fell from 675.58 to 73.70 ns/eval. Producer-field history still
+spends most of its time evaluating the producer in a shifted context.
+
 ### Context update paths (ns/op)
 
 | Path | baseline `set` | fast path | speedup |

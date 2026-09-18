@@ -306,9 +306,9 @@ const cxpr_generated_model_descriptor* model =
     &accumulator_tick_descriptor;
 
 void* state = calloc(1, model->state_size());
-double inputs[] = {2.5, 1.0};
-double params[] = {1.0};
-double outputs[2] = {0};
+cxpr_value inputs[] = {cxpr_num(2.5), cxpr_bool(true)};
+cxpr_value params[] = {cxpr_num(1.0)};
+cxpr_value outputs[2] = {cxpr_num(0.0), cxpr_num(0.0)};
 
 if (cxpr_generated_model_descriptor_abi_valid(model)) {
     model->tick(state, inputs, params, outputs);
@@ -316,6 +316,10 @@ if (cxpr_generated_model_descriptor_abi_valid(model)) {
 
 free(state);
 ```
+
+The complete compilable version is
+[`examples/generated_descriptor_host.c`](examples/generated_descriptor_host.c)
+and is built and run by CTest.
 
 Use the descriptor's published names and type metadata instead of assuming
 array order in generic hosts. Generated C avoids parsing and IR execution in
@@ -343,7 +347,7 @@ cmake --build --preset default
 ctest --preset default
 ```
 
-`cxpr` requires C11 and CMake 3.20 or newer. See the [public API index](docs/api/README.md)
+`cxpr` requires C11 and CMake 3.21 or newer. See the [public API index](docs/api/README.md)
 for the full language and API reference, and [`examples/`](examples/README.md)
 for larger runnable integrations.
 

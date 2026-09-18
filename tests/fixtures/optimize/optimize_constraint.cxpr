@@ -1,0 +1,30 @@
+# Demonstrates `optimize <expr>` — an optimizer-only candidate constraint.
+# Unlike `assert`, a config with $fast >= $slow is still valid during ordinary
+# execution; it is merely excluded from optimization (spec §4).
+
+model optimize_constraint
+
+in close
+
+$fast = 12
+$slow = 26
+
+# Always-true invariants (checked on every run):
+assert $fast > 0 {
+    description = "Fast period must be positive"
+}
+assert $slow > 0 {
+    description = "Slow period must be positive"
+}
+
+# Optimizer-only: only evaluate candidates where fast < slow.
+optimize $fast < $slow {
+    description = "Only evaluate fast periods below slow periods"
+}
+
+fast = ema(close, $fast)
+slow = ema(close, $slow)
+
+signal = fast > slow
+
+out signal
