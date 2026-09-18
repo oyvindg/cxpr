@@ -58,9 +58,30 @@ static void test_ir_compile_array_literal_builds_array_ir(void) {
     cxpr_expr_parser_free(p);
 }
 
+static void test_ir_compile_rejects_wrong_builtin_arity(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast;
+    cxpr_ir_program program = {0};
+
+    assert(p && reg);
+    cxpr_register_defaults(reg);
+    ast = cxpr_expr_ast_parse(p, "clamp(e)", &err);
+    assert(ast);
+    assert(!cxpr_ir_compile_with_locals(ast, reg, NULL, 0, &program, &err));
+    assert(err.code == CXPR_ERR_WRONG_ARITY);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_expr_parser_free(p);
+}
+
 int main(void) {
     test_ir_compile_with_locals_and_fast_kind();
     test_ir_compile_array_literal_builds_array_ir();
+    test_ir_compile_rejects_wrong_builtin_arity();
     printf("  \xE2\x9C\x93 ir_compile\n");
     return 0;
 }

@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void cxpr_eval_free_composite(cxpr_value* value);
+
 static const char* cxpr_eval_unknown_function_message(const char* name) {
     static CXPR_THREAD_LOCAL char message[256];
     if (!name || name[0] == '\0') return "Unknown function";
@@ -127,12 +129,19 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
             }
         }
         cxpr_value base = cxpr_eval_node(ast->data.field_access.base, ctx, reg, err);
-        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+        cxpr_value result;
+        if (err && err->code != CXPR_OK) {
+            cxpr_eval_free_composite(&base);
+            return cxpr_num(NAN);
+        }
         if (base.type != CXPR_VALUE_STRUCT) {
+            cxpr_eval_free_composite(&base);
             return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "Field access requires a struct base");
         }
-        return cxpr_eval_struct_field_value(base.s, ast->data.field_access.field, err);
+        result = cxpr_eval_struct_field_value(base.s, ast->data.field_access.field, err);
+        cxpr_eval_free_composite(&base);
+        return result;
     }
 
     if (ctx && ctx->expression_scope) {
@@ -193,6 +202,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
 cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   cxpr_error* err) {
     const cxpr_struct_value* current;
+    cxpr_value owned_root = cxpr_null();
     size_t start_index = 1u;
 
     if (ctx && ctx->expression_scope) {
@@ -237,12 +247,13 @@ cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* 
     current = cxpr_context_get_struct(ctx, ast->data.chain_access.path[0]);
     if (!current) {
         bool found = false;
-        cxpr_value root = cxpr_context_get_typed(ctx, ast->data.chain_access.path[0], &found);
-        if (found && root.type == CXPR_VALUE_STRUCT) {
-            current = root.s;
+        owned_root = cxpr_context_get_typed(ctx, ast->data.chain_access.path[0], &found);
+        if (found && owned_root.type == CXPR_VALUE_STRUCT) {
+            current = owned_root.s;
         }
     }
     if (!current) {
+        cxpr_eval_free_composite(&owned_root);
         return cxpr_eval_error(
             err,
             CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -263,21 +274,28 @@ walk_fields:
         }
 
         if (!found) {
+            cxpr_eval_free_composite(&owned_root);
             return cxpr_eval_error(
                 err,
                 CXPR_ERR_UNKNOWN_IDENTIFIER,
                 cxpr_eval_unknown_field_message(ast->data.chain_access.full_key));
         }
 
-        if (i + 1 == ast->data.chain_access.depth) return cxpr_value_clone(&value);
+        if (i + 1 == ast->data.chain_access.depth) {
+            cxpr_value result = cxpr_value_clone(&value);
+            cxpr_eval_free_composite(&owned_root);
+            return result;
+        }
 
         if (value.type != CXPR_VALUE_STRUCT) {
+            cxpr_eval_free_composite(&owned_root);
             return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "Chain access requires struct intermediates");
         }
         current = value.s;
     }
 
+    cxpr_eval_free_composite(&owned_root);
     return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
 }
 
@@ -577,6 +595,9 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             }
         }
         array = cxpr_array_value_new(values, ast->data.array.count);
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            cxpr_eval_free_composite(&values[i]);
+        }
         free(values);
         if (!array) {
             return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");

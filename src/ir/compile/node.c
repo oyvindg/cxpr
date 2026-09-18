@@ -613,6 +613,14 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
+        if (ast->data.function_call.argc < entry->min_args ||
+            ast->data.function_call.argc > entry->max_args) {
+            if (err) {
+                err->code = CXPR_ERR_WRONG_ARITY;
+                err->message = "Wrong number of arguments";
+            }
+            return false;
+        }
 
         if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
             size_t false_jump, end_jump;

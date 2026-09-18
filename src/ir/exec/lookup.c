@@ -89,7 +89,7 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
             ctx->expression_scope,
             instr->name,
             &found);
-        if (found) return scoped;
+        if (found) return cxpr_value_clone(&scoped);
 
         scoped = cxpr_expression_lookup_typed_result(
             ctx->expression_scope,
@@ -330,7 +330,7 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
             cxpr_expression_lookup_typed_result(ctx->expression_scope, instr->name, &scope_found);
         if (scope_found) {
             if (found) *found = true;
-            return scoped;
+            return cxpr_value_clone(&scoped);
         }
     }
 
