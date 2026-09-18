@@ -87,7 +87,7 @@ typedef struct cxpr_value {
 #define CXPR_VALUE_BOOL_INIT(value_) { .type = CXPR_VALUE_BOOL, .b = (value_) }
 #define CXPR_VALUE_INT64_INIT(value_) { .type = CXPR_VALUE_INT64, .i64 = (value_) }
 
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
 #define CXPR_HOST_DEVICE __host__ __device__
 #else
 #define CXPR_HOST_DEVICE
