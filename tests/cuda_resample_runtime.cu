@@ -12,8 +12,8 @@
 
 __global__ static void run_resample(
     cxpr_model_tick_state* state,
-    const double* inputs,
-    double* outputs,
+    const cxpr_value* inputs,
+    cxpr_value* outputs,
     const cxpr_resample_view* views,
     size_t primary_cursor) {
     cxpr_model_tick(state, inputs, nullptr, outputs, views, primary_cursor);
@@ -25,15 +25,17 @@ static void check(cudaError_t status, const char* operation) {
     std::exit(2);
 }
 
-static void run_and_expect(cxpr_model_tick_state* state, const double* inputs,
-                           double* outputs, const cxpr_resample_view* views,
+static void run_and_expect(cxpr_model_tick_state* state, const cxpr_value* inputs,
+                           cxpr_value* outputs, const cxpr_resample_view* views,
                            size_t cursor, double expected, const char* scenario) {
     double actual = NAN;
     run_resample<<<1, 1>>>(state, inputs, outputs, views, cursor);
     check(cudaGetLastError(), "launch resample kernel");
     check(cudaDeviceSynchronize(), "synchronize resample kernel");
-    check(cudaMemcpy(&actual, outputs, sizeof(actual), cudaMemcpyDeviceToHost),
+    cxpr_value output = {};
+    check(cudaMemcpy(&output, outputs, sizeof(output), cudaMemcpyDeviceToHost),
           "copy output");
+    actual = output.d;
     if ((std::isnan(expected) && !std::isnan(actual)) ||
         (!std::isnan(expected) && actual != expected)) {
         std::fprintf(stderr, "CUDA %s mismatch: got %.17g, expected %.17g\n",
@@ -54,11 +56,11 @@ int main(void) {
         {0u, 0u, 0u, 0u, 0u},       /* finalized 1d bucket */
     };
     static const size_t value_counts[] = {3u, 5u, 1u};
-    const double host_input[] = {999.0, 0.0};
+    const cxpr_value host_input[] = {cxpr_num(999.0), cxpr_num(0.0)};
     double* values[3] = {};
     size_t* alignment[3] = {};
-    double* inputs = nullptr;
-    double* outputs = nullptr;
+    cxpr_value* inputs = nullptr;
+    cxpr_value* outputs = nullptr;
     cxpr_model_tick_state* state = nullptr;
     cxpr_resample_view* views = nullptr;
     cxpr_resample_view host_views[3] = {};
@@ -72,7 +74,7 @@ int main(void) {
                          cudaMemcpyHostToDevice), "copy alignment");
     }
     check(cudaMalloc(&inputs, sizeof(host_input)), "cudaMalloc inputs");
-    check(cudaMalloc(&outputs, sizeof(double)), "cudaMalloc outputs");
+    check(cudaMalloc(&outputs, sizeof(cxpr_value)), "cudaMalloc outputs");
     check(cudaMalloc(&state, sizeof(*state)), "cudaMalloc state");
     check(cudaMalloc(&views, sizeof(host_views)), "cudaMalloc views");
     check(cudaMemcpy(inputs, host_input, sizeof(host_input), cudaMemcpyHostToDevice), "copy inputs");
@@ -125,7 +127,7 @@ int main(void) {
                     (double)elapsed_ms * 1.0e6 / iterations, iterations);
         const size_t device_bytes = 9u * sizeof(double) + 15u * sizeof(size_t) +
                                     sizeof(host_views) + sizeof(host_input) +
-                                    sizeof(double) + sizeof(*state);
+                                    sizeof(cxpr_value) + sizeof(*state);
         std::printf("CUDA resample fixture device memory %zu bytes\n", device_bytes);
         cudaEventDestroy(end);
         cudaEventDestroy(begin);
