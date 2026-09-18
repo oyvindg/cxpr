@@ -241,19 +241,38 @@ static cxpr_value cxpr_fn_contains(const cxpr_expr_ast* call_ast,
                                    "contains() requires source and values");
     }
     if (!cxpr_eval_ast(ordered[0], ctx, reg, &source, err)) return cxpr_bool(false);
-    if (!cxpr_eval_ast(ordered[1], ctx, reg, &values, err)) return cxpr_bool(false);
+    if (!cxpr_eval_ast(ordered[1], ctx, reg, &values, err)) {
+        if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&source);
+        return cxpr_bool(false);
+    }
     if (values.type != CXPR_VALUE_ARRAY || !values.a) {
+        if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&source);
+        if (values.type == CXPR_VALUE_STRUCT || values.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&values);
         return cxpr_contains_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "contains() values argument must be an array");
     }
     for (size_t i = 0u; i < values.a->count; ++i) {
         bool equal = false;
         if (!cxpr_contains_scalar_equal(source, values.a->values[i], &equal)) {
+            if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&source);
+            cxpr_value_free(&values);
             return cxpr_contains_error(err, CXPR_ERR_TYPE_MISMATCH,
                                        "contains() supports scalar values only");
         }
-        if (equal) return cxpr_bool(true);
+        if (equal) {
+            if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&source);
+            cxpr_value_free(&values);
+            return cxpr_bool(true);
+        }
     }
+    if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+        cxpr_value_free(&source);
+    cxpr_value_free(&values);
     return cxpr_bool(false);
 }
 

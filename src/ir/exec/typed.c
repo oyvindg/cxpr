@@ -10,6 +10,12 @@
 #include <stdio.h>
 #include <string.h>
 
+static void cxpr_ir_typed_free_composite(cxpr_value* value) {
+    if (value && (value->type == CXPR_VALUE_STRUCT || value->type == CXPR_VALUE_ARRAY)) {
+        cxpr_value_free(value);
+    }
+}
+
 static const char* cxpr_ir_unknown_param_message(const cxpr_ir_instr* instr) {
     static CXPR_THREAD_LOCAL char message[256];
     if (!instr || !instr->name || instr->name[0] == '\0') {
@@ -619,6 +625,8 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 }
                 break;
             }
+            cxpr_ir_typed_free_composite(&a);
+            cxpr_ir_typed_free_composite(&b);
             CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_SQUARE:
@@ -740,10 +748,14 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             }
             sp -= instr->index;
             if (cxpr_ir_call_memo_get(ctx, instr, &result)) {
+                for (size_t i = 0; i < instr->index; ++i)
+                    cxpr_ir_typed_free_composite(&typed_args[i]);
                 CXPR_TYPED_PUSH(result);
                 break;
             }
             result = cxpr_registry_call_typed(reg, instr->func->name, typed_args, instr->index, err);
+            for (size_t i = 0; i < instr->index; ++i)
+                cxpr_ir_typed_free_composite(&typed_args[i]);
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             (void)cxpr_ir_call_memo_set(ctx, instr, result);
             CXPR_TYPED_PUSH(result);
@@ -819,6 +831,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     return cxpr_num(NAN);
                 }
                 result = cxpr_ir_struct_get_field(a.s, instr->name, &found);
+                cxpr_ir_typed_free_composite(&a);
                 if (!found) return cxpr_ir_make_not_found(err, "Unknown field access");
                 CXPR_TYPED_PUSH(result);
             }

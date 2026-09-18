@@ -56,6 +56,8 @@ cxpr_value cxpr_context_get_typed(const cxpr_context* ctx, const char* name, boo
         value = cxpr_expression_lookup_typed_result(ctx->expression_scope, name, &local_found);
         if (local_found) {
             if (found) *found = true;
+            if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+                return cxpr_value_clone(&value);
             return value;
         }
     }
@@ -242,11 +244,14 @@ cxpr_value cxpr_context_get_field(const cxpr_context* ctx, const char* name,
 
     for (i = 0; i < s->field_count; i++) {
         if (strcmp(s->field_names[i], field) == 0) {
+            cxpr_value result = cxpr_value_clone(&s->field_values[i]);
             if (found) *found = true;
-            return cxpr_value_clone(&s->field_values[i]);
+            if (root_found) cxpr_value_free(&root);
+            return result;
         }
     }
 
+    if (root_found) cxpr_value_free(&root);
     if (found) *found = false;
     return cxpr_num(0.0);
 }

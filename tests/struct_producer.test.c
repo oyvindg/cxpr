@@ -203,6 +203,7 @@ static void test_struct_function_call_returns_struct(void) {
     assert(g_arg_call_count == 1);
     ASSERT_DOUBLE_EQ(struct_field(r.s, "line").d, 1.4);
     ASSERT_DOUBLE_EQ(struct_field(r.s, "histogram").d, 1.5);
+    cxpr_value_free(&r);
 
     cxpr_context_free(ctx);
     cxpr_registry_free(reg);
