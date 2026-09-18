@@ -91,18 +91,20 @@ int main(void) {
             CXPR_VALUE_INT64_INIT(INT64_C(9007199254740993)),
             CXPR_VALUE_INT64_INIT(INT64_C(9007199254740994)),
         };
-        const cxpr_value increments[] = {CXPR_VALUE_INT64_INIT(1)};
+        const cxpr_value increments[] = {
+            CXPR_VALUE_INT64_INIT(1), CXPR_VALUE_INT64_INIT(2)
+        };
         cxpr_value results[2] = {0};
         const cxpr_bulk_const_column exact_inputs[] = {{values, 1u}};
         cxpr_bulk_column exact_outputs[] = {{results, 1u}};
         const cxpr_bulk_view exact_view = {
             exact_inputs, 1u, increments, 1u, exact_outputs, 1u,
-            NULL, 0u, 2u
+            NULL, 0u, 2u, 1u
         };
         assert(cxpr_bulk_validate(&exact_descriptor, &exact_view) == CXPR_BULK_OK);
         assert(cxpr_bulk_run(&exact_descriptor, &exact_view) == CXPR_BULK_OK);
         assert(results[0].i64 == INT64_C(9007199254740994));
-        assert(results[1].i64 == INT64_C(9007199254740995));
+        assert(results[1].i64 == INT64_C(9007199254740996));
     }
     puts("bulk execution tests passed");
     return 0;

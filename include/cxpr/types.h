@@ -52,7 +52,8 @@ typedef enum {
     CXPR_ERR_TYPE_MISMATCH,
     CXPR_ERR_OUT_OF_MEMORY,
     CXPR_ERR_INVALID_INDEX,
-    CXPR_ERR_INDEX_OUT_OF_RANGE
+    CXPR_ERR_INDEX_OUT_OF_RANGE,
+    CXPR_ERR_ASSERTION_FAILED
 } cxpr_error_code;
 
 /** @brief Runtime type tags for `cxpr_value`. */

@@ -237,6 +237,7 @@ const char* cxpr_error_string(cxpr_error_code code) {
     case CXPR_ERR_CIRCULAR_DEPENDENCY: return "Circular dependency";
     case CXPR_ERR_TYPE_MISMATCH:       return "Type mismatch";
     case CXPR_ERR_OUT_OF_MEMORY:       return "Out of memory";
+    case CXPR_ERR_ASSERTION_FAILED:    return "Assertion failed";
     default:                         return "Unknown error";
     }
 }
