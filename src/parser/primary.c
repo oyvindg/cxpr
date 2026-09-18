@@ -374,7 +374,9 @@ static bool cxpr_expr_parser_parse_arg_list(cxpr_expr_parser* p,
 
 fail:
     for (size_t i = 0u; i < argc; ++i) cxpr_expr_ast_free(args[i]);
-    for (size_t i = 0u; i <= argc; ++i) free(arg_names[i]);
+    for (size_t i = 0u; i < argc; ++i) free(arg_names[i]);
+    /* The current slot may contain a parsed name even when its value failed. */
+    if (argc < args_capacity) free(arg_names[argc]);
     free(arg_names);
     free(args);
     return false;

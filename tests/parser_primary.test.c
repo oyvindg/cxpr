@@ -66,6 +66,14 @@ static void test_parser_primary_forms(void) {
     assert(err.message != NULL);
     assert(strcmp(err.message, "Unexpected token after expression") == 0);
     cxpr_expr_parser_free(p);
+
+    p = cxpr_expr_parser_new();
+    assert(p);
+    err = (cxpr_error){0};
+    ast = cxpr_expr_ast_parse(p, "clclamp(eia,1,os,se,G,se,0,o]s,se,: ", &err);
+    assert(ast == NULL);
+    assert(err.code != CXPR_OK);
+    cxpr_expr_parser_free(p);
 }
 
 int main(void) {

@@ -447,33 +447,60 @@ static cxpr_value cxpr_eval_binary_values(int op, cxpr_value left, cxpr_value ri
     }
 }
 
+static void cxpr_eval_free_composite(cxpr_value* value) {
+    /* Evaluated strings borrow AST/context storage; composite results are owned. */
+    if (value && (value->type == CXPR_VALUE_STRUCT || value->type == CXPR_VALUE_ARRAY)) {
+        cxpr_value_free(value);
+    }
+}
+
 static cxpr_value cxpr_eval_binary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                       const cxpr_registry* reg, cxpr_error* err) {
     int op = ast->data.binary_op.op;
     cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
     cxpr_value right;
+    cxpr_value result;
 
-    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (err && err->code != CXPR_OK) {
+        cxpr_eval_free_composite(&left);
+        return cxpr_num(NAN);
+    }
 
     if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
         if (!cxpr_require_type(left, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
+            cxpr_eval_free_composite(&left);
             return cxpr_num(NAN);
         }
-        if (op == CXPR_TOK_AND && !left.b) return cxpr_bool(false);
-        if (op == CXPR_TOK_OR && left.b) return cxpr_bool(true);
+        if (op == CXPR_TOK_AND && !left.b) {
+            cxpr_eval_free_composite(&left);
+            return cxpr_bool(false);
+        }
+        if (op == CXPR_TOK_OR && left.b) {
+            cxpr_eval_free_composite(&left);
+            return cxpr_bool(true);
+        }
     }
 
     right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (err && err->code != CXPR_OK) {
+        cxpr_eval_free_composite(&left);
+        cxpr_eval_free_composite(&right);
+        return cxpr_num(NAN);
+    }
 
     if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
         if (!cxpr_require_type(right, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
+            cxpr_eval_free_composite(&left);
+            cxpr_eval_free_composite(&right);
             return cxpr_num(NAN);
         }
-        return cxpr_bool(right.b);
+        result = cxpr_bool(right.b);
+    } else {
+        result = cxpr_eval_binary_values(op, left, right, err);
     }
-
-    return cxpr_eval_binary_values(op, left, right, err);
+    cxpr_eval_free_composite(&left);
+    cxpr_eval_free_composite(&right);
+    return result;
 }
 
 static cxpr_value cxpr_eval_unary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
