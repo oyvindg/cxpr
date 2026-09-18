@@ -72,6 +72,15 @@ typedef struct {
     size_t best_index;
 } cxpr_model_optimize_result;
 
+/** Backend-neutral candidate grid. Values are candidate-major. */
+typedef struct {
+    cxpr_value* params;
+    unsigned char* active;
+    size_t candidate_count;
+    size_t param_count;
+    size_t active_count;
+} cxpr_model_optimize_grid;
+
 #define CXPR_OPTIMIZE_BACKEND_API_VERSION 1u
 
 /** Host-provided accelerator backend. CXPR retains optimization semantics. */
@@ -98,6 +107,19 @@ const cxpr_expr_ast* cxpr_model_optimize_constraint_at(
 size_t cxpr_model_optimize_objective_count(const cxpr_model_compiled* program);
 cxpr_model_optimize_objective cxpr_model_optimize_objective_at(
     const cxpr_model_compiled* program, size_t index);
+bool cxpr_model_optimize_prepare_grid(
+    const cxpr_model_compiled* program,
+    const cxpr_model_optimize_inputs* inputs,
+    cxpr_model_optimize_grid* out,
+    cxpr_error* err);
+void cxpr_model_optimize_grid_free(cxpr_model_optimize_grid* grid);
+bool cxpr_model_optimize_finalize_results(
+    const cxpr_model_compiled* program,
+    const cxpr_model_optimize_grid* grid,
+    const cxpr_value* outputs,
+    size_t output_count,
+    cxpr_model_optimize_result* out,
+    cxpr_error* err);
 bool cxpr_model_optimize(const cxpr_model_compiled* program,
                          const cxpr_model_optimize_inputs* inputs,
                          const cxpr_model_optimize_options* options,

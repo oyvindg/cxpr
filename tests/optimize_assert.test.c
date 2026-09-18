@@ -94,8 +94,8 @@ static void test_serial_candidate_runner_selects_best_allowed_candidate(void) {
         "model runner\n"
         "$period = 1 { optimize { values = [1, 2, 3] } }\n"
         "optimize $period < 3\n"
-        "score = $period { optimize { maximize } }\n"
-        "out score\n";
+        "score = $period\n"
+        "out score { optimize { maximize } }\n";
     cxpr_error err = {0};
     cxpr_doc* doc;
     cxpr_model_compiled* program = compile_source(source, &doc, &err);
@@ -108,6 +108,38 @@ static void test_serial_candidate_runner_selects_best_allowed_candidate(void) {
     assert(result.candidates[result.best_index].params[0] == 2.0);
     assert(result.candidates[result.best_index].objectives[0] == 2.0);
     cxpr_model_optimize_result_free(&result);
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+}
+
+static void test_prepare_grid_and_finalize_results(void) {
+    const char* source =
+        "model backend_helpers\n"
+        "$period = 1 { optimize { values = [1, 2, 3] } }\n"
+        "optimize $period < 3\n"
+        "score = $period\n"
+        "out score { optimize { maximize } }\n";
+    cxpr_model_optimize_inputs inputs = {0};
+    cxpr_model_optimize_grid grid = {0};
+    cxpr_model_optimize_result result = {0};
+    cxpr_value outputs[] = {cxpr_num(10.0), cxpr_num(30.0), cxpr_num(999.0)};
+    cxpr_error err = {0};
+    cxpr_doc* doc;
+    cxpr_model_compiled* program = compile_source(source, &doc, &err);
+    inputs.tick_count = 1u;
+    assert(program != NULL);
+    assert(cxpr_model_optimize_prepare_grid(program, &inputs, &grid, &err));
+    assert(grid.candidate_count == 3u && grid.param_count == 1u);
+    assert(grid.active_count == 2u);
+    assert(grid.params[0].d == 1.0 && grid.params[1].d == 2.0);
+    assert(grid.active[0] && grid.active[1] && !grid.active[2]);
+    assert(cxpr_model_optimize_finalize_results(
+        program, &grid, outputs, 1u, &result, &err));
+    assert(result.candidate_count == 2u && result.best_index == 1u);
+    assert(result.candidates[1].params[0] == 2.0);
+    assert(result.candidates[1].objectives[0] == 30.0);
+    cxpr_model_optimize_result_free(&result);
+    cxpr_model_optimize_grid_free(&grid);
     cxpr_model_compiled_free(program);
     cxpr_doc_free(doc);
 }
@@ -213,6 +245,7 @@ int main(void) {
     test_optimize_constraint_is_inert_and_introspectable();
     test_assert_rejects_runtime_identifiers();
     test_serial_candidate_runner_selects_best_allowed_candidate();
+    test_prepare_grid_and_finalize_results();
     test_candidate_objective_reads_committed_state_output();
     test_host_backend_selection_and_fallback();
     printf("All optimize/assert tests passed.\n");
