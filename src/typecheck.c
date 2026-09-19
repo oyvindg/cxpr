@@ -413,7 +413,13 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
     case CXPR_NODE_INT64: return CXPR_STATIC_INT64;
     case CXPR_NODE_BOOL: return CXPR_STATIC_BOOL;
     case CXPR_NODE_STRING: return CXPR_STATIC_STRING;
-    case CXPR_NODE_ARRAY: return CXPR_STATIC_ARRAY;
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            cxpr_typecheck_static_type element_type =
+                cxpr_typecheck_infer(ast->data.array.elements[i], reg, err);
+            if (element_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        }
+        return CXPR_STATIC_ARRAY;
     case CXPR_NODE_RECORD:
         for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
             cxpr_typecheck_static_type field_type =

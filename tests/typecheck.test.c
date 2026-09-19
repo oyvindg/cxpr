@@ -120,11 +120,13 @@ int main(void) {
     expect_reject(reg, "(close + 1) and x");
     expect_reject(reg, "cond ? 1 : true");
     expect_reject(reg, "[1, 2][true]");
+    expect_reject(reg, "[[1, 2][true]]");
     expect_reject(reg, "close[\"previous\"]");
     expect_reject(reg, "atr(true)");
     expect_reject(reg, "atr(period=true)");
     expect_reject(reg, "({price: 1}).missing");
     expect_backend_rejects(reg, "1 and 2");
+    expect_backend_rejects(reg, "[c[sorrss_*rs.i < vd30nmepe*x*p][S]]");
 
     expect_accept(reg, "close > 5 and rsi < 30");
     expect_accept(reg, "not (x > 5)");
