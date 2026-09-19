@@ -247,6 +247,22 @@ generated-C) pluss CUDA-kontrakt, og asserteres bit-identisk. Følg mønsteret i
 
 ## Utførings-checklist
 
+### Implementasjonsstatus (2026-09-19)
+
+| Område | Status | Bevis |
+|---|---|---|
+| R6 tree/IR | Implementert | `argmin_argmax_parity` |
+| R6 generated C | Implementert og runtime-testet | `pathfinding_generated_parity` genererer, kompilerer og kjører fixture-koden med bitparitet |
+| R6 CUDA | Kompilerbar og runtime-testet når device finnes | `cuda_pathfinding_parity`; CTest rapporterer `Skipped` uten CUDA-device |
+| R6 FMA-nær-tie | Implementert | Eksakte hex-inputbits i `ties.cxpr`-matrisen; C/CUDA bygges med kontraksjon avslått |
+| R7 generated C | Implementert og runtime-testet | `pathfinding_flow_e2e`; codegen fører captured `$INF` eksplisitt inn i `sadd` |
+| 4-/8-nabo flow-field E2E | Implementert | Halo-gather → bulk → reduksjon → swap → konvergens mot uavhengig Dijkstra |
+| R8 bulk reduce | Utsatt (valgfri) | `bulk_reduce` rapporteres som `Skipped`, ikke `Passed` |
+| C#-konsumentspike | Ikke utført | Krever konsumentens eksisterende BFS og kart-fixtures |
+
+Status-tabellen er implementasjonsrapportering. De normative kravene under beholdes
+uendret, slik at et krav ikke blir svekket fordi en backend eller runner mangler.
+
 Verifiserte integrasjonspunkter fra kodebasen. Kryss av per steg.
 
 ### R6 — argmin/argmax/sum (5 codegen-stier + tester)

@@ -83,6 +83,7 @@ int main(void) {
 #else
     printf("bulk_reduce: SKIP "
            "(R8 cxpr_bulk_reduce not yet implemented on release/0.3.2)\n");
+    return 77;
 #endif
     return 0;
 }

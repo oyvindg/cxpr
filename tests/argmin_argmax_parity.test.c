@@ -1,9 +1,9 @@
 /*
  * R6 -- argmin / argmax / fixed-arity sum: cross-backend parity.
  *
- * Asserts bit-identical results across tree-eval and IR, plus a generated-C
- * contract check (nested `?:`, no array node, no UNSUPPORTED_RESULT). CUDA inherits
- * the C path (plugins/cuda.c), so the generated-C contract covers it.
+ * Fast unit coverage for tree-eval and IR plus generated-C structure. Runtime
+ * generated-C/CUDA parity is fixture-driven in pathfinding_generated_parity and
+ * cuda_pathfinding_parity.
  *
  * The compatibility guard remains available to downstream builds, but R6 is enabled
  * by default now that all scalar backends implement the folds.
@@ -95,9 +95,6 @@ static void test_ties(void) {
     /* exact tie -> lowest index wins */
     assert_parity("argmin(2, 2, 5)", 0.0);
     assert_parity("argmax(5, 5, 2)", 0.0);
-    /* near-tie: argmin must index the same sub-expression it compares, with no
-     * fast-math/contraction, so the index is stable across backends. */
-    assert_parity("argmin(1.0 + 0.2, 1.0 + 0.2 * 1.0)", 0.0);
 }
 
 static void test_arity_limit(void) {
@@ -124,8 +121,7 @@ static char* read_fixture(const char* name) {
     return source;
 }
 
-/* Generated-C contract: argmin lowers to nested ternaries, no array node, no
- * UNSUPPORTED marker. CUDA inherits this via plugins/cuda.c post-processing. */
+/* Structural unit check; separate tests compile and execute the artifact. */
 static void test_generated_c_contract(void) {
     cxpr_error err = {0};
     char* source = read_fixture("argmin_argmax.cxpr");

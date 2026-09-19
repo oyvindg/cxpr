@@ -81,6 +81,12 @@ typedef struct cxpr_value {
     };
 } cxpr_value;
 
+#if defined(__CUDACC__)
+#define CXPR_VALUE_HOST_DEVICE __host__ __device__
+#else
+#define CXPR_VALUE_HOST_DEVICE
+#endif
+
 #define CXPR_VALUE_NUMBER_INIT(value_) { .type = CXPR_VALUE_NUMBER, .d = (value_) }
 #define CXPR_VALUE_BOOL_INIT(value_) { .type = CXPR_VALUE_BOOL, .b = (value_) }
 #define CXPR_VALUE_INT64_INIT(value_) { .type = CXPR_VALUE_INT64, .i64 = (value_) }
@@ -103,7 +109,7 @@ struct cxpr_array_value {
  * @param d Numeric payload.
  * @return Value tagged as `CXPR_VALUE_NUMBER`.
  */
-static inline cxpr_value cxpr_num(double d) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_num(double d) {
     return (cxpr_value){ .type = CXPR_VALUE_NUMBER, .d = d };
 }
 
@@ -112,11 +118,11 @@ static inline cxpr_value cxpr_num(double d) {
  * @param b Boolean payload.
  * @return Value tagged as `CXPR_VALUE_BOOL`.
  */
-static inline cxpr_value cxpr_bool(bool b) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_bool(bool b) {
     return (cxpr_value){ .type = CXPR_VALUE_BOOL, .b = b };
 }
 
-static inline cxpr_value cxpr_int64(int64_t value) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_int64(int64_t value) {
     return (cxpr_value){ .type = CXPR_VALUE_INT64, .i64 = value };
 }
 
@@ -126,7 +132,7 @@ static inline cxpr_value cxpr_int64(int64_t value) {
  * @param s Struct payload pointer.
  * @return Value tagged as `CXPR_VALUE_STRUCT`.
  */
-static inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_struct(cxpr_struct_value* s) {
     return (cxpr_value){ .type = CXPR_VALUE_STRUCT, .s = s };
 }
 
@@ -135,7 +141,7 @@ static inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
  * @param str String payload pointer. The pointer is borrowed by the value.
  * @return Value tagged as `CXPR_VALUE_STRING`.
  */
-static inline cxpr_value cxpr_string(const char* str) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_string(const char* str) {
     return (cxpr_value){ .type = CXPR_VALUE_STRING, .str = str ? str : "" };
 }
 
@@ -143,7 +149,7 @@ static inline cxpr_value cxpr_string(const char* str) {
  * @brief Construct a null `cxpr_value`.
  * @return Value tagged as `CXPR_VALUE_NULL`.
  */
-static inline cxpr_value cxpr_null(void) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_null(void) {
     return (cxpr_value){ .type = CXPR_VALUE_NULL, .i64 = 0 };
 }
 
@@ -152,7 +158,7 @@ static inline cxpr_value cxpr_null(void) {
  * @param unix_ns Timestamp payload as Unix nanoseconds.
  * @return Value tagged as `CXPR_VALUE_TIMESTAMP`.
  */
-static inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_timestamp(int64_t unix_ns) {
     return (cxpr_value){ .type = CXPR_VALUE_TIMESTAMP, .i64 = unix_ns };
 }
 
@@ -161,7 +167,7 @@ static inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
  * @param nanoseconds Duration payload in nanoseconds.
  * @return Value tagged as `CXPR_VALUE_DURATION`.
  */
-static inline cxpr_value cxpr_duration(int64_t nanoseconds) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_duration(int64_t nanoseconds) {
     return (cxpr_value){ .type = CXPR_VALUE_DURATION, .i64 = nanoseconds };
 }
 
@@ -170,9 +176,11 @@ static inline cxpr_value cxpr_duration(int64_t nanoseconds) {
  * @param a Array payload pointer.
  * @return Value tagged as `CXPR_VALUE_ARRAY`.
  */
-static inline cxpr_value cxpr_array(cxpr_array_value* a) {
+static inline CXPR_VALUE_HOST_DEVICE cxpr_value cxpr_array(cxpr_array_value* a) {
     return (cxpr_value){ .type = CXPR_VALUE_ARRAY, .a = a };
 }
+
+#undef CXPR_VALUE_HOST_DEVICE
 
 /**
  * @brief Deep-clone a typed value.

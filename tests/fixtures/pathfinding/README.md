@@ -17,6 +17,19 @@ generated C, and the CUDA-inherited C path. Therefore:
 - `grid_relax_4nabo.cxpr`, `grid_relax_8nabo.cxpr`, and
   `examples/bulk_grid/flow_field_cell.cxpr` add `dir = argmin(...)` and exercise R6.
 
+Acceptance coverage is executable rather than source-text-only:
+
+- `acceptance.json` maps each implemented requirement to its fixture and CTest;
+  CMake fails configuration if a listed CPU fixture or test disappears.
+
+- `pathfinding_generated_parity` compiles and runs generated C from
+  `argmin_argmax.cxpr` and `ties.cxpr`, comparing output bit patterns with IR.
+- `pathfinding_flow_e2e` runs both grid fixtures through generated-C bulk until
+  convergence and compares every distance and meaningful direction with Dijkstra.
+- `cuda_pathfinding_parity` compiles the same fixtures with NVCC and executes them
+  when a CUDA device exists; absence of a device is reported as CTest `Skipped`.
+- `bulk_reduce` is also explicitly `Skipped` while optional R8 remains deferred.
+
 ## Direction convention (B4)
 
 `dir` is a 0-based index into the argument list of `argmin`. The reference

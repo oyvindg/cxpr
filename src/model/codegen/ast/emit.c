@@ -296,6 +296,17 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
                 return cxpr_model_c_safe_name(name);
             }
         }
+        /* Model-defined function bodies parse `$param` references as canonical
+         * identifiers. Standalone generated helpers receive captured model
+         * parameters as explicit `_cx_param_N` arguments. */
+        if (target && target->inline_fn_name) {
+            index = cxpr_model_compiled_param_index(program, name);
+            if (index != (size_t)-1) {
+                char raw[64];
+                snprintf(raw, sizeof(raw), "_cx_param_%zu", index);
+                return cxpr_strdup(raw);
+            }
+        }
         if (cxpr_model_c_symbol_is_input(program, name, &index)) {
             char raw[64];
             snprintf(raw, sizeof(raw), "_cx_input_%zu", index);
