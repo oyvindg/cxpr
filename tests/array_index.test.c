@@ -306,6 +306,12 @@ int main(void) {
     expect_compiled_index_error("[1][0.5]", CXPR_ERR_INVALID_INDEX);
     expect_compiled_index_error("[][0]", CXPR_ERR_INDEX_OUT_OF_RANGE);
     expect_compiled_index_error("[1][1]", CXPR_ERR_INDEX_OUT_OF_RANGE);
+    expect_index_error("missing[5]", CXPR_ERR_UNKNOWN_IDENTIFIER);
+    expect_compiled_index_error("missing[5]", CXPR_ERR_UNKNOWN_IDENTIFIER);
+    expect_index_error("sehes5555m5[5]-55[5-5]-5-null",
+                       CXPR_ERR_UNKNOWN_IDENTIFIER);
+    expect_compiled_index_error("sehes5555m5[5]-55[5-5]-5-null",
+                                CXPR_ERR_UNKNOWN_IDENTIFIER);
     expect_dynamic_index_error(NAN, CXPR_ERR_INVALID_INDEX,
                                "Array index must be a finite non-negative integer");
     expect_dynamic_index_error(INFINITY, CXPR_ERR_INVALID_INDEX,

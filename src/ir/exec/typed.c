@@ -42,6 +42,7 @@ static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
                                             cxpr_error* err) {
     cxpr_expr_ast index_ast = {0};
     bool handled = false;
+    bool identifier_found = false;
 
     if (!reg || !target || !out) {
         return false;
@@ -57,6 +58,7 @@ static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
             bool found = false;
             cxpr_value runtime_target = cxpr_context_get_typed(
                 ctx, cxpr_expr_ast_identifier_name(target), &found);
+            identifier_found = found;
             if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
                 if (runtime_target.a && offset < runtime_target.a->count) {
                     *out = cxpr_value_clone(&runtime_target.a->values[offset]);
@@ -91,7 +93,17 @@ static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
         }
         if (handled || (err && err->code != CXPR_OK)) return false;
     }
-    if (!reg->lookback_resolver) return false;
+    if (!reg->lookback_resolver) {
+        if (err && cxpr_expr_ast_kind_of(target) == CXPR_NODE_IDENTIFIER) {
+            err->code = identifier_found
+                ? CXPR_ERR_TYPE_MISMATCH
+                : CXPR_ERR_UNKNOWN_IDENTIFIER;
+            err->message = identifier_found
+                ? "Index target is not indexable"
+                : "Unknown indexed identifier";
+        }
+        return false;
+    }
     index_ast.type = CXPR_NODE_NUMBER;
     index_ast.data.number.value = (double)offset;
     return reg->lookback_resolver(
@@ -400,7 +412,8 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     if (!cxpr_ir_resolve_lookback_instr(
                             instr, lookback_offset, ctx, reg, &result, err)) {
                         if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-                        return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                        return cxpr_ir_make_not_found(
+                            err, cxpr_ir_unknown_identifier_message(instr));
                     }
                 } else {
                     result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
@@ -419,7 +432,8 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     if (!cxpr_ir_resolve_lookback_instr(
                             instr, lookback_offset, ctx, reg, &result, err)) {
                         if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-                        return cxpr_ir_runtime_error(err, "Lookback resolver failed");
+                        return cxpr_ir_make_not_found(
+                            err, cxpr_ir_unknown_identifier_message(instr));
                     }
                 } else {
                     result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
