@@ -6,6 +6,9 @@ const { execFile } = require("child_process");
 const { fileURLToPath, pathToFileURL } = require("url");
 const lsp = require("vscode-languageserver/node");
 const { TextDocument } = require("vscode-languageserver-textdocument");
+const sourceFeatures = require("./source-language-features");
+const vscodeShim = require("./vscode-lsp-shim");
+const { CXPR_KEYWORDS } = require("./cxpr-language-core");
 
 const TOKEN_TYPES = [
   "function", "type", "import", "importPath", "parameter", "namedArgument",
@@ -37,16 +40,38 @@ function asRange(item) {
   };
 }
 
-function findTooling(configured, roots) {
-  const candidates = [configured, process.env.CXPR_DOCUMENT_TOOLING];
+function executableNames() {
+  return process.platform === "win32"
+    ? ["cxpr_document_tooling.exe", "cxpr_document_tooling"]
+    : ["cxpr_document_tooling"];
+}
+
+function findTooling(configured, roots, bundled = "", searchPath = process.env.PATH || "") {
+  const candidates = [configured, process.env.CXPR_DOCUMENT_TOOLING, bundled];
   for (const root of roots) {
-    candidates.push(
-      path.join(root, "build", "libs", "cxpr", "cxpr_document_tooling"),
-      path.join(root, "build", "libs", "cxpr", "Debug", "cxpr_document_tooling"),
-      path.join(root, "build", "libs", "cxpr", "Release", "cxpr_document_tooling")
-    );
+    for (const name of executableNames()) {
+      candidates.push(
+        path.join(root, "build", name),
+        path.join(root, "build", "Debug", name),
+        path.join(root, "build", "Release", name),
+        path.join(root, "build", "libs", "cxpr", name),
+        path.join(root, "build", "libs", "cxpr", "Debug", name),
+        path.join(root, "build", "libs", "cxpr", "Release", name)
+      );
+    }
   }
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || "";
+  for (const dir of searchPath.split(path.delimiter).filter(Boolean)) {
+    for (const name of executableNames()) candidates.push(path.join(dir, name));
+  }
+  return candidates.find((candidate) => {
+    if (!candidate) return false;
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }) || "";
 }
 
 function analyze(executable, document, cwd) {
@@ -77,6 +102,68 @@ function wordAt(document, position) {
   return line.slice(start, end);
 }
 
+function completionItems(document, result, position) {
+  const line = document.getText().split(/\r?\n/)[position.line] || "";
+  let start = Math.min(position.character, line.length);
+  while (start > 0 && /[A-Za-z0-9_$]/.test(line[start - 1])) start--;
+  const range = {
+    start: { line: position.line, character: start },
+    end: { line: position.line, character: position.character }
+  };
+  const seen = new Set();
+  const items = [];
+  const add = (label, kind, detail = "") => {
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    items.push({ label, kind, detail, textEdit: { range, newText: label } });
+  };
+  for (const keyword of CXPR_KEYWORDS) add(keyword, lsp.CompletionItemKind.Keyword, "CXPR keyword");
+  for (const fn of result?.functions || []) {
+    add(fn.name, lsp.CompletionItemKind.Function,
+      fn.builtin ? "CXPR builtin" : "CXPR function/import");
+  }
+  for (const symbol of result?.outline || []) {
+    add(symbol.name, symbol.kind === "model" ? lsp.CompletionItemKind.Module : lsp.CompletionItemKind.Variable,
+      `CXPR ${symbol.kind || "symbol"}`);
+  }
+  return items;
+}
+
+function callAt(document, position, name) {
+  if (!document || !name) return null;
+  const lines = document.getText().split(/\r?\n/);
+  const line = lines[position.line] || "";
+  const wordStart = Math.max(0, line.lastIndexOf(name, position.character));
+  let open = wordStart + name.length;
+  while (/\s/.test(line[open] || "")) open++;
+  if (line[open] !== "(") return null;
+  let depth = 0;
+  let quote = "";
+  for (let end = open; end < line.length; end++) {
+    const char = line[end];
+    if (quote) {
+      if (char === quote && line[end - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; continue; }
+    if (char === "(") depth++;
+    if (char === ")" && --depth === 0) {
+      const argumentsText = line.slice(open + 1, end).trim();
+      const args = argumentsText ? argumentsText.split(/\s*,\s*/).filter(Boolean) : [];
+      const properties = args.map((arg) => /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(arg)?.[1]).filter(Boolean);
+      return { signature: line.slice(wordStart, end + 1), argumentCount: args.length, properties };
+    }
+  }
+  return null;
+}
+
+function tokenAt(result, position) {
+  return (result?.tokens || []).find((token) =>
+    token.line === position.line &&
+    position.character >= token.start &&
+    position.character < token.start + token.length);
+}
+
 function sourcePathForUse(document, usePath, roots) {
   const normalized = usePath.endsWith(".cxpr") ? usePath : `${usePath}.cxpr`;
   const current = path.dirname(fileURLToPath(document.uri));
@@ -104,6 +191,54 @@ function useTargets(source) {
 function functionSignature(source, name) {
   const match = source.match(new RegExp(`(?:^|\\n)\\s*fn\\s+${name}\\s*\\([^\\n]*\\)`));
   return match ? match[0].trim().replace(/^fn\\s+/, "") : "";
+}
+
+function importedModelHover(source, name) {
+  const model = source.match(/^\s*model\s+([A-Za-z_][A-Za-z0-9_]*)/m)?.[1] || name;
+  const summary = source.match(/^\s*(?:#\s*([^\n]+)\n)+/)?.[0]
+    ?.split(/\r?\n/).map((line) => line.replace(/^\s*#\s?/, "").trim()).filter(Boolean).join(" ") || "";
+  const params = [];
+  for (const match of source.matchAll(/^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^\s{][^{\n]*?)(?:\s*\{|\s*$)/gm)) {
+    const lineEnd = source.indexOf("\n", match.index);
+    const open = source.indexOf("{", match.index);
+    let description = "";
+    if (open >= 0 && (lineEnd < 0 || open < lineEnd)) {
+      const close = source.indexOf("}", open);
+      const block = close >= 0 ? source.slice(open, close + 1) : "";
+      description = block.match(/\bdescription\s*=\s*["']([^"']+)["']/)?.[1] || "";
+    }
+    params.push({ name: match[1], defaultValue: match[2].trim(), description });
+  }
+  const outputs = [];
+  for (const match of source.matchAll(/^\s*out\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\{|$)/gm)) {
+    const open = source.indexOf("{", match.index);
+    const close = open >= 0 ? source.indexOf("}", open) : -1;
+    const block = close >= 0 ? source.slice(open, close + 1) : "";
+    outputs.push({
+      name: match[1],
+      label: block.match(/\blabel\s*=\s*["']([^"']+)["']/)?.[1] || "",
+      description: block.match(/\bdescription\s*=\s*["']([^"']+)["']/)?.[1] || ""
+    });
+  }
+  if (!summary && !params.length && !outputs.length) return "";
+  const lines = [`**${name}** \`${model}\``];
+  if (summary) lines.push("", summary);
+  if (params.length) {
+    lines.push("", "Parameters:");
+    for (const param of params) {
+      const description = param.description ? ` — ${param.description}` : "";
+      lines.push(`- \`${param.name}\` = \`${param.defaultValue}\`${description}`);
+    }
+  }
+  if (outputs.length) {
+    lines.push("", "Properties:");
+    for (const output of outputs) {
+      const label = output.label && output.label !== output.name ? ` (${output.label})` : "";
+      const description = output.description ? ` — ${output.description}` : "";
+      lines.push(`- \`${output.name}\`${label}${description}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 function definitionInSource(source, name) {
@@ -169,6 +304,8 @@ function lexicalTokens(document, result) {
 
 function createServer(connection) {
   const documents = new lsp.TextDocuments(TextDocument);
+  const sourceHoverProvider = new sourceFeatures.CxprHoverProvider();
+  const sourceDefinitionProvider = new sourceFeatures.CxprDefinitionProvider();
   const cache = new Map();
   let roots = [];
   let executable = "";
@@ -243,12 +380,22 @@ function createServer(connection) {
     roots = (params.workspaceFolders || []).map(({ uri }) =>
       uri.startsWith("file:") ? fileURLToPath(uri) : "").filter(Boolean);
     if (!roots.length && params.rootUri?.startsWith("file:")) roots = [fileURLToPath(params.rootUri)];
-    executable = findTooling(params.initializationOptions?.toolingExecutable, roots);
+    if (params.initializationOptions?.bundledLibraryRoot) {
+      roots.push(params.initializationOptions.bundledLibraryRoot);
+    }
+    vscodeShim.configureWorkspaceRoots(roots);
+    sourceFeatures.configureImportRoots(roots);
+    executable = findTooling(
+      params.initializationOptions?.toolingExecutable,
+      roots,
+      params.initializationOptions?.bundledToolingExecutable
+    );
     return {
       serverInfo: { name: "cxpr-language-server", version: "0.1.0" },
       capabilities: {
         textDocumentSync: lsp.TextDocumentSyncKind.Incremental,
         hoverProvider: true,
+        completionProvider: { triggerCharacters: ["$", ".", "(", ","] },
         definitionProvider: true,
         documentSymbolProvider: true,
         foldingRangeProvider: true,
@@ -263,6 +410,12 @@ function createServer(connection) {
     void publish(document);
   });
   documents.onDidClose(({ document }) => connection.sendDiagnostics({ uri: document.uri, diagnostics: [] }));
+
+  connection.onCompletion(async ({ textDocument, position }) => {
+    const document = documents.get(textDocument.uri);
+    if (!document) return [];
+    return completionItems(document, await resultFor(textDocument.uri), position);
+  });
 
   connection.onDocumentSymbol(async ({ textDocument }) => {
     const result = await resultFor(textDocument.uri);
@@ -283,21 +436,19 @@ function createServer(connection) {
   });
   connection.languages.semanticTokens.on(async ({ textDocument }) => {
     const result = await resultFor(textDocument.uri);
-    const tokens = (result?.tokens || []).concat(lexicalTokens(documents.get(textDocument.uri), result))
+    const document = documents.get(textDocument.uri);
+    const sourceTokens = document ? sourceFeatures.buildDocumentTokens(document.getText()) : [];
+    const toolingTokens = (result?.tokens || []).filter((token) => !sourceTokens.some((sourceToken) =>
+      token.line === sourceToken.line &&
+      token.start < sourceToken.start + sourceToken.length &&
+      sourceToken.start < token.start + token.length));
+    const tokens = sourceTokens.concat(toolingTokens, lexicalTokens(document, result))
       .filter((token, index, all) => all.findIndex((candidate) => candidate.line === token.line && candidate.start === token.start && candidate.length === token.length) === index)
       .slice().sort((a, b) => a.line - b.line || a.start - b.start);
     const data = [];
     let previousLine = 0;
     let previousStart = 0;
     for (const token of tokens) {
-      // The document AST currently reports a whole binding as `assignment`.
-      // Let the CXPR TextMate grammar color binding expressions so that this
-      // coarse span does not turn every binding name dark blue.
-      // Function/assignment AST spans cover the complete declaration line
-      // (including parameters and operators). TextMate has the precise
-      // sub-token scopes for these declarations, so coarse LSP spans would
-      // incorrectly paint `from`, parameters and `=` as function colors.
-      if (token.type === "assignment" || token.type === "function") continue;
       const type = TOKEN_TYPES.indexOf(token.type);
       if (type < 0 || token.length < 1) continue;
       const deltaLine = token.line - previousLine;
@@ -308,8 +459,13 @@ function createServer(connection) {
     return { data };
   });
   connection.onDefinition(async ({ textDocument, position }) => {
-    const result = await resultFor(textDocument.uri);
     const document = documents.get(textDocument.uri);
+    if (document) {
+      const sourceLocation = sourceDefinitionProvider.provideDefinition(
+        vscodeShim.asDocument(document), position);
+      if (sourceLocation) return sourceLocation;
+    }
+    const result = await resultFor(textDocument.uri);
     let word = document ? wordAt(document, position) : "";
     if (document && !word) {
       const line = document.getText().split(/\r?\n/)[position.line] || "";
@@ -353,6 +509,10 @@ function createServer(connection) {
   });
   connection.onHover(async ({ textDocument, position }) => {
     const document = documents.get(textDocument.uri);
+    if (document) {
+      const sourceHover = sourceHoverProvider.provideHover(vscodeShim.asDocument(document), position);
+      if (sourceHover) return sourceHover;
+    }
     const word = document ? wordAt(document, position) : "";
     const typeDocs = {
       number: "A scalar numeric value.", bool: "A boolean value: `true` or `false`.",
@@ -362,8 +522,18 @@ function createServer(connection) {
     };
     if (typeDocs[word]) return { contents: { kind: "markdown", value: `**${word}**\n\n${typeDocs[word]}` } };
     const result = await resultFor(textDocument.uri);
-    const symbol = (result?.outline || []).find((item) => item.name === word || `$${item.name}` === word);
+    const symbol = (result?.outline || []).find((item) =>
+      item.name === word || `$${item.name}` === word || item.value === word);
     if (symbol) return { contents: { kind: "markdown", value: `**${word}** \`${symbol.kind}\`` } };
+    if (document) {
+      const targetPath = sourcePathForUse(document, useTargets(document.getText()).get(word) || "", roots);
+      if (targetPath) {
+        const importedHover = importedModelHover(fs.readFileSync(targetPath, "utf8"), word);
+        if (importedHover) return { contents: { kind: "markdown", value: importedHover } };
+      }
+    }
+    const token = tokenAt(result, position);
+    if (token && word) return { contents: { kind: "markdown", value: `**${word}** \`CXPR ${token.type}\`` } };
     if (document) {
       const lineText = document.getText().split(/\r?\n/)[position.line] || "";
       if (lineText.slice(0, position.character).endsWith(".")) {
@@ -386,6 +556,15 @@ function createServer(connection) {
     if (fn.signature) {
       return { contents: { kind: "markdown", value: `**${word}** \`CXPR function\`\n\n\`${fn.signature}\`` } };
     }
+    const call = callAt(document, position, word);
+    if (!fn.builtin && fn.minArgs === 0 && fn.maxArgs === 0 && call) {
+      const count = `${call.argumentCount} argument${call.argumentCount === 1 ? "" : "s"}`;
+      const properties = call.properties.length
+        ? `\n\nProperties: ${call.properties.map((name) => `\`${name}\``).join(", ")}`
+        : "";
+      return { contents: { kind: "markdown", value:
+        `**${word}** \`CXPR function/import\`\n\n\`${call.signature}\`\n\n${count}${properties}` } };
+    }
     const arity = fn.minArgs === fn.maxArgs
       ? `${fn.minArgs} argument${fn.minArgs === 1 ? "" : "s"}`
       : `${fn.minArgs}–${fn.maxArgs} arguments`;
@@ -403,4 +582,4 @@ function createServer(connection) {
 
 if (require.main === module) createServer(lsp.createConnection(lsp.ProposedFeatures.all)).listen();
 
-module.exports = { TOKEN_TYPES, asRange, createServer, findTooling, lexicalTokens, wordAt };
+module.exports = { TOKEN_TYPES, asRange, callAt, completionItems, createServer, findTooling, importedModelHover, lexicalTokens, tokenAt, wordAt };

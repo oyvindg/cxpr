@@ -126,6 +126,7 @@ static void test_nested_struct_field(void) {
     cxpr_value fv = cxpr_context_get_field(ctx, "outer", "inner", &found);
     assert(found);
     assert(fv.type == CXPR_VALUE_STRUCT);
+    cxpr_value_free(&fv);
 
     /* using a struct field directly as a scalar is a type error */
     eval_typed_fails("outer.inner > 0.0", ctx, reg, CXPR_ERR_TYPE_MISMATCH);

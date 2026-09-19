@@ -176,6 +176,13 @@ static cxpr_expr_compiled* cxpr_eval_ast_cached_program(const cxpr_expr_ast* ast
     cxpr_expr_compiled* compiled;
 
     if (!ast) return NULL;
+    /* Literal nodes are frequently synthesized on the stack by lookback
+     * resolvers. Compiling them is slower than direct evaluation and would
+     * attach an owning cache to storage that has no AST destructor. */
+    if (ast->type == CXPR_NODE_NUMBER || ast->type == CXPR_NODE_INT64 ||
+        ast->type == CXPR_NODE_BOOL || ast->type == CXPR_NODE_STRING) {
+        return NULL;
+    }
     mutable_ast = (cxpr_expr_ast*)ast;
     if (mutable_ast->compiled_registry != reg ||
         mutable_ast->compiled_registry_version != version) {
@@ -648,7 +655,11 @@ bool cxpr_eval_ast(const cxpr_expr_ast* ast, const cxpr_context* ctx,
     if (!cxpr_typecheck(ast, reg, NULL, err)) return false;
 
     value = cxpr_eval_ast_value(ast, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return false;
+    if (err && err->code != CXPR_OK) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
+        return false;
+    }
     *out_value = value;
     return true;
 }
@@ -683,12 +694,18 @@ bool cxpr_eval_ast_number(const cxpr_expr_ast* ast, const cxpr_context* ctx,
     cxpr_eval_memo_leave((cxpr_context*)ctx);
 
     value = cxpr_eval_ast_value(ast, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return false;
+    if (err && err->code != CXPR_OK) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
+        return false;
+    }
     if (value.type != CXPR_VALUE_NUMBER) {
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to double";
         }
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
         return false;
     }
     *out_value = value.d;
@@ -711,12 +728,18 @@ bool cxpr_eval_ast_bool(const cxpr_expr_ast* ast, const cxpr_context* ctx,
     if (!cxpr_typecheck_bool_root(ast, reg, err)) return false;
 
     value = cxpr_eval_ast_value(ast, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return false;
+    if (err && err->code != CXPR_OK) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
+        return false;
+    }
     if (value.type != CXPR_VALUE_BOOL) {
         if (err) {
             err->code = CXPR_ERR_TYPE_MISMATCH;
             err->message = "Expression did not evaluate to bool";
         }
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
         return false;
     }
     *out_value = value.b;

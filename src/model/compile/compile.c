@@ -472,6 +472,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
     const cxpr_registry* compile_reg = reg;
     char** inferred_inputs = NULL;
     size_t inferred_input_count = 0u;
+    size_t declared_input_count = model ? model->input_count : 0u;
     char** required_defaults = NULL;
     size_t required_default_count = 0u;
     size_t* order = NULL;
@@ -932,9 +933,11 @@ compile_outputs:
         program->input_count = model->input_count;
         for (size_t i = 0; i < model->input_count; ++i) {
             program->inputs[i] = cxpr_strdup(model->inputs[i]);
-            program->input_declared_types[i] = model->input_declared_types
+            program->input_declared_types[i] =
+                model->input_declared_types && i < declared_input_count
                 ? model->input_declared_types[i] : CXPR_MODEL_DECL_INFERRED;
-            program->input_element_types[i] = model->input_element_types
+            program->input_element_types[i] =
+                model->input_element_types && i < declared_input_count
                 ? model->input_element_types[i] : CXPR_MODEL_ELEMENT_UNKNOWN;
             if (!program->inputs[i]) {
                 cxpr_model_compiled_free(program);

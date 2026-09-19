@@ -78,7 +78,8 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
 
     root_len = (size_t)(dot - instr->name);
     if (root_len == 0 || root_len >= sizeof(root)) {
-        return cxpr_ir_runtime_error(err, "Field access root too long");
+        return cxpr_ir_make_not_found(
+            err, cxpr_ir_unknown_lookup_message("field access", instr->name));
     }
 
     memcpy(root, instr->name, root_len);
@@ -89,7 +90,7 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
             ctx->expression_scope,
             instr->name,
             &found);
-        if (found) return scoped;
+        if (found) return cxpr_value_clone(&scoped);
 
         scoped = cxpr_expression_lookup_typed_result(
             ctx->expression_scope,
@@ -116,6 +117,8 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
             } else {
                 value = cxpr_context_get_field(ctx, root, dot + 1, &found);
             }
+            if (produced.type == CXPR_VALUE_STRUCT || produced.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&produced);
             if (found) return value;
         }
     }
@@ -330,7 +333,7 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
             cxpr_expression_lookup_typed_result(ctx->expression_scope, instr->name, &scope_found);
         if (scope_found) {
             if (found) *found = true;
-            return scoped;
+            return cxpr_value_clone(&scoped);
         }
     }
 

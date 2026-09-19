@@ -3818,6 +3818,7 @@ static void test_robot_hexapod_fixture_simulates_vec3_io(void) {
         assert(fabs(q_norm - 1.0) < 1e-9);
         orientation_state = cxpr_context_get_typed(ctx, "orientation", &found);
         assert(found && orientation_state.type == CXPR_VALUE_STRUCT);
+        cxpr_value_free(&orientation_state);
 
         front_left_coxa = cxpr_context_get_field(ctx, "front_left", "coxa", &found);
         assert(found && front_left_coxa.type == CXPR_VALUE_NUMBER);

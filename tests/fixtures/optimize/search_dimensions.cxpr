@@ -1,0 +1,32 @@
+# Demonstrates optimization SEARCH DIMENSIONS as $param metadata (spec §3).
+# NOTE: this form parses today — nested `optimize { ... }` metadata is already
+# supported (see tests/model.test.c:271-331). Only the semantics (candidate
+# generation) are added in later phases.
+
+model search_dimensions
+
+in close
+
+# Range dimension: min / max / step.
+$fast = 12 {
+    optimize {
+        min = 5
+        max = 50
+        step = 5
+    }
+}
+
+# Explicit-values dimension. `values` and `min/max/step` are alternative forms
+# and must not be combined in the same block.
+$slow = 26 {
+    optimize {
+        values = [20, 30, 40, 50]
+    }
+}
+
+fast = ema(close, $fast)
+slow = ema(close, $slow)
+
+signal = fast > slow
+
+out signal

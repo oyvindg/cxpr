@@ -55,8 +55,14 @@ cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
 double cxpr_eval_scalar_arg(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                             const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value value = cxpr_eval_node(ast, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return NAN;
+    if (err && err->code != CXPR_OK) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
+        return NAN;
+    }
     if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err, "Expected double argument")) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
         return NAN;
     }
     return value.d;

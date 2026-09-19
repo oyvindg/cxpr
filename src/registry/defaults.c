@@ -49,6 +49,31 @@ static double cxpr_max_n(const double* args, size_t argc) {
     return out;
 }
 
+static double cxpr_argmin_n(const double* args, size_t argc) {
+    size_t best = 0;
+    if (!args || argc == 0) return 0.0;
+    for (size_t i = 1; i < argc; ++i) {
+        if (args[i] < args[best]) best = i;
+    }
+    return (double)best;
+}
+
+static double cxpr_argmax_n(const double* args, size_t argc) {
+    size_t best = 0;
+    if (!args || argc == 0) return 0.0;
+    for (size_t i = 1; i < argc; ++i) {
+        if (args[i] > args[best]) best = i;
+    }
+    return (double)best;
+}
+
+static double cxpr_sum_n(const double* args, size_t argc) {
+    double out = 0.0;
+    if (!args || argc == 0) return 0.0;
+    for (size_t i = 0; i < argc; ++i) out += args[i];
+    return out;
+}
+
 static double cxpr_mean_n(const double* args, size_t argc) {
     double sum = 0.0;
     if (!args || argc == 0) return 0.0;
@@ -241,19 +266,38 @@ static cxpr_value cxpr_fn_contains(const cxpr_expr_ast* call_ast,
                                    "contains() requires source and values");
     }
     if (!cxpr_eval_ast(ordered[0], ctx, reg, &source, err)) return cxpr_bool(false);
-    if (!cxpr_eval_ast(ordered[1], ctx, reg, &values, err)) return cxpr_bool(false);
+    if (!cxpr_eval_ast(ordered[1], ctx, reg, &values, err)) {
+        if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&source);
+        return cxpr_bool(false);
+    }
     if (values.type != CXPR_VALUE_ARRAY || !values.a) {
+        if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&source);
+        if (values.type == CXPR_VALUE_STRUCT || values.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&values);
         return cxpr_contains_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "contains() values argument must be an array");
     }
     for (size_t i = 0u; i < values.a->count; ++i) {
         bool equal = false;
         if (!cxpr_contains_scalar_equal(source, values.a->values[i], &equal)) {
+            if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&source);
+            cxpr_value_free(&values);
             return cxpr_contains_error(err, CXPR_ERR_TYPE_MISMATCH,
                                        "contains() supports scalar values only");
         }
-        if (equal) return cxpr_bool(true);
+        if (equal) {
+            if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&source);
+            cxpr_value_free(&values);
+            return cxpr_bool(true);
+        }
     }
+    if (source.type == CXPR_VALUE_STRUCT || source.type == CXPR_VALUE_ARRAY)
+        cxpr_value_free(&source);
+    cxpr_value_free(&values);
     return cxpr_bool(false);
 }
 
@@ -428,6 +472,21 @@ double cxpr_max(const double* args, size_t argc, void* userdata) {
     return cxpr_max_n(args, argc);
 }
 
+static double cxpr_argmin(const double* args, size_t argc, void* userdata) {
+    (void)userdata;
+    return cxpr_argmin_n(args, argc);
+}
+
+static double cxpr_argmax(const double* args, size_t argc, void* userdata) {
+    (void)userdata;
+    return cxpr_argmax_n(args, argc);
+}
+
+static double cxpr_sum(const double* args, size_t argc, void* userdata) {
+    (void)userdata;
+    return cxpr_sum_n(args, argc);
+}
+
 double cxpr_mean(const double* args, size_t argc, void* userdata) {
     (void)userdata;
     return cxpr_mean_n(args, argc);
@@ -458,6 +517,9 @@ typedef struct {
 static const cxpr_default_entry cxpr_default_entries[] = {
     {"min", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_min}, 1, 8},
     {"max", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_max}, 1, 8},
+    {"argmin", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_argmin}, 1, 8},
+    {"argmax", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_argmax}, 1, 8},
+    {"sum", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_sum}, 1, 8},
     {"mean", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_mean}, 1, 8},
     {"clamp", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_clamp}, 3, 3},
     {"sign", CXPR_DEFAULT_UNARY, {.unary = cxpr_sign}, 1, 1},
@@ -565,6 +627,9 @@ void cxpr_register_math(cxpr_registry* reg) {
 
     cxpr_registry_add(reg, "min", cxpr_min, 1, 8, NULL, NULL);
     cxpr_registry_add(reg, "max", cxpr_max, 1, 8, NULL, NULL);
+    cxpr_registry_add(reg, "argmin", cxpr_argmin, 1, 8, NULL, NULL);
+    cxpr_registry_add(reg, "argmax", cxpr_argmax, 1, 8, NULL, NULL);
+    cxpr_registry_add(reg, "sum", cxpr_sum, 1, 8, NULL, NULL);
     cxpr_registry_add(reg, "mean", cxpr_mean, 1, 8, NULL, NULL);
     cxpr_registry_add_ternary(reg, "clamp", cxpr_clamp);
     cxpr_registry_add_unary(reg, "sign", cxpr_sign);

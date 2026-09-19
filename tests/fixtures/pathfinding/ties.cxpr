@@ -1,0 +1,17 @@
+// Tie-breaking must be deterministic: lowest source-position index
+// wins, both for exact ties and for FMA-sensitive near-ties.
+model ties
+
+in { base, cost }
+
+// Exact tie: two equal minima -> index 0.
+exact_tie = argmin(base, base, base + cost)
+
+// Near-tie: `base + cost` vs a re-associated equivalent. argmin MUST lower from
+// the same sub-expression as the value it indexes, and MUST NOT use fast-math /
+// contraction, or the chosen index can flip across backends.
+near_a = base + cost
+near_b = base + cost * 1.0
+near_tie = argmin(near_a, near_b)
+
+out { exact_tie, near_tie }

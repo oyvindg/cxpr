@@ -260,6 +260,9 @@ static void emit_token_node(const cxpr_doc_ast_node* node,
     size_t col;
     size_t len;
     if (!type) return;
+    if ((!name || !*name) && cxpr_doc_ast_node_text(node)) {
+        name = cxpr_doc_ast_node_text(node);
+    }
     if (!span_find_name(source, span, name, &line, &col, &len)) {
         line = line_zero(span.start);
         col = span.start.column;
@@ -302,6 +305,18 @@ static void walk_tokens(const cxpr_doc_ast_node* node,
     for (size_t i = 0u; i < count; ++i) {
         walk_tokens(cxpr_doc_ast_node_child(node, i), source, comma);
     }
+}
+
+static int document_has_model(const cxpr_doc_ast* ast) {
+    const cxpr_doc_ast_node* root = cxpr_doc_ast_root(ast);
+    size_t count = cxpr_doc_ast_node_child_count(root);
+    for (size_t i = 0u; i < count; ++i) {
+        if (cxpr_doc_ast_node_kind(cxpr_doc_ast_node_child(root, i)) ==
+            CXPR_DOC_AST_MODEL_DECL) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static void collect_function_names(const cxpr_model* model,
@@ -392,7 +407,7 @@ int main(int argc, char** argv) {
     model = cxpr_model_parse(source, &semantic_err);
     if (!model) {
         semantic_ok = 0;
-    } else {
+    } else if (document_has_model(ast)) {
         size_t use_count = cxpr_model_use_count(model);
         char** external_refs = use_count
             ? (char**)calloc(use_count, sizeof(*external_refs))

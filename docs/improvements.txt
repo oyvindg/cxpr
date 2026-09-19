@@ -1,0 +1,128 @@
+Jeg ville prioritert korrekthet, pålitelig CI og samsvar mellom API og dokumentasjon før flere språkfunksjoner. Jeg fant konkrete problemer i alle tre kategorier.
+
+Gjennomgangen gjelder commit f8392ea, opprinnelig kalt «Complete cxpr 3.1.1 dynamic host integration» (senere omnummerert til 0.3.2). Jeg har lest kildekode, tester, byggoppsett og dokumentasjon. Jeg har ikke kjørt hele testsuiten; CMake- og coverage-funnene nedenfor er kontrollert med isolerte lokale reproduksjoner.
+
+Utgangspunktet er godt: repoet har allerede GCC/Clang-matrise, strict-bygg, installasjonstest, sanitizer-jobber, fuzzing og dokumentasjon for eierskap og tråding. Det viktigste er derfor ikke å legge til flere sjekkbokser, men å sikre at disse mekanismene faktisk håndhever kontraktene.
+
+1. Høy prioritet: rett konkrete feil i context-API-et
+Valgfri found endrer returverdien
+
+I src/context/values.c returnerer cxpr_context_get() bare den oppslåtte verdien inne i if (found && *found). Dermed returnerer funksjonen alltid 0.0 når found == NULL, selv om variabelen finnes. Headeren dokumenterer uttrykkelig at found er valgfri.
+
+Denne regresjonstesten bør inn:
+
+cxpr_context* ctx = cxpr_context_new();
+assert(ctx != NULL);
+
+cxpr_context_set(ctx, "x", 42.0);
+assert(cxpr_context_get(ctx, "x", NULL) == 42.0);
+
+cxpr_context_free(ctx);
+
+Rettelse: Bruk en lokal bool for oppslagsresultatet. Kopier resultatet til found når pekeren er oppgitt, men ikke la den styre hvilken verdi funksjonen returnerer.
+
+Bytte fra int64 til streng etterlater gammel binding
+
+cxpr_context_set_string() fjerner tidligere bool-, array- og struct-bindinger, men ikke int64-bindingen. Samtidig undersøker cxpr_context_get_typed() heltall før strenger. Sekvensen «sett x til heltallet 7, sett x til strengen "ok", les x» kan derfor gi det gamle heltallet. Tilsvarende manglende opprydding finnes i parameter-setteren for strenger.
+
+Rettelse: Samle erstatning av bindinger i én intern operasjon, og lag tabellstyrte tester for overgangene mellom alle støttede typer.
+
+Numerisk oppslag kan lekke kopierte verdier
+
+cxpr_context_get_typed() oppretter kopier av arrays og structs. Den numeriske cxpr_context_get() frigjør ikke disse når den avviser typen. Det gir en lekkasjevei ved numerisk oppslag på slike bindinger.
+
+Dette peker mot en viktig arkitekturforbedring: gjør «lånt verdi», «eid kopi» og «typekonvertering» tydelig adskilt, både internt og i API-dokumentasjonen.
+
+2. Høy prioritet: sanitizer-oppsettet treffer ikke bibliotekskoden
+
+I rotens CMakeLists.txt opprettes cxpr med add_library() før sanitizer-flaggene legges til med add_compile_options(). CMake initialiserer et targets compile-options fra katalogegenskapene når targetet opprettes. Flaggene kommer derfor for sent for selve biblioteket, men tidsnok for testprogrammene.
+
+Jeg reproduserte samme rekkefølge lokalt: bibliotekets kildefil ble kompilert uten -fsanitize=address, mens testprogrammet fikk flagget.
+
+Konsekvensen er at en grønn sanitizer-jobb gir svakere trygghet enn den ser ut til å gi.
+
+Jeg ville brukt target_compile_options(cxpr ...) eksplisitt, eller et internt instrumentation-target som både biblioteket og testene kobles til. Legg også inn en kontroll av compile_commands.json som bekrefter at filer under src/ faktisk instrumenteres.
+
+To tilhørende forbedringer:
+
+Aktiver lekkasjedeteksjon i en egen jobb. ASAN_OPTIONS=detect_leaks=0 settes både i presets og i testegenskapene. Det holder altså ikke bare å endre preset-filen. Eventuelle nødvendige unntak bør være smale og dokumenterte.
+
+La UBSan-feil stoppe testen. Fuzz-jobben setter UBSAN_OPTIONS=halt_on_error=1, men den ordinære UBSan-jobben gjør ikke det. Mange UBSan-kontroller rapporterer feil og fortsetter som standard. Sett stopp-på-feil også der, eller bruk -fno-sanitize-recover=undefined.
+
+3. Høy prioritet: fuzzeren trenger dekning inne i kjernen
+
+tests/fuzz/CMakeLists.txt setter -fsanitize=fuzzer,address,undefined på fuzz-eksekverbaren, men ikke coverage-instrumentering på cxpr-biblioteket. Dette er et separat problem fra ASan/UBSan-rekkefølgen: fuzzeren trenger tilbakemelding fra grenene inne i parseren og evaluatorene, ikke bare fra driveren.
+
+Jeg ville bygget en egen instrumentert variant av kjernen med -fsanitize=fuzzer-no-link,address,undefined, og koblet fuzz-eksekverbaren med libFuzzer-runtime. LLVM dokumenterer nettopp skillet mellom instrumentering uten main() og linking av fuzz-driveren.
+
+Deretter ville jeg forbedret selve teststrategien. Dagens driver går gjennom parsing, kompilering og evaluering, men sammenligner ikke AST-resultat mot IR-resultat. Den bruker også en tom context.
+
+Neste steg bør være differensiell testing: Kjør samme støttede uttrykk med samme input gjennom AST og IR, og sammenlign resultat, type og feilkode. For stateful kjøring må begge få lik, separat initialtilstand. Utvid senere til generert C for den delen av språket som støttes der.
+
+Det vil teste semantiske feil, ikke bare krasj.
+
+4. Høy prioritet: dokumentasjonen beskriver feil generert ABI
+
+Her er det en konkret mismatch innenfor samme commit:
+
+Sted	Kontrakt
+include/cxpr/generated.h	ABI 5, med cxpr_value-arrayer til tick
+docs/api/generated-c.md	ABI 4, med tall og boolske verdier som double
+README-eksempelet for generert C	Sender double-arrayer til model->tick()
+
+Dette fremgår direkte av headeren, referansedokumentasjonen og eksempelet.
+
+Dette er mer enn utdatert tekst: en bruker som kopierer eksempelet, sender feil pekertyper til funksjonen.
+
+Jeg ville gjort dokumentasjonseksemplene kjørbare i CI. Legg komplette eksempler i kildefiler som bygges og testes, og gjenbruk disse i dokumentasjonen. Oppdater samtidig ABI-beskrivelsen og migrasjonsveiledningen samlet.
+
+Akseptansekriteriet bør være enkelt: Alle eksempler som presenteres som kjørbare, skal kompilere mot headerne i samme commit uten advarsler om inkompatible typer.
+
+5. Middels–høy prioritet: coverage-skriptet kan godkjenne manglende data
+
+scripts/check_function_coverage.sh hopper over kildefiler uten .gcno, undertrykker feil fra gcov, og krever ikke at noen funksjoner faktisk ble undersøkt. Jeg reproduserte at en byggkatalog uten coverage-data gir exitkode 0 og denne meldingen:
+
+Function coverage check passed: 0 function(s) executed at least once.
+
+Skriptet identifiserer dessuten funksjoner bare med funksjonsnavnet. To static-funksjoner med samme navn i forskjellige filer kan dermed blandes sammen. Det søker også bare under src/.
+
+Rettelse: La kontrollen feile når forventede måledata mangler, når gcov feiler, eller når antall undersøkte funksjoner er null. Bruk minst filsti pluss funksjonsnavn som identitet, og definer eksplisitt hvilke kompilerte kildefiler kontrollen omfatter.
+
+Etter dette ville jeg supplert funksjonsdekning med grendekning, særlig for feilhåndtering. Å ha kjørt en funksjon én gang sier lite om hvorvidt allokeringsfeil, ugyldige typer og opprydding er testet.
+
+6. Middels prioritet: gjør byggkontrakten konsistent
+Minimumsversjonen for CMake er feil
+
+Repoet oppgir CMake 3.20, men bruker både preset-format 3 og PROJECT_IS_TOP_LEVEL. Begge krever CMake 3.21.
+
+Den enkleste rettelsen er å heve minimumskravet til 3.21 i byggfiler og dokumentasjon. Alternativet er å implementere reell 3.20-kompatibilitet. Uansett bør den oppgitte minimumsversjonen inngå i CI.
+
+Test kombinasjoner av byggevalg
+
+Jeg ville særlig kontrollert en ren bygging med:
+
+cmake -S . -B build-no-tools \
+  -DCXPR_BUILD_TOOLS=OFF \
+  -DCXPR_BUILD_TESTS=ON
+cmake --build build-no-tools
+
+Ut fra kildekoden ser denne kombinasjonen problematisk ut: testtargets registreres via globbing, mens genereringen av enkelte inkluderte filer ligger bak if(TARGET cxpr_model_codegen). dynamic_host_e2e.test.c inkluderer for eksempel dynamic_host.gen.c ubetinget. Jeg har ikke kjørt denne kombinasjonen mot hele repoet.
+
+Løsningen er å registrere avhengige tester betinget, eller skille interne testgeneratorer fra valget om å bygge brukervendte kommandolinjeverktøy.
+
+Utvid CI fra kompilatormatrise til støttet plattformmatrise
+
+Den undersøkte ci.yml kjører på Ubuntu og aktiverer ikke shared-library-valget. Shared-bygg har egne tester, blant annet P/Invoke-smoke-tester, som derfor ikke dekkes av denne standardmatrisen.
+
+Jeg ville først lagt til Linux med både statisk og delt bibliotek. Deretter Windows/MSVC og macOS dersom disse er tilsiktede støtteplattformer. Behold installasjonstesten; den er verdifull.
+
+Hva jeg ville gjort først
+
+Jeg ville delt arbeidet i tre avgrensede PR-er:
+
+Rekkefølge	Innhold	Ferdig når
+1. Korrekthet	Context-feilene og sanitizer-instrumenteringen	Regresjonstester dekker funnene, og bibliotekskoden instrumenteres
+2. Testenes pålitelighet	Fuzz-instrumentering, lekkasjedeteksjon, UBSan-stopp og coverage-kontroll	Manglende data og faktiske feil gir rødt bygg
+3. Integrasjon	ABI-dokumentasjon, kjørbare eksempler, CMake-minimum og byggvarianter	Dokumentert bruk fungerer mot samme commit
+
+Min vurdering: Den viktigste arkitekturforbedringen er å samle typebytte og eierskap i context-laget. Den viktigste prosessforbedringen er å teste kvalitetssjekkene selv: instrumenteres riktig kode, stopper feil byggingen, og kan manglende måledata feilaktig gi grønt? Det gir mer verdi nå enn mer funksjonalitet.

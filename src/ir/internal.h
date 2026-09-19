@@ -95,7 +95,7 @@ typedef enum {
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
  * - LOOKBACK_PUSH: literal offset in index
- * - LOOKBACK_RESOLVE: target AST in payload, literal offset in index
+ * - LOOKBACK_RESOLVE: owned cxpr_ir_lookback_payload in payload, literal offset in index
  * - arithmetic / comparisons / return: no extra operand
  */
 typedef struct {
@@ -113,6 +113,27 @@ typedef struct {
         const cxpr_expr_ast* ast; /* CALL_AST */
     };
 } cxpr_ir_instr;
+
+typedef enum {
+    CXPR_IR_LOOKBACK_IDENT_ARRAY,
+    CXPR_IR_LOOKBACK_PRODUCER_FIELD_CHAIN,
+    CXPR_IR_LOOKBACK_RESOLVER
+} cxpr_ir_lookback_target_kind;
+
+/** Compile-time resolved metadata owned by one LOOKBACK_RESOLVE instruction. */
+typedef struct {
+    const cxpr_expr_ast* target; /**< Borrowed from the compiled program's owned AST. */
+    cxpr_ir_lookback_target_kind kind;
+    const char* key;             /**< Borrowed identifier or precomputed flat chain key. */
+    char* const* segments;       /**< Borrowed interned AST segments, when applicable. */
+    size_t segment_count;
+    const cxpr_registry* compile_registry;
+    cxpr_index_capability_fn capability;
+    void* capability_userdata;
+    bool capability_handled;
+    cxpr_lookback_resolver_ptr resolver;
+    void* resolver_userdata;
+} cxpr_ir_lookback_payload;
 
 _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr for stor");
 
