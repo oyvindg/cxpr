@@ -10,7 +10,7 @@
  *
  * The full flow-field descriptor (grid_relax_4nabo) additionally needs R6 (argmin);
  * this test uses the distance-only fixture (grid_dist_4nabo) so it runs on
- * release/3.2.0 today.
+ * release/0.3.2 today.
  *
  * See plans/field_pathfinding_requirements.md (R7).
  */

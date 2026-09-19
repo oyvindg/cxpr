@@ -159,7 +159,7 @@ int main(void) {
     printf("argmin_argmax_parity: OK\n");
 #else
     printf("argmin_argmax_parity: SKIP "
-           "(R6 argmin/argmax/sum not yet implemented on release/3.2.0)\n");
+           "(R6 argmin/argmax/sum not yet implemented on release/0.3.2)\n");
 #endif
     return 0;
 }

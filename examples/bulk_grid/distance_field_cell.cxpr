@@ -1,5 +1,5 @@
 // Distance-field relaxation cell -- the "works today" baseline (min-fold + saturating
-// add, no direction). Compiles and bulk-runs on release/3.2.0 as-is.
+// add, no direction). Compiles and bulk-runs on release/0.3.2 as-is.
 //
 // One iteration of label-correcting relaxation: dist = min(sadd(neighbour, cost)).
 // The host halo-gathers d_n/d_s/d_e/d_w per cell, ticks this model to fixpoint

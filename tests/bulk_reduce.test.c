@@ -6,7 +6,7 @@
  * the host can drive iterate-to-fixpoint without hand-rolled reductions.
  *
  * GATED behind CXPR_PATHFINDING_R8_READY (default off): cxpr_bulk_reduce does not
- * exist on release/3.2.0 yet. Passes as SKIP until R8 lands. R8 is P1/optional --
+ * exist on release/0.3.2 yet. Passes as SKIP until R8 lands. R8 is P1/optional --
  * only pursue if hand-rolled convergence becomes a burden.
  *
  * See plans/field_pathfinding_requirements.md (R8).
@@ -82,7 +82,7 @@ int main(void) {
     printf("bulk_reduce: OK\n");
 #else
     printf("bulk_reduce: SKIP "
-           "(R8 cxpr_bulk_reduce not yet implemented on release/3.2.0)\n");
+           "(R8 cxpr_bulk_reduce not yet implemented on release/0.3.2)\n");
 #endif
     return 0;
 }

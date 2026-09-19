@@ -1,6 +1,6 @@
 Jeg ville prioritert korrekthet, pålitelig CI og samsvar mellom API og dokumentasjon før flere språkfunksjoner. Jeg fant konkrete problemer i alle tre kategorier.
 
-Gjennomgangen gjelder commit f8392ea, «Complete cxpr 3.1.1 dynamic host integration». Jeg har lest kildekode, tester, byggoppsett og dokumentasjon. Jeg har ikke kjørt hele testsuiten; CMake- og coverage-funnene nedenfor er kontrollert med isolerte lokale reproduksjoner.
+Gjennomgangen gjelder commit f8392ea, opprinnelig kalt «Complete cxpr 3.1.1 dynamic host integration» (senere omnummerert til 0.3.2). Jeg har lest kildekode, tester, byggoppsett og dokumentasjon. Jeg har ikke kjørt hele testsuiten; CMake- og coverage-funnene nedenfor er kontrollert med isolerte lokale reproduksjoner.
 
 Utgangspunktet er godt: repoet har allerede GCC/Clang-matrise, strict-bygg, installasjonstest, sanitizer-jobber, fuzzing og dokumentasjon for eierskap og tråding. Det viktigste er derfor ikke å legge til flere sjekkbokser, men å sikre at disse mekanismene faktisk håndhever kontraktene.
 
