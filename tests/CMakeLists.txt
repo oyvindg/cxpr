@@ -32,7 +32,7 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
         continue()
     endif()
     if(NOT TARGET cxpr_model_codegen AND test_file MATCHES
-       "(bulk_buffer_parity|bulk_codegen_e2e|composition_bulk_codegen_e2e|dynamic_host_e2e)\\.test\\.c$")
+       "(bulk_buffer_parity|bulk_codegen_e2e|composition_bulk_codegen_e2e|dynamic_host_e2e|pathfinding_flow_e2e|pathfinding_generated_parity)\\.test\\.c$")
         continue()
     endif()
     file(RELATIVE_PATH test_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${test_file}")
@@ -60,8 +60,91 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     endif()
 
     add_test(NAME "${test_base}" COMMAND "$<TARGET_FILE:${target_name}>")
+    if(test_base STREQUAL "bulk_reduce")
+        set_tests_properties("${test_base}" PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     list(APPEND CXPR_C_TEST_NAMES "${test_base}")
 endforeach()
+
+if(TARGET cxpr_model_codegen)
+    set(CXPR_PATHFINDING_FIXTURE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding")
+    set(CXPR_PATHFINDING_GENERATED_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_pathfinding")
+    set(CXPR_PATHFINDING_ARGMIN_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_argmin_argmax.gen.c")
+    set(CXPR_PATHFINDING_TIES_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_ties.gen.c")
+    set(CXPR_PATHFINDING_GRID4_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_grid4.gen.c")
+    set(CXPR_PATHFINDING_GRID8_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_grid8.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_PATHFINDING_ARGMIN_C}" "${CXPR_PATHFINDING_TIES_C}"
+            "${CXPR_PATHFINDING_GRID4_C}" "${CXPR_PATHFINDING_GRID8_C}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CXPR_PATHFINDING_GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/argmin_argmax.cxpr"
+            --output "${CXPR_PATHFINDING_ARGMIN_C}"
+            --function pathfinding_argmin_argmax_tick
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/ties.cxpr"
+            --output "${CXPR_PATHFINDING_TIES_C}"
+            --function pathfinding_ties_tick
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_4nabo.cxpr"
+            --output "${CXPR_PATHFINDING_GRID4_C}"
+            --function pathfinding_grid4_tick
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_8nabo.cxpr"
+            --output "${CXPR_PATHFINDING_GRID8_C}"
+            --function pathfinding_grid8_tick
+        DEPENDS cxpr_model_codegen
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/argmin_argmax.cxpr"
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/ties.cxpr"
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_4nabo.cxpr"
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_8nabo.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_pathfinding_parity
+        DEPENDS "${CXPR_PATHFINDING_ARGMIN_C}" "${CXPR_PATHFINDING_TIES_C}"
+            "${CXPR_PATHFINDING_GRID4_C}" "${CXPR_PATHFINDING_GRID8_C}")
+    add_dependencies(test_pathfinding_generated_parity
+        generate_cxpr_pathfinding_parity)
+    add_dependencies(test_pathfinding_flow_e2e
+        generate_cxpr_pathfinding_parity)
+    target_include_directories(test_pathfinding_generated_parity PRIVATE
+        "${CXPR_PATHFINDING_GENERATED_DIR}")
+    target_include_directories(test_pathfinding_flow_e2e PRIVATE
+        "${CXPR_PATHFINDING_GENERATED_DIR}")
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        target_compile_options(test_pathfinding_generated_parity PRIVATE
+            -ffp-contract=off)
+    endif()
+endif()
+
+# Keep the machine-readable pathfinding acceptance map honest at configure time.
+if(TARGET cxpr_model_codegen)
+    set(CXPR_PATHFINDING_ACCEPTANCE
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/acceptance.json")
+    file(READ "${CXPR_PATHFINDING_ACCEPTANCE}" CXPR_PATHFINDING_ACCEPTANCE_JSON)
+    string(JSON CXPR_PATHFINDING_ACCEPTANCE_COUNT LENGTH
+        "${CXPR_PATHFINDING_ACCEPTANCE_JSON}" requirements)
+    math(EXPR CXPR_PATHFINDING_ACCEPTANCE_LAST
+        "${CXPR_PATHFINDING_ACCEPTANCE_COUNT} - 1")
+    foreach(index RANGE 0 ${CXPR_PATHFINDING_ACCEPTANCE_LAST})
+        string(JSON fixture GET "${CXPR_PATHFINDING_ACCEPTANCE_JSON}"
+            requirements ${index} fixture)
+        string(JSON cpu_test GET "${CXPR_PATHFINDING_ACCEPTANCE_JSON}"
+            requirements ${index} cpu_test)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/${fixture}")
+            message(FATAL_ERROR "Pathfinding acceptance fixture is missing: ${fixture}")
+        endif()
+        if(NOT TARGET "test_${cpu_test}")
+            message(FATAL_ERROR "Pathfinding acceptance test is not registered: ${cpu_test}")
+        endif()
+    endforeach()
+endif()
 
 if(CXPR_BUILD_SHARED)
     add_executable(test_pinvoke_smoke pinvoke_smoke.c)
@@ -154,6 +237,43 @@ if(CXPR_BUILD_CUDA_TESTS)
         message(FATAL_ERROR "CXPR_BUILD_CUDA_TESTS=ON requires the CUDA toolkit and nvcc")
     endif()
     enable_language(CUDA)
+
+    set(CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_pathfinding_argmin.cuh")
+    set(CXPR_CUDA_PATHFINDING_TIES_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_pathfinding_ties.cuh")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED}"
+            "${CXPR_CUDA_PATHFINDING_TIES_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/argmin_argmax.cxpr"
+            "${CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED}"
+            cxpr_pathfinding_argmin_tick
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/ties.cxpr"
+            "${CXPR_CUDA_PATHFINDING_TIES_GENERATED}"
+            cxpr_pathfinding_ties_tick
+        DEPENDS cxpr_cuda_bulk_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/argmin_argmax.cxpr"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/ties.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_pathfinding_fixtures
+        DEPENDS "${CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED}"
+            "${CXPR_CUDA_PATHFINDING_TIES_GENERATED}")
+    add_executable(test_cuda_pathfinding_parity cuda_pathfinding_parity.cu)
+    add_dependencies(test_cuda_pathfinding_parity
+        generate_cxpr_cuda_pathfinding_fixtures)
+    target_include_directories(test_cuda_pathfinding_parity PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+    target_compile_options(test_cuda_pathfinding_parity PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
+    set_target_properties(test_cuda_pathfinding_parity PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_pathfinding_parity
+        COMMAND $<TARGET_FILE:test_cuda_pathfinding_parity>)
+    set_tests_properties(cuda_pathfinding_parity PROPERTIES
+        LABELS "cuda" SKIP_RETURN_CODE 77)
 
     set(CXPR_CUDA_BULK_GENERATED
         "${CMAKE_CURRENT_BINARY_DIR}/cxpr_klein_gordon_generated.cuh")

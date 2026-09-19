@@ -92,6 +92,13 @@ of the selected argument as a numeric scalar; exact ties select the lowest
 index. The returned indices 0..7 are exactly representable as `double` (as are
 all integers through 2^53). These folds do not change the scalar model/bulk ABI.
 
+When an index depends on floating-point expressions, generated artifacts must
+be compiled without reassociation or multiply-add contraction: do not enable
+`-ffast-math`; use `-ffp-contract=off` for GCC/Clang and `--fmad=false` for
+NVCC. This preserves the same comparison operands and tie-breaking result as
+tree evaluation and IR. The pathfinding acceptance tests include a binary64
+case whose selected index changes if `a * b + c` is contracted.
+
 ### Primary forms
 
 ```ebnf

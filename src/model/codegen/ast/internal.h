@@ -275,9 +275,15 @@ void cxpr_model_c_emit_common_helpers(cxpr_model_c_buf* b);
 
 /** Emit user-defined functions present in AST bodies. */
 bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_compiled* program,
-                                          const char* function_prefix,
-                                          cxpr_model_c_buf* b,
-                                          cxpr_error* err);
+                                             const char* function_prefix,
+                                             cxpr_model_c_buf* b,
+                                             cxpr_error* err);
+
+/** Return whether a defined function body closes over one model parameter. */
+bool cxpr_model_c_defined_function_captures_param(
+    const cxpr_model_compiled* program,
+    const cxpr_func_entry* entry,
+    size_t param_index);
 
 /** Emit a pair of bindings when both can be emitted as an optimized pair. */
 bool cxpr_model_c_emit_optimized_binding_pair(
