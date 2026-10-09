@@ -24,6 +24,7 @@
 #include <cxpr/doc/ast.h>
 #include <cxpr/model/model.h>
 #include <cxpr/model/compiled.h>
+#include <cxpr/model/optimize.h>
 #include <cxpr/model/imports.h>
 #include <cxpr/alias.h>
 #include <cxpr/context.h>

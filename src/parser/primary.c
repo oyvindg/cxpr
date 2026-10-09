@@ -193,6 +193,24 @@ fail:
     return NULL;
 }
 
+static bool cxpr_skip_record_field_metadata(cxpr_expr_parser* p) {
+    size_t depth = 0u;
+
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) return true;
+    do {
+        if (cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) {
+            depth++;
+        } else if (cxpr_expr_parser_check(p, CXPR_TOK_RBRACE)) {
+            depth--;
+        } else if (cxpr_expr_parser_check(p, CXPR_TOK_EOF)) {
+            cxpr_expr_parser_set_error(p, "Expected '}' to close record field metadata");
+            return false;
+        }
+        cxpr_expr_parser_advance(p);
+    } while (depth > 0u);
+    return true;
+}
+
 static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
     size_t count = 0;
     size_t capacity = 4;
@@ -253,6 +271,10 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
                 goto fail;
             }
             if (!values[count] || p->had_error) goto fail;
+            /* Dynasty records allow optimizer annotations after leaf values.
+             * Runtime evaluation only needs the value; the host extracts the
+             * metadata separately using its fully qualified record path. */
+            if (!cxpr_skip_record_field_metadata(p)) goto fail;
             count++;
         } while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA));
     }
@@ -352,7 +374,9 @@ static bool cxpr_expr_parser_parse_arg_list(cxpr_expr_parser* p,
 
 fail:
     for (size_t i = 0u; i < argc; ++i) cxpr_expr_ast_free(args[i]);
-    for (size_t i = 0u; i <= argc; ++i) free(arg_names[i]);
+    for (size_t i = 0u; i < argc; ++i) free(arg_names[i]);
+    /* The current slot may contain a parsed name even when its value failed. */
+    if (argc < args_capacity) free(arg_names[argc]);
     free(arg_names);
     free(args);
     return false;

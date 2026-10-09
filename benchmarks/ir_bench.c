@@ -5,6 +5,14 @@
 #include <string.h>
 #include <time.h>
 
+/* Internal registration hook used only to construct the struct-call microbench. */
+cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
+                                          const char* const* param_names,
+                                          size_t param_count,
+                                          const char* const* field_names,
+                                          const cxpr_expr_ast* const* field_bodies,
+                                          size_t field_count);
+
 #ifdef CXPR_BENCH_IR_SIMPLE_ARITH_INLINE
 #include CXPR_BENCH_IR_SIMPLE_ARITH_INLINE
 #endif
@@ -25,6 +33,9 @@
 #endif
 #ifdef CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
 #include CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_CALL_INLINE
+#include CXPR_BENCH_IR_STRUCT_CALL_INLINE
 #endif
 #ifdef CXPR_BENCH_IR_LARGE_ARITH_INLINE
 #include CXPR_BENCH_IR_LARGE_ARITH_INLINE
@@ -84,6 +95,7 @@ typedef enum {
     BENCH_C_DEFINED_CHAIN,
     BENCH_C_DEEP_DEFINED,
     BENCH_C_COMPLEX_SIGNAL,
+    BENCH_C_STRUCT_CALL,
     BENCH_C_LARGE_ARITH,
     BENCH_C_LARGE_BRANCH,
     BENCH_C_LARGE_MATH,
@@ -223,6 +235,9 @@ static const char* bench_c_model_inline_path(bench_c_model model) {
 #endif
 #ifdef CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE
     case BENCH_C_COMPLEX_SIGNAL: return CXPR_BENCH_IR_COMPLEX_SIGNAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STRUCT_CALL_INLINE
+    case BENCH_C_STRUCT_CALL: return CXPR_BENCH_IR_STRUCT_CALL_INLINE;
 #endif
 #ifdef CXPR_BENCH_IR_LARGE_ARITH_INLINE
     case BENCH_C_LARGE_ARITH: return CXPR_BENCH_IR_LARGE_ARITH_INLINE;
@@ -413,6 +428,11 @@ static void set_base_values(cxpr_context* ctx) {
     cxpr_context_set(ctx, "e", 5.5);
     cxpr_context_set(ctx, "f", 6.5);
     cxpr_context_set(ctx, "g", 7.5);
+    cxpr_context_set(ctx, "vector", 0.0);
+    cxpr_context_set(ctx, "vector.x", 1.5);
+    cxpr_context_set(ctx, "vector.y", 2.5);
+    cxpr_context_set(ctx, "v.x", 1.5);
+    cxpr_context_set(ctx, "v.y", 2.5);
     cxpr_context_set(ctx, "h", 8.5);
     cxpr_context_set(ctx, "i", 9.5);
     cxpr_context_set(ctx, "j", 10.5);
@@ -942,6 +962,22 @@ static double time_c_defined_fn(size_t iterations, double* out_total) {
     return (double)(end - start) / (double)iterations;
 }
 
+static double time_c_struct_call(size_t iterations, double* out_total) {
+    cxpr_bench_ir_struct_call_state state = {0};
+    void (*volatile tick)(cxpr_bench_ir_struct_call_state*, const cxpr_value*,
+                          const cxpr_value*, cxpr_value*) = cxpr_bench_ir_struct_call;
+    cxpr_value inputs[2] = {cxpr_num(1.5), cxpr_num(2.5)};
+    cxpr_value outputs[1] = {0};
+    double total = 0.0;
+    long long start = now_ns();
+    for (size_t i = 0; i < iterations; ++i) {
+        tick(&state, inputs, NULL, outputs);
+        total += outputs[0].d;
+    }
+    *out_total = total;
+    return (double)(now_ns() - start) / (double)iterations;
+}
+
 static double time_c_defined_chain(size_t iterations, double* out_total) {
     cxpr_bench_ir_defined_chain_state state = {0};
     void (*volatile tick)(cxpr_bench_ir_defined_chain_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
@@ -1365,6 +1401,7 @@ static double time_c_model(bench_c_model model, size_t iterations, double* out_t
     case BENCH_C_DEFINED_CHAIN: return time_c_defined_chain(iterations, out_total);
     case BENCH_C_DEEP_DEFINED: return time_c_deep_defined(iterations, out_total);
     case BENCH_C_COMPLEX_SIGNAL: return time_c_complex_signal(iterations, out_total);
+    case BENCH_C_STRUCT_CALL: return time_c_struct_call(iterations, out_total);
     case BENCH_C_LARGE_ARITH: return time_c_large_arith(iterations, out_total);
     case BENCH_C_LARGE_BRANCH: return time_c_large_branch(iterations, out_total);
     case BENCH_C_LARGE_MATH: return time_c_large_math(iterations, out_total);
@@ -1507,6 +1544,50 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
         free_bench_model(&source);
         exit(1);
+    }
+    if (strcmp(c->name, "defined_call") == 0 || strcmp(c->name, "struct_call") == 0 ||
+        strcmp(c->name, "struct_binding") == 0) {
+        bool found_call_defined = false;
+        const size_t instruction_count = cxpr_expr_compiled_ir_count(program);
+        for (size_t i = 0u; i < instruction_count; ++i) {
+            cxpr_ir_instruction instruction;
+            if (cxpr_expr_compiled_ir_instruction(program, i, &instruction) &&
+                instruction.op == CXPR_IR_OP_CALL_DEFINED) {
+                found_call_defined = true;
+                break;
+            }
+        }
+        if (!found_call_defined) {
+            fprintf(stderr, "Benchmark '%s' does not contain CALL_DEFINED\n", c->name);
+            for (size_t i = 0u; i < instruction_count; ++i) {
+                cxpr_ir_instruction instruction;
+                if (cxpr_expr_compiled_ir_instruction(program, i, &instruction)) {
+                    fprintf(stderr, "  %s\n", cxpr_ir_opcode_name(instruction.op));
+                }
+            }
+            exit(1);
+        }
+    }
+    if (strcmp(c->name, "struct_binding") == 0) {
+        cxpr_context* binding_ctx = cxpr_context_new();
+        double binding_result = NAN;
+        if (!binding_ctx) {
+            fprintf(stderr, "Failed to allocate struct-binding verification context\n");
+            exit(1);
+        }
+        cxpr_context_set(binding_ctx, "vector", 0.0);
+        cxpr_context_set(binding_ctx, "vector.x", 1.5);
+        cxpr_context_set(binding_ctx, "vector.y", 2.5);
+        if (!cxpr_expr_compiled_eval_number(program, binding_ctx, reg,
+                                            &binding_result, &err) ||
+            fabs(binding_result - 4.0) > 1e-12) {
+            fprintf(stderr,
+                    "Benchmark '%s' did not execute struct-field binding: result=%.17g error=%d (%s)\n",
+                    c->name, binding_result, err.code,
+                    err.message ? err.message : "none");
+            exit(1);
+        }
+        cxpr_context_free(binding_ctx);
     }
 
     set_base_values(ctx);
@@ -2070,6 +2151,9 @@ int main(int argc, char** argv) {
         { "defined_chain", "ir_defined_chain.cxpr", 120000, 0, BENCH_C_DEFINED_CHAIN },
         { "deep_defined", "ir_deep_defined.cxpr", 80000, 0, BENCH_C_DEEP_DEFINED },
         { "complex_signal", "ir_complex_signal.cxpr", 80000, 0, BENCH_C_COMPLEX_SIGNAL },
+        { "struct_call", "ir_struct_call.cxpr", 120000, 0, BENCH_C_STRUCT_CALL },
+        { "struct_binding", "ir_struct_binding.cxpr", 120000, 0, BENCH_C_NONE },
+        { "defined_call", "ir_defined_call.cxpr", 200000, 0, BENCH_C_NONE },
         { "large_arith", "ir_large_arith.cxpr", 60000, 0, BENCH_C_LARGE_ARITH },
         { "large_branch", "ir_large_branch.cxpr", 60000, 0, BENCH_C_LARGE_BRANCH },
         { "large_math", "ir_large_math.cxpr", 400000, 0, BENCH_C_LARGE_MATH },
@@ -2154,6 +2238,68 @@ int main(int argc, char** argv) {
         cxpr_context_free(ctx);
         cxpr_expr_parser_free(parser);
         return 1;
+    }
+
+    {
+        const char* definitions[] = {
+            "q0(x) => x * x",
+            "q1(x) => sqrt(q0(x))",
+            "q2(x) => sqrt(q1(x))",
+            "q3(x) => sqrt(q2(x))",
+            "q4(x) => sqrt(q3(x))",
+            "q5(x) => sqrt(q4(x))",
+            "q6(x) => sqrt(q5(x))",
+            "q7(x) => sqrt(q6(x))",
+            "q8(x) => sqrt(q7(x))",
+            "q9(x) => sqrt(q8(x))",
+        };
+        for (size_t i = 0u; i < sizeof(definitions) / sizeof(definitions[0]); ++i) {
+            err = cxpr_registry_define_fn(reg, definitions[i]);
+            if (err.code != CXPR_OK) {
+                fprintf(stderr, "Failed to define benchmark call chain: %s\n", err.message);
+                return 1;
+            }
+        }
+    }
+
+    {
+        const char* param_names[] = {"x", "y"};
+        const char* field_names[] = {"sum", "diff"};
+        cxpr_expr_ast* sum_body = cxpr_expr_ast_parse(parser, "x + y", &err);
+        cxpr_expr_ast* diff_body = cxpr_expr_ast_parse(parser, "x - y", &err);
+        const cxpr_expr_ast* field_bodies[] = {sum_body, diff_body};
+        if (!sum_body || !diff_body) {
+            fprintf(stderr, "Failed to parse struct-call benchmark fields: %s\n", err.message);
+            return 1;
+        }
+        err = cxpr_registry_define_record_fn(reg, "pair", param_names, 2u,
+                                             field_names, field_bodies, 2u);
+        cxpr_expr_ast_free(diff_body);
+        cxpr_expr_ast_free(sum_body);
+        if (err.code != CXPR_OK) {
+            fprintf(stderr, "Failed to define struct-call benchmark: %s\n", err.message);
+            return 1;
+        }
+    }
+
+    {
+        const char* param_names[] = {"v"};
+        const char* field_names[] = {"sum", "diff"};
+        cxpr_expr_ast* sum_body = cxpr_expr_ast_parse(parser, "v.x + v.y", &err);
+        cxpr_expr_ast* diff_body = cxpr_expr_ast_parse(parser, "v.x - v.y", &err);
+        const cxpr_expr_ast* field_bodies[] = {sum_body, diff_body};
+        if (!sum_body || !diff_body) {
+            fprintf(stderr, "Failed to parse struct-binding benchmark fields: %s\n", err.message);
+            return 1;
+        }
+        err = cxpr_registry_define_record_fn(reg, "project", param_names, 1u,
+                                             field_names, field_bodies, 2u);
+        cxpr_expr_ast_free(diff_body);
+        cxpr_expr_ast_free(sum_body);
+        if (err.code != CXPR_OK) {
+            fprintf(stderr, "Failed to define struct-binding benchmark: %s\n", err.message);
+            return 1;
+        }
     }
 
     err = cxpr_registry_define_fn(reg, "hyp2(x, y) => sqrt(sq(x) + sq(y))");

@@ -633,6 +633,10 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         cxpr_model_session_free(session);
         return NULL;
     }
+    if (!cxpr_model_compiled_check_asserts(program, session->ctx, eval_reg, err)) {
+        cxpr_model_session_free(session);
+        return NULL;
+    }
     for (size_t i = 0; i < program->state_default_count; ++i) {
         if (program->state_defaults[i].declared_type == CXPR_MODEL_DECL_BUFFER) continue;
         if (program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_NUMBER) {
@@ -1069,6 +1073,31 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
 
 cxpr_context* cxpr_model_session_context(cxpr_model_session* session) {
     return session ? session->ctx : NULL;
+}
+
+bool cxpr_model_session_set_param(cxpr_model_session* session,
+                                  const char* name,
+                                  double value,
+                                  cxpr_error* err) {
+    if (!session || !name) {
+        cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                             "Unknown model parameter", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < session->program->constant_count; ++i) {
+        const cxpr_model_compiled_binding* param = &session->program->constants[i];
+        if (strcmp(param->name, name) != 0) continue;
+        if (param->result_kind != CXPR_MODEL_RESULT_NUMBER) {
+            cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                 "Optimizer parameters must be numeric", 0, 0);
+            return false;
+        }
+        cxpr_context_set_param_prehashed(session->ctx, param->name, param->name_hash, value);
+        return true;
+    }
+    cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                         "Unknown model parameter", 0, 0);
+    return false;
 }
 
 static bool cxpr_model_session_tick_fused(const cxpr_model_compiled* program,

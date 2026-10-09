@@ -22,29 +22,32 @@ fi
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/cxpr-gcov.XXXXXX")"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
-declare -A first_file_by_fn
-declare -A covered_by_fn
+declare -A display_by_key
+declare -A covered_by_key
 checked=0
+source_count=0
 
 while IFS= read -r source_file; do
     rel="${source_file#${root_dir}/}"
     obj="${build_path}/CMakeFiles/cxpr.dir/${rel}.o"
     gcno="${obj%.o}.gcno"
     gcda="${obj%.o}.gcda"
+    source_count=$((source_count + 1))
 
     if [ ! -f "${gcno}" ]; then
-        echo "warning: no gcov notes for ${rel}" >&2
-        continue
+        echo "error: no gcov notes for ${rel}" >&2
+        exit 1
     fi
 
     if [ ! -f "${gcda}" ]; then
         echo "warning: no gcov data for ${rel}; run ctest --preset coverage first" >&2
     fi
 
-    output="$(
-        cd "${tmp_dir}"
-        gcov -f -o "${obj}" "${source_file}" 2>/dev/null || true
-    )"
+    if ! output="$(cd "${tmp_dir}" && gcov -f -o "${obj}" "${source_file}" 2>&1)"; then
+        echo "error: gcov failed for ${rel}" >&2
+        echo "${output}" >&2
+        exit 1
+    fi
 
     while IFS= read -r line; do
         case "${line}" in
@@ -53,15 +56,18 @@ while IFS= read -r source_file; do
                 fn="${fn%\'}"
                 ;;
             "Lines executed:0.00%"*)
-                if [ -n "${fn:-}" ] && [ -z "${first_file_by_fn[${fn}]:-}" ]; then
-                    first_file_by_fn["${fn}"]="${rel}"
+                key="${rel}:${fn:-}"
+                if [ -n "${fn:-}" ]; then
+                    display_by_key["${key}"]="${rel}: uncovered function: ${fn}"
+                    checked=$((checked + 1))
                 fi
                 fn=""
                 ;;
             "Lines executed:"*)
                 if [ -n "${fn:-}" ]; then
-                    first_file_by_fn["${fn}"]="${first_file_by_fn[${fn}]:-${rel}}"
-                    covered_by_fn["${fn}"]=1
+                    key="${rel}:${fn}"
+                    display_by_key["${key}"]="${rel}: uncovered function: ${fn}"
+                    covered_by_key["${key}"]=1
                     checked=$((checked + 1))
                     fn=""
                 fi
@@ -72,15 +78,20 @@ done < <(find "${root_dir}/src" -name '*.c' | sort)
 
 missing=0
 missing_file="${tmp_dir}/missing.txt"
-for fn in "${!first_file_by_fn[@]}"; do
-    if [ -z "${covered_by_fn[${fn}]:-}" ]; then
-        echo "${first_file_by_fn[${fn}]}: uncovered function: ${fn}" >> "${missing_file}"
+for key in "${!display_by_key[@]}"; do
+    if [ -z "${covered_by_key[${key}]:-}" ]; then
+        echo "${display_by_key[${key}]}" >> "${missing_file}"
         missing=$((missing + 1))
     fi
 done
 
 if [ -f "${missing_file}" ]; then
     sort "${missing_file}"
+fi
+
+if [ "${source_count}" -eq 0 ] || [ "${checked}" -eq 0 ]; then
+    echo "error: coverage check examined no functions" >&2
+    exit 1
 fi
 
 if [ "${missing}" -ne 0 ]; then

@@ -89,7 +89,7 @@ static void test_ir_view_compiled_expression(void) {
     printf("  ok test_ir_view_compiled_expression\n");
 }
 
-static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
+static void test_ir_view_lookback_uses_resolved_opcode(void) {
     cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* registry = cxpr_registry_new();
     cxpr_error err = {0};
@@ -101,15 +101,11 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     program = cxpr_expr_compile(ast, registry, &err);
     assert(program);
     assert(err.code == CXPR_OK);
-    assert(cxpr_expr_compiled_ir_count(program) >= 4u);
+    assert(cxpr_expr_compiled_ir_count(program) >= 2u);
     assert(cxpr_expr_compiled_ir_instruction(program, 0u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOOKBACK_PUSH);
+    assert(instr.op == CXPR_IR_OP_LOOKBACK_RESOLVE);
     assert(instr.has_index);
     assert(instr.index == 1u);
-    assert(cxpr_expr_compiled_ir_instruction(program, 1u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOAD_VAR);
-    assert(cxpr_expr_compiled_ir_instruction(program, 2u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOOKBACK_POP);
 
     cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
@@ -119,20 +115,16 @@ static void test_ir_view_lookback_uses_push_pop_opcodes(void) {
     program = cxpr_expr_compile(ast, registry, &err);
     assert(program);
     assert(cxpr_expr_compiled_ir_instruction(program, 0u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOOKBACK_PUSH);
+    assert(instr.op == CXPR_IR_OP_LOOKBACK_RESOLVE);
     assert(instr.has_index);
     assert(instr.index == 3u);
-    assert(cxpr_expr_compiled_ir_instruction(program, 1u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOAD_VAR);
-    assert(cxpr_expr_compiled_ir_instruction(program, 2u, &instr));
-    assert(instr.op == CXPR_IR_OP_LOOKBACK_POP);
 
     cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(registry);
     cxpr_expr_parser_free(parser);
 
-    printf("  ok test_ir_view_lookback_uses_push_pop_opcodes\n");
+    printf("  ok test_ir_view_lookback_uses_resolved_opcode\n");
 }
 
 static void test_ir_view_array_instruction(void) {
@@ -166,7 +158,7 @@ static void test_ir_view_array_instruction(void) {
 int main(void) {
     test_ir_view_null_inputs();
     test_ir_view_compiled_expression();
-    test_ir_view_lookback_uses_push_pop_opcodes();
+    test_ir_view_lookback_uses_resolved_opcode();
     test_ir_view_array_instruction();
     printf("ir_view tests passed\n");
     return 0;

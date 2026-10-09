@@ -35,6 +35,9 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
         if (program->code[i].op == CXPR_OP_CALL_PRODUCER_CONST_FIELD) {
             free((void*)program->code[i].payload);
         }
+        if (program->code[i].op == CXPR_OP_LOOKBACK_RESOLVE) {
+            free((void*)program->code[i].payload);
+        }
     }
     free(program->code);
     free(program->lookup_cache);

@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <vector>
 
-#include "cxpr_klein_gordon_generated.cuh"
+#include "cuda_klein_gordon_fixture.cuh"
 
 static void check(cudaError_t status, const char* operation) {
     if (status == cudaSuccess) return;
@@ -14,26 +14,6 @@ static void check(cudaError_t status, const char* operation) {
 
 static double host_abs(double value) {
     return value < 0.0 ? -value : value;
-}
-
-__global__ static void klein_gordon_step(
-    const double* phi, const double* momentum, const double* source,
-    double* next_phi, double* next_momentum, double* acceleration,
-    double* energy, size_t count) {
-    const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= count) return;
-    const size_t left = i == 0u ? count - 1u : i - 1u;
-    const size_t right = i + 1u == count ? 0u : i + 1u;
-    const double inputs[5] = {
-        phi[i], momentum[i], phi[left], phi[right], source[i]};
-    const double params[5] = {0.001, 0.01, 1.0, 0.1, 0.02};
-    double outputs[4];
-    cxpr_klein_gordon_tick_state state = {};
-    cxpr_klein_gordon_tick(&state, inputs, params, outputs);
-    next_phi[i] = outputs[0];
-    next_momentum[i] = outputs[1];
-    acceleration[i] = outputs[2];
-    energy[i] = outputs[3];
 }
 
 static size_t parse_size(const char* text, const char* name) {
@@ -98,7 +78,7 @@ int main(int argc, char** argv) {
     auto launch_steps = [&](size_t step_count, double*& phi, double*& next_phi,
                             double*& momentum, double*& next_momentum) {
         for (size_t step = 0u; step < step_count; ++step) {
-            klein_gordon_step<<<grid_size, block_size>>>(
+            cxpr_cuda_klein_gordon_step<true><<<grid_size, block_size>>>(
                 phi, momentum, d_source, next_phi, next_momentum,
                 d_acceleration, d_energy, count);
             double* swap = phi; phi = next_phi; next_phi = swap;

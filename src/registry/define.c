@@ -58,15 +58,30 @@ static bool cxpr_def_field_set_add(cxpr_def_field_set* set, const char* field) {
 static bool collect_fields_in_ast(const cxpr_expr_ast* node,
                                   const char* const* param_names, size_t param_count,
                                   cxpr_def_field_set* sets) {
+    const char* object = NULL;
+
     if (!node) return true;
 
-    if (node->type == CXPR_NODE_FIELD_ACCESS && !node->data.field_access.base) {
-        const char* obj = node->data.field_access.object;
+    if (node->type == CXPR_NODE_FIELD_ACCESS) {
+        if (!node->data.field_access.base) {
+            object = node->data.field_access.object;
+        } else if (node->data.field_access.base->type == CXPR_NODE_IDENTIFIER) {
+            object = node->data.field_access.base->data.identifier.name;
+        }
+    }
+    if (object) {
         const char* fld = node->data.field_access.field;
         for (size_t i = 0; i < param_count; i++) {
-            if (strcmp(obj, param_names[i]) != 0) continue;
+            if (strcmp(object, param_names[i]) != 0) continue;
             if (!cxpr_def_field_set_add(&sets[i], fld)) return false;
             break;
+        }
+        return true;
+    }
+    if (node->type == CXPR_NODE_CHAIN_ACCESS && node->data.chain_access.depth == 2u) {
+        for (size_t i = 0; i < param_count; ++i) {
+            if (strcmp(node->data.chain_access.path[0], param_names[i]) != 0) continue;
+            return cxpr_def_field_set_add(&sets[i], node->data.chain_access.path[1]);
         }
         return true;
     }
@@ -75,6 +90,8 @@ static bool collect_fields_in_ast(const cxpr_expr_ast* node,
     case CXPR_NODE_FIELD_ACCESS:
         return collect_fields_in_ast(
             node->data.field_access.base, param_names, param_count, sets);
+    case CXPR_NODE_CHAIN_ACCESS:
+        return true;
     case CXPR_NODE_BINARY_OP:
         return collect_fields_in_ast(node->data.binary_op.left, param_names, param_count, sets) &&
                collect_fields_in_ast(node->data.binary_op.right, param_names, param_count, sets);

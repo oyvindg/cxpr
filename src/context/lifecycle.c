@@ -60,34 +60,13 @@ static void cxpr_context_reset_empty_overlay(cxpr_context* ctx, const cxpr_conte
     ctx->overlay_cache_next = NULL;
 }
 
-static bool cxpr_context_can_cache_empty_overlay(const cxpr_context* ctx) {
-    return ctx && ctx->parent &&
-           ctx->variables_version == 1 &&
-           ctx->params_version == 1 &&
-           ctx->variables.count == 0u &&
-           ctx->params.count == 0u &&
-           ctx->bools.count == 0u &&
-           ctx->bool_params.count == 0u &&
-           ctx->bools.entries == NULL &&
-           ctx->bool_params.entries == NULL &&
-           ctx->int64s.entries == NULL &&
-           ctx->int64_params.entries == NULL &&
-           ctx->strings.count == 0u &&
-           ctx->string_params.count == 0u &&
-           ctx->strings.entries == NULL &&
-           ctx->string_params.entries == NULL &&
-           ctx->structs.count == 0u &&
-           ctx->cached_structs.count == 0u &&
-           ctx->structs.entries == NULL &&
-           ctx->cached_structs.entries == NULL &&
-           ctx->arrays.count == 0u &&
-           ctx->array_params.count == 0u &&
-           ctx->arrays.entries == NULL &&
-           ctx->array_params.entries == NULL &&
-           ctx->eval_memo.count == 0u &&
-           ctx->eval_memo.depth == 0u &&
-           ctx->eval_memo.entries == NULL &&
-           ctx->expression_scope == NULL;
+static bool cxpr_context_overlay_is_empty(const cxpr_context* ctx) {
+    return ctx && ctx->variables.count == 0u && ctx->params.count == 0u &&
+           ctx->bools.count == 0u && ctx->bool_params.count == 0u &&
+           ctx->int64s.count == 0u && ctx->int64_params.count == 0u &&
+           ctx->strings.count == 0u && ctx->string_params.count == 0u &&
+           ctx->structs.count == 0u && ctx->cached_structs.count == 0u &&
+           ctx->arrays.count == 0u && ctx->array_params.count == 0u;
 }
 
 void cxpr_thread_cleanup(void) {
@@ -163,12 +142,13 @@ void cxpr_context_clear_expression_scope(cxpr_context* ctx) {
 
 void cxpr_context_free(cxpr_context* ctx) {
     if (!ctx) return;
-    if (cxpr_context_can_cache_empty_overlay(ctx) &&
-        cxpr_overlay_context_cache_count < CXPR_OVERLAY_CONTEXT_CACHE_MAX) {
+    if (ctx->parent && cxpr_overlay_context_cache_count < CXPR_OVERLAY_CONTEXT_CACHE_MAX) {
         if (!cxpr_overlay_context_cache_atexit_registered) {
             atexit(cxpr_thread_cleanup);
             cxpr_overlay_context_cache_atexit_registered = true;
         }
+        if (!cxpr_context_overlay_is_empty(ctx)) cxpr_context_clear(ctx);
+        cxpr_context_clear_expression_scope(ctx);
         cxpr_context_reset_empty_overlay(ctx, NULL);
         ctx->overlay_cache_next = cxpr_overlay_context_cache;
         cxpr_overlay_context_cache = ctx;

@@ -1,0 +1,61 @@
+# Complete optimization example — moving-average crossover (spec §13).
+# Combines every construct: search dimensions, invariants (assert), an
+# optimizer-only constraint (optimize <expr>), and a stateful maximize
+# objective. Objectives/constraints/asserts drive the optimizer; normal
+# `tick()` execution is unchanged (spec §12).
+
+model ma_cross_optimize
+
+in close
+
+# Search dimensions (explicit candidate values).
+$fast = 12 {
+    optimize {
+        values = [5, 10, 15, 20]
+    }
+}
+
+$slow = 26 {
+    optimize {
+        values = [20, 30, 50, 100]
+    }
+}
+
+# Model invariants — must always hold.
+assert $fast > 0 {
+    description = "Fast period must be positive"
+}
+
+assert $slow > 0 {
+    description = "Slow period must be positive"
+}
+
+# Optimizer-only candidate constraint.
+optimize $fast < $slow {
+    description = "Only evaluate fast periods below slow periods"
+}
+
+fast = ema(close, $fast)
+slow = ema(close, $slow)
+
+state position = false
+state entry = 0
+state profit = 0
+
+enter = not position and fast > slow
+exit = position and fast < slow
+
+pnl = exit ? close - entry : 0
+
+profit := profit + pnl
+entry := enter ? close : entry
+position := enter ? true : exit ? false : position
+
+# Objective: maximize final accumulated profit (spec §6, §7). Attached to the
+# output so the stateful public objective parses today (no state-decl metadata
+# change needed). State isolation per candidate (spec §8) is independent of this.
+out profit {
+    optimize {
+        maximize
+    }
+}

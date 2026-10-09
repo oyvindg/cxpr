@@ -1,0 +1,19 @@
+// R7 sentinel/inf convention (variant b: large finite value + saturation).
+// Saturation is a plain cxpr function -- NOT a builtin -- so no codegen change is
+// needed and this fixture compiles today.
+model sentinel
+
+in { neighbour, cost }
+
+$INF = 1e18
+
+// Saturating add: a reachable neighbour accumulates cost; a blocked (INF) neighbour
+// stays INF. $INF is far below DBL_MAX, so `a + b` cannot overflow before min clamps.
+fn sadd(a, b) = min(a + b, $INF)
+
+relaxed = sadd(neighbour, cost)
+
+// min must treat INF as the identity: min(INF, x) == x for finite x.
+best = min(relaxed, $INF)
+
+out { relaxed, best }

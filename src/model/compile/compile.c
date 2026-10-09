@@ -472,6 +472,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
     const cxpr_registry* compile_reg = reg;
     char** inferred_inputs = NULL;
     size_t inferred_input_count = 0u;
+    size_t declared_input_count = model ? model->input_count : 0u;
     char** required_defaults = NULL;
     size_t required_default_count = 0u;
     size_t* order = NULL;
@@ -533,6 +534,14 @@ cxpr_model_compiled* cxpr_model_compile_full(
     program->compile_fuse = compile_options.fuse;
     program->compile_trace = compile_options.enable_trace;
     program->lifetime = CXPR_MODEL_LIFETIME_SINGLETON;
+    if (!cxpr_model_prepare_optimize(model, program, err)) {
+        for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
+        free(required_defaults);
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
+        cxpr_model_compiled_free(program);
+        return NULL;
+    }
     {
         bool saw_type = false;
         if (!cxpr_model_parse_lifetime_metadata(model, &program->lifetime, &saw_type, err)) {
@@ -792,6 +801,11 @@ cxpr_model_compiled* cxpr_model_compile_full(
         }
     }
 
+    if (!cxpr_model_compile_conditions(model, program, compile_reg, err)) {
+        cxpr_model_compiled_free(program);
+        return NULL;
+    }
+
     {
         size_t state_count = 0u;
         size_t executable_count = 0u;
@@ -932,9 +946,11 @@ compile_outputs:
         program->input_count = model->input_count;
         for (size_t i = 0; i < model->input_count; ++i) {
             program->inputs[i] = cxpr_strdup(model->inputs[i]);
-            program->input_declared_types[i] = model->input_declared_types
+            program->input_declared_types[i] =
+                model->input_declared_types && i < declared_input_count
                 ? model->input_declared_types[i] : CXPR_MODEL_DECL_INFERRED;
-            program->input_element_types[i] = model->input_element_types
+            program->input_element_types[i] =
+                model->input_element_types && i < declared_input_count
                 ? model->input_element_types[i] : CXPR_MODEL_ELEMENT_UNKNOWN;
             if (!program->inputs[i]) {
                 cxpr_model_compiled_free(program);

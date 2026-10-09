@@ -659,6 +659,7 @@ static void test_typed_function_bool_argument(void) {
     cxpr_registry_add_typed(reg, "is_valid", test_is_valid_typed, 2, 2,
                             sig, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_context_set_struct(ctx, "sensor", sensor);
+    cxpr_struct_value_free(sensor);
 
     ast = cxpr_expr_ast_parse(p, "is_valid(sensor.active, sensor.score)", &err);
     assert(ast != NULL);
@@ -675,6 +676,7 @@ static void test_typed_function_bool_argument(void) {
     sensor = cxpr_struct_value_new(field_names, sensor_values, 2);
     assert(sensor != NULL);
     cxpr_context_set_struct(ctx, "sensor", sensor);
+    cxpr_struct_value_free(sensor);
     assert(cxpr_test_eval_ast(ast, ctx, reg, &err).b == false);
     assert(err.code == CXPR_OK);
     assert(cxpr_test_eval_program(prog, ctx, reg, &err).b == false);
@@ -740,6 +742,7 @@ static void test_typed_function_struct_argument(void) {
     cxpr_registry_add_struct(reg, "macd", test_macd_producer,
                              1, 1, producer_fields, 3, NULL, NULL);
     cxpr_context_set_struct(ctx, "macd_ctx", macd_ctx);
+    cxpr_struct_value_free(macd_ctx);
 
     ast = cxpr_expr_ast_parse(p,
         "macd_signal_ok(macd_ctx, 0.5) and macd_signal_ok(macd(2.5), 0.4)",

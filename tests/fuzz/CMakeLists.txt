@@ -8,8 +8,20 @@ if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang|AppleClang")
         "Re-run with -DCMAKE_C_COMPILER=clang, e.g. cmake --preset fuzz.")
 endif()
 
+add_library(cxpr_fuzz_core STATIC ${CXPR_SOURCES})
+target_include_directories(cxpr_fuzz_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+target_include_directories(cxpr_fuzz_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+target_compile_options(cxpr_fuzz_core PRIVATE
+    -fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -g)
+target_link_options(cxpr_fuzz_core PRIVATE -fsanitize=address,undefined)
+if(UNIX)
+    target_link_libraries(cxpr_fuzz_core PUBLIC m)
+endif()
+
 add_executable(cxpr_fuzz_parse parse_fuzzer.c)
-target_link_libraries(cxpr_fuzz_parse PRIVATE cxpr)
+target_link_libraries(cxpr_fuzz_parse PRIVATE cxpr_fuzz_core)
 target_compile_options(cxpr_fuzz_parse PRIVATE -fsanitize=fuzzer,address,undefined -g)
 target_link_options(cxpr_fuzz_parse PRIVATE -fsanitize=fuzzer,address,undefined)
 

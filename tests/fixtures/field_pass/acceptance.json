@@ -1,0 +1,28 @@
+{
+  "schema": "cxpr-field-pass-acceptance/v1",
+  "status": "proposed",
+  "note": "Syntax-only fixtures. None parse with the current front end. See README.md and docs/read_only_peer_state.md, docs/shared_and_local_pass.md.",
+  "proposed": [
+    {
+      "id": "PEER-slot-reads",
+      "fixture": "flow_field_cell.cxpr",
+      "surface": ["peers-decl", "slot-field-read", "inferred-visibility"],
+      "design": "docs/read_only_peer_state.md",
+      "status": "proposed"
+    },
+    {
+      "id": "SHARED-reduce-broadcast",
+      "fixture": "mean_field.cxpr",
+      "surface": ["shared-block", "shared-in", "collective-sum", "shared-read"],
+      "design": "docs/shared_and_local_pass.md",
+      "status": "proposed"
+    },
+    {
+      "id": "SHARED-plus-PEER-field",
+      "fixture": "gross_pitaevskii.cxpr",
+      "surface": ["shared-block", "collective-sum", "peers-decl", "slot-field-read", "complex-as-re-im"],
+      "design": "docs/shared_and_local_pass.md",
+      "status": "proposed"
+    }
+  ]
+}

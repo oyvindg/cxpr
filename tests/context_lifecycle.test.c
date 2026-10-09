@@ -48,9 +48,36 @@ static void test_context_expression_scope_clear_accepts_nulls(void) {
     cxpr_context_free(ctx);
 }
 
+static void test_used_overlay_pool_resets_values_and_parent(void) {
+    cxpr_context* first_parent = cxpr_context_new();
+    cxpr_context* second_parent = cxpr_context_new();
+    cxpr_context* overlay;
+    bool found = false;
+
+    assert(first_parent && second_parent);
+    cxpr_context_set(first_parent, "parent_value", 1.0);
+    cxpr_context_set(second_parent, "parent_value", 2.0);
+
+    overlay = cxpr_context_overlay_new(first_parent);
+    assert(overlay);
+    cxpr_context_set(overlay, "local_value", 7.0);
+    cxpr_context_free(overlay);
+
+    overlay = cxpr_context_overlay_new(second_parent);
+    assert(overlay);
+    (void)cxpr_context_get(overlay, "local_value", &found);
+    assert(!found);
+    assert(cxpr_context_get(overlay, "parent_value", &found) == 2.0 && found);
+
+    cxpr_context_free(overlay);
+    cxpr_context_free(second_parent);
+    cxpr_context_free(first_parent);
+}
+
 int main(void) {
     test_context_clone_overlay_and_clear();
     test_context_expression_scope_clear_accepts_nulls();
+    test_used_overlay_pool_resets_values_and_parent();
     printf("  \xE2\x9C\x93 context_lifecycle\n");
     return 0;
 }

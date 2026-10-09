@@ -344,6 +344,17 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 return cxpr_strdup(raw);
             }
         }
+        if (lookback_offset == 0u) {
+            snprintf(raw, sizeof(raw),
+                "((_cx_primary_cursor < _cx_resample_views[%zu].primary_count && "
+                "_cx_resample_views[%zu].values && "
+                "_cx_resample_views[%zu].alignment && "
+                "_cx_resample_views[%zu].alignment[_cx_primary_cursor] < "
+                "_cx_resample_views[%zu].value_count) ? "
+                "_cx_resample_views[%zu].values[_cx_resample_views[%zu].alignment[_cx_primary_cursor]] : NAN)",
+                slot, slot, slot, slot, slot, slot, slot);
+            return cxpr_strdup(raw);
+        }
         snprintf(raw, sizeof(raw),
             "((_cx_primary_cursor < _cx_resample_views[%zu].primary_count && "
             "_cx_resample_views[%zu].values && "
@@ -617,6 +628,24 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 }
                 cxpr_model_c_puts(&b, arg);
                 free(arg);
+            }
+            {
+                bool wrote_arg = argc > 0u;
+                for (size_t i = 0u; i < target_data->program->constant_count; ++i) {
+                    if (!cxpr_model_c_defined_function_captures_param(
+                            target_data->program, entry, i)) continue;
+                    if (wrote_arg) cxpr_model_c_puts(&b, ", ");
+                    if (target_data->literal_param_values &&
+                        i < target_data->literal_param_count) {
+                        char raw[64];
+                        cxpr_model_c_format_double(
+                            raw, sizeof(raw), target_data->literal_param_values[i]);
+                        cxpr_model_c_puts(&b, raw);
+                    } else {
+                        cxpr_model_c_printf(&b, "_cx_param_%zu", i);
+                    }
+                    wrote_arg = true;
+                }
             }
             cxpr_model_c_puts(&b, ")");
             if (b.oom) {

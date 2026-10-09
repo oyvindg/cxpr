@@ -236,6 +236,7 @@ bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
         }
     }
     for (size_t i = 0u; i < program->state_default_count; ++i) {
+        char number[64];
         char* field_name = cxpr_model_c_prefixed_name(
             "state_", program->state_defaults[i].name);
         if (!field_name) {
@@ -256,6 +257,14 @@ bool cxpr_model_c_emit_slot_init_function(cxpr_model_c_buf* b,
             cxpr_model_c_printf(
                 b, "    _cx_state->%s = INT64_C(%lld);\n", field_name,
                 (long long)cxpr_expr_ast_int64_value(program->state_defaults[i].ast));
+        } else if (program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_NUMBER &&
+                   cxpr_expr_ast_kind_of(program->state_defaults[i].ast) ==
+                       CXPR_NODE_NUMBER) {
+            cxpr_model_c_format_double(
+                number, sizeof(number),
+                cxpr_expr_ast_number_value(program->state_defaults[i].ast));
+            cxpr_model_c_printf(
+                b, "    _cx_state->%s = %s;\n", field_name, number);
         } else {
             cxpr_model_c_printf(
                 b, "    _cx_state->%s = %s;\n", field_name,

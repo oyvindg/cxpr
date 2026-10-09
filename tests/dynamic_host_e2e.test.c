@@ -59,6 +59,19 @@ static size_t output_index(const cxpr_generated_model_descriptor* descriptor,
     return 0u;
 }
 
+static bool scalar_value_equal(cxpr_value left, cxpr_value right) {
+    if (left.type != right.type) return false;
+    switch (left.type) {
+    case CXPR_VALUE_NUMBER: return left.d == right.d;
+    case CXPR_VALUE_BOOL: return left.b == right.b;
+    case CXPR_VALUE_INT64:
+    case CXPR_VALUE_TIMESTAMP:
+    case CXPR_VALUE_DURATION: return left.i64 == right.i64;
+    case CXPR_VALUE_NULL: return true;
+    default: return false;
+    }
+}
+
 int main(void) {
     const cxpr_generated_model_descriptor* descriptor =
         &dynamic_host_tick_descriptor;
@@ -117,8 +130,8 @@ int main(void) {
     host_tick(&restarted, descriptor, survivor_tick);
     for (output = 0u; output < 3u; ++output)
         for (agent = 0u; agent < 2u; ++agent)
-            assert(memcmp(&expected[output][agent], &restarted.outputs[output][agent],
-                          sizeof(cxpr_value)) == 0);
+            assert(scalar_value_equal(expected[output][agent],
+                                      restarted.outputs[output][agent]));
 
     assert(cxpr_bulk_state_store_add(restarted.agents, 25u) == CXPR_BULK_STATE_STORE_OK);
     assert(memcmp(cxpr_bulk_state_store_ids(restarted.agents), final_ids,

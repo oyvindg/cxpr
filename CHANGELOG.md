@@ -5,9 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] - Unreleased
 
-## [3.1.0] - 2026-09-13
+The project is pre-1.0. The public library version has been reset to `0.3.2`;
+historical release headings and tags were renumbered without changing their
+associated commits.
+
+## [0.3.1] - 2026-09-13
 
 ### Added
 
@@ -50,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   strict build.
 - Model benchmarks with more than eight inputs now generate valid descriptors.
 
-## [3.0.0] - 2026-06-30
+## [0.3.0] - 2026-07-04
 
 ### Added
 
@@ -75,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basket `any`/`all` now require bool child results instead of coercing numeric
   results.
 
-## [2.7.0] - 2026-06-29
+## [0.2.9] - 2026-06-29
 
 ### Added
 
@@ -109,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Engine view sources can now provide an optional cursor-to-source index mapper
   for timestamp-aligned secondary series reads.
 
-## [2.6.0] - 2026-06-22
+## [0.2.8] - 2026-06-22
 
 ### Added
 
@@ -130,7 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   On `cxpr_engine_program_free` the prior resolver is restored, so an injected
   registry is left exactly as the engine found it.
 
-## [2.5.0] - 2026-06-21
+## [0.2.7] - 2026-06-21
 
 ### Added
 
@@ -154,7 +158,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thread lifecycle moved to its own header `cxpr/thread.h` (declaring
   `cxpr_thread_cleanup`), now included from the `cxpr.h` aggregator.
 
-## [2.3.1] - 2026-06-20
+## [0.2.6] - 2026-06-20
+
+### Added
+
+- `cxpr_exprset_to_c_function` emits a complete C function from an expression
+  set, including parameters, dependency ordering, and a selected result.
+
+## [0.2.5] - 2026-06-20
 
 ### Fixed
 
@@ -162,7 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   literal element parsed successfully but the parser had already recorded a
   syntax error before the array was closed.
 
-## [2.3.0] - 2026-06-20
+## [0.2.4] - 2026-06-20
 
 ### Added
 
@@ -182,7 +193,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `in [...]` remains user-facing set-membership syntax, but its internal AST is
   now the `contains(...)` builtin rather than an OR-chain of equality nodes.
 
-## [2.1.0] - 2026-06-19
+## [0.2.3] - 2026-06-20
+
+### Added
+
+- Chained relational comparisons such as `1 < x < 10`, including mixed
+  inclusive and descending forms.
+
+### Changed
+
+- Parser precedence and chained-comparison lowering were made explicit and
+  covered by dedicated parser and precedence tests.
+
+## [0.2.2] - 2026-06-19
 
 ### Added
 
@@ -198,7 +221,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the runtime evaluator: emit native source to compile a hot loop or a GPU
   kernel instead of interpreting.
 
-## [2.0.1] - 2026-06-19
+## [0.2.1] - 2026-06-19
 
 ### Fixed
 
@@ -223,7 +246,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   examples instead of trading-specific ones (trading remains one illustration
   among several).
 
-## [2.0.0] - 2026-06-19
+## [0.2.0] - 2026-06-19
 
 ### Changed
 
@@ -263,7 +286,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mod`, `copysign`, `log1p`, `expm1`, and the boolean predicates `isnan` and
   `isfinite`.
 
-## [1.1.0] - 2026-06-19
+## [0.1.0] - 2026-06-19
 
 ### Added
 
@@ -340,24 +363,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cxpr_error_string(CXPR_ERR_TYPE_MISMATCH)` now returns `"Type mismatch"`
   instead of falling through to `"Unknown error"`.
 
-## [1.0.4] - 2026-04-16
+## [0.0.5] - 2026-04-16
 
-## [1.0.3] - 2026-04-05
+## [0.0.4] - 2026-04-05
 
-## [1.0.2] - 2026-04-05
+## [0.0.3] - 2026-04-05
 
-## [1.0.1] - 2026-04-05
+## [0.0.2] - 2026-04-05
 
-## [1.0.0] - 2026-04-04
+## [0.0.1] - 2026-04-04
 
 Initial tagged releases. Detailed per-version history predates this changelog;
-see the Git tags `v1.0.0`–`v1.0.4` for the corresponding commits.
+see the Git tags `v0.0.1`–`v0.0.5` for the corresponding commits.
 
-[2.0.1]: https://github.com/oyvindg/cxpr/compare/v2.0.0...v2.0.1
-[2.0.0]: https://github.com/oyvindg/cxpr/compare/v1.1.0...v2.0.0
-[1.1.0]: https://github.com/oyvindg/cxpr/compare/v1.0.4...v1.1.0
-[1.0.4]: https://github.com/oyvindg/cxpr/compare/v1.0.3...v1.0.4
-[1.0.3]: https://github.com/oyvindg/cxpr/compare/v1.0.2...v1.0.3
-[1.0.2]: https://github.com/oyvindg/cxpr/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/oyvindg/cxpr/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/oyvindg/cxpr/releases/tag/v1.0.0
+[0.3.2]: https://github.com/oyvindg/cxpr/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/oyvindg/cxpr/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/oyvindg/cxpr/compare/v0.2.9...v0.3.0
+[0.2.9]: https://github.com/oyvindg/cxpr/compare/v0.2.8...v0.2.9
+[0.2.8]: https://github.com/oyvindg/cxpr/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/oyvindg/cxpr/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/oyvindg/cxpr/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/oyvindg/cxpr/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/oyvindg/cxpr/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/oyvindg/cxpr/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/oyvindg/cxpr/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/oyvindg/cxpr/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/oyvindg/cxpr/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/oyvindg/cxpr/compare/v0.0.5...v0.1.0
+[0.0.5]: https://github.com/oyvindg/cxpr/compare/v0.0.4...v0.0.5
+[0.0.4]: https://github.com/oyvindg/cxpr/compare/v0.0.3...v0.0.4
+[0.0.3]: https://github.com/oyvindg/cxpr/compare/v0.0.2...v0.0.3
+[0.0.2]: https://github.com/oyvindg/cxpr/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/oyvindg/cxpr/releases/tag/v0.0.1

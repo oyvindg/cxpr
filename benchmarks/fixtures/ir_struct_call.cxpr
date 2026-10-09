@@ -1,0 +1,8 @@
+model ir_struct_call
+in { a, b }
+fn pair(x, y) {
+    sum = x + y
+    diff = x - y
+    out { sum, diff }
+}
+out result = pair(a, b).sum

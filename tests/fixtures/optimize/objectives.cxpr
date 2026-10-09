@@ -1,0 +1,37 @@
+# Demonstrates OBJECTIVES as metadata on named values (spec §5, §6).
+# `minimize` / `maximize` are implicit boolean flags (no `= true`).
+#
+# The objective annotation is just a label marking a named value as the thing to
+# minimize/maximize; it does NOT control state lifecycle. Candidate isolation
+# (spec §8) resets ALL state per candidate regardless of where the annotation
+# lives, so a `state` accumulator works "per optimization" implicitly.
+#
+# This fixture uses the two forms that PARSE TODAY:
+#   - a binding objective  (error = ... { optimize { minimize } })
+#   - an output objective   (out profit { optimize { maximize } })
+# The output form lets a stateful *public* objective work without the (optional)
+# state-decl metadata parser change.
+
+model objectives
+
+in predicted, measured, pnl
+
+# Instantaneous internal objective on a binding — read at the final tick.
+# `error` need not be a public output.
+error = abs(predicted - measured) {
+    optimize {
+        minimize
+    }
+}
+
+# Stateful accumulator. `state` defines storage/lifetime; the model itself
+# defines aggregation (spec §6): here, summed pnl.
+state profit = 0
+profit := profit + pnl
+
+# The objective is attached to the OUT declaration exposing the state value.
+out profit {
+    optimize {
+        maximize
+    }
+}

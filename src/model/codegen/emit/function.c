@@ -15,6 +15,18 @@ static bool cxpr_model_c_collect_defined_function_refs(
     bool* used,
     cxpr_error* err);
 
+bool cxpr_model_c_defined_function_captures_param(
+    const cxpr_model_compiled* program,
+    const cxpr_func_entry* entry,
+    size_t param_index) {
+    if (!program || !entry || !entry->defined_body ||
+        param_index >= program->constant_count) return false;
+    return cxpr_expr_ast_contains_reference(
+               entry->defined_body, program->constants[param_index].name) ||
+           cxpr_expr_ast_contains_variable(
+               entry->defined_body, program->constants[param_index].name);
+}
+
 static bool cxpr_model_c_defined_function_used(const cxpr_model_compiled* program,
                                                const char* name,
                                                bool* used,
@@ -113,6 +125,7 @@ static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_compiled* program,
     cxpr_model_ast_c_target userdata = {0};
     cxpr_c_target target = {
         .api_version = CXPR_C_TARGET_API_VERSION,
+        .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
         .emit_call_at_offset = cxpr_model_ast_c_emit_call,
         .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = &userdata,
@@ -150,7 +163,25 @@ static char* cxpr_model_ast_defined_fn_to_c(const cxpr_model_compiled* program,
         cxpr_model_c_printf(&b, "double %s", param_name);
         free(param_name);
     }
-    if (entry->defined_param_count == 0u) cxpr_model_c_puts(&b, "void");
+    /* A model-defined function may close over model parameters (for example
+     * `fn sadd(a, b) = min(a + b, $INF)`). Pass those captures explicitly so
+     * the standalone helper is valid C and retains the tick's parameter view. */
+    {
+        bool wrote_arg = entry->defined_param_count > 0u;
+        for (size_t i = 0u; i < program->constant_count; ++i) {
+            if (!cxpr_model_c_defined_function_captures_param(program, entry, i)) continue;
+            if (wrote_arg) cxpr_model_c_puts(&b, ", ");
+            cxpr_model_c_printf(&b, "double _cx_param_%zu", i);
+            wrote_arg = true;
+        }
+    }
+    if (entry->defined_param_count == 0u) {
+        bool has_capture = false;
+        for (size_t i = 0u; i < program->constant_count; ++i)
+            has_capture = has_capture ||
+                cxpr_model_c_defined_function_captures_param(program, entry, i);
+        if (!has_capture) cxpr_model_c_puts(&b, "void");
+    }
     cxpr_model_c_puts(&b, ") { return ");
     {
         cxpr_model_c_buf declarations = {0};

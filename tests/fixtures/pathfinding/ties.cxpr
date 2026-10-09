@@ -1,0 +1,17 @@
+// Tie-breaking must be deterministic: lowest source-position index
+// wins, both for exact ties and for FMA-sensitive near-ties.
+model ties
+
+in { base, cost, mul_a, mul_b, add_c }
+
+// Exact tie: two equal minima -> index 0.
+exact_tie = argmin(base, base, base + cost)
+
+// Near-tie inputs are supplied as exact binary64 values by the harness. The
+// first expression rounds to zero with separate multiply/add, but is positive
+// if contracted to FMA; contraction therefore flips the selected index.
+near_a = mul_a * mul_b + add_c
+near_b = 0
+near_tie = argmin(near_a, near_b)
+
+out { exact_tie, near_tie }

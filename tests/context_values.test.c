@@ -7,6 +7,130 @@ bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name
 const char* cxpr_context_get_local_param_string(const cxpr_context* ctx, const char* name,
                                                 bool* found);
 
+static void set_test_value(cxpr_context* ctx, const char* name, cxpr_value_type type,
+                           bool param) {
+    cxpr_value element = cxpr_num(6.0);
+    const char* fields[] = {"field"};
+    cxpr_struct_value* struct_value;
+    cxpr_array_value* array_value;
+    cxpr_value value;
+
+    switch (type) {
+    case CXPR_VALUE_NUMBER:
+        if (param) cxpr_context_set_param(ctx, name, 1.5);
+        else cxpr_context_set(ctx, name, 1.5);
+        return;
+    case CXPR_VALUE_BOOL:
+        if (param) cxpr_context_set_param_bool(ctx, name, true);
+        else cxpr_context_set_bool(ctx, name, true);
+        return;
+    case CXPR_VALUE_INT64:
+        value = cxpr_int64(23);
+        break;
+    case CXPR_VALUE_STRING:
+        value = cxpr_string("final");
+        break;
+    case CXPR_VALUE_ARRAY:
+        array_value = cxpr_array_value_new(&element, 1u);
+        assert(array_value);
+        value = cxpr_array(array_value);
+        if (param) cxpr_context_set_param_value(ctx, name, &value);
+        else cxpr_context_set_value(ctx, name, &value);
+        cxpr_array_value_free(array_value);
+        return;
+    case CXPR_VALUE_STRUCT:
+        struct_value = cxpr_struct_value_new(fields, &element, 1u);
+        assert(struct_value);
+        value = cxpr_struct(struct_value);
+        if (param) cxpr_context_set_param_value(ctx, name, &value);
+        else cxpr_context_set_value(ctx, name, &value);
+        cxpr_struct_value_free(struct_value);
+        return;
+    default:
+        assert(false);
+        return;
+    }
+    if (param) cxpr_context_set_param_value(ctx, name, &value);
+    else cxpr_context_set_value(ctx, name, &value);
+}
+
+static void test_type_replacement_matrix(void) {
+    const cxpr_value_type types[] = {CXPR_VALUE_NUMBER, CXPR_VALUE_BOOL, CXPR_VALUE_INT64,
+                                     CXPR_VALUE_STRING, CXPR_VALUE_ARRAY, CXPR_VALUE_STRUCT};
+    for (size_t param = 0u; param < 2u; ++param) {
+        for (size_t first = 0u; first < 6u; ++first) {
+            for (size_t second = 0u; second < 6u; ++second) {
+                cxpr_context* ctx = cxpr_context_new();
+                bool found = false;
+                cxpr_value loaded;
+                assert(ctx);
+                set_test_value(ctx, "value", types[first], param != 0u);
+                set_test_value(ctx, "value", types[second], param != 0u);
+                loaded = param ? cxpr_context_get_param_typed(ctx, "value", &found)
+                               : cxpr_context_get_typed(ctx, "value", &found);
+                assert(found);
+                assert(loaded.type == types[second]);
+                if (loaded.type == CXPR_VALUE_ARRAY || loaded.type == CXPR_VALUE_STRUCT) {
+                    cxpr_value_free(&loaded);
+                }
+                cxpr_context_free(ctx);
+            }
+        }
+    }
+}
+
+static void test_numeric_get_without_found(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_value element = cxpr_num(3.0);
+    const char* fields[] = {"field"};
+    cxpr_struct_value* struct_value = cxpr_struct_value_new(fields, &element, 1u);
+    cxpr_array_value* array_value = cxpr_array_value_new(&element, 1u);
+    cxpr_value value;
+    assert(ctx && struct_value && array_value);
+    cxpr_context_set(ctx, "x", 42.0);
+    assert(cxpr_context_get(ctx, "x", NULL) == 42.0);
+    cxpr_context_set_bool(ctx, "x", true);
+    assert(cxpr_context_get(ctx, "x", NULL) == 1.0);
+    cxpr_context_set_bool(ctx, "x", false);
+    assert(cxpr_context_get(ctx, "x", NULL) == 0.0);
+    assert(cxpr_context_get(ctx, "missing", NULL) == 0.0);
+
+    value = cxpr_array(array_value);
+    cxpr_context_set_value(ctx, "owned", &value);
+    assert(cxpr_context_get(ctx, "owned", NULL) == 0.0);
+    value = cxpr_struct(struct_value);
+    cxpr_context_set_value(ctx, "owned", &value);
+    assert(cxpr_context_get(ctx, "owned", NULL) == 0.0);
+    cxpr_array_value_free(array_value);
+    cxpr_struct_value_free(struct_value);
+    cxpr_context_free(ctx);
+}
+
+static void test_borrowed_array_element(void) {
+    cxpr_context* parent = cxpr_context_new();
+    cxpr_context* child;
+    cxpr_value elements[] = {cxpr_num(3.0), cxpr_string("borrowed")};
+    cxpr_array_value* array_value = cxpr_array_value_new(elements, 2u);
+    cxpr_value array;
+    cxpr_value borrowed = cxpr_null();
+
+    assert(parent && array_value);
+    array = cxpr_array(array_value);
+    cxpr_context_set_value(parent, "series", &array);
+    child = cxpr_context_overlay_new(parent);
+    assert(child);
+    assert(cxpr_context_array_elem_borrow(child, "series", 0u, &borrowed));
+    assert(borrowed.type == CXPR_VALUE_NUMBER && borrowed.d == 3.0);
+    assert(cxpr_context_array_elem_borrow(child, "series", 1u, &borrowed));
+    assert(borrowed.type == CXPR_VALUE_STRING && strcmp(borrowed.str, "borrowed") == 0);
+    assert(!cxpr_context_array_elem_borrow(child, "series", 2u, &borrowed));
+    assert(!cxpr_context_array_elem_borrow(child, "missing", 0u, &borrowed));
+
+    cxpr_context_free(child);
+    cxpr_array_value_free(array_value);
+    cxpr_context_free(parent);
+}
+
 static void test_context_value_paths(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_context_entry vars[] = {{"a", 1.0}, {"b", 2.0}, {NULL, 0.0}};
@@ -165,6 +289,9 @@ static void test_struct_param_value_paths(void) {
 }
 
 int main(void) {
+    test_numeric_get_without_found();
+    test_borrowed_array_element();
+    test_type_replacement_matrix();
     test_context_value_paths();
     test_extended_value_clone_paths();
     test_struct_param_value_paths();

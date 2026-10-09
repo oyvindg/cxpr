@@ -119,6 +119,9 @@ int main(void) {
     cxpr_struct_value_free(nan_role);
 
     assert(cxpr_basket_is_builtin("avg"));
+    assert(cxpr_basket_is_builtin("argmin"));
+    assert(cxpr_basket_is_builtin("argmax"));
+    assert(cxpr_basket_is_builtin("sum"));
     assert(cxpr_basket_is_aggregate_function("avg", 1));
     assert(!cxpr_basket_is_aggregate_function("count", 1));
 

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/cxpr/version.h" CXPR_VERSION_DEFINES
     REGEX "^#define CXPR_VERSION_(MAJOR|MINOR|PATCH) [0-9]+$"
@@ -37,6 +37,7 @@ option(CXPR_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
 option(CXPR_BUILD_SHARED "Build cxpr as a shared library" OFF)
+option(CXPR_WITH_CXCU "Build the optional public CXCU optimizer backend" OFF)
 
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
@@ -127,6 +128,8 @@ if(CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN)
 
     list(APPEND CXPR_SANITIZER_FLAGS -fno-omit-frame-pointer)
 
+    target_compile_options(cxpr PRIVATE ${CXPR_SANITIZER_FLAGS})
+    target_link_options(cxpr PRIVATE ${CXPR_SANITIZER_FLAGS})
     add_compile_options(${CXPR_SANITIZER_FLAGS})
     add_link_options(${CXPR_SANITIZER_FLAGS})
 endif()
@@ -135,6 +138,25 @@ endif()
 # the dependency propagated. CMake ignores the name on platforms without libm.
 if(UNIX)
     target_link_libraries(cxpr PUBLIC m)
+endif()
+
+if(CXPR_WITH_CXCU)
+    if(NOT TARGET cxcu::cxcu)
+        find_package(cxcu CONFIG REQUIRED)
+    endif()
+    add_library(cxpr_cxcu STATIC
+        adapters/cxcu/src/backend.c
+    )
+    add_library(cxpr::cxcu ALIAS cxpr_cxcu)
+    set_target_properties(cxpr_cxcu PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        EXPORT_NAME cxcu
+    )
+    target_link_libraries(cxpr_cxcu PUBLIC cxpr::cxpr cxcu::cxcu)
+    target_include_directories(cxpr_cxcu PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -170,6 +192,12 @@ if(CXPR_BUILD_TESTS)
     add_executable(cxpr_example_ast_snapshot_cytoscape
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/ast_snapshot_cytoscape.c")
     target_link_libraries(cxpr_example_ast_snapshot_cytoscape PRIVATE cxpr)
+
+    add_executable(cxpr_example_generated_descriptor_host
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/generated_descriptor_host.c")
+    target_link_libraries(cxpr_example_generated_descriptor_host PRIVATE cxpr)
+    add_test(NAME examples_generated_descriptor_host
+             COMMAND "$<TARGET_FILE:cxpr_example_generated_descriptor_host>")
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -208,6 +236,15 @@ install(
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+if(CXPR_WITH_CXCU)
+    install(
+        TARGETS cxpr_cxcu
+        EXPORT cxprTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 
 install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
