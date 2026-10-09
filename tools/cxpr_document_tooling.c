@@ -115,6 +115,8 @@ static const char* node_kind_name(cxpr_doc_ast_kind kind) {
     case CXPR_DOC_AST_OUTPUT_STATE_UPDATE: return "outputStateUpdate";
     case CXPR_DOC_AST_ANONYMOUS_OUTPUT: return "anonymousOutput";
     case CXPR_DOC_AST_METADATA: return "metadata";
+    case CXPR_DOC_AST_ASSERT: return "assert";
+    case CXPR_DOC_AST_OPTIMIZE_CONSTRAINT: return "optimizeConstraint";
     default: return "unknown";
     }
 }

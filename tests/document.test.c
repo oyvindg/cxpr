@@ -847,6 +847,38 @@ static void test_document_ast_represents_struct_input_blocks(void) {
     printf("  ✓ test_document_ast_represents_struct_input_blocks\n");
 }
 
+static void test_document_ast_represents_optimizer_constraints(void) {
+    const char* source =
+        "model constrained\n"
+        "$fast = 12\n"
+        "$slow = 26\n"
+        "assert $fast > 0 { description = \"positive\" }\n"
+        "optimize $fast < $slow { description = \"ordered\" }\n"
+        "out $fast\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "constraints.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* invariant;
+    const cxpr_doc_ast_node* constraint;
+
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 6u);
+    invariant = cxpr_doc_ast_node_child(root, 3u);
+    constraint = cxpr_doc_ast_node_child(root, 4u);
+    assert(cxpr_doc_ast_node_kind(invariant) == CXPR_DOC_AST_ASSERT);
+    assert(cxpr_doc_ast_node_expr(invariant) != NULL);
+    assert(cxpr_doc_ast_node_child_count(invariant) == 1u);
+    assert(cxpr_doc_ast_node_kind(constraint) == CXPR_DOC_AST_OPTIMIZE_CONSTRAINT);
+    assert(cxpr_doc_ast_node_expr(constraint) != NULL);
+    assert(cxpr_doc_ast_node_child_count(constraint) == 1u);
+
+    cxpr_doc_ast_free(syntax);
+    printf("  ✓ test_document_ast_represents_optimizer_constraints\n");
+}
+
 static void test_load_document_file_is_primary_entrypoint(void) {
     const char* path = "/tmp/cxpr_document_manifest_test.cxpr";
     FILE* file = fopen(path, "wb");
@@ -935,6 +967,7 @@ int main(void) {
     test_document_ast_function_body_host_fields_and_visitor();
     test_document_ast_represents_advanced_existing_syntax();
     test_document_ast_represents_struct_input_blocks();
+    test_document_ast_represents_optimizer_constraints();
     test_load_document_file_is_primary_entrypoint();
     test_manifest_document_accepts_comment_forms();
     printf("All document tests passed.\n");
