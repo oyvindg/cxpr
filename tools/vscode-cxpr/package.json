@@ -2,7 +2,7 @@
   "name": "cxpr-language",
   "displayName": "CXPR Language",
   "description": "VS Code client for the standalone CXPR language server.",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "private": true,
   "publisher": "local",
   "engines": { "vscode": "^1.85.0" },

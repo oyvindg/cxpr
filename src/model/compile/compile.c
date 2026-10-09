@@ -534,6 +534,14 @@ cxpr_model_compiled* cxpr_model_compile_full(
     program->compile_fuse = compile_options.fuse;
     program->compile_trace = compile_options.enable_trace;
     program->lifetime = CXPR_MODEL_LIFETIME_SINGLETON;
+    if (!cxpr_model_prepare_optimize(model, program, err)) {
+        for (size_t i = 0; i < required_default_count; ++i) free(required_defaults[i]);
+        free(required_defaults);
+        for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
+        free(inferred_inputs);
+        cxpr_model_compiled_free(program);
+        return NULL;
+    }
     {
         bool saw_type = false;
         if (!cxpr_model_parse_lifetime_metadata(model, &program->lifetime, &saw_type, err)) {
@@ -791,6 +799,11 @@ cxpr_model_compiled* cxpr_model_compile_full(
                 return NULL;
             }
         }
+    }
+
+    if (!cxpr_model_compile_conditions(model, program, compile_reg, err)) {
+        cxpr_model_compiled_free(program);
+        return NULL;
     }
 
     {

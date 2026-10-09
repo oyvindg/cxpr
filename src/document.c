@@ -588,6 +588,54 @@ static bool cxpr_doc_model_append_constant(cxpr_model* model,
     return true;
 }
 
+static char* cxpr_document_statement_description(const cxpr_doc_ast_node* node) {
+    for (size_t i = 0u; i < cxpr_doc_ast_node_child_count(node); ++i) {
+        const cxpr_doc_ast_node* metadata = cxpr_doc_ast_node_child(node, i);
+        if (cxpr_doc_ast_node_kind(metadata) != CXPR_DOC_AST_METADATA) continue;
+        for (size_t j = 0u; j < cxpr_doc_ast_node_child_count(metadata); ++j) {
+            const cxpr_doc_ast_node* field = cxpr_doc_ast_node_child(metadata, j);
+            const char* name = cxpr_doc_ast_node_name(field);
+            const char* value = cxpr_doc_ast_node_text(field);
+            size_t length;
+            if (!name || strcmp(name, "description") != 0 || !value) continue;
+            length = strlen(value);
+            if (length >= 2u && ((value[0] == '"' && value[length - 1u] == '"') ||
+                                 (value[0] == '\'' && value[length - 1u] == '\''))) {
+                char* result = (char*)malloc(length - 1u);
+                if (!result) return NULL;
+                memcpy(result, value + 1, length - 2u);
+                result[length - 2u] = '\0';
+                return result;
+            }
+            return cxpr_strdup(value);
+        }
+    }
+    return cxpr_strdup("Assertion failed");
+}
+
+static bool cxpr_doc_model_append_condition(cxpr_model* model,
+                                            const cxpr_doc_ast_node* node,
+                                            bool is_assert) {
+    cxpr_model_assert** items = is_assert ? &model->asserts : &model->optimize_constraints;
+    size_t* count = is_assert ? &model->assert_count : &model->optimize_constraint_count;
+    cxpr_model_assert* grown;
+    const char* text = cxpr_doc_ast_node_text(node);
+    const cxpr_expr_ast* expr = cxpr_doc_ast_node_expr(node);
+    if (!text || !expr) return false;
+    grown = (cxpr_model_assert*)realloc(*items, (*count + 1u) * sizeof(**items));
+    if (!grown) return false;
+    *items = grown;
+    grown[*count] = (cxpr_model_assert){0};
+    grown[*count].source = cxpr_strdup(text);
+    grown[*count].expr = cxpr_expr_ast_clone(expr);
+    grown[*count].description = cxpr_document_statement_description(node);
+    grown[*count].span = cxpr_doc_ast_node_span(node);
+    grown[*count].has_span = true;
+    if (!grown[*count].source || !grown[*count].expr || !grown[*count].description) return false;
+    (*count)++;
+    return true;
+}
+
 static bool cxpr_doc_model_append_binding(cxpr_model* model,
                                                cxpr_model_binding_kind kind,
                                                const cxpr_doc_ast_node* node) {
@@ -1304,6 +1352,10 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
             return cxpr_doc_model_append_constant(model, node, false) &&
                    cxpr_document_lower_metadata_children(
                        model, node, "param", CXPR_MODEL_METADATA_TARGET_PARAM);
+        case CXPR_DOC_AST_ASSERT:
+            return cxpr_doc_model_append_condition(model, node, true);
+        case CXPR_DOC_AST_OPTIMIZE_CONSTRAINT:
+            return cxpr_doc_model_append_condition(model, node, false);
         case CXPR_DOC_AST_STATE_DECL:
             return cxpr_doc_model_append_binding(model, CXPR_MODEL_BINDING_STATE, node) &&
                    cxpr_document_lower_metadata_children(

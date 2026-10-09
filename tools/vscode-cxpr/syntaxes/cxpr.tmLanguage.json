@@ -58,7 +58,7 @@
     "hostBlocks": {
       "patterns": [
         {
-          "match": "^\\s*((?!name\\b|model\\b|use\\b|in\\b|fn\\b|update\\b|out\\b|state\\b|meta\\b)[A-Za-z_][A-Za-z0-9_]*)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?(?=\\s*\\{)",
+          "match": "^\\s*((?!name\\b|model\\b|use\\b|in\\b|fn\\b|update\\b|out\\b|state\\b|meta\\b|assert\\b|optimize\\b)[A-Za-z_][A-Za-z0-9_]*)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?(?=\\s*\\{)",
           "captures": {
             "1": {
               "name": "keyword.control.cxpr"
@@ -224,6 +224,10 @@
           "match": "\\boptimize\\b(?=\\s*(?:=|\\{))"
         },
         {
+          "name": "keyword.control.cxpr",
+          "match": "\\b(?:assert|optimize)\\b(?!\\s*(?:=|\\{))"
+        },
+        {
           "match": "\\b(in)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\{)",
           "captures": {
             "1": {
@@ -247,7 +251,7 @@
         },
         {
           "name": "keyword.control.cxpr",
-          "match": "\\b(?:and|as|or|not|if|then|else|fn|in|initial|out|return|state|update|use|true|false|null)\\b"
+          "match": "\\b(?:and|as|or|not|if|then|else|fn|in|initial|out|return|state|update|use|true|false|null|assert)\\b"
         }
       ]
     },

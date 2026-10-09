@@ -134,6 +134,16 @@ test("source-aware tokens color use keyword and imported module separately", () 
   ]);
 });
 
+test("source-aware tokens color assert and optimize statements as keywords", () => {
+  const tokens = sourceFeatures.buildDocumentTokens(
+    "assert $fast > 0\noptimize $fast < $slow\n"
+  );
+  assert.deepEqual(tokens.filter((token) => token.type === "keyword"), [
+    { line: 0, start: 0, length: 6, type: "keyword" },
+    { line: 1, start: 0, length: 8, type: "keyword" }
+  ]);
+});
+
 test("list imports resolve files and namespace definitions", () => {
   const temporaryRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "cxpr-list-use-"));
   const tsRoot = path.join(temporaryRoot, "ts");

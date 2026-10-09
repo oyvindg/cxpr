@@ -4,6 +4,7 @@
 #include "core.h"
 #include "ir/compile/internal.h"
 #include <cxpr/model/model.h>
+#include <cxpr/model/optimize.h>
 #include <cxpr/source.h>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -69,6 +70,16 @@ typedef struct {
     bool has_span;
 } cxpr_model_metadata;
 
+typedef struct {
+    char* source;
+    cxpr_expr_ast* expr;
+    char* description;
+    cxpr_source_span span;
+    bool has_span;
+} cxpr_model_assert;
+
+typedef cxpr_model_assert cxpr_model_optimize_constraint;
+
 /** @brief Compiled model binding and its inferred execution metadata. */
 typedef struct {
     char* key;
@@ -120,6 +131,10 @@ struct cxpr_model {
     size_t anonymous_output_count;
     cxpr_model_metadata* metadatas;
     size_t metadata_count;
+    cxpr_model_assert* asserts;
+    size_t assert_count;
+    cxpr_model_optimize_constraint* optimize_constraints;
+    size_t optimize_constraint_count;
     cxpr_model_host_block* host_blocks;
     size_t host_block_count;
 };
@@ -245,6 +260,14 @@ struct cxpr_model_compiled {
     size_t fused_commit_count;
     cxpr_model_compiled_binding* constants;
     size_t constant_count;
+    cxpr_model_assert* asserts;
+    size_t assert_count;
+    cxpr_model_optimize_constraint* optimize_constraints;
+    size_t optimize_constraint_count;
+    cxpr_model_optimize_dimension* optimize_dimensions;
+    size_t optimize_dimension_count;
+    cxpr_model_optimize_objective* optimize_objectives;
+    size_t optimize_objective_count;
     cxpr_model_compiled_binding* state_defaults;
     size_t state_default_count;
     cxpr_model_compiled_binding* bindings;
@@ -301,6 +324,14 @@ struct cxpr_model_session {
     size_t pending_capacity;
     size_t pending_count;
 };
+
+bool cxpr_model_prepare_optimize(const cxpr_model* model,
+                                 cxpr_model_compiled* program,
+                                 cxpr_error* err);
+bool cxpr_model_compile_conditions(const cxpr_model* model,
+                                   cxpr_model_compiled* program,
+                                   const cxpr_registry* registry,
+                                   cxpr_error* err);
 
 void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
                           const char* message, size_t line, size_t column);

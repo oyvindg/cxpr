@@ -32,6 +32,11 @@ cxpr_bulk_status cxpr_bulk_validate(
         (view->output_count && !view->outputs) ||
         (view->param_count && !view->params))
         return CXPR_BULK_MISSING_BUFFER;
+    if (view->param_stride && view->param_stride < view->param_count)
+        return CXPR_BULK_SCHEMA_MISMATCH;
+    if (view->element_count > 0u && view->param_stride > 0u &&
+        view->element_count - 1u > SIZE_MAX / view->param_stride)
+        return CXPR_BULK_INVALID_ARGUMENT;
     for (i = 0u; i < view->input_count; ++i)
         if (!view->inputs[i].values) return CXPR_BULK_MISSING_BUFFER;
         else if (view->element_count > 0u && view->inputs[i].stride > 0u &&
@@ -78,7 +83,12 @@ cxpr_bulk_status cxpr_bulk_run_range(
             const size_t index = view->inputs[j].stride ? i * view->inputs[j].stride : 0u;
             inputs[j] = view->inputs[j].values[index];
         }
-        descriptor->tick(state, inputs, view->params, outputs);
+        descriptor->tick(
+            state, inputs,
+            view->params
+                ? view->params + (view->param_stride ? i * view->param_stride : 0u)
+                : NULL,
+            outputs);
         for (j = 0u; j < descriptor->output_count; ++j)
             view->outputs[j].values[i * view->outputs[j].stride] = outputs[j];
     }

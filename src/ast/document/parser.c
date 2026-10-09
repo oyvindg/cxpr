@@ -339,7 +339,8 @@ static bool cxpr_doc_ast_has_top_level_comma(const char* text) {
 
 static bool cxpr_doc_ast_reserved_host_kind(const char* kind) {
     static const char* reserved[] = {
-        "name", "model", "use", "in", "fn", "update", "out", "state", "meta"
+        "name", "model", "use", "in", "fn", "update", "out", "state", "meta",
+        "assert", "optimize"
     };
     for (size_t i = 0u; i < CXPR_ARRAY_COUNT(reserved); ++i) {
         if (strcmp(kind, reserved[i]) == 0) return true;
@@ -1125,7 +1126,45 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         return true;
     }
 
-    if (cxpr_doc_ast_keyword(statement, "model", &rest)) {
+    if (cxpr_doc_ast_keyword(statement, "assert", &rest) ||
+        cxpr_doc_ast_keyword(statement, "optimize", &rest)) {
+        bool is_assert = strncmp(statement, "assert", 6u) == 0;
+        char* open = strchr((char*)rest, '{');
+        char* close = open ? strrchr(open, '}') : NULL;
+        char* condition;
+        node = cxpr_doc_ast_node_new(
+            is_assert ? CXPR_DOC_AST_ASSERT : CXPR_DOC_AST_OPTIMIZE_CONSTRAINT, span);
+        if (!node) goto oom;
+        if (open) {
+            cxpr_doc_ast_node* metadata;
+            if (!close || close < open) goto syntax;
+            *open = '\0';
+            *close = '\0';
+            metadata = cxpr_doc_ast_node_new(
+                CXPR_DOC_AST_METADATA,
+                cxpr_doc_ast_span(parser,
+                    start_offset + (size_t)(open - statement),
+                    start_offset + (size_t)(close - statement) + 1u));
+            if (!metadata) goto oom;
+            metadata->name = cxpr_strdup("metadata");
+            metadata->text = cxpr_strdup(cxpr_doc_ast_trim_in_place(open + 1));
+            if (!metadata->name || !metadata->text ||
+                !cxpr_doc_ast_parse_host_fields(
+                    parser, metadata, metadata->text,
+                    start_offset + (size_t)(open - statement) + 1u) ||
+                !cxpr_doc_ast_append_child(node, metadata)) {
+                cxpr_doc_ast_node_free(metadata);
+                goto oom;
+            }
+        }
+        condition = cxpr_doc_ast_trim_in_place((char*)rest);
+        if (*condition == '\0') goto syntax;
+        node->text = cxpr_strdup(condition);
+        node->expression = cxpr_doc_ast_parse_expr(
+            condition, span.start.line,
+            span.start.column + (size_t)(condition - statement) + 1u, parser->err);
+        ok = node->text && node->expression;
+    } else if (cxpr_doc_ast_keyword(statement, "model", &rest)) {
         node = cxpr_doc_ast_node_new(CXPR_DOC_AST_MODEL_DECL, span);
         if (!node) goto oom;
         {
@@ -1198,7 +1237,7 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
                                               parser->err);
         }
     } else if (cxpr_doc_ast_keyword(statement, "state", &rest)) {
-        if (strchr(rest, '{')) {
+        if (strchr(rest, '{') && !cxpr_doc_ast_top_level_char((char*)rest, '=')) {
             char* open = strchr((char*)rest, '{');
             char* close = strrchr((char*)rest, '}');
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_STATE_BLOCK, span);
