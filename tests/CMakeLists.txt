@@ -31,6 +31,11 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
        "${CMAKE_CURRENT_SOURCE_DIR}/scale_parity_benchmark.test.c")
         continue()
     endif()
+    # cxcu/CUDA parity test is registered separately (needs cxpr_cxcu + CUDA).
+    if(test_file STREQUAL
+       "${CMAKE_CURRENT_SOURCE_DIR}/optimize_cxcu_constraint_parity.test.c")
+        continue()
+    endif()
     if(NOT TARGET cxpr_model_codegen AND test_file MATCHES
        "(bulk_buffer_parity|bulk_codegen_e2e|composition_bulk_codegen_e2e|dynamic_host_e2e|pathfinding_flow_e2e|pathfinding_generated_parity)\\.test\\.c$")
         continue()
@@ -553,4 +558,18 @@ if(TARGET cxpr_model_codegen)
     add_test(
         NAME cxpr_compiled_strategy_example
         COMMAND $<TARGET_FILE:cxpr_compiled_strategy_example>)
+endif()
+
+# Standalone CPU <-> cxcu (CUDA) parity for optimize-scoped assert pruning.
+if(CXPR_WITH_CXCU AND TARGET cxpr_cxcu)
+    add_executable(cxpr_optimize_cxcu_constraint_parity
+        optimize_cxcu_constraint_parity.test.c)
+    target_link_libraries(cxpr_optimize_cxcu_constraint_parity PRIVATE cxpr_cxcu)
+    target_compile_definitions(cxpr_optimize_cxcu_constraint_parity PRIVATE
+        CXPR_CXCU_TEST_INCLUDE_OPTION="-I${CMAKE_CURRENT_SOURCE_DIR}/../include")
+    target_compile_options(cxpr_optimize_cxcu_constraint_parity PRIVATE -UNDEBUG)
+    add_test(NAME optimize_cxcu_constraint_parity
+        COMMAND $<TARGET_FILE:cxpr_optimize_cxcu_constraint_parity>)
+    set_tests_properties(optimize_cxcu_constraint_parity PROPERTIES
+        LABELS "cuda" SKIP_RETURN_CODE 77)
 endif()
