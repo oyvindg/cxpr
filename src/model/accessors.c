@@ -173,12 +173,6 @@ void cxpr_model_free(cxpr_model* model) {
         cxpr_expr_ast_free(model->asserts[i].expr);
     }
     free(model->asserts);
-    for (size_t i = 0; i < model->optimize_constraint_count; ++i) {
-        free(model->optimize_constraints[i].source);
-        free(model->optimize_constraints[i].description);
-        cxpr_expr_ast_free(model->optimize_constraints[i].expr);
-    }
-    free(model->optimize_constraints);
     for (size_t i = 0; i < model->binding_count; ++i) {
         free(model->bindings[i].name);
         free(model->bindings[i].source);
@@ -816,6 +810,59 @@ const cxpr_model_host_block* cxpr_host_block_child_by_kind(
     for (size_t i = 0u; i < block->child_count; ++i) {
         const char* child_kind = block->children[i].kind;
         if (child_kind && strcmp(child_kind, kind) == 0) return &block->children[i];
+    }
+    return NULL;
+}
+static bool cxpr_model_metadata_declares_optimize_dim(const cxpr_model* model,
+                                                      size_t index) {
+    const char* shorthand;
+    if (cxpr_model_metadata_field_value(model, index, "optimize.values") ||
+        cxpr_model_metadata_field_value(model, index, "optimize.min") ||
+        cxpr_model_metadata_field_value(model, index, "optimize.max") ||
+        cxpr_model_metadata_field_value(model, index, "optimize.step"))
+        return true;
+    shorthand = cxpr_model_metadata_field_value(model, index, "optimize");
+    while (shorthand && (*shorthand == ' ' || *shorthand == '\t')) ++shorthand;
+    return shorthand && *shorthand == '[';
+}
+
+/* An assert condition is optimize-scoped when it references at least one $param
+   that carries optimize-dimension metadata. Such conditions prune optimizer
+   candidates rather than acting as plain load-time invariants. */
+bool cxpr_model_condition_is_optimize_scoped(const cxpr_model* model,
+                                             const cxpr_expr_ast* expr) {
+    size_t count;
+    if (!model || !expr) return false;
+    count = cxpr_model_metadata_count(model);
+    for (size_t i = 0u; i < count; ++i) {
+        const char* name;
+        if (cxpr_model_metadata_target_kind_at(model, i) !=
+            CXPR_MODEL_METADATA_TARGET_PARAM) continue;
+        if (!cxpr_model_metadata_declares_optimize_dim(model, i)) continue;
+        name = cxpr_model_metadata_target_name(model, i);
+        if (name && cxpr_expr_ast_contains_variable(expr, name)) return true;
+    }
+    return false;
+}
+
+size_t cxpr_model_constraint_count(const cxpr_model* model) {
+    size_t total = 0u;
+    if (!model) return 0u;
+    for (size_t i = 0u; i < model->assert_count; ++i) {
+        if (cxpr_model_condition_is_optimize_scoped(model, model->asserts[i].expr))
+            ++total;
+    }
+    return total;
+}
+
+const cxpr_expr_ast* cxpr_model_constraint_at(const cxpr_model* model, size_t index) {
+    size_t seen = 0u;
+    if (!model) return NULL;
+    for (size_t i = 0u; i < model->assert_count; ++i) {
+        if (!cxpr_model_condition_is_optimize_scoped(model, model->asserts[i].expr))
+            continue;
+        if (seen == index) return model->asserts[i].expr;
+        ++seen;
     }
     return NULL;
 }

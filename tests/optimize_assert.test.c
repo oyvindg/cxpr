@@ -8,6 +8,8 @@ static cxpr_model_compiled* compile_source(const char* source,
                                            cxpr_error* err) {
     cxpr_doc* doc = cxpr_doc_parse_model(source, err);
     cxpr_model_compiled* program;
+    if (!doc) fprintf(stderr, "parse failed: %s at %zu:%zu\n",
+                      err->message ? err->message : "unknown", err->line, err->column);
     assert(doc != NULL);
     program = cxpr_model_compile(cxpr_doc_model(doc), NULL, err);
     *out_doc = doc;
@@ -44,12 +46,21 @@ static void test_assert_passes_and_reports_description(void) {
     cxpr_doc_free(doc);
 }
 
-static void test_optimize_constraint_is_inert_and_introspectable(void) {
+static void test_optimize_scoped_assert_prunes_and_validates_default(void) {
+    /* An assert referencing optimize $params is introspectable as an optimizer
+       constraint, yet it also guards the declared defaults at load time. */
     const char* source =
         "model optimize_api\n"
-        "$fast = 20 { optimize { values = [10, 20] } }\n"
-        "$slow = 10 { optimize { min = 10, max = 30, step = 10 } }\n"
-        "optimize $fast < $slow { description = \"ordered\" }\n"
+        "$fast = 10 { optimize { values = [10, 20] } }\n"
+        "$slow = 20 { optimize { min = 20, max = 40, step = 10 } }\n"
+        "assert $fast < $slow { description = \"ordered\" }\n"
+        "score = $slow - $fast { optimize { maximize } }\n"
+        "out score\n";
+    const char* bad_default =
+        "model optimize_bad_default\n"
+        "$fast = 30 { optimize { values = [10, 20, 30] } }\n"
+        "$slow = 20 { optimize { min = 20, max = 40, step = 10 } }\n"
+        "assert $fast < $slow { description = \"ordered\" }\n"
         "score = $slow - $fast { optimize { maximize } }\n"
         "out score\n";
     cxpr_error err = {0};
@@ -70,8 +81,47 @@ static void test_optimize_constraint_is_inert_and_introspectable(void) {
     assert(strcmp(objective.name, "score") == 0);
     assert(objective.direction == CXPR_OPT_MAXIMIZE);
     session = cxpr_model_session_new(program, NULL, &err);
-    assert(session != NULL); /* The violated optimizer constraint is not an invariant. */
+    assert(session != NULL); /* The satisfying default passes the invariant. */
     cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+
+    /* A default that violates the optimize-scoped assert is rejected at load
+       time, exactly like any other invariant. */
+    program = compile_source(bad_default, &doc, &err);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session == NULL);
+    assert(err.code == CXPR_ERR_ASSERTION_FAILED);
+    assert(strcmp(err.message, "ordered") == 0);
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+}
+
+static void test_nested_record_optimize_dimensions_and_constraints(void) {
+    const char* source =
+        "model nested_optimizer\n"
+        "$kst = { roc = { r1 = 1 { optimize = [1, 2, 3] }, "
+        "r2 = 2 { optimize { min = 2, max = 4, step = 1 } } } }\n"
+        "assert $kst.roc.r1 < $kst.roc.r2\n"
+        "score = $kst.roc.r2 - $kst.roc.r1\n"
+        "out score { optimize { maximize } }\n";
+    cxpr_error err = {0};
+    cxpr_doc* doc;
+    cxpr_model_compiled* program = compile_source(source, &doc, &err);
+    cxpr_model_optimize_inputs inputs = {0};
+    cxpr_model_optimize_grid grid = {0};
+    assert(program != NULL);
+    assert(cxpr_model_optimize_dimension_count(program) == 2u);
+    assert(strcmp(cxpr_model_optimize_dimension_at(program, 0u).name,
+                  "kst.roc.r1") == 0);
+    assert(strcmp(cxpr_model_optimize_dimension_at(program, 1u).name,
+                  "kst.roc.r2") == 0);
+    assert(cxpr_model_optimize_constraint_count(program) == 1u);
+    assert(cxpr_model_optimize_prepare_grid(program, &inputs, &grid, &err));
+    assert(grid.candidate_count == 9u);
+    assert(grid.active_count == 6u);
+    cxpr_model_optimize_grid_free(&grid);
     cxpr_model_compiled_free(program);
     cxpr_doc_free(doc);
 }
@@ -93,7 +143,7 @@ static void test_serial_candidate_runner_selects_best_allowed_candidate(void) {
     const char* source =
         "model runner\n"
         "$period = 1 { optimize { values = [1, 2, 3] } }\n"
-        "optimize $period < 3\n"
+        "assert $period < 3\n"
         "score = $period\n"
         "out score { optimize { maximize } }\n";
     cxpr_error err = {0};
@@ -116,7 +166,7 @@ static void test_prepare_grid_and_finalize_results(void) {
     const char* source =
         "model backend_helpers\n"
         "$period = 1 { optimize { values = [1, 2, 3] } }\n"
-        "optimize $period < 3\n"
+        "assert $period < 3\n"
         "score = $period\n"
         "out score { optimize { maximize } }\n";
     cxpr_model_optimize_inputs inputs = {0};
@@ -240,14 +290,49 @@ static void test_host_backend_selection_and_fallback(void) {
     cxpr_doc_free(doc);
 }
 
+static void test_lexicographic_multi_objective_ranking(void) {
+    /* The primary objective ties across several candidates; the secondary
+       objective breaks the tie, following declaration order and direction. */
+    const char* source =
+        "model multi_rank\n"
+        "$a = 1 { optimize { values = [1, 2] } }\n"
+        "$b = 1 { optimize { values = [1, 2] } }\n"
+        "primary = $a { optimize { maximize } }\n"
+        "secondary = $b { optimize { maximize } }\n"
+        "out primary\n"
+        "out secondary\n";
+    cxpr_error err = {0};
+    cxpr_doc* doc;
+    cxpr_model_compiled* program = compile_source(source, &doc, &err);
+    cxpr_model_optimize_inputs inputs = {0};
+    cxpr_model_optimize_result result = {0};
+    inputs.tick_count = 1u;
+    assert(program != NULL);
+    assert(cxpr_model_optimize_objective_count(program) == 2u);
+    assert(cxpr_model_optimize(program, &inputs, NULL, &result, &err));
+    assert(result.objective_count == 2u);
+    /* Best = (a=2, b=2): primary maximised, then secondary maximised among the
+       tied primaries (a plain "first objective only" ranker would stop at a=2
+       and keep the first-seen b=1). */
+    assert(result.candidates[result.best_index].params[0] == 2.0);
+    assert(result.candidates[result.best_index].params[1] == 2.0);
+    assert(result.candidates[result.best_index].objectives[0] == 2.0);
+    assert(result.candidates[result.best_index].objectives[1] == 2.0);
+    cxpr_model_optimize_result_free(&result);
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+}
+
 int main(void) {
     test_assert_passes_and_reports_description();
-    test_optimize_constraint_is_inert_and_introspectable();
+    test_optimize_scoped_assert_prunes_and_validates_default();
+    test_nested_record_optimize_dimensions_and_constraints();
     test_assert_rejects_runtime_identifiers();
     test_serial_candidate_runner_selects_best_allowed_candidate();
     test_prepare_grid_and_finalize_results();
     test_candidate_objective_reads_committed_state_output();
     test_host_backend_selection_and_fallback();
+    test_lexicographic_multi_objective_ranking();
     printf("All optimize/assert tests passed.\n");
     return 0;
 }

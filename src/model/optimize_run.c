@@ -65,18 +65,32 @@ bool cxpr_model_optimize_prepare_grid(
             out->params[candidate * out->param_count + i] = cxpr_num(value);
             cxpr_context_set_param(context, program->optimize_dimensions[i].name, value);
         }
-        if (!cxpr_model_compiled_check_asserts(program, context, program->registry, err)) {
-            cxpr_context_free(context);
-            goto fail;
-        }
-        for (size_t i = 0u; allowed && i < program->optimize_constraint_count; ++i) {
-            bool value = false;
-            if (!cxpr_eval_ast_bool(program->optimize_constraints[i].expr,
-                                    context, program->registry, &value, err)) {
+        /* Validate load-time invariants and prune optimize-scoped candidates.
+           An assert referencing an optimize $param prunes this candidate on
+           failure; any other assert is a hard invariant and aborts the sweep. */
+        for (size_t i = 0u; allowed && i < program->assert_count; ++i) {
+            bool passed = false;
+            if (!cxpr_eval_ast_bool(program->asserts[i].expr, context,
+                                    program->registry, &passed, err)) {
                 cxpr_context_free(context);
                 goto fail;
             }
-            allowed = value;
+            if (passed) continue;
+            if (program->asserts[i].optimize_scoped) {
+                allowed = false;
+            } else {
+                cxpr_model_set_error(
+                    err, CXPR_ERR_ASSERTION_FAILED,
+                    program->asserts[i].description &&
+                            program->asserts[i].description[0]
+                        ? program->asserts[i].description : "Assertion failed",
+                    program->asserts[i].has_span
+                        ? program->asserts[i].span.start.line : 0u,
+                    program->asserts[i].has_span
+                        ? program->asserts[i].span.start.column : 0u);
+                cxpr_context_free(context);
+                goto fail;
+            }
         }
         out->active[candidate] = allowed ? 1u : 0u;
         if (allowed) ++out->active_count;
@@ -101,6 +115,23 @@ oom:
 fail:
     free(indices);
     cxpr_model_optimize_grid_free(out);
+    return false;
+}
+
+/* Rank candidates lexicographically by the objectives in declaration order:
+   the first objective dominates, and ties are broken by each subsequent
+   objective using its own maximize/minimize direction. Returns true when the
+   candidate objectives strictly beat the current best under that ordering. */
+static bool cxpr_optimize_candidate_is_better(const cxpr_model_compiled* program,
+                                              const double* candidate_objectives,
+                                              const double* best_objectives) {
+    for (size_t i = 0u; i < program->optimize_objective_count; ++i) {
+        const double a = candidate_objectives[i];
+        const double b = best_objectives[i];
+        if (a == b) continue;
+        return program->optimize_objectives[i].direction == CXPR_OPT_MAXIMIZE
+            ? a > b : a < b;
+    }
     return false;
 }
 
@@ -142,7 +173,6 @@ bool cxpr_model_optimize_finalize_results(
         objective_outputs[objective] = output;
     }
     for (size_t candidate = 0u; candidate < grid->candidate_count; ++candidate) {
-        double score;
         if (!grid->active[candidate]) continue;
         out->candidates[row].params = (double*)calloc(grid->param_count, sizeof(double));
         out->candidates[row].objectives = (double*)calloc(
@@ -154,11 +184,10 @@ bool cxpr_model_optimize_finalize_results(
         for (size_t i = 0u; i < out->objective_count; ++i)
             out->candidates[row].objectives[i] = outputs[
                 candidate * output_count + objective_outputs[i]].d;
-        score = out->candidates[row].objectives[0];
         if (row == 0u ||
-            (program->optimize_objectives[0].direction == CXPR_OPT_MAXIMIZE
-                 ? score > out->candidates[out->best_index].objectives[0]
-                 : score < out->candidates[out->best_index].objectives[0]))
+            cxpr_optimize_candidate_is_better(
+                program, out->candidates[row].objectives,
+                out->candidates[out->best_index].objectives))
             out->best_index = row;
         out->candidate_count = ++row;
     }
@@ -217,7 +246,6 @@ static bool cxpr_model_optimize_cpu(const cxpr_model_compiled* program,
                                     cxpr_model_optimize_result* result,
                                     cxpr_error* err) {
     cxpr_model_optimize_grid grid = {0};
-    double best = 0.0;
     bool has_best = false;
     if (err) *err = (cxpr_error){0};
     if (!program || !inputs || !result || program->optimize_dimension_count == 0u ||
@@ -267,19 +295,17 @@ static bool cxpr_model_optimize_cpu(const cxpr_model_compiled* program,
             }
         }
         {
-            double score;
             if (!cxpr_optimize_replay(program, session, inputs, current.objectives, err)) {
                 free(current.params);
                 free(current.objectives);
                 cxpr_model_session_free(session);
                 goto fail;
             }
-            score = current.objectives[0];
             result->candidates[result->candidate_count] = current;
             if (!has_best ||
-                (program->optimize_objectives[0].direction == CXPR_OPT_MAXIMIZE
-                     ? score > best : score < best)) {
-                best = score;
+                cxpr_optimize_candidate_is_better(
+                    program, current.objectives,
+                    result->candidates[result->best_index].objectives)) {
                 result->best_index = result->candidate_count;
                 has_best = true;
             }

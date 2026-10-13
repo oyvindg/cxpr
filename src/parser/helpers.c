@@ -62,9 +62,10 @@ cxpr_expr_ast* cxpr_expr_parser_clone_ast(const cxpr_expr_ast* ast) {
                 }
             }
         }
-        return cxpr_expr_ast_record_new(
+        return cxpr_expr_ast_record_new_with_metadata(
             (const char* const*)ast->data.record.field_names,
             values,
+            (const char* const*)ast->data.record.field_metadata,
             ast->data.record.field_count);
     }
     case CXPR_NODE_STRING:

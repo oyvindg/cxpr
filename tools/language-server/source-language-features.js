@@ -614,14 +614,14 @@ function tokenizeLine(line, text, inputNames, inputRoots, currentStructInputRoot
         pushToken(i, wordEnd, inStateBlock ? "state" : "assignment");
       } else if (isFunctionDeclarationName(text, i, wordEnd)) {
         pushToken(i, wordEnd, "function");
+      } else if (word === "optimize" && (next === "=" || next === "{")) {
+        pushToken(i, wordEnd, "namedArgument");
       } else if (KEYWORD_TOKENS.has(word) || isNamedDeclarationKeyword(text, i, wordEnd)) {
         pushToken(i, wordEnd, "keyword");
       } else if (inDocumentBlock && isBareDocumentStringValue(text, i, wordEnd)) {
         pushToken(i, wordEnd, "string");
       } else if (isNameDeclaration(text, i, wordEnd)) {
         pushToken(i, wordEnd, "assignment");
-      } else if (word === "optimize" && (next === "=" || next === "{")) {
-        pushToken(i, wordEnd, "namedArgument");
       } else if (isStructInputRoot(text, currentStructInputRoot, word, i, wordEnd)) {
         pushToken(i, wordEnd, "reference");
       } else if (isStructInputField(text, currentStructInputRoot, inputNames, word, i, wordEnd)) {

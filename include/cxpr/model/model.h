@@ -703,6 +703,9 @@ bool cxpr_model_output_source_span(const cxpr_model* model,
                                    cxpr_source_span* out_span);
 
 size_t cxpr_model_metadata_count(const cxpr_model* model);
+/** Optimizer-only candidate constraints retained on the parsed model. */
+size_t cxpr_model_constraint_count(const cxpr_model* model);
+const cxpr_expr_ast* cxpr_model_constraint_at(const cxpr_model* model, size_t index);
 const char* cxpr_model_metadata_name(const cxpr_model* model, size_t index);
 const char* cxpr_model_metadata_body(const cxpr_model* model, size_t index);
 cxpr_model_metadata_target_kind cxpr_model_metadata_target_kind_at(

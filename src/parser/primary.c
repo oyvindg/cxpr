@@ -193,22 +193,32 @@ fail:
     return NULL;
 }
 
-static bool cxpr_skip_record_field_metadata(cxpr_expr_parser* p) {
+static char* cxpr_parse_record_field_metadata(cxpr_expr_parser* p) {
     size_t depth = 0u;
+    const char* start;
+    const char* end = NULL;
+    char* body;
 
-    if (!cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) return true;
+    if (!cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) return NULL;
+    start = p->current.start + p->current.length;
     do {
         if (cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) {
             depth++;
         } else if (cxpr_expr_parser_check(p, CXPR_TOK_RBRACE)) {
+            if (depth == 1u) end = p->current.start;
             depth--;
         } else if (cxpr_expr_parser_check(p, CXPR_TOK_EOF)) {
             cxpr_expr_parser_set_error(p, "Expected '}' to close record field metadata");
-            return false;
+            return NULL;
         }
         cxpr_expr_parser_advance(p);
     } while (depth > 0u);
-    return true;
+    if (!end) return NULL;
+    body = (char*)malloc((size_t)(end - start) + 1u);
+    if (!body) return NULL;
+    memcpy(body, start, (size_t)(end - start));
+    body[end - start] = '\0';
+    return body;
 }
 
 static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
@@ -216,14 +226,17 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
     size_t capacity = 4;
     char** names;
     cxpr_expr_ast** values;
+    char** metadata;
 
     if (!cxpr_expr_parser_expect(p, CXPR_TOK_LBRACE, "Expected '{'")) return NULL;
 
     names = (char**)calloc(capacity, sizeof(char*));
     values = (cxpr_expr_ast**)calloc(capacity, sizeof(cxpr_expr_ast*));
-    if (!names || !values) {
+    metadata = (char**)calloc(capacity, sizeof(char*));
+    if (!names || !values || !metadata) {
         free(names);
         free(values);
+        free(metadata);
         return NULL;
     }
 
@@ -233,6 +246,7 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
                 size_t old_capacity = capacity;
                 char** grown_names;
                 cxpr_expr_ast** grown_values;
+                char** grown_metadata;
                 size_t new_capacity = capacity * 2;
                 grown_names = (char**)realloc(names, new_capacity * sizeof(char*));
                 if (!grown_names) goto fail;
@@ -242,9 +256,13 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
                     goto fail;
                 }
                 values = grown_values;
+                grown_metadata = (char**)realloc(metadata, new_capacity * sizeof(char*));
+                if (!grown_metadata) goto fail;
+                metadata = grown_metadata;
                 capacity = new_capacity;
                 memset(names + old_capacity, 0, (capacity - old_capacity) * sizeof(char*));
                 memset(values + old_capacity, 0, (capacity - old_capacity) * sizeof(cxpr_expr_ast*));
+                memset(metadata + old_capacity, 0, (capacity - old_capacity) * sizeof(char*));
             }
             if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
                 p->had_error = true;
@@ -271,19 +289,24 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
                 goto fail;
             }
             if (!values[count] || p->had_error) goto fail;
-            /* Dynasty records allow optimizer annotations after leaf values.
-             * Runtime evaluation only needs the value; the host extracts the
-             * metadata separately using its fully qualified record path. */
-            if (!cxpr_skip_record_field_metadata(p)) goto fail;
+            if (cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) {
+                metadata[count] = cxpr_parse_record_field_metadata(p);
+                if (!metadata[count]) goto fail;
+            }
             count++;
         } while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA));
     }
 
     if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACE, "Expected '}' to close record")) goto fail;
     {
-        cxpr_expr_ast* record = cxpr_expr_ast_record_new((const char* const*)names, values, count);
-        for (size_t i = 0u; i < count; ++i) free(names[i]);
+        cxpr_expr_ast* record = cxpr_expr_ast_record_new_with_metadata(
+            (const char* const*)names, values, (const char* const*)metadata, count);
+        for (size_t i = 0u; i < count; ++i) {
+            free(names[i]);
+            free(metadata[i]);
+        }
         free(names);
+        free(metadata);
         if (!record) {
             for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(values[i]);
             free(values);
@@ -294,10 +317,12 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
 fail:
     for (size_t i = 0; i < capacity; ++i) {
         free(names[i]);
+        free(metadata[i]);
         cxpr_expr_ast_free(values[i]);
     }
     free(names);
     free(values);
+    free(metadata);
     return NULL;
 }
 

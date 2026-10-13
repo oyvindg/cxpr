@@ -80,12 +80,6 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
         cxpr_expr_ast_free(program->asserts[i].expr);
     }
     free(program->asserts);
-    for (size_t i = 0u; i < program->optimize_constraint_count; ++i) {
-        free(program->optimize_constraints[i].source);
-        free(program->optimize_constraints[i].description);
-        cxpr_expr_ast_free(program->optimize_constraints[i].expr);
-    }
-    free(program->optimize_constraints);
     for (size_t i = 0u; i < program->optimize_dimension_count; ++i) {
         free((char*)program->optimize_dimensions[i].name);
         free((double*)program->optimize_dimensions[i].values);

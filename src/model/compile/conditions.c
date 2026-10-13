@@ -52,12 +52,15 @@ bool cxpr_model_compile_conditions(const cxpr_model* model,
                                    const cxpr_registry* registry,
                                    cxpr_error* err) {
     program->assert_count = model->assert_count;
-    program->optimize_constraint_count = model->optimize_constraint_count;
-    return cxpr_model_compile_condition_group(
-               model->asserts, model->assert_count, "assert",
-               &program->asserts, registry, err) &&
-           cxpr_model_compile_condition_group(
-               model->optimize_constraints, model->optimize_constraint_count,
-               "optimize constraint", &program->optimize_constraints,
-               registry, err);
+    if (!cxpr_model_compile_condition_group(
+            model->asserts, model->assert_count, "assert",
+            &program->asserts, registry, err))
+        return false;
+    /* Classify each assert: conditions referencing optimize $params prune
+       candidates during a sweep, the rest stay as load-time invariants. */
+    for (size_t i = 0u; i < program->assert_count; ++i) {
+        program->asserts[i].optimize_scoped =
+            cxpr_model_condition_is_optimize_scoped(model, model->asserts[i].expr);
+    }
+    return true;
 }

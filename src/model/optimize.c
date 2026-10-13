@@ -11,14 +11,26 @@ cxpr_model_optimize_dimension cxpr_model_optimize_dimension_at(
     return program->optimize_dimensions[index];
 }
 
+/* Optimize constraints are the subset of asserts that reference optimize
+   $params; they are introspected as a derived view over the assert list. */
 size_t cxpr_model_optimize_constraint_count(const cxpr_model_compiled* program) {
-    return program ? program->optimize_constraint_count : 0u;
+    size_t total = 0u;
+    if (!program) return 0u;
+    for (size_t i = 0u; i < program->assert_count; ++i)
+        if (program->asserts[i].optimize_scoped) ++total;
+    return total;
 }
 
 const cxpr_expr_ast* cxpr_model_optimize_constraint_at(
     const cxpr_model_compiled* program, size_t index) {
-    return program && index < program->optimize_constraint_count
-        ? program->optimize_constraints[index].expr : NULL;
+    size_t seen = 0u;
+    if (!program) return NULL;
+    for (size_t i = 0u; i < program->assert_count; ++i) {
+        if (!program->asserts[i].optimize_scoped) continue;
+        if (seen == index) return program->asserts[i].expr;
+        ++seen;
+    }
+    return NULL;
 }
 
 size_t cxpr_model_optimize_objective_count(const cxpr_model_compiled* program) {

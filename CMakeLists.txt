@@ -198,6 +198,18 @@ if(CXPR_BUILD_TESTS)
     target_link_libraries(cxpr_example_generated_descriptor_host PRIVATE cxpr)
     add_test(NAME examples_generated_descriptor_host
              COMMAND "$<TARGET_FILE:cxpr_example_generated_descriptor_host>")
+
+    add_executable(cxpr_example_optimize_host
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/optimize_host.c")
+    target_link_libraries(cxpr_example_optimize_host PRIVATE cxpr)
+    add_test(NAME examples_optimize_host
+             COMMAND "$<TARGET_FILE:cxpr_example_optimize_host>")
+
+    add_executable(cxpr_example_optimize_multiobjective
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/optimize_multiobjective.c")
+    target_link_libraries(cxpr_example_optimize_multiobjective PRIVATE cxpr)
+    add_test(NAME examples_optimize_multiobjective
+             COMMAND "$<TARGET_FILE:cxpr_example_optimize_multiobjective>")
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════

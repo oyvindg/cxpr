@@ -17,6 +17,9 @@ This folder contains longer examples that are useful for understanding how `cxpr
   Test: [`../tests/examples/scientific.test.c`](../tests/examples/scientific.test.c)
 - [`engine_slots.c`](engine_slots.c): `cxpr_engine` driven from host-owned
   hot-loop values via pre-bound `cxpr_context_slot` handles
+- [`optimize_host.c`](optimize_host.c): host-agnostic optimizer integration.
+  CXPR expands nested parameter metadata and prunes constraints; the host
+  evaluates active candidates and returns an output buffer for final ranking.
 - [`load_model.c`](load_model.c): load and run a model from a [`.cxpr`
   file](load_model.cxpr) through the public document API
 - [`ast_snapshot_cytoscape/`](ast_snapshot_cytoscape/): single-tick AST
@@ -73,6 +76,9 @@ cmake --build build --target test_examples_physics
 
 cmake --build build --target test_examples_scientific
 ./build/tests/test_examples_scientific
+
+cmake --build build --target cxpr_example_optimize_host
+./build/cxpr_example_optimize_host
 ```
 
 To run the full test suite instead:

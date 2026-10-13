@@ -1126,14 +1126,21 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         return true;
     }
 
-    if (cxpr_doc_ast_keyword(statement, "assert", &rest) ||
-        cxpr_doc_ast_keyword(statement, "optimize", &rest)) {
-        bool is_assert = strncmp(statement, "assert", 6u) == 0;
+    if (cxpr_doc_ast_keyword(statement, "optimize", &rest)) {
+        cxpr_doc_ast_set_error(
+            parser->err, CXPR_ERR_SYNTAX,
+            "`optimize <expr>` statements were removed; write `assert <expr>` "
+            "instead (an assert referencing $params that carry optimize "
+            "metadata prunes candidates during optimization)",
+            span.start.line, span.start.column + 1u);
+        free(owned);
+        return false;
+    }
+    if (cxpr_doc_ast_keyword(statement, "assert", &rest)) {
         char* open = strchr((char*)rest, '{');
         char* close = open ? strrchr(open, '}') : NULL;
         char* condition;
-        node = cxpr_doc_ast_node_new(
-            is_assert ? CXPR_DOC_AST_ASSERT : CXPR_DOC_AST_OPTIMIZE_CONSTRAINT, span);
+        node = cxpr_doc_ast_node_new(CXPR_DOC_AST_ASSERT, span);
         if (!node) goto oom;
         if (open) {
             cxpr_doc_ast_node* metadata;

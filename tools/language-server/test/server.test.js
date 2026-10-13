@@ -136,12 +136,32 @@ test("source-aware tokens color use keyword and imported module separately", () 
 
 test("source-aware tokens color assert and optimize statements as keywords", () => {
   const tokens = sourceFeatures.buildDocumentTokens(
-    "assert $fast > 0\noptimize $fast < $slow\n"
+    "assert $fast > 0\n" +
+    "optimize $kst_params.roc.r1 <= $kst_params.roc.r2 { description = \"r1<=r2\" }\n" +
+    "optimize $kst_params.roc.r2 <= $kst_params.roc.r3 { description = \"r2<=r3\" }\n" +
+    "optimize $kst_params.roc.r3 < $kst_params.roc.r4 { description = \"r3<r4\" }\n"
   );
   assert.deepEqual(tokens.filter((token) => token.type === "keyword"), [
     { line: 0, start: 0, length: 6, type: "keyword" },
-    { line: 1, start: 0, length: 8, type: "keyword" }
+    { line: 1, start: 0, length: 8, type: "keyword" },
+    { line: 2, start: 0, length: 8, type: "keyword" },
+    { line: 3, start: 0, length: 8, type: "keyword" }
   ]);
+});
+
+test("source-aware tokens color parameter optimize metadata as named arguments", () => {
+  const tokens = sourceFeatures.buildDocumentTokens(
+    "$period = 20 { optimize = [30, 40] }\n" +
+    "$stddev = 2.0 { optimize { min = 2.0, max = 2.4, step = 0.2 } }\n"
+  );
+  assert.deepEqual(tokens.filter((token) => token.type === "namedArgument"), [
+    { line: 0, start: 15, length: 8, type: "namedArgument" },
+    { line: 1, start: 16, length: 8, type: "namedArgument" },
+    { line: 1, start: 27, length: 3, type: "namedArgument" },
+    { line: 1, start: 38, length: 3, type: "namedArgument" },
+    { line: 1, start: 49, length: 4, type: "namedArgument" }
+  ]);
+  assert.equal(tokens.filter((token) => token.type === "keyword").length, 0);
 });
 
 test("list imports resolve files and namespace definitions", () => {

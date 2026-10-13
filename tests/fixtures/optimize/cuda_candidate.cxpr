@@ -6,7 +6,7 @@ $gain = 1 { optimize { values = [1, 2, 4] } }
 $bias = 0 { optimize { min = 0, max = 2, step = 2 } }
 
 assert $gain > 0 { description = "Gain must be positive" }
-optimize $gain + $bias <= 4 { description = "Exclude oversized candidates" }
+assert $gain + $bias <= 4 { description = "Exclude oversized candidates" }
 
 state total = 5
 total := total + sample * $gain + $bias

@@ -1,15 +1,15 @@
-# Demonstrates `optimize <expr>` — an optimizer-only candidate constraint.
-# Unlike `assert`, a config with $fast >= $slow is still valid during ordinary
-# execution; it is merely excluded from optimization (spec §4).
+# Demonstrates optimizer constraints in the unified `assert` model.
+# An assert that references $params carrying optimize metadata prunes
+# candidates during a sweep, while still validating the declared defaults.
 
 model optimize_constraint
 
 in close
 
-$fast = 12
-$slow = 26
+$fast = 12 { optimize { min = 6, max = 24, step = 6 } }
+$slow = 26 { optimize { min = 20, max = 32, step = 6 } }
 
-# Always-true invariants (checked on every run):
+# Plain invariants (reference no optimize $params): checked on every run.
 assert $fast > 0 {
     description = "Fast period must be positive"
 }
@@ -17,8 +17,9 @@ assert $slow > 0 {
     description = "Slow period must be positive"
 }
 
-# Optimizer-only: only evaluate candidates where fast < slow.
-optimize $fast < $slow {
+# Optimizer constraint: references optimize $params, so candidates where
+# fast >= slow are pruned. The declared defaults (12 < 26) must also hold.
+assert $fast < $slow {
     description = "Only evaluate fast periods below slow periods"
 }
 

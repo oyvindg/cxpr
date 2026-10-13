@@ -847,13 +847,13 @@ static void test_document_ast_represents_struct_input_blocks(void) {
     printf("  ✓ test_document_ast_represents_struct_input_blocks\n");
 }
 
-static void test_document_ast_represents_optimizer_constraints(void) {
+static void test_document_ast_represents_assert_conditions(void) {
     const char* source =
         "model constrained\n"
         "$fast = 12\n"
         "$slow = 26\n"
         "assert $fast > 0 { description = \"positive\" }\n"
-        "optimize $fast < $slow { description = \"ordered\" }\n"
+        "assert $fast < $slow { description = \"ordered\" }\n"
         "out $fast\n";
     cxpr_error err = {0};
     cxpr_doc_ast* syntax =
@@ -868,15 +868,27 @@ static void test_document_ast_represents_optimizer_constraints(void) {
     assert(cxpr_doc_ast_node_child_count(root) == 6u);
     invariant = cxpr_doc_ast_node_child(root, 3u);
     constraint = cxpr_doc_ast_node_child(root, 4u);
+    /* Both conditions parse as asserts; optimizer-scope is a compile-time
+       classification, not a distinct statement kind. */
     assert(cxpr_doc_ast_node_kind(invariant) == CXPR_DOC_AST_ASSERT);
     assert(cxpr_doc_ast_node_expr(invariant) != NULL);
     assert(cxpr_doc_ast_node_child_count(invariant) == 1u);
-    assert(cxpr_doc_ast_node_kind(constraint) == CXPR_DOC_AST_OPTIMIZE_CONSTRAINT);
+    assert(cxpr_doc_ast_node_kind(constraint) == CXPR_DOC_AST_ASSERT);
     assert(cxpr_doc_ast_node_expr(constraint) != NULL);
     assert(cxpr_doc_ast_node_child_count(constraint) == 1u);
-
     cxpr_doc_ast_free(syntax);
-    printf("  ✓ test_document_ast_represents_optimizer_constraints\n");
+
+    /* The legacy `optimize <expr>` statement is no longer a valid keyword. */
+    {
+        cxpr_error legacy_err = {0};
+        cxpr_doc_ast* legacy = cxpr_doc_ast_parse(
+            "model legacy\n$a = 1 { optimize = [1, 2] }\noptimize $a < 2\nout $a\n",
+            "legacy.cxpr", CXPR_DOC_EXTENSION_MODEL, &legacy_err);
+        assert(legacy == NULL);
+        assert(legacy_err.code == CXPR_ERR_SYNTAX);
+    }
+
+    printf("  ✓ test_document_ast_represents_assert_conditions\n");
 }
 
 static void test_load_document_file_is_primary_entrypoint(void) {
@@ -967,7 +979,7 @@ int main(void) {
     test_document_ast_function_body_host_fields_and_visitor();
     test_document_ast_represents_advanced_existing_syntax();
     test_document_ast_represents_struct_input_blocks();
-    test_document_ast_represents_optimizer_constraints();
+    test_document_ast_represents_assert_conditions();
     test_load_document_file_is_primary_entrypoint();
     test_manifest_document_accepts_comment_forms();
     printf("All document tests passed.\n");

@@ -44,7 +44,7 @@ int main(void) {
         "model host_backend_integration\n"
         "in sample\n"
         "$gain = 1 { optimize { values = [1, 2, 4] } }\n"
-        "optimize $gain <= 2\n"
+        "assert $gain <= 2\n"
         "state total = 5\n"
         "total := total + sample * $gain\n"
         "out total { optimize { maximize } }\n";

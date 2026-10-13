@@ -20,6 +20,12 @@ static bool cxpr_optimize_add_dimension(const cxpr_model* model,
     bool has_range = min_field || max_field || step_field;
     cxpr_model_optimize_dimension* dim;
 
+    if (!values_field) {
+        const char* shorthand = cxpr_model_metadata_field_value(
+            model, metadata_index, "optimize");
+        while (shorthand && (*shorthand == ' ' || *shorthand == '\t')) ++shorthand;
+        if (shorthand && *shorthand == '[') values_field = shorthand;
+    }
     if (!values_field && !has_range) return true;
     if (cxpr_model_metadata_target_kind_at(model, metadata_index) !=
         CXPR_MODEL_METADATA_TARGET_PARAM) {
@@ -39,8 +45,10 @@ static bool cxpr_optimize_add_dimension(const cxpr_model* model,
     if (!dim->name) goto oom;
     if (values_field) {
         double* values = NULL;
+        const char* values_key = cxpr_model_metadata_field_value(
+            model, metadata_index, "optimize.values") ? "optimize.values" : "optimize";
         if (!cxpr_model_metadata_field_number_list(
-                model, metadata_index, "optimize.values", &values, &dim->value_count) ||
+                model, metadata_index, values_key, &values, &dim->value_count) ||
             dim->value_count == 0u) {
             free(values);
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,

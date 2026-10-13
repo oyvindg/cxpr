@@ -42,6 +42,12 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
                 }
                 free(ast->data.record.field_values);
             }
+            if (ast->data.record.field_metadata) {
+                for (size_t i = 0; i < ast->data.record.field_count; ++i) {
+                    free(ast->data.record.field_metadata[i]);
+                }
+                free(ast->data.record.field_metadata);
+            }
             break;
         case CXPR_NODE_STRING:
             free(ast->data.string.value);

@@ -76,9 +76,11 @@ typedef struct {
     char* description;
     cxpr_source_span span;
     bool has_span;
+    /* True when the condition references a $param carrying optimize metadata.
+       Such asserts prune optimizer candidates on failure instead of aborting
+       the sweep, while still validating the declared defaults at load time. */
+    bool optimize_scoped;
 } cxpr_model_assert;
-
-typedef cxpr_model_assert cxpr_model_optimize_constraint;
 
 /** @brief Compiled model binding and its inferred execution metadata. */
 typedef struct {
@@ -133,8 +135,6 @@ struct cxpr_model {
     size_t metadata_count;
     cxpr_model_assert* asserts;
     size_t assert_count;
-    cxpr_model_optimize_constraint* optimize_constraints;
-    size_t optimize_constraint_count;
     cxpr_model_host_block* host_blocks;
     size_t host_block_count;
 };
@@ -262,8 +262,6 @@ struct cxpr_model_compiled {
     size_t constant_count;
     cxpr_model_assert* asserts;
     size_t assert_count;
-    cxpr_model_optimize_constraint* optimize_constraints;
-    size_t optimize_constraint_count;
     cxpr_model_optimize_dimension* optimize_dimensions;
     size_t optimize_dimension_count;
     cxpr_model_optimize_objective* optimize_objectives;
@@ -335,6 +333,8 @@ bool cxpr_model_compile_conditions(const cxpr_model* model,
 
 void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
                           const char* message, size_t line, size_t column);
+bool cxpr_model_condition_is_optimize_scoped(const cxpr_model* model,
+                                             const cxpr_expr_ast* expr);
 bool cxpr_model_names_match(const char* a, const char* b);
 bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right);
 void cxpr_model_context_set_compiled_number(cxpr_context* ctx,
