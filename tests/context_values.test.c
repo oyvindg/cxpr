@@ -106,6 +106,31 @@ static void test_numeric_get_without_found(void) {
     cxpr_context_free(ctx);
 }
 
+static void test_int64_public_getters_and_parent_fallback(void) {
+    cxpr_context* parent = cxpr_context_new();
+    cxpr_context* child;
+    bool found = false;
+    const int64_t exact = INT64_C(9007199254740993);
+
+    assert(parent);
+    cxpr_context_set_int64(parent, "counter", exact);
+    cxpr_context_set_param_int64(parent, "limit", exact + 1);
+    child = cxpr_context_overlay_new(parent);
+    assert(child);
+
+    assert(cxpr_context_get_int64(child, "counter", &found) == exact && found);
+    assert(cxpr_context_get_param_int64(child, "limit", &found) == exact + 1 && found);
+    assert(cxpr_context_get_int64(child, "missing", &found) == 0 && !found);
+
+    cxpr_context_set(child, "counter", 4.0);
+    assert(cxpr_context_get_int64(child, "counter", &found) == exact && found);
+    cxpr_context_set_int64(child, "counter", exact + 2);
+    assert(cxpr_context_get_int64(child, "counter", &found) == exact + 2 && found);
+
+    cxpr_context_free(child);
+    cxpr_context_free(parent);
+}
+
 static void test_borrowed_array_element(void) {
     cxpr_context* parent = cxpr_context_new();
     cxpr_context* child;
@@ -290,6 +315,7 @@ static void test_struct_param_value_paths(void) {
 
 int main(void) {
     test_numeric_get_without_found();
+    test_int64_public_getters_and_parent_fallback();
     test_borrowed_array_element();
     test_type_replacement_matrix();
     test_context_value_paths();

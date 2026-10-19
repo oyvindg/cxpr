@@ -85,6 +85,10 @@ bool cxpr_model_c_window_period_capacity(const cxpr_model_compiled* program,
             raw = binding->max_value;
             goto resolved;
         }
+        if (binding && binding->is_call_param) {
+            raw = 512.0;
+            goto resolved;
+        }
     }
     if (!cxpr_model_c_constant_param_expr(program, period_ast, &raw)) raw = 512.0;
 resolved:

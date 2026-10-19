@@ -5,7 +5,9 @@
 
 cxpr_model_result_kind cxpr_model_infer_result_kind(
     const cxpr_expr_ast* ast,
-    const cxpr_registry* reg);
+    const cxpr_registry* reg,
+    const cxpr_model* model,
+    const cxpr_model_compiled* program);
 
 bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
                                           const cxpr_model* src,

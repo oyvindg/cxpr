@@ -39,6 +39,33 @@ option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
 option(CXPR_BUILD_SHARED "Build cxpr as a shared library" OFF)
 option(CXPR_WITH_CXCU "Build the optional public CXCU optimizer backend" OFF)
 
+set(CXPR_LANGUAGE_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tools/language-core")
+set(CXPR_LANGUAGE_GENERATED
+    "${CXPR_LANGUAGE_CORE_DIR}/generated/cxpr.monarch.json"
+    "${CXPR_LANGUAGE_CORE_DIR}/generated/cxpr_language_spec.inc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/language-server/cxpr-language-core.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/language-service/legacy/cxpr-language-core.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/vscode-cxpr/syntaxes/cxpr.tmLanguage.json")
+find_program(CXPR_NODE_EXECUTABLE NAMES node nodejs)
+if(CXPR_NODE_EXECUTABLE)
+    add_custom_command(
+        OUTPUT ${CXPR_LANGUAGE_GENERATED}
+        COMMAND "${CXPR_NODE_EXECUTABLE}" "${CXPR_LANGUAGE_CORE_DIR}/generate-grammars.js"
+        DEPENDS
+            "${CXPR_LANGUAGE_CORE_DIR}/cxpr-language-spec.json"
+            "${CXPR_LANGUAGE_CORE_DIR}/cxpr-language-core.js"
+            "${CXPR_LANGUAGE_CORE_DIR}/cxpr-grammar.js"
+            "${CXPR_LANGUAGE_CORE_DIR}/generate-grammars.js"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Generating CXPR C, Monarch and TextMate language assets"
+        VERBATIM)
+    add_custom_target(cxpr_language_assets DEPENDS ${CXPR_LANGUAGE_GENERATED})
+elseif(NOT EXISTS "${CXPR_LANGUAGE_CORE_DIR}/generated/cxpr_language_spec.inc")
+    message(FATAL_ERROR
+        "CXPR language assets are missing and Node.js was not found. "
+        "Install Node.js and run tools/language-core/generate-grammars.js.")
+endif()
+
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
 endif()
@@ -68,6 +95,7 @@ file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
 list(APPEND CXPR_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/c.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/cuda.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/debug_map.c"
@@ -81,6 +109,9 @@ else()
     add_library(cxpr STATIC ${CXPR_SOURCES})
 endif()
 add_library(cxpr::cxpr ALIAS cxpr)
+if(TARGET cxpr_language_assets)
+    add_dependencies(cxpr cxpr_language_assets)
+endif()
 
 set_target_properties(cxpr PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -169,7 +200,7 @@ if(CXPR_BUILD_TOOLS)
     target_link_libraries(cxpr_model_codegen PRIVATE cxpr)
 
     add_executable(cxpr_document_tooling
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c")
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling_cli.c")
     target_link_libraries(cxpr_document_tooling PRIVATE cxpr)
     target_include_directories(cxpr_document_tooling PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")

@@ -66,13 +66,21 @@ static void cxpr_lexer_skip_whitespace(cxpr_lexer* lexer) {
             continue;
         }
         if (*lexer->current == '/' && lexer->current[1] == '*') {
+            size_t depth = 1u;
             cxpr_lexer_advance(lexer);
             cxpr_lexer_advance(lexer);
-            while (*lexer->current) {
+            while (*lexer->current && depth > 0u) {
+                if (*lexer->current == '/' && lexer->current[1] == '*') {
+                    cxpr_lexer_advance(lexer);
+                    cxpr_lexer_advance(lexer);
+                    depth++;
+                    continue;
+                }
                 if (*lexer->current == '*' && lexer->current[1] == '/') {
                     cxpr_lexer_advance(lexer);
                     cxpr_lexer_advance(lexer);
-                    break;
+                    depth--;
+                    continue;
                 }
                 cxpr_lexer_advance(lexer);
             }
@@ -234,20 +242,29 @@ static cxpr_token cxpr_lexer_number(cxpr_lexer* lexer) {
     tok = cxpr_make_token(CXPR_TOK_NUMBER, start, (size_t)(lexer->current - start),
                           start_pos, start_line, start_col);
 
-    if (integer_syntax && tok.length == len + 3u) {
+    if (integer_syntax) {
         char* end = NULL;
-        if (len >= sizeof(buf)) return cxpr_make_error_token("int64 literal is too long", lexer);
+        const bool explicit_int64 = tok.length == len + 3u;
+        if (len >= sizeof(buf)) {
+            if (explicit_int64)
+                return cxpr_make_error_token("int64 literal is too long", lexer);
+            goto parse_number;
+        }
         memcpy(buf, start, len);
         buf[len] = '\0';
         errno = 0;
         tok.int64_value = strtoimax(buf, &end, 10);
-        if (errno == ERANGE || !end || *end != '\0')
+        if (errno != ERANGE && end && *end == '\0' &&
+            (explicit_int64 || tok.int64_value > INT64_C(9007199254740992))) {
+            tok.is_int64 = true;
+            return tok;
+        }
+        if (explicit_int64)
             return cxpr_make_error_token("int64 literal is out of range", lexer);
-        tok.is_int64 = true;
-        return tok;
     }
 
     /* Parse the number value. */
+parse_number:
     len = tok.length;
     if (len >= sizeof(buf)) len = sizeof(buf) - 1;
     memcpy(buf, start, len);

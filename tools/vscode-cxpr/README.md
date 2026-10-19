@@ -7,7 +7,8 @@ Current support:
 - `.cxpr` language registration
 - TextMate syntax highlighting
 - standalone server artifact from `tools/language-server`
-- bundled `cxpr_document_tooling` executable for the build platform
+- bundled portable CXPR WASM analyzer (default on Linux, macOS and Windows)
+- explicit native/CLI development fallbacks; no platform-native matrix in the VSIX
 - LanguageClient activation in `extension.js`
 - C-core-backed symbols, folding, semantic tokens and diagnostics over LSP
 - no CXPR parser, builtin catalogue or declaration analysis in the VSIX
@@ -15,15 +16,11 @@ Current support:
 
 ## Build VSIX
 
-From the CXPR repo root:
+Build the shared artifacts, then package the extension:
 
 ```bash
-cmake --build build --target cxpr_document_tooling
-```
-
-Or directly:
-
-```bash
+npm --prefix ../cxpr-node run build:wasm
+npm --prefix ../cxpr-node run build:ts
 npm --prefix tools/language-server install
 npm --prefix tools/language-server run build
 npm --prefix tools/vscode-cxpr install
@@ -48,6 +45,11 @@ From the Dynasty repo root, the equivalent command is:
 ```bash
 ./cli install-vsix-cxpr
 ```
+
+This single command activates a configured Emscripten SDK, builds WASM, the TypeScript wrapper,
+the shared language service and language server, packages the VSIX, and installs it. The CLI checks
+`CXPR_EMSDK`, an already active `EMSDK`, `/tmp/cxpr-emsdk`, and `.emsdk` in the repository root.
+Use `CXPR_EMSDK=/path/to/emsdk ./cli install-vsix-cxpr` for another SDK location.
 
 The command replaces the installed `local.cxpr-language` extension. Set
 `CXPR_VSCODE_CLI` when the VS Code CLI is not available as `code`, for example:

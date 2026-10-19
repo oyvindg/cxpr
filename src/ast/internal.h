@@ -110,7 +110,7 @@ struct cxpr_expr_ast {
             bool cached_lookup_valid;
             const struct cxpr_registry* cached_memoable_registry;
             unsigned long cached_memoable_registry_version;
-            unsigned long cached_hash;
+            uint64_t cached_hash;
             bool cached_memoable;
             bool cached_memoable_valid;
             bool cached_hash_valid;

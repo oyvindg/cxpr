@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Added append-only `CXPR_ERR_OVERFLOW`, `CXPR_IR_RESULT_INT64`, and
+  `CXPR_DEBUG_RESULT_INT64` values.
+- Integer `+`, `-`, and `*` now report `CXPR_ERR_OVERFLOW`; integer division
+  now returns `double`, and mixed `int64`/`double` arithmetic promotes to
+  `double`. Numeric comparisons compare mathematical values across those two
+  runtime types, including exact equality around the 2^53 boundary.
+- Added the additive typed checked-C backend
+  `cxpr_expr_compiled_to_c_typed_checked_function`, preserving scalar result
+  types and arithmetic error codes without changing the legacy double ABI.
+- Added exact int64 context/history/resample host bindings, including exported
+  context/parameter get/set symbols for managed P/Invoke consumers. These are
+  additive exports; existing ABI signatures and the shared-library SONAME are
+  unchanged.
+
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

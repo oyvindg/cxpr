@@ -306,7 +306,9 @@ void cxpr_free_source_plan_bindings(cxpr_source_plan_bindings* bindings);
 /**
  * @brief Validate a manifest for the scalar numeric generated-C/CUDA ABI.
  *
- * Version 1 does not transport records or vectors. Hosts must call this before
+ * The generated ABI does not transport records or vectors. Number requirements
+ * use the legacy view; int64 requirements select the parallel typed view. Hosts
+ * must call this before
  * constructing/uploading resample views so unsupported provider types fail at
  * the binding boundary rather than being reinterpreted as doubles.
  */

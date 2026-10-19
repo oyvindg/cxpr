@@ -32,9 +32,55 @@ static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, cons
     return false;
 }
 
+static cxpr_model_result_kind cxpr_model_symbol_result_kind(
+    const cxpr_model* model,
+    const cxpr_model_compiled* program,
+    const char* name,
+    bool parameter) {
+    if (!name) return CXPR_MODEL_RESULT_UNKNOWN;
+    if (parameter && program) {
+        for (size_t i = 0u; i < program->constant_count; ++i) {
+            if (program->constants[i].name &&
+                cxpr_model_names_match(program->constants[i].name, name))
+                return program->constants[i].result_kind;
+        }
+        return CXPR_MODEL_RESULT_UNKNOWN;
+    }
+    if (model) {
+        for (size_t i = 0u; i < model->input_count; ++i) {
+            if (model->inputs[i] && cxpr_model_names_match(model->inputs[i], name)) {
+                const cxpr_model_decl_type type = model->input_declared_types
+                    ? model->input_declared_types[i] : CXPR_MODEL_DECL_INFERRED;
+                if (type == CXPR_MODEL_DECL_INT) return CXPR_MODEL_RESULT_INT64;
+                if (type == CXPR_MODEL_DECL_NUMBER) return CXPR_MODEL_RESULT_NUMBER;
+                if (type == CXPR_MODEL_DECL_BOOL) return CXPR_MODEL_RESULT_BOOL;
+                return CXPR_MODEL_RESULT_UNKNOWN;
+            }
+        }
+    }
+    if (program) {
+        const cxpr_model_compiled_binding* groups[] = {
+            program->bindings, program->state_defaults
+        };
+        const size_t counts[] = {
+            program->binding_count, program->state_default_count
+        };
+        for (size_t group = 0u; group < 2u; ++group) {
+            for (size_t i = 0u; i < counts[group]; ++i) {
+                if (groups[group][i].name &&
+                    cxpr_model_names_match(groups[group][i].name, name))
+                    return groups[group][i].result_kind;
+            }
+        }
+    }
+    return CXPR_MODEL_RESULT_UNKNOWN;
+}
+
 static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
     const cxpr_expr_ast* ast,
     const cxpr_registry* reg,
+    const cxpr_model* model,
+    const cxpr_model_compiled* program,
     size_t depth) {
     cxpr_model_result_kind left;
     cxpr_model_result_kind right;
@@ -43,6 +89,21 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
         return CXPR_MODEL_RESULT_UNKNOWN;
     }
     if (ast->type == CXPR_NODE_INT64) return CXPR_MODEL_RESULT_INT64;
+    if (ast->type == CXPR_NODE_IDENTIFIER)
+        return cxpr_model_symbol_result_kind(
+            model, program, ast->data.identifier.name, false);
+    if (ast->type == CXPR_NODE_VARIABLE)
+        return cxpr_model_symbol_result_kind(
+            model, program, ast->data.variable.name, true);
+    if (ast->type == CXPR_NODE_FUNCTION_CALL &&
+        ast->data.function_call.name &&
+        cxpr_model_names_match(ast->data.function_call.name, "resample") &&
+        ast->data.function_call.argc > 0u) {
+        /* Resampling selects a materialized series; it does not itself perform
+           a numeric aggregate, so the source element type is preserved. */
+        return cxpr_model_infer_result_kind_depth(
+            ast->data.function_call.args[0], reg, model, program, depth + 1u);
+    }
     if (ast->type == CXPR_NODE_PRODUCER_ACCESS && reg) {
         cxpr_func_entry* entry =
             cxpr_registry_find(reg, ast->data.producer_access.name);
@@ -75,13 +136,13 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
             return CXPR_MODEL_RESULT_UNKNOWN;
         }
         return cxpr_model_infer_result_kind_depth(
-            ast->data.index.target, reg, depth + 1u);
+            ast->data.index.target, reg, model, program, depth + 1u);
     }
     if (ast->type == CXPR_NODE_BINARY_OP) {
         left = cxpr_model_infer_result_kind_depth(
-            ast->data.binary_op.left, reg, depth + 1u);
+            ast->data.binary_op.left, reg, model, program, depth + 1u);
         right = cxpr_model_infer_result_kind_depth(
-            ast->data.binary_op.right, reg, depth + 1u);
+            ast->data.binary_op.right, reg, model, program, depth + 1u);
         switch (ast->data.binary_op.op) {
         case CXPR_TOK_LT:
         case CXPR_TOK_LTE:
@@ -91,23 +152,32 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
         case CXPR_TOK_AND:
         case CXPR_TOK_OR:
             return CXPR_MODEL_RESULT_BOOL;
-        default:
+        case CXPR_TOK_SLASH:
+            return CXPR_MODEL_RESULT_NUMBER;
+        case CXPR_TOK_PLUS:
+        case CXPR_TOK_MINUS:
+        case CXPR_TOK_STAR:
             if (left == CXPR_MODEL_RESULT_INT64 && right == CXPR_MODEL_RESULT_INT64)
                 return CXPR_MODEL_RESULT_INT64;
+            break;
+        default:
             break;
         }
     }
     switch (cxpr_ir_infer_fast_result_kind(ast, reg, depth)) {
     case CXPR_IR_RESULT_DOUBLE: return CXPR_MODEL_RESULT_NUMBER;
     case CXPR_IR_RESULT_BOOL: return CXPR_MODEL_RESULT_BOOL;
+    case CXPR_IR_RESULT_INT64: return CXPR_MODEL_RESULT_INT64;
     default: return CXPR_MODEL_RESULT_UNKNOWN;
     }
 }
 
 cxpr_model_result_kind cxpr_model_infer_result_kind(
     const cxpr_expr_ast* ast,
-    const cxpr_registry* reg) {
-    return cxpr_model_infer_result_kind_depth(ast, reg, 0u);
+    const cxpr_registry* reg,
+    const cxpr_model* model,
+    const cxpr_model_compiled* program) {
+    return cxpr_model_infer_result_kind_depth(ast, reg, model, program, 0u);
 }
 
 static bool cxpr_model_append_inferred_input(char*** inputs,

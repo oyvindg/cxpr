@@ -329,6 +329,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry*
         entry = cxpr_registry_find(reg, ast->data.function_call.name);
         if (!entry || !entry->sync_func || entry->value_func || entry->typed_func ||
             entry->ast_func || entry->ast_func_handler || entry->struct_producer ||
+            entry->typed_struct_producer ||
             entry->struct_fields || entry->defined_body ||
             argc < entry->min_args || argc > entry->max_args) {
             return false;
@@ -529,14 +530,15 @@ static unsigned long cxpr_ir_lookup_version(const cxpr_context* ctx, bool param_
     return param_lookup ? ctx->params_version : ctx->variables_version;
 }
 
-static unsigned long cxpr_ir_lookup_shadow_version(const cxpr_context* request_ctx,
-                                                   const cxpr_context* owner_ctx,
-                                                   bool param_lookup) {
+static uint64_t cxpr_ir_lookup_shadow_version(const cxpr_context* request_ctx,
+                                              const cxpr_context* owner_ctx,
+                                              bool param_lookup) {
     const cxpr_context* current = request_ctx;
-    unsigned long fingerprint = 1469598103934665603UL;
+    uint64_t fingerprint = UINT64_C(1469598103934665603);
 
     while (current) {
-        fingerprint ^= cxpr_ir_lookup_version(current, param_lookup) + 0x9e3779b97f4a7c15UL +
+        fingerprint ^= (uint64_t)cxpr_ir_lookup_version(current, param_lookup) +
+                       UINT64_C(0x9e3779b97f4a7c15) +
                        (fingerprint << 6) + (fingerprint >> 2);
         if (current == owner_ctx) break;
         current = current->parent;

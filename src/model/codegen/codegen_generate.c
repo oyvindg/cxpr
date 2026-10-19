@@ -22,6 +22,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     cxpr_model_ast_c_target ast_target_data = {0};
     cxpr_c_target ast_target = {0};
     size_t child_call_capacity = 0u;
+    bool typed_resample = false;
 
     if (out_source) *out_source = NULL;
     if (!program || !program->has_fused_layout || !function_name || !out_source) return false;
@@ -31,6 +32,12 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     ast_target_data.literal_param_count = literal_param_count;
     ast_target_data.inline_defined_functions =
         qualifiers && strstr(qualifiers, "__device__") != NULL;
+    for (size_t i = 0u; i < program->resample_requirement_count; ++i) {
+        if (program->resample_requirements[i].result_kind == CXPR_MODEL_RESULT_INT64) {
+            typed_resample = true;
+            break;
+        }
+    }
     ast_target.api_version = CXPR_C_TARGET_API_VERSION;
     ast_target.emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf;
     ast_target.emit_call_at_offset = cxpr_model_ast_c_emit_call;
@@ -116,7 +123,12 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     }
     cxpr_model_c_emit_common_helpers(&b);
     if (program->resample_requirement_count > 0u) {
-        cxpr_model_c_puts(&b,
+        if (typed_resample) cxpr_model_c_puts(&b,
+            "#ifndef CXPR_TYPED_RESAMPLE_VIEW_DEFINED\n"
+            "#define CXPR_TYPED_RESAMPLE_VIEW_DEFINED 1\n"
+            "typedef struct cxpr_typed_resample_view { const double* number_values; const int64_t* int64_values; const size_t* alignment; size_t value_count; size_t primary_count; cxpr_value_type value_type; } cxpr_typed_resample_view;\n"
+            "#endif\n\n");
+        else cxpr_model_c_puts(&b,
             "#ifndef CXPR_RESAMPLE_VIEW_ABI_VERSION\n#define CXPR_RESAMPLE_VIEW_ABI_VERSION 1u\n#endif\n"
             "#ifndef CXPR_RESAMPLE_VIEW_VALUE_TYPE\n#define CXPR_RESAMPLE_VIEW_VALUE_TYPE 1u /* numeric double */\n#endif\n"
             "#ifndef CXPR_RESAMPLE_ALIGNMENT_MISSING\n#define CXPR_RESAMPLE_ALIGNMENT_MISSING ((size_t)-1)\n#endif\n"
@@ -165,8 +177,9 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     if (program->resample_requirement_count > 0u) {
         cxpr_model_c_printf(
             &b,
-            "void %s(%s_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs, const cxpr_resample_view* restrict _cx_resample_views, size_t _cx_primary_cursor) {\n",
-            safe_name, safe_name);
+            "void %s(%s_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs, const %s* restrict _cx_resample_views, size_t _cx_primary_cursor) {\n",
+            safe_name, safe_name,
+            typed_resample ? "cxpr_typed_resample_view" : "cxpr_resample_view");
     } else {
         cxpr_model_c_printf(
             &b,
@@ -259,23 +272,29 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     }
     for (size_t i = 0u; i < ast_target_data.resample_cse_count; ++i) {
         const cxpr_model_resample_cse* cse = &ast_target_data.resample_cse[i];
+        const bool int64_value = program->resample_requirements[cse->slot].result_kind ==
+                                 CXPR_MODEL_RESULT_INT64;
+        const char* values_field = typed_resample
+            ? (int64_value ? "int64_values" : "number_values") : "values";
         if (cse->uses < 2u) continue;
         cxpr_model_c_printf(&b,
             "    const size_t _cx_resample_cursor_%zu_%u = (_cx_primary_cursor < _cx_resample_views[%zu].primary_count && _cx_resample_views[%zu].alignment) ? _cx_resample_views[%zu].alignment[_cx_primary_cursor] : (size_t)-1;\n",
             cse->slot, cse->lookback, cse->slot, cse->slot, cse->slot);
         if (cse->lookback == 0u) {
             cxpr_model_c_printf(&b,
-                "    const double _cx_resample_value_%zu_0 = (_cx_resample_views[%zu].values && _cx_resample_cursor_%zu_0 < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].values[_cx_resample_cursor_%zu_0] : NAN;\n",
-                cse->slot, cse->slot, cse->slot, cse->slot, cse->slot,
-                cse->slot);
+                "    const %s _cx_resample_value_%zu_0 = (_cx_resample_views[%zu].%s && _cx_resample_cursor_%zu_0 < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].%s[_cx_resample_cursor_%zu_0] : %s;\n",
+                int64_value ? "int64_t" : "double", cse->slot, cse->slot,
+                values_field, cse->slot, cse->slot, cse->slot, values_field,
+                cse->slot, int64_value ? "INT64_C(0)" : "NAN");
         } else {
             cxpr_model_c_printf(&b,
-                "    const double _cx_resample_value_%zu_%u = (_cx_resample_views[%zu].values && _cx_resample_cursor_%zu_%u >= %uu && _cx_resample_cursor_%zu_%u - %uu < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].values[_cx_resample_cursor_%zu_%u - %uu] : NAN;\n",
-                cse->slot, cse->lookback, cse->slot,
+                "    const %s _cx_resample_value_%zu_%u = (_cx_resample_views[%zu].%s && _cx_resample_cursor_%zu_%u >= %uu && _cx_resample_cursor_%zu_%u - %uu < _cx_resample_views[%zu].value_count) ? _cx_resample_views[%zu].%s[_cx_resample_cursor_%zu_%u - %uu] : %s;\n",
+                int64_value ? "int64_t" : "double", cse->slot, cse->lookback,
+                cse->slot, values_field,
                 cse->slot, cse->lookback, cse->lookback,
                 cse->slot, cse->lookback, cse->lookback,
-                cse->slot, cse->slot, cse->slot, cse->lookback,
-                cse->lookback);
+                cse->slot, cse->slot, values_field, cse->slot, cse->lookback,
+                cse->lookback, int64_value ? "INT64_C(0)" : "NAN");
         }
     }
     for (size_t i = 0u; i < ast_target_data.child_call_count; ++i) {

@@ -1,6 +1,9 @@
 file(GLOB_RECURSE CXPR_C_TESTS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.test.c"
 )
+# Generated-C parity is registered below after its generated header exists.
+list(REMOVE_ITEM CXPR_C_TESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/int64_generated_parity.test.c")
 list(SORT CXPR_C_TESTS)
 set(CXPR_C_TEST_NAMES)
 
@@ -70,6 +73,39 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     endif()
     list(APPEND CXPR_C_TEST_NAMES "${test_base}")
 endforeach()
+
+if(TARGET cxpr_document_tooling)
+    add_executable(cxpr_doc_tooling_native_baseline
+        doc_tooling_native_baseline.c)
+    target_link_libraries(cxpr_doc_tooling_native_baseline PRIVATE cxpr)
+    add_test(
+        NAME doc_tooling_cli_native_parity
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCLI=$<TARGET_FILE:cxpr_document_tooling>"
+            "-DNATIVE_BASELINE=$<TARGET_FILE:cxpr_doc_tooling_native_baseline>"
+            "-DFIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/doc_tooling_baseline.cxpr"
+            "-DSOURCE_NAME=baseline.cxpr"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/doc_tooling_cli_parity"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/doc_tooling_cli_parity.cmake")
+endif()
+
+add_executable(cxpr_int64_codegen_tool int64_codegen_tool.c)
+target_link_libraries(cxpr_int64_codegen_tool PRIVATE cxpr)
+set(CXPR_INT64_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_int64")
+set(CXPR_INT64_GENERATED_HEADER "${CXPR_INT64_GENERATED_DIR}/int64_generated.h")
+add_custom_command(
+    OUTPUT "${CXPR_INT64_GENERATED_HEADER}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CXPR_INT64_GENERATED_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0
+            $<TARGET_FILE:cxpr_int64_codegen_tool> "${CXPR_INT64_GENERATED_HEADER}"
+    DEPENDS cxpr_int64_codegen_tool
+    VERBATIM)
+add_custom_target(generate_cxpr_int64_parity DEPENDS "${CXPR_INT64_GENERATED_HEADER}")
+add_executable(test_int64_generated_parity int64_generated_parity.test.c)
+target_link_libraries(test_int64_generated_parity PRIVATE cxpr)
+target_include_directories(test_int64_generated_parity PRIVATE "${CXPR_INT64_GENERATED_DIR}")
+add_dependencies(test_int64_generated_parity generate_cxpr_int64_parity)
+add_test(NAME int64_generated_parity COMMAND test_int64_generated_parity)
 
 if(TARGET cxpr_model_codegen)
     set(CXPR_PATHFINDING_FIXTURE_DIR
@@ -223,6 +259,22 @@ add_custom_command(OUTPUT "${CXPR_GENERATED_RESAMPLE_HEADER}"
 add_custom_target(generate_cxpr_resample_function DEPENDS "${CXPR_GENERATED_RESAMPLE_HEADER}")
 add_dependencies(test_generated_resample_parity generate_cxpr_resample_function)
 target_include_directories(test_generated_resample_parity PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
+add_executable(cxpr_generated_int64_resample_codegen_tool
+    generated_int64_resample_codegen_tool.c)
+target_link_libraries(cxpr_generated_int64_resample_codegen_tool PRIVATE cxpr)
+set(CXPR_GENERATED_INT64_RESAMPLE_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_int64_resample_function.h")
+add_custom_command(OUTPUT "${CXPR_GENERATED_INT64_RESAMPLE_HEADER}"
+    COMMAND $<TARGET_FILE:cxpr_generated_int64_resample_codegen_tool>
+            "${CXPR_GENERATED_INT64_RESAMPLE_HEADER}"
+    DEPENDS cxpr_generated_int64_resample_codegen_tool VERBATIM)
+add_custom_target(generate_cxpr_int64_resample_function
+    DEPENDS "${CXPR_GENERATED_INT64_RESAMPLE_HEADER}")
+add_dependencies(test_generated_int64_resample_parity
+    generate_cxpr_int64_resample_function)
+target_include_directories(test_generated_int64_resample_parity PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
 
 find_package(Threads REQUIRED)
 target_link_libraries(test_history PRIVATE Threads::Threads)

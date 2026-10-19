@@ -483,6 +483,48 @@ static void test_ir_combo_entry_keeps_scalar_call_and_field_producer(void) {
     printf("  \u2713 test_ir_combo_entry_keeps_scalar_call_and_field_producer\n");
 }
 
+static int g_typed_producer_calls = 0;
+
+static void typed_int64_producer(const cxpr_value* args, size_t argc,
+                                 cxpr_value* out, size_t field_count,
+                                 void* userdata) {
+    (void)userdata;
+    assert(argc == 1u && field_count == 1u);
+    assert(args[0].type == CXPR_VALUE_INT64);
+    g_typed_producer_calls++;
+    out[0] = cxpr_int64(args[0].i64 + 1);
+}
+
+static void test_typed_int64_producer_ast_ir_and_cache_keys(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_context* ctx = cxpr_context_new();
+    const char* fields[] = {"exact"};
+    const cxpr_value_type args[] = {CXPR_VALUE_INT64};
+    cxpr_value value;
+
+    assert(reg && ctx);
+    cxpr_registry_add_struct_typed(reg, "next_id", typed_int64_producer,
+                                   1u, 1u, args, fields, 1u, NULL, NULL);
+    g_typed_producer_calls = 0;
+    value = eval_typed("next_id(9007199254740993).exact", ctx, reg);
+    assert(value.type == CXPR_VALUE_INT64);
+    assert(value.i64 == INT64_C(9007199254740994));
+    value = eval_typed("next_id(9007199254740994).exact", ctx, reg);
+    assert(value.type == CXPR_VALUE_INT64);
+    assert(value.i64 == INT64_C(9007199254740995));
+    assert(g_typed_producer_calls == 2);
+
+    value = ir_eval_typed("next_id(9007199254740993).exact", ctx, reg);
+    assert(value.type == CXPR_VALUE_INT64);
+    assert(value.i64 == INT64_C(9007199254740994));
+
+    (void)eval_typed_fails("next_id(1.0).exact", ctx, reg,
+                           CXPR_ERR_TYPE_MISMATCH);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    printf("  ✓ test_typed_int64_producer_ast_ir_and_cache_keys\n");
+}
+
 int main(void) {
     printf("Running struct_producer tests...\n");
     test_zero_arg_producer_basic();
@@ -500,6 +542,7 @@ int main(void) {
     test_ir_parity();
     test_ir_struct_function_call_returns_struct();
     test_ir_combo_entry_keeps_scalar_call_and_field_producer();
+    test_typed_int64_producer_ast_ir_and_cache_keys();
     printf("All struct_producer tests passed!\n");
     return 0;
 }

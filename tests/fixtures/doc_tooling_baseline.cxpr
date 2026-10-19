@@ -1,0 +1,3 @@
+model demo
+in close
+out result = close

@@ -4177,6 +4177,30 @@ static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     printf("  ✓ test_window_param_bounds_drive_capacity_and_session_clamp\n");
 }
 
+static void test_child_window_call_param_uses_dynamic_capacity(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model child_window { source_arg = \"source\" }\n"
+        "in source, $period = 20\n"
+        "value = max(window(source, $period))\n"
+        "out value\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    assert(program != NULL);
+    assert(cxpr_model_compiled_call_param_count(program) == 1u);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "child_window_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_history512") != NULL);
+    assert(strstr(code, "fmin((double)512u, round(_cx_param_0))") != NULL);
+
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_child_window_call_param_uses_dynamic_capacity\n");
+}
+
 static void test_dynamic_lookback_uses_parameter_max(void) {
     cxpr_error err = {0};
     const cxpr_model_compile_options options = {
@@ -4785,6 +4809,35 @@ static void test_int64_state_and_generated_boundary_are_exact(void) {
     printf("  ✓ test_int64_state_and_generated_boundary_are_exact\n");
 }
 
+static void test_int64_source_boundary_and_internal_inference(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model typed_counter\n"
+        "in { count: int64, $step: int64 = 1 }\n"
+        "next = count + $step\n"
+        "out next\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    assert(program && err.code == CXPR_OK);
+    assert(cxpr_model_compiled_input_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_param_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_binding_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_output_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "typed_counter_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_int64(next)") != NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_int64_source_boundary_and_internal_inference\n");
+}
+
 int main(void) {
     test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
@@ -4893,6 +4946,7 @@ int main(void) {
     test_local_record_fields_can_reference_previous_fields();
     test_record_param_field_access_emits_c_tick();
     test_window_param_bounds_drive_capacity_and_session_clamp();
+    test_child_window_call_param_uses_dynamic_capacity();
     test_dynamic_lookback_uses_parameter_max();
     test_history_depth_composes_index_offsets();
     test_dynamic_lookback_requires_parameter_max();
@@ -4903,6 +4957,7 @@ int main(void) {
     test_rsi_state_strategy_fixture_emits_c_tick();
     test_rsi_state_strategy_fixture_matches_golden_values();
     test_int64_state_and_generated_boundary_are_exact();
+    test_int64_source_boundary_and_internal_inference();
     printf("All model parser tests passed.\n");
     return 0;
 }

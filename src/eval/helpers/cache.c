@@ -7,6 +7,7 @@
 #include "context/state.h"
 #include "limits.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 
 static const char* cxpr_eval_cache_unknown_function_message(const char* name) {
@@ -16,16 +17,16 @@ static const char* cxpr_eval_cache_unknown_function_message(const char* name) {
     return message;
 }
 
-static unsigned long cxpr_eval_hash_mix(unsigned long hash, unsigned long value) {
-    hash ^= value + 0x9e3779b9UL + (hash << 6) + (hash >> 2);
+static uint64_t cxpr_eval_hash_mix(uint64_t hash, uint64_t value) {
+    hash ^= value + UINT64_C(0x9e3779b97f4a7c15) + (hash << 6) + (hash >> 2);
     return hash;
 }
 
-static unsigned long cxpr_eval_hash_string(unsigned long hash, const char* text) {
+static uint64_t cxpr_eval_hash_string(uint64_t hash, const char* text) {
     const unsigned char* p = (const unsigned char*)(text ? text : "");
     while (*p) {
-        hash ^= (unsigned long)(*p++);
-        hash *= 1099511628211UL;
+        hash ^= (uint64_t)(*p++);
+        hash *= UINT64_C(1099511628211);
     }
     return hash;
 }
@@ -47,22 +48,28 @@ static int cxpr_eval_arg_names_equal(char** lhs, char** rhs, size_t count) {
     return 1;
 }
 
-unsigned long cxpr_eval_ast_hash(const cxpr_expr_ast* ast) {
-    unsigned long hash = 1469598103934665603UL;
+uint64_t cxpr_eval_ast_hash(const cxpr_expr_ast* ast) {
+    uint64_t hash = UINT64_C(1469598103934665603);
     size_t i;
 
     if (!ast) return 0u;
-    hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->type);
+    /* Numeric literals that compare equal must share a memo bucket. */
+    hash = cxpr_eval_hash_mix(hash,
+        (unsigned long)(ast->type == CXPR_NODE_INT64 ? CXPR_NODE_NUMBER : ast->type));
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
         {
-            union { double d; unsigned long u; } v;
+            union { double d; uint64_t u; } v;
             v.d = ast->data.number.value;
             hash = cxpr_eval_hash_mix(hash, v.u);
         }
         break;
     case CXPR_NODE_INT64:
-        hash = cxpr_eval_hash_mix(hash, (unsigned long)ast->data.integer.value);
+        {
+            union { double d; uint64_t u; } v;
+            v.d = (double)ast->data.integer.value;
+            hash = cxpr_eval_hash_mix(hash, v.u);
+        }
         break;
     case CXPR_NODE_BOOL:
         hash = cxpr_eval_hash_mix(hash, ast->data.boolean.value ? 1u : 0u);
@@ -148,7 +155,18 @@ bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
     size_t i;
 
     if (lhs == rhs) return true;
-    if (!lhs || !rhs || lhs->type != rhs->type) return false;
+    if (!lhs || !rhs) return false;
+    if ((lhs->type == CXPR_NODE_NUMBER || lhs->type == CXPR_NODE_INT64) &&
+        (rhs->type == CXPR_NODE_NUMBER || rhs->type == CXPR_NODE_INT64)) {
+        cxpr_value left = lhs->type == CXPR_NODE_INT64
+                              ? cxpr_int64(lhs->data.integer.value)
+                              : cxpr_num(lhs->data.number.value);
+        cxpr_value right = rhs->type == CXPR_NODE_INT64
+                               ? cxpr_int64(rhs->data.integer.value)
+                               : cxpr_num(rhs->data.number.value);
+        return cxpr_numeric_equal(left, right);
+    }
+    if (lhs->type != rhs->type) return false;
     switch (lhs->type) {
     case CXPR_NODE_NUMBER:
         return lhs->data.number.value == rhs->data.number.value;
@@ -261,7 +279,8 @@ bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg) 
         cxpr_func_entry* entry =
             reg ? cxpr_registry_find(reg, ast->data.function_call.name) : NULL;
         if (!entry || entry->ast_func_handler || entry->ast_func) return false;
-        if (entry->struct_producer && !entry->sync_func && !entry->value_func) return false;
+        if ((entry->struct_producer || entry->typed_struct_producer) &&
+            !entry->sync_func && !entry->value_func) return false;
         return true;
     }
     }
@@ -270,7 +289,7 @@ bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg) 
 
 bool cxpr_eval_memo_get(const cxpr_context* ctx,
                         const cxpr_expr_ast* ast,
-                        unsigned long hash,
+                        uint64_t hash,
                         cxpr_value* out_value) {
     size_t i;
 
@@ -287,7 +306,7 @@ bool cxpr_eval_memo_get(const cxpr_context* ctx,
 
 bool cxpr_eval_memo_set(const cxpr_context* ctx,
                         const cxpr_expr_ast* ast,
-                        unsigned long hash,
+                        uint64_t hash,
                         cxpr_value value) {
     cxpr_context* mutable_ctx = (cxpr_context*)ctx;
     cxpr_eval_memo_entry* grown;
@@ -340,12 +359,13 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     const cxpr_struct_value* existing;
     cxpr_struct_value* produced;
     cxpr_value outputs[CXPR_MAX_PRODUCER_FIELDS];
+    cxpr_value typed_args[CXPR_MAX_CALL_ARGS] = {{0}};
     double args[CXPR_MAX_CALL_ARGS] = {0.0};
     char cache_key_local[256];
     char* cache_key_heap = NULL;
     const char* cache_key;
 
-    if (!entry || !entry->struct_producer || !name) {
+    if (!entry || (!entry->struct_producer && !entry->typed_struct_producer) || !name) {
         if (err) {
             err->code = CXPR_ERR_UNKNOWN_FUNCTION;
             err->message = cxpr_eval_cache_unknown_function_message(name);
@@ -369,15 +389,53 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     }
 
     for (size_t i = 0; i < argc; ++i) {
-        args[i] = cxpr_eval_scalar_arg(arg_nodes[i], ctx, reg, err);
-        if (err && err->code != CXPR_OK) return NULL;
+        if (entry->typed_struct_producer) {
+            typed_args[i] = cxpr_eval_node(arg_nodes[i], ctx, reg, err);
+            if (err && err->code != CXPR_OK) goto typed_fail;
+            if (entry->arg_types && i < entry->arg_type_count &&
+                typed_args[i].type != entry->arg_types[i]) {
+                if (err) {
+                    err->code = CXPR_ERR_TYPE_MISMATCH;
+                    err->message = "Producer argument type mismatch";
+                }
+                goto typed_fail;
+            }
+        } else {
+            args[i] = cxpr_eval_scalar_arg(arg_nodes[i], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return NULL;
+        }
     }
 
     cache_key = cache_key_hint;
     if (!cache_key) {
-        cache_key = cxpr_build_struct_cache_key(name, args, argc,
-                                                cache_key_local, sizeof(cache_key_local),
-                                                &cache_key_heap);
+        if (entry->typed_struct_producer) {
+            const size_t cap = strlen(name) + 4u + argc * 64u;
+            size_t offset;
+            cache_key_heap = (char*)malloc(cap);
+            if (!cache_key_heap) goto typed_fail;
+            offset = (size_t)snprintf(cache_key_heap, cap, "%s(", name);
+            for (size_t i = 0u; i < argc; ++i) {
+                int written = typed_args[i].type == CXPR_VALUE_INT64
+                    ? snprintf(cache_key_heap + offset, cap - offset,
+                               "i:%" PRId64 ";", typed_args[i].i64)
+                    : typed_args[i].type == CXPR_VALUE_NUMBER
+                        ? snprintf(cache_key_heap + offset, cap - offset,
+                                   "d:%a;", typed_args[i].d)
+                        : typed_args[i].type == CXPR_VALUE_BOOL
+                            ? snprintf(cache_key_heap + offset, cap - offset,
+                                       "b:%d;", typed_args[i].b ? 1 : 0)
+                            : -1;
+                if (written < 0 || (size_t)written >= cap - offset) goto typed_fail;
+                offset += (size_t)written;
+            }
+            cache_key_heap[offset++] = ')';
+            cache_key_heap[offset] = '\0';
+            cache_key = cache_key_heap;
+        } else {
+            cache_key = cxpr_build_struct_cache_key(name, args, argc,
+                                                    cache_key_local, sizeof(cache_key_local),
+                                                    &cache_key_heap);
+        }
     }
     if (!cache_key) {
         if (err) {
@@ -390,10 +448,16 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     existing = cxpr_context_get_cached_struct(ctx, cache_key);
     if (existing) {
         free(cache_key_heap);
+        for (size_t i = 0u; i < argc; ++i) cxpr_value_free(&typed_args[i]);
         return existing;
     }
 
-    entry->struct_producer(args, argc, outputs, entry->fields_per_arg, entry->userdata);
+    if (entry->typed_struct_producer)
+        entry->typed_struct_producer(typed_args, argc, outputs,
+                                     entry->fields_per_arg, entry->userdata);
+    else
+        entry->struct_producer(args, argc, outputs, entry->fields_per_arg, entry->userdata);
+    for (size_t i = 0u; i < argc; ++i) cxpr_value_free(&typed_args[i]);
     produced = cxpr_struct_value_new((const char* const*)entry->struct_fields,
                                      outputs, entry->fields_per_arg);
     if (!produced) {
@@ -410,6 +474,11 @@ const cxpr_struct_value* cxpr_eval_struct_result(cxpr_func_entry* entry,
     existing = cxpr_context_get_cached_struct(ctx, cache_key);
     free(cache_key_heap);
     return existing;
+
+typed_fail:
+    free(cache_key_heap);
+    for (size_t i = 0u; i < argc; ++i) cxpr_value_free(&typed_args[i]);
+    return NULL;
 }
 
 cxpr_func_entry* cxpr_eval_cached_function_entry(const cxpr_expr_ast* ast,

@@ -38,7 +38,7 @@ cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
     cxpr_value result;
     bool found = false;
 
-    if (!entry || !entry->struct_producer) {
+    if (!entry || (!entry->struct_producer && !entry->typed_struct_producer)) {
         return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
     }
 

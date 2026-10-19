@@ -192,3 +192,46 @@ bool cxpr_call_bind_args(const cxpr_expr_ast* ast, const cxpr_func_entry* entry,
 
     return true;
 }
+
+cxpr_error cxpr_registry_bind_call_args(
+    const cxpr_registry* reg,
+    const char* name,
+    const cxpr_expr_ast* call_ast,
+    const cxpr_expr_ast** out_args) {
+    cxpr_error err = {0};
+    const cxpr_func_entry* entry;
+    size_t argc;
+
+    if (!reg || !name || !call_ast) {
+        err.code = CXPR_ERR_SYNTAX;
+        err.message = "Invalid call argument binding request";
+        return err;
+    }
+    if (cxpr_expr_ast_kind_of(call_ast) != CXPR_NODE_FUNCTION_CALL ||
+        !cxpr_expr_ast_call_name(call_ast) ||
+        strcmp(cxpr_expr_ast_call_name(call_ast), name) != 0) {
+        err.code = CXPR_ERR_SYNTAX;
+        err.message = "Call AST does not match function name";
+        return err;
+    }
+
+    entry = cxpr_registry_find(reg, name);
+    if (!entry) {
+        err.code = CXPR_ERR_UNKNOWN_FUNCTION;
+        err.message = "Unknown function";
+        return err;
+    }
+    argc = cxpr_expr_ast_call_arg_count(call_ast);
+    if (argc < entry->min_args || argc > entry->max_args) {
+        err.code = CXPR_ERR_WRONG_ARITY;
+        err.message = "Wrong number of arguments";
+        return err;
+    }
+    if (!cxpr_call_bind_args(call_ast, entry, out_args, &err.code, &err.message)) {
+        if (err.code == CXPR_OK) {
+            err.code = CXPR_ERR_SYNTAX;
+            err.message = "Could not bind function arguments";
+        }
+    }
+    return err;
+}

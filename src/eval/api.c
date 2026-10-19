@@ -145,7 +145,7 @@ static bool cxpr_eval_ast_auto_compile_safe(const cxpr_expr_ast* ast, const cxpr
             ast->data.function_call.argc > entry->max_args) {
             return false;
         }
-        if (entry->ast_func_handler || entry->ast_func || entry->struct_producer ||
+        if (entry->ast_func_handler || entry->ast_func || entry->struct_producer || entry->typed_struct_producer ||
             entry->struct_fields || entry->value_func || entry->typed_func ||
             (entry->sync_func && entry->native_kind == CXPR_NATIVE_KIND_NONE &&
              !entry->defined_body)) {
@@ -223,14 +223,14 @@ static bool cxpr_eval_function_call_memoable_cached(const cxpr_expr_ast* ast,
     mutable_ast = (cxpr_expr_ast*)ast;
     mutable_ast->data.function_call.cached_memoable =
         entry && !entry->ast_func_handler && !entry->ast_func &&
-        !(entry->struct_producer && !entry->sync_func && !entry->value_func);
+        !((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func && !entry->value_func);
     mutable_ast->data.function_call.cached_memoable_valid = true;
     mutable_ast->data.function_call.cached_memoable_registry = reg;
     mutable_ast->data.function_call.cached_memoable_registry_version = version;
     return mutable_ast->data.function_call.cached_memoable;
 }
 
-unsigned long cxpr_eval_function_call_hash_cached(const cxpr_expr_ast* ast) {
+uint64_t cxpr_eval_function_call_hash_cached(const cxpr_expr_ast* ast) {
     cxpr_expr_ast* mutable_ast;
 
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL) return 0u;
@@ -364,6 +364,9 @@ static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* 
     case CXPR_NODE_NUMBER:
         *out = ast->data.number.value;
         return true;
+    case CXPR_NODE_INT64:
+        *out = (double)ast->data.integer.value;
+        return true;
 
     case CXPR_NODE_IDENTIFIER:
         found = false;
@@ -396,6 +399,13 @@ static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* 
             }
         } else {
             *out = cxpr_context_get(ctx, ast->data.identifier.name, &found);
+        }
+        if (!found) {
+            cxpr_value value = cxpr_context_get_typed(
+                ctx, ast->data.identifier.name, &found);
+            if (found && value.type == CXPR_VALUE_INT64) *out = (double)value.i64;
+            else if (found && value.type != CXPR_VALUE_NUMBER) found = false;
+            cxpr_value_free(&value);
         }
         if (!found) {
             if (err) {
@@ -435,6 +445,13 @@ static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* 
         }
         if (!found) {
             *out = cxpr_context_get_param(ctx, ast->data.variable.name, &found);
+        }
+        if (!found) {
+            cxpr_value value = cxpr_context_get_param_typed(
+                ctx, ast->data.variable.name, &found);
+            if (found && value.type == CXPR_VALUE_INT64) *out = (double)value.i64;
+            else if (found && value.type != CXPR_VALUE_NUMBER) found = false;
+            cxpr_value_free(&value);
         }
         if (!found) {
             if (err) {
@@ -496,7 +513,7 @@ static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* 
 
     case CXPR_NODE_PRODUCER_ACCESS: {
         cxpr_func_entry* producer_entry = cxpr_eval_cached_producer_entry(ast, reg);
-        if (!producer_entry || !producer_entry->struct_producer || producer_entry->ast_func_handler) {
+        if (!producer_entry || (!producer_entry->struct_producer && !producer_entry->typed_struct_producer) || producer_entry->ast_func_handler) {
             return false;
         }
         if (cxpr_expr_ast_call_uses_named_args(ast)) return false;
@@ -526,12 +543,12 @@ static bool cxpr_eval_number_fast(const cxpr_expr_ast* ast, const cxpr_context* 
         double args[CXPR_MAX_CALL_ARGS];
         cxpr_func_entry* entry;
         bool should_memo;
-        unsigned long memo_hash = 0u;
+        uint64_t memo_hash = 0u;
         cxpr_value memo_value;
 
         if (argc > CXPR_MAX_CALL_ARGS || cxpr_expr_ast_call_uses_named_args(ast)) return false;
         entry = cxpr_eval_cached_function_entry(ast, reg);
-        if (!entry || entry->ast_func_handler || entry->ast_func || entry->struct_producer ||
+        if (!entry || entry->ast_func_handler || entry->ast_func || entry->struct_producer || entry->typed_struct_producer ||
             entry->struct_fields || entry->value_func || entry->typed_func) {
             return false;
         }

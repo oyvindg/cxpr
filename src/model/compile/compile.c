@@ -42,11 +42,21 @@ static bool cxpr_model_collect_resamples_ast(cxpr_model_compiled* program,
         if (!grown) return false;
         program->resample_requirements = grown;
         grown += program->resample_requirement_count++;
+        {
+            cxpr_model_result_kind source_kind = CXPR_MODEL_RESULT_NUMBER;
+            for (size_t input_i = 0u; input_i < program->input_count; ++input_i) {
+                if (cxpr_model_names_match(program->inputs[input_i], source_name)) {
+                    source_kind = cxpr_model_compiled_input_result_kind(program, input_i);
+                    break;
+                }
+            }
         *grown = (cxpr_model_resample_requirement){
             .source_name = cxpr_strdup(source_name),
             .duration_ns = call.every.duration_ns,
             .canonical = cxpr_strdup(call.every.canonical),
+            .result_kind = source_kind,
         };
+        }
         return grown->source_name && grown->canonical;
     }
     switch (cxpr_expr_ast_kind_of(ast)) {
@@ -228,18 +238,6 @@ cleanup:
     return ok;
 }
 
-static cxpr_model_result_kind cxpr_model_state_default_result_kind(
-    const cxpr_model_compiled* program,
-    const char* name) {
-    if (!program || !name) return CXPR_MODEL_RESULT_UNKNOWN;
-    for (size_t i = 0; i < program->state_default_count; ++i) {
-        if (cxpr_model_names_match(program->state_defaults[i].name, name)) {
-            return program->state_defaults[i].result_kind;
-        }
-    }
-    return CXPR_MODEL_RESULT_UNKNOWN;
-}
-
 static cxpr_model_result_kind cxpr_model_declared_result_kind(
     cxpr_model_decl_type declared_type,
     cxpr_model_result_kind inferred) {
@@ -313,7 +311,8 @@ static bool cxpr_model_apply_host_binding_schema(
         int input_found = 0;
         if (!binding->name || binding->name[0] == '\0' ||
             (binding->type != CXPR_MODEL_RESULT_NUMBER &&
-             binding->type != CXPR_MODEL_RESULT_BOOL)) {
+             binding->type != CXPR_MODEL_RESULT_BOOL &&
+             binding->type != CXPR_MODEL_RESULT_INT64)) {
             cxpr_model_set_error(
                 err, CXPR_ERR_SYNTAX,
                 "Model host binding has an invalid name or scalar type", 0, 0);
@@ -771,7 +770,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
             program->constants[i].result_kind =
                 cxpr_model_declared_result_kind(
                     model->constants[i].declared_type,
-                    cxpr_model_infer_result_kind(program->constants[i].ast, compile_reg));
+                    cxpr_model_infer_result_kind(
+                        program->constants[i].ast, compile_reg, model, program));
             program->constants[i].declared_type = model->constants[i].declared_type;
             program->constants[i].element_type = model->constants[i].element_type;
             program->constants[i].is_call_param = model->constants[i].is_call_param;
@@ -845,7 +845,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
                 program->state_defaults[out_i].result_kind =
                     cxpr_model_declared_result_kind(
                         program->state_defaults[out_i].declared_type,
-                        cxpr_model_infer_result_kind(program->state_defaults[out_i].ast, compile_reg));
+                        cxpr_model_infer_result_kind(
+                            program->state_defaults[out_i].ast, compile_reg, model, program));
                 if (!program->state_defaults[out_i].name ||
                     (model->bindings[i].source && !program->state_defaults[out_i].source) ||
                     (model->bindings[i].declared_type != CXPR_MODEL_DECL_BUFFER &&
@@ -914,10 +915,27 @@ cxpr_model_compiled* cxpr_model_compile_full(
             program->bindings[out_i].result_kind =
                 cxpr_model_declared_result_kind(
                     program->bindings[out_i].declared_type,
-                    cxpr_model_infer_result_kind(program->bindings[out_i].ast, compile_reg));
+                    cxpr_model_infer_result_kind(
+                        program->bindings[out_i].ast, compile_reg, model, program));
             if (program->bindings[out_i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
-                program->bindings[out_i].result_kind = cxpr_model_state_default_result_kind(
-                    program, program->bindings[out_i].name);
+                const cxpr_model_result_kind update_kind =
+                    program->bindings[out_i].result_kind;
+                for (size_t state_i = 0u;
+                     state_i < program->state_default_count; ++state_i) {
+                    cxpr_model_compiled_binding* state =
+                        &program->state_defaults[state_i];
+                    if (!cxpr_model_names_match(
+                            state->name, program->bindings[out_i].name)) continue;
+                    if (state->declared_type == CXPR_MODEL_DECL_INFERRED &&
+                        ((state->result_kind == CXPR_MODEL_RESULT_INT64 &&
+                          update_kind == CXPR_MODEL_RESULT_NUMBER) ||
+                         (state->result_kind == CXPR_MODEL_RESULT_NUMBER &&
+                          update_kind == CXPR_MODEL_RESULT_INT64))) {
+                        state->result_kind = CXPR_MODEL_RESULT_NUMBER;
+                    }
+                    program->bindings[out_i].result_kind = state->result_kind;
+                    break;
+                }
             }
             if (!program->bindings[out_i].name ||
                 !program->bindings[out_i].source ||

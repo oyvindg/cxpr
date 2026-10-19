@@ -81,9 +81,38 @@ static void test_debug_map_validation(void) {
     assert(cxpr_debug_map_validate(&map));
 }
 
+static void test_debug_map_reports_int64(void) {
+    static const char source[] =
+        "model debug_int64\n"
+        "visits = 9007199254740993i64 + 1i64\n"
+        "out { visits }\n";
+    const cxpr_model_compile_options compile_options = {
+        .backend = CXPR_MODEL_BACKEND_C,
+        .fuse = true,
+        .enable_trace = false,
+    };
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_model_parse(source, &err);
+    cxpr_model_compiled* compiled;
+    char* generated;
+
+    assert(model != NULL);
+    compiled = cxpr_model_compile_with_options(model, NULL, &compile_options, &err);
+    assert(compiled != NULL);
+    generated = cxpr_debug_map_plugin_source_from_model(
+        model, compiled, "fixtures/int64.cxpr", NULL, &err);
+    assert(generated != NULL);
+    assert(strstr(generated, "CXPR_DEBUG_RESULT_INT64") != NULL);
+
+    cxpr_debug_map_plugin_source_free(generated);
+    cxpr_model_compiled_free(compiled);
+    cxpr_model_free(model);
+}
+
 int main(void) {
     test_debug_map_metadata_contract();
     test_debug_map_validation();
+    test_debug_map_reports_int64();
     puts("Debug map plugin tests passed");
     return 0;
 }

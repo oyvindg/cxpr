@@ -576,6 +576,12 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 break;
             case CXPR_OP_CMP_EQ:
             case CXPR_OP_CMP_NEQ:
+                if ((a.type == CXPR_VALUE_INT64 || a.type == CXPR_VALUE_NUMBER) &&
+                    (b.type == CXPR_VALUE_INT64 || b.type == CXPR_VALUE_NUMBER)) {
+                    bool equal = cxpr_numeric_equal(a, b);
+                    result = cxpr_bool(instr->op == CXPR_OP_CMP_EQ ? equal : !equal);
+                    break;
+                }
                 if (a.type != b.type ||
                     (a.type != CXPR_VALUE_NUMBER && a.type != CXPR_VALUE_BOOL &&
                      a.type != CXPR_VALUE_STRING && a.type != CXPR_VALUE_NULL &&
@@ -657,8 +663,13 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
         case CXPR_OP_ROUND:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
             if (instr->op == CXPR_OP_NEG && a.type == CXPR_VALUE_INT64) {
-                if (a.i64 == INT64_MIN)
-                    return cxpr_ir_runtime_error(err, "int64 negation overflow");
+                if (a.i64 == INT64_MIN) {
+                    if (err) {
+                        err->code = CXPR_ERR_OVERFLOW;
+                        err->message = "int64 negation overflow";
+                    }
+                    return cxpr_num(NAN);
+                }
                 CXPR_TYPED_PUSH(cxpr_int64(-a.i64));
                 break;
             }

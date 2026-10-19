@@ -917,6 +917,7 @@ static void test_load_document_file_is_primary_entrypoint(void) {
 static void test_manifest_document_accepts_comment_forms(void) {
     const char* source =
         "/** profile docs */\n"
+        "/* // something */ /* some comment /* nested comments */ after nested comments */\n"
         "host_profile trading { // host block\n"
         "  type = \"host_profile\" # line metadata\n"
         "  source close { /** nested docs */\n"
@@ -956,6 +957,45 @@ static void test_manifest_document_accepts_comment_forms(void) {
     printf("  ✓ test_manifest_document_accepts_comment_forms\n");
 }
 
+static void test_binding_expression_error_has_document_column(void) {
+    const char* source =
+        "model demo\n"
+        "fast_avg = x ema(close, 12).value\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* document = cxpr_doc_ast_parse(
+        source, "bad-binding.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+
+    assert(document == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strcmp(err.message,
+                  "Implicit multiplication is not supported; use '*' explicitly") == 0);
+    assert(err.line == 2u);
+    assert(err.column == 14u);
+
+    err = (cxpr_error){0};
+    document = cxpr_doc_ast_parse(
+        "model demo\nin close, $xxxx = 0abc\nout close\n",
+        "bad-input.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    assert(document == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.line == 2u);
+    assert(err.column == 20u);
+    assert(strcmp(err.message,
+                  "Implicit multiplication is not supported; use '*' explicitly") == 0);
+
+    err = (cxpr_error){0};
+    document = cxpr_doc_ast_parse(
+        "model demo\nin close, $xxx=0babc\nout close\n",
+        "bad-binary-input.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    assert(document == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.line == 2u);
+    assert(err.column == 16u);
+    assert(strcmp(err.message,
+                  "Binary numeric literals are not supported; use decimal notation") == 0);
+    printf("  ✓ test_binding_expression_error_has_document_column\n");
+}
+
 int main(void) {
     printf("Running cxpr document tests...\n");
     test_manifest_document_accepts_host_blocks_without_model();
@@ -982,6 +1022,7 @@ int main(void) {
     test_document_ast_represents_assert_conditions();
     test_load_document_file_is_primary_entrypoint();
     test_manifest_document_accepts_comment_forms();
+    test_binding_expression_error_has_document_column();
     printf("All document tests passed.\n");
     return 0;
 }

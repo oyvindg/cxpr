@@ -39,6 +39,13 @@ static void test_registry_defaults_are_callable(void) {
     assert(err.code == CXPR_OK);
     assert(result.d == 1.5);
 
+    result = cxpr_registry_call_value(reg, "stacked", (double[]){20.0, 10.0, 5.0}, 3, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.d == 1.0);
+    result = cxpr_registry_call_value(reg, "stacked", (double[]){20.0, 20.0, 5.0}, 3, &err);
+    assert(err.code == CXPR_OK);
+    assert(result.d == 0.0);
+
     cxpr_registry_free(reg);
 }
 

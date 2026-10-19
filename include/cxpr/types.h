@@ -66,7 +66,8 @@ typedef enum {
     CXPR_ERR_INVALID_INDEX,
     CXPR_ERR_INDEX_OUT_OF_RANGE,
     CXPR_ERR_ASSERTION_FAILED,
-    CXPR_ERR_UNAVAILABLE
+    CXPR_ERR_UNAVAILABLE,
+    CXPR_ERR_OVERFLOW
 } cxpr_error_code;
 
 /** @brief Runtime type tags for `cxpr_value`. */
@@ -94,6 +95,20 @@ typedef struct cxpr_value {
         cxpr_array_value* a;
     };
 } cxpr_value;
+
+/** Numeric operations accepted by the shared checked scalar algebra. */
+typedef enum cxpr_numeric_op {
+    CXPR_NUMERIC_ADD = 0,
+    CXPR_NUMERIC_SUB = 1,
+    CXPR_NUMERIC_MUL = 2,
+    CXPR_NUMERIC_DIV = 3,
+    CXPR_NUMERIC_LT = 4,
+    CXPR_NUMERIC_LTE = 5,
+    CXPR_NUMERIC_GT = 6,
+    CXPR_NUMERIC_GTE = 7,
+    CXPR_NUMERIC_EQ = 8,
+    CXPR_NUMERIC_NEQ = 9
+} cxpr_numeric_op;
 
 #define CXPR_VALUE_NUMBER_INIT(value_) { .type = CXPR_VALUE_NUMBER, .d = (value_) }
 #define CXPR_VALUE_BOOL_INIT(value_) { .type = CXPR_VALUE_BOOL, .b = (value_) }
@@ -151,7 +166,6 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_int64(int64_t value) {
     result.i64 = value;
     return result;
 }
-
 
 /**
  * @brief Construct a struct `cxpr_value`.
@@ -287,6 +301,14 @@ typedef struct cxpr_error {
     size_t line;
     size_t column;
 } cxpr_error;
+
+/**
+ * Apply checked arithmetic/comparison to int64 and number operands.
+ * Returns 1 on success, 0 for unsupported operand types, and -1 with `err`
+ * populated on overflow or division by zero.
+ */
+int cxpr_numeric_arith(cxpr_numeric_op op, cxpr_value a, cxpr_value b,
+                       cxpr_value* out, cxpr_error* err);
 
 /**
  * @brief Return a human-readable string for an error code.

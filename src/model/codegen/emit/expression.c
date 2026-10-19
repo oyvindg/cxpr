@@ -335,6 +335,18 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                                  "Unknown generated resample requirement", 0, 0);
             return NULL;
         }
+        {
+            bool typed_views = false;
+            const bool int64_value = target_data->program->resample_requirements[slot].result_kind ==
+                                     CXPR_MODEL_RESULT_INT64;
+            const char* values_field;
+            const char* missing;
+            for (size_t i = 0u; i < target_data->program->resample_requirement_count; ++i)
+                if (target_data->program->resample_requirements[i].result_kind ==
+                    CXPR_MODEL_RESULT_INT64) typed_views = true;
+            values_field = typed_views
+                ? (int64_value ? "int64_values" : "number_values") : "values";
+            missing = int64_value ? "INT64_C(0)" : "NAN";
         for (size_t i = 0u; i < target_data->resample_cse_count; ++i) {
             const cxpr_model_resample_cse* cse = &target_data->resample_cse[i];
             if (cse->uses >= 2u && cse->slot == slot &&
@@ -347,25 +359,28 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
         if (lookback_offset == 0u) {
             snprintf(raw, sizeof(raw),
                 "((_cx_primary_cursor < _cx_resample_views[%zu].primary_count && "
-                "_cx_resample_views[%zu].values && "
+                "_cx_resample_views[%zu].%s && "
                 "_cx_resample_views[%zu].alignment && "
                 "_cx_resample_views[%zu].alignment[_cx_primary_cursor] < "
                 "_cx_resample_views[%zu].value_count) ? "
-                "_cx_resample_views[%zu].values[_cx_resample_views[%zu].alignment[_cx_primary_cursor]] : NAN)",
-                slot, slot, slot, slot, slot, slot, slot);
+                "_cx_resample_views[%zu].%s[_cx_resample_views[%zu].alignment[_cx_primary_cursor]] : %s)",
+                slot, slot, values_field, slot, slot, slot, slot, values_field,
+                slot, missing);
             return cxpr_strdup(raw);
         }
         snprintf(raw, sizeof(raw),
             "((_cx_primary_cursor < _cx_resample_views[%zu].primary_count && "
-            "_cx_resample_views[%zu].values && "
+            "_cx_resample_views[%zu].%s && "
             "_cx_resample_views[%zu].alignment && "
             "_cx_resample_views[%zu].alignment[_cx_primary_cursor] >= %uu && "
             "_cx_resample_views[%zu].alignment[_cx_primary_cursor] - %uu < "
             "_cx_resample_views[%zu].value_count) ? "
-            "_cx_resample_views[%zu].values[_cx_resample_views[%zu].alignment[_cx_primary_cursor] - %uu] : NAN)",
-            slot, slot, slot, slot, lookback_offset, slot, lookback_offset,
-            slot, slot, slot, lookback_offset);
+            "_cx_resample_views[%zu].%s[_cx_resample_views[%zu].alignment[_cx_primary_cursor] - %uu] : %s)",
+            slot, slot, values_field, slot, slot, lookback_offset, slot,
+            lookback_offset, slot, slot, values_field, slot, lookback_offset,
+            missing);
         return cxpr_strdup(raw);
+        }
     }
 
     if (target_data && target_data->program &&

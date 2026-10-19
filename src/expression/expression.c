@@ -239,6 +239,7 @@ const char* cxpr_error_string(cxpr_error_code code) {
     case CXPR_ERR_OUT_OF_MEMORY:       return "Out of memory";
     case CXPR_ERR_ASSERTION_FAILED:    return "Assertion failed";
     case CXPR_ERR_UNAVAILABLE:         return "Unavailable";
+    case CXPR_ERR_OVERFLOW:            return "Overflow";
     default:                         return "Unknown error";
     }
 }

@@ -137,10 +137,24 @@ static void test_analysis_treats_resample_as_core_transform(void) {
     cxpr_expr_ast_free(ast); cxpr_registry_free(registry);
 }
 
+static void test_aggregate_type_contract(void) {
+    assert(cxpr_resample_aggregate_result_type(
+        CXPR_VALUE_INT64, CXPR_RESAMPLE_AGG_FIRST) == CXPR_VALUE_INT64);
+    assert(cxpr_resample_aggregate_result_type(
+        CXPR_VALUE_INT64, CXPR_RESAMPLE_AGG_SUM) == CXPR_VALUE_INT64);
+    assert(cxpr_resample_aggregate_result_type(
+        CXPR_VALUE_INT64, CXPR_RESAMPLE_AGG_MEAN) == CXPR_VALUE_NUMBER);
+    assert(cxpr_resample_aggregate_result_type(
+        CXPR_VALUE_NUMBER, CXPR_RESAMPLE_AGG_COUNT) == CXPR_VALUE_INT64);
+    assert(cxpr_resample_aggregate_result_type(
+        CXPR_VALUE_BOOL, CXPR_RESAMPLE_AGG_MAX) == CXPR_VALUE_NULL);
+}
+
 int main(void) {
     test_durations(); test_calls(); test_argument_spans_and_diagnostics();
     test_model_semantic_validation();
     test_alias_preserves_resample();
     test_analysis_treats_resample_as_core_transform();
+    test_aggregate_type_contract();
     puts("resample syntax tests passed"); return 0;
 }

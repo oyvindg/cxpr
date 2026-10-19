@@ -115,7 +115,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
             cxpr_func_entry* entry =
                 cxpr_registry_find(reg, base_ast->data.function_call.name);
             if (entry &&
-                (entry->struct_producer ||
+                (entry->struct_producer || entry->typed_struct_producer ||
                  entry->model_producer ||
                  entry->defined_return_field_count > 0u)) {
                 cxpr_expr_ast producer_ast = {0};
@@ -186,7 +186,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
         }
         {
             cxpr_func_entry* producer = cxpr_registry_find(reg, ast->data.field_access.object);
-            if (producer && producer->struct_producer) {
+            if (producer && (producer->struct_producer || producer->typed_struct_producer)) {
                 value = cxpr_eval_struct_producer(producer, ast->data.field_access.object,
                                                   ast->data.field_access.field, NULL, 0,
                                                   ctx, reg, err);
@@ -342,7 +342,13 @@ static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_expr_ast* ast
 }
 
 static bool cxpr_eval_values_equal(cxpr_value left, cxpr_value right, bool* out) {
-    if (!out || left.type != right.type) return false;
+    if (!out) return false;
+    if ((left.type == CXPR_VALUE_NUMBER || left.type == CXPR_VALUE_INT64) &&
+        (right.type == CXPR_VALUE_NUMBER || right.type == CXPR_VALUE_INT64)) {
+        *out = cxpr_numeric_equal(left, right);
+        return true;
+    }
+    if (left.type != right.type) return false;
 
     switch (left.type) {
     case CXPR_VALUE_NUMBER:
@@ -881,7 +887,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         if (entry->ast_func) {
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
         }
-        if (entry->struct_producer && !entry->sync_func && !entry->value_func &&
+        if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func && !entry->value_func &&
             !cxpr_expr_ast_call_uses_named_args(ast)) {
             char const_key_local[256];
             char* const_key_heap = NULL;
@@ -929,7 +935,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         if (entry->defined_body || entry->defined_return_field_count > 0u) {
             return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         }
-        if (entry->struct_producer && !entry->sync_func && !entry->value_func) {
+        if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func && !entry->value_func) {
             const cxpr_struct_value* produced =
                 cxpr_eval_struct_result(entry, name, ordered_args, argc, NULL, ctx, reg, err);
             cxpr_struct_value* owned = NULL;
@@ -1070,7 +1076,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
 
 cxpr_value cxpr_eval_node(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, cxpr_error* err) {
-    unsigned long hash;
+    uint64_t hash;
     cxpr_value cached;
     cxpr_value value;
 

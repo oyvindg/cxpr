@@ -1,0 +1,4 @@
+model tooling_markers
+in close
+out resolved = cl/*@resolve*/ose
+out completed = sq/*@complete*/rt(close)

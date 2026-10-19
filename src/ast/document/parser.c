@@ -63,7 +63,7 @@ static char* cxpr_doc_ast_strip_comments(const char* source) {
     char* out;
     size_t len;
     bool in_line_comment = false;
-    bool in_block_comment = false;
+    size_t block_comment_depth = 0u;
     char quote = '\0';
 
     if (!source) return NULL;
@@ -81,12 +81,17 @@ static char* cxpr_doc_ast_strip_comments(const char* source) {
             }
             continue;
         }
-        if (in_block_comment) {
-            if (ch == '*' && i + 1u < len && out[i + 1u] == '/') {
+        if (block_comment_depth > 0u) {
+            if (ch == '/' && i + 1u < len && out[i + 1u] == '*') {
                 out[i] = ' ';
                 out[i + 1u] = ' ';
                 i++;
-                in_block_comment = false;
+                block_comment_depth++;
+            } else if (ch == '*' && i + 1u < len && out[i + 1u] == '/') {
+                out[i] = ' ';
+                out[i + 1u] = ' ';
+                i++;
+                block_comment_depth--;
             } else if (ch != '\n') {
                 out[i] = ' ';
             }
@@ -120,7 +125,7 @@ static char* cxpr_doc_ast_strip_comments(const char* source) {
             out[i] = ' ';
             out[i + 1u] = ' ';
             i++;
-            in_block_comment = true;
+            block_comment_depth = 1u;
         }
     }
     return out;
@@ -457,13 +462,15 @@ static bool cxpr_doc_ast_type_valid(const char* type) {
     char* end = NULL;
     unsigned long n;
     if (!type) return true;
-    if (!strcmp(type, "number") || !strcmp(type, "bool") || !strcmp(type, "int")) return true;
+    if (!strcmp(type, "number") || !strcmp(type, "bool") ||
+        !strcmp(type, "int") || !strcmp(type, "int64")) return true;
     if (!strncmp(type, "series<", 7u)) {
         size_t len = strlen(type);
         if (len < 9u || type[len - 1u] != '>') return false;
         return (!strncmp(type + 7, "number>", 7u) ||
                 !strncmp(type + 7, "bool>", 5u) ||
-                !strncmp(type + 7, "int>", 4u));
+                !strncmp(type + 7, "int>", 4u) ||
+                !strncmp(type + 7, "int64>", 6u));
     }
     if (strncmp(type, "buffer<", 7u)) return false;
     p = strchr(type + 7, ',');
@@ -473,7 +480,8 @@ static bool cxpr_doc_ast_type_valid(const char* type) {
         while (element_len && isspace((unsigned char)type[7 + element_len - 1u])) element_len--;
         if (!((element_len == 6u && !strncmp(type + 7, "number", 6u)) ||
               (element_len == 4u && !strncmp(type + 7, "bool", 4u)) ||
-              (element_len == 3u && !strncmp(type + 7, "int", 3u)))) return false;
+              (element_len == 3u && !strncmp(type + 7, "int", 3u)) ||
+              (element_len == 5u && !strncmp(type + 7, "int64", 5u)))) return false;
     }
     p++;
     while (isspace((unsigned char)*p)) p++;
@@ -549,7 +557,8 @@ static bool cxpr_doc_ast_assign_name_expr(cxpr_doc_ast_node* node,
         return false;
     }
     node->text = cxpr_strdup(expr);
-    node->expression = cxpr_doc_ast_parse_expr(expr, line, column, err);
+    node->expression = cxpr_doc_ast_parse_expr(
+        expr, line, column + (size_t)(expr - statement), err);
     if (!node->text || !node->expression) return false;
     if (!metadata_open) return true;
     if (!metadata_close || metadata_close < metadata_open) {
@@ -733,6 +742,8 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
         }
         if (end || split) {
             size_t len = (size_t)(cursor - start);
+            size_t leading = 0u;
+            while (leading < len && isspace((unsigned char)start[leading])) leading++;
             char* entry = cxpr_doc_ast_trim_copy(start, len);
             if (!entry) {
                 cxpr_doc_ast_set_error(parser->err, CXPR_ERR_OUT_OF_MEMORY,
@@ -762,7 +773,7 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
                     cxpr_doc_ast_set_error(
                         parser->err, CXPR_ERR_SYNTAX,
                         "Defaulted input parameters must use '$name = default'",
-                        error_line, error_column);
+                        error_line, error_column + leading);
                     return false;
                 }
                 if (params || (child_kind == CXPR_DOC_AST_STATE_DECL && top_eq) ||
@@ -773,7 +784,7 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
                             params || child_kind == CXPR_DOC_AST_INPUT_DECL,
                             body_offset + rel,
                             child->span.start.line,
-                            child->span.start.column + 1u, parser->err)) {
+                            child->span.start.column + leading + 1u, parser->err)) {
                         cxpr_doc_ast_node_free(child);
                         free(entry);
                         return false;

@@ -232,6 +232,53 @@ static void test_malformed_and_overflowing_registration(void) {
 }
 
 typedef struct {
+    int64_t id;
+    int64_t sequence;
+} integer_bar;
+
+static void test_int64_history_is_exact_in_ast_and_ir(void) {
+    static const integer_bar bars[] = {
+        {INT64_C(9007199254740993), INT64_C(11)},
+        {INT64_C(9007199254740995), INT64_C(13)},
+        {INT64_C(9007199254740997), INT64_C(17)},
+    };
+    const cxpr_history_int64_source sources[] = {
+        {"id", &bars[0].id, sizeof(integer_bar), 3u},
+        {"sequence", &bars[0].sequence, sizeof(integer_bar), 3u},
+    };
+    int64_t cursor = 2;
+    cxpr_registry* registry = cxpr_registry_new();
+    assert(registry);
+    assert(cxpr_register_history_int64_sources(
+        registry, sources, 2u, &cursor, CXPR_HISTORY_BOUNDS_ERROR));
+
+    for (size_t compiled = 0u; compiled < 2u; ++compiled) {
+        cxpr_error error = {0};
+        cxpr_value result = evaluate(
+            "id[1] + sequence[0]", NULL, registry, compiled != 0u, &error);
+        assert(error.code == CXPR_OK);
+        assert(result.type == CXPR_VALUE_INT64);
+        assert(result.i64 == INT64_C(9007199254741012));
+
+        error = (cxpr_error){0};
+        result = evaluate(
+            "(id + sequence)[2]", NULL, registry, compiled != 0u, &error);
+        assert(error.code == CXPR_OK);
+        assert(result.type == CXPR_VALUE_INT64);
+        assert(result.i64 == INT64_C(9007199254741004));
+    }
+
+    cxpr_registry_free(registry);
+
+    registry = cxpr_registry_new();
+    assert(registry);
+    assert(!cxpr_register_history_contiguous_int64(
+        registry, "id", &bars[0].id, 3u, &cursor,
+        CXPR_HISTORY_BOUNDS_LEGACY_NAN));
+    cxpr_registry_free(registry);
+}
+
+typedef struct {
     const double* values;
     int64_t cursor;
     double expected;
@@ -279,6 +326,7 @@ int main(void) {
     test_compound_expression_uses_immutable_shifted_context();
     test_dynamic_provider_rebinds_without_copying();
     test_malformed_and_overflowing_registration();
+    test_int64_history_is_exact_in_ast_and_ir();
     test_independent_contexts_share_immutable_history();
     puts("cxpr generic history tests passed.");
     return 0;

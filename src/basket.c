@@ -4,8 +4,9 @@
  */
 
 #include "core.h"
-#include "registry/internal.h"
+#include "registry/internal.h" // IWYU pragma: keep
 #include <cxpr/basket.h>
+#include <cxpr/builtin.h>
 #include <math.h>
 #include <string.h>
 
@@ -40,16 +41,8 @@ static char* cxpr_basket_role_struct_name(const char* role) {
 }
 
 bool cxpr_basket_is_builtin(const char* name) {
-    if (!name) return false;
-    return strcmp(name, "avg") == 0 ||
-           strcmp(name, "any") == 0 ||
-           strcmp(name, "all") == 0 ||
-           strcmp(name, "min") == 0 ||
-           strcmp(name, "max") == 0 ||
-           strcmp(name, "argmin") == 0 ||
-           strcmp(name, "argmax") == 0 ||
-           strcmp(name, "sum") == 0 ||
-           strcmp(name, "count") == 0;
+    const cxpr_function_info* builtin = cxpr_builtin_find(name);
+    return builtin && (builtin->flags & CXPR_BUILTIN_BASKET) != 0u;
 }
 
 bool cxpr_basket_is_aggregate_function(const char* name, size_t argc) {

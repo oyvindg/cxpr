@@ -216,7 +216,7 @@ static bool cxpr_document_parse_decl_type(const char* text,
         *element_type = CXPR_MODEL_ELEMENT_BOOL;
         return true;
     }
-    if (!strcmp(text, "int")) {
+    if (!strcmp(text, "int") || !strcmp(text, "int64")) {
         *declared_type = CXPR_MODEL_DECL_INT;
         *element_type = CXPR_MODEL_ELEMENT_INT;
         return true;
@@ -238,7 +238,8 @@ static bool cxpr_document_parse_decl_type(const char* text,
     } else return false;
     if (!strncmp(inner, "number", 6u)) *element_type = CXPR_MODEL_ELEMENT_NUMBER;
     else if (!strncmp(inner, "bool", 4u)) *element_type = CXPR_MODEL_ELEMENT_BOOL;
-    else if (!strncmp(inner, "int", 3u)) *element_type = CXPR_MODEL_ELEMENT_INT;
+    else if (!strncmp(inner, "int64", 5u) || !strncmp(inner, "int", 3u))
+        *element_type = CXPR_MODEL_ELEMENT_INT;
     else return false;
     return true;
 }

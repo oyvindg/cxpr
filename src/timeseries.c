@@ -4,6 +4,7 @@
  */
 
 #include "registry/internal.h" // IWYU pragma: keep
+#include <cxpr/builtin.h>
 #include <cxpr/expr/ast.h>
 #include <cxpr/window.h>
 #include <math.h>
@@ -798,6 +799,7 @@ static cxpr_value cxpr_timeseries_overlaps(const cxpr_expr_ast* call_ast,
 void cxpr_register_timeseries(cxpr_registry* reg) {
     static const char* const value_samples_params[] = {"value", "samples"};
     static const char* const overlap_params[] = {"left", "right", "bars"};
+    static const char* const cross_params[] = {"left", "right"};
 
     if (!reg) return;
 
@@ -824,8 +826,10 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
     cxpr_registry_set_param_names(reg, "signal_overlaps", overlap_params, 3u);
     cxpr_registry_add_timeseries(reg, "cross_above", cxpr_timeseries_cross_above, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "cross_above", cross_params, 2u);
     cxpr_registry_add_timeseries(reg, "cross_below", cxpr_timeseries_cross_below, 2, 2,
                                  CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_set_param_names(reg, "cross_below", cross_params, 2u);
     cxpr_registry_add_timeseries(reg, "delta", cxpr_timeseries_delta, 2, 2,
                                  CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_set_param_names(reg, "delta", value_samples_params, 2u);
@@ -875,19 +879,7 @@ void cxpr_register_timeseries(cxpr_registry* reg) {
 }
 
 bool cxpr_timeseries_is_builtin(const char* name) {
-    if (!name) return false;
-    return strcmp(name, "rising") == 0 ||
-           strcmp(name, "falling") == 0 ||
-           strcmp(name, "net_up") == 0 ||
-           strcmp(name, "net_down") == 0 ||
-           strcmp(name, "repeat") == 0 ||
-           strcmp(name, "overlaps") == 0 ||
-           strcmp(name, "signal_overlaps") == 0 ||
-           strcmp(name, "cross_above") == 0 ||
-           strcmp(name, "cross_below") == 0 ||
-           strcmp(name, "delta") == 0 ||
-           strcmp(name, "roc") == 0 ||
-           strcmp(name, "highest") == 0 ||
-           strcmp(name, "lowest") == 0 ||
+    const cxpr_function_info* builtin = cxpr_builtin_find(name);
+    return (builtin && (builtin->flags & CXPR_BUILTIN_TIMESERIES) != 0u) ||
            cxpr_window_ir_find(name) != NULL;
 }

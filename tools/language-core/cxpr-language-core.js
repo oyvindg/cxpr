@@ -1,78 +1,15 @@
-const CXPR_TOKEN_TYPES = [
-  "type",
-  "function",
-  "import",
-  "importPath",
-  "parameter",
-  "namedArgument",
-  "assignment",
-  "block",
-  "plotBlock",
-  "property",
-  "reference",
-  "input",
-  "state",
-  "variable",
-  "string",
-  "number",
-  "operator",
-  "keyword",
-  "punctuation",
-  "comment"
-];
+const languageSpec = require("./cxpr-language-spec.json");
+const colorProfile = require("../theme/cxpr-color-profile.json");
 
-const CXPR_DEFAULT_TOKEN_COLORS = {
-  type: "#4EC9B0",
-  function: "#DCDCAA",
-  import: "#DCDCAA",
-  importPath: "#D7BA7D",
-  parameter: "#4FC1FF",
-  namedArgument: "#9D9D9D",
-  assignment: "#569CD6",
-  block: "#C586C0",
-  plotBlock: "#D7BA7D",
-  property: "#9CDCFE",
-  reference: "#569CD6",
-  input: "#4EC9B0",
-  state: "#E06C75",
-  variable: "#9CDCFE",
-  string: "#CE9178",
-  number: "#B5CEA8",
-  operator: "#D4D4D4",
-  keyword: "#C586C0",
-  punctuation: "#D4D4D4",
-  comment: "#6A9955"
-};
+const CXPR_TOKEN_TYPES = languageSpec.tokenTypes;
 
-const CXPR_KEYWORDS = [
-  "and",
-  "as",
-  "or",
-  "not",
-  "if",
-  "then",
-  "else",
-  "fn",
-  "from",
-  "in",
-  "initial",
-  "model",
-  "name",
-  "out",
-  "return",
-  "state",
-  "update",
-  "use",
-  "true",
-  "false",
-  "null"
-];
+const CXPR_DEFAULT_TOKEN_COLORS = colorProfile.tokens;
 
-const CXPR_TYPE_NAMES = ["bool", "buffer", "int", "number", "series"];
-
-const CXPR_OPERATOR_TOKENS = ["<=", ">=", "==", "!=", "&&", "||", "|>", "**"];
-const CXPR_PUNCTUATION_CHARS = [".", ",", "(", ")", "[", "]", "{", "}"];
-const CXPR_SINGLE_CHAR_OPERATORS = ["+", "-", "*", "/", "%", "^", "<", ">", "=", "!", "?", ":"];
+const CXPR_KEYWORDS = languageSpec.keywords;
+const CXPR_TYPE_NAMES = languageSpec.typeNames;
+const CXPR_OPERATOR_TOKENS = languageSpec.operatorTokens;
+const CXPR_PUNCTUATION_CHARS = languageSpec.punctuationChars;
+const CXPR_SINGLE_CHAR_OPERATORS = languageSpec.singleCharOperators;
 const CXPR_NUMBER_PATTERN = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?/;
 
 function nextNonSpace(text, index) {

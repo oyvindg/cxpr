@@ -2,7 +2,7 @@
   "name": "cxpr-language",
   "displayName": "CXPR Language",
   "description": "VS Code client for the standalone CXPR language server.",
-  "version": "0.2.22",
+  "version": "0.3.0",
   "private": true,
   "publisher": "local",
   "engines": { "vscode": "^1.85.0" },
@@ -11,6 +11,7 @@
   "main": "./extension.js",
   "scripts": {
     "package:vsix": "node scripts/build-vsix.js",
+    "test:packaged": "node --test test/packaged-wasm-smoke.test.js",
     "install:extension": "npm run package:vsix && node install-extension.mjs"
   },
   "dependencies": {
@@ -28,9 +29,12 @@
           { "scope": "variable.parameter.cxpr", "settings": { "foreground": "#4FC1FF" } },
           { "scope": "variable.other.named-argument.cxpr", "settings": { "foreground": "#9D9D9D" } },
           { "scope": "variable.other.assignment.cxpr", "settings": { "foreground": "#569CD6" } },
+          { "scope": "keyword.operator.assignment.cxpr", "settings": { "foreground": "#569CD6" } },
+          { "scope": "variable.other.cxpr", "settings": { "foreground": "#9CDCFE" } },
           { "scope": "variable.other.block-label.cxpr", "settings": { "foreground": "#C586C0" } },
           { "scope": "variable.other.property.cxpr", "settings": { "foreground": "#9CDCFE" } },
           { "scope": "variable.other.reference.cxpr", "settings": { "foreground": "#569CD6" } },
+          { "scope": "variable.other.input.cxpr", "settings": { "foreground": "#4EC9B0" } },
           { "scope": "string.unquoted.import-path.cxpr", "settings": { "foreground": "#D7BA7D" } },
           { "scope": "string.quoted.cxpr", "settings": { "foreground": "#CE9178" } },
           { "scope": "constant.numeric.cxpr", "settings": { "foreground": "#B5CEA8" } },
@@ -68,10 +72,16 @@
     "configuration": {
       "title": "CXPR Language",
       "properties": {
+        "cxprLanguage.analyzer.transport": {
+          "type": "string",
+          "enum": ["wasm", "native", "cli"],
+          "default": "wasm",
+          "description": "Analyzer transport. WASM is bundled and portable; native and CLI are explicit development fallbacks."
+        },
         "cxprLanguage.tooling.executable": {
           "type": "string",
           "default": "",
-          "description": "Optional path to cxpr_document_tooling. When empty, the bundled executable is used, with workspace and PATH fallbacks."
+          "description": "Path to cxpr_document_tooling when analyzer.transport is cli."
         }
       }
     },
@@ -100,7 +110,7 @@
         "plotBlock": ["variable.other.block-label.cxpr"],
         "property": ["variable.other.property.cxpr"],
         "reference": ["variable.other.reference.cxpr"],
-        "input": ["variable.other.reference.cxpr"],
+        "input": ["variable.other.input.cxpr"],
         "state": ["variable.other.assignment.cxpr"],
         "variable": ["variable.other.reference.cxpr"],
         "string": ["string.quoted.cxpr"],

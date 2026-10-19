@@ -18,10 +18,11 @@ int cxpr_validate_generated_resample_bindings(
         return 0;
     }
     for (size_t i = 0u; i < bindings->count; ++i) {
-        if (bindings->requirements[i].value_type != CXPR_VALUE_NUMBER) {
+        if (bindings->requirements[i].value_type != CXPR_VALUE_NUMBER &&
+            bindings->requirements[i].value_type != CXPR_VALUE_INT64) {
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
-                err->message = "Generated C/CUDA resample ABI v1 supports only scalar numeric series; record/vector series are unsupported";
+                err->message = "Generated C/CUDA resample ABI supports only scalar number/int64 series; record/vector series are unsupported";
             }
             return 0;
         }

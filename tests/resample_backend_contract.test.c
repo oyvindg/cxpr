@@ -258,9 +258,86 @@ static void test_bound_views_tree_ir_multiple_and_missing(void) {
     cxpr_expr_parser_free(parser);
 }
 
+typedef struct int64_resample_fixture {
+    const int64_t* values;
+    size_t count;
+    int64_t cursor;
+} int64_resample_fixture;
+
+static int is_hourly_id(const cxpr_expr_ast* ast) {
+    const cxpr_expr_ast* source;
+    const cxpr_expr_ast* every;
+    if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(cxpr_expr_ast_call_name(ast), "resample") != 0 ||
+        cxpr_expr_ast_call_arg_count(ast) != 2u) return 0;
+    source = cxpr_expr_ast_call_arg(ast, 0u);
+    every = cxpr_expr_ast_call_arg(ast, 1u);
+    return source && every &&
+        cxpr_expr_ast_kind_of(source) == CXPR_NODE_IDENTIFIER &&
+        strcmp(cxpr_expr_ast_identifier_name(source), "id") == 0 &&
+        cxpr_expr_ast_kind_of(every) == CXPR_NODE_STRING &&
+        strcmp(cxpr_expr_ast_string_value(every), "1h") == 0;
+}
+
+static cxpr_value evaluate_int64_resample(
+    const cxpr_expr_ast* ast, const cxpr_context* context,
+    const cxpr_registry* registry, void* userdata, cxpr_error* err) {
+    int64_resample_fixture* fixture = userdata;
+    (void)context; (void)registry; (void)err;
+    if (!is_hourly_id(ast)) return cxpr_int64(0);
+    return cxpr_int64(fixture->values[fixture->cursor]);
+}
+
+static bool resolve_int64_resample_lookback(
+    const cxpr_expr_ast* target, const cxpr_expr_ast* index,
+    const cxpr_context* context, const cxpr_registry* registry,
+    void* userdata, cxpr_value* out, cxpr_error* err) {
+    int64_resample_fixture* fixture = userdata;
+    int64_t offset;
+    (void)context; (void)registry; (void)err;
+    if (!is_hourly_id(target)) return false;
+    offset = (int64_t)cxpr_expr_ast_number_value(index);
+    *out = cxpr_int64(fixture->values[fixture->cursor - offset]);
+    return true;
+}
+
+static void test_int64_tree_ir_resample_parity(void) {
+    static const int64_t ids[] = {
+        INT64_C(9007199254740993), INT64_C(9007199254740995),
+        INT64_C(9007199254740997),
+    };
+    int64_resample_fixture fixture = {ids, 3u, 2};
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* ir;
+    cxpr_value tree = {0}, compiled = {0};
+    assert(parser && registry);
+    cxpr_registry_add_ast(registry, "resample", evaluate_int64_resample,
+                          2u, 2u, CXPR_VALUE_INT64, &fixture, NULL);
+    cxpr_registry_set_lookback_resolver(
+        registry, resolve_int64_resample_lookback, &fixture, NULL);
+    ast = cxpr_expr_ast_parse(
+        parser, "resample(id, \"1h\") + resample(id, \"1h\")[1]", &err);
+    assert(ast);
+    ir = cxpr_expr_compile(ast, registry, &err);
+    assert(ir);
+    assert(cxpr_eval_ast(ast, NULL, registry, &tree, &err));
+    assert(cxpr_expr_compiled_eval(ir, NULL, registry, &compiled, &err));
+    assert(tree.type == CXPR_VALUE_INT64 && compiled.type == CXPR_VALUE_INT64);
+    assert(tree.i64 == INT64_C(18014398509481992));
+    assert(compiled.i64 == tree.i64);
+    cxpr_expr_compiled_free(ir);
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(registry);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     test_tree_ir_and_backend_offset_parity();
     test_bound_views_tree_ir_multiple_and_missing();
+    test_int64_tree_ir_resample_parity();
     puts("resample tree/IR/generated-C/CUDA offset contract OK");
     return 0;
 }

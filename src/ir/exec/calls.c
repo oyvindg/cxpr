@@ -42,7 +42,7 @@ static bool cxpr_ir_call_instr_memoable(const cxpr_ir_instr* instr) {
     if (!instr || !instr->func || !ast || ast->type != CXPR_NODE_FUNCTION_CALL) return false;
     return !instr->func->ast_func_handler &&
            !instr->func->ast_func &&
-           !(instr->func->struct_producer &&
+           !((instr->func->struct_producer || instr->func->typed_struct_producer) &&
              !instr->func->sync_func &&
              !instr->func->value_func);
 }
@@ -79,7 +79,7 @@ cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name
     char* cache_key_heap = NULL;
     const char* resolved_cache_key = cache_key;
 
-    if (!entry || !entry->struct_producer) {
+    if (!entry || (!entry->struct_producer && !entry->typed_struct_producer)) {
         return cxpr_ir_runtime_error(err, "Invalid producer opcode");
     }
 
@@ -92,6 +92,25 @@ cxpr_value cxpr_ir_call_producer_cached(cxpr_func_entry* entry, const char* name
     }
     if (argc > CXPR_MAX_CALL_ARGS || entry->fields_per_arg > CXPR_MAX_PRODUCER_FIELDS) {
         return cxpr_ir_runtime_error(err, "Producer arity too large");
+    }
+
+    if (entry->typed_struct_producer) {
+        for (size_t i = 0u; i < argc; ++i) {
+            if (entry->arg_types && i < entry->arg_type_count &&
+                stack_args[i].type != entry->arg_types[i]) {
+                if (err) {
+                    err->code = CXPR_ERR_TYPE_MISMATCH;
+                    err->message = "Producer argument type mismatch";
+                }
+                return cxpr_num(NAN);
+            }
+        }
+        entry->typed_struct_producer(stack_args, argc, outputs,
+                                     entry->fields_per_arg, entry->userdata);
+        produced = cxpr_struct_value_new((const char* const*)entry->struct_fields,
+                                         outputs, entry->fields_per_arg);
+        if (!produced) return cxpr_ir_runtime_error(err, "Out of memory");
+        return cxpr_struct(produced);
     }
 
     if (resolved_cache_key) {

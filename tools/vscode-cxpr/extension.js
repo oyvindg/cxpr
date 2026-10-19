@@ -13,19 +13,16 @@ async function activate(context) {
     outputChannel = vscode.window.createOutputChannel("CXPR Language Server");
   }
   const serverModule = context.asAbsolutePath(path.join("server", "server.js"));
-  const bundledToolingExecutable = context.asAbsolutePath(path.join(
-    "tooling",
-    process.platform === "win32" ? "cxpr_document_tooling.exe" : "cxpr_document_tooling"
-  ));
-  const bundledLibraryRoot = context.asAbsolutePath(path.join("library", "dyn", "cxpr"));
+  const configuration = vscode.workspace.getConfiguration("cxprLanguage");
   const clientOptions = {
     documentSelector: [{ language: "cxpr", scheme: "file" }],
     synchronize: { configurationSection: "cxprLanguage", fileEvents: watcher },
     initializationOptions: {
-      toolingExecutable: vscode.workspace.getConfiguration("cxprLanguage")
-        .get("tooling.executable", ""),
-      bundledToolingExecutable,
-      bundledLibraryRoot
+      transport: configuration.get("analyzer.transport", "wasm"),
+      cli: configuration.get("tooling.executable", ""),
+      wasmAnalyzerModule: context.asAbsolutePath(path.join("runtime", "wasm-analyzer.js")),
+      wasmFactoryModule: context.asAbsolutePath(path.join("runtime", "cxpr_wasm.js")),
+      wasmPath: context.asAbsolutePath(path.join("runtime", "cxpr_wasm.wasm"))
     }
   };
   // Older VS Code releases expose OutputChannel, not LogOutputChannel.

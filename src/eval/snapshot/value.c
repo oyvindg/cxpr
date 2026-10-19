@@ -163,6 +163,7 @@ char* cxpr_snapshot_value_text(const cxpr_value* value) {
             return cxpr_snapshot_strdup("null");
         case CXPR_VALUE_TIMESTAMP:
         case CXPR_VALUE_DURATION:
+        case CXPR_VALUE_INT64:
             snprintf(buf, sizeof(buf), "%lld", (long long)value->i64);
             return cxpr_snapshot_strdup(buf);
         case CXPR_VALUE_STRUCT:
@@ -179,7 +180,8 @@ cxpr_snapshot_state cxpr_snapshot_state_for_value(const cxpr_value* value) {
     if (value->type == CXPR_VALUE_BOOL) {
         return value->b ? CXPR_SNAPSHOT_STATE_TRUE : CXPR_SNAPSHOT_STATE_FALSE;
     }
-    if (value->type == CXPR_VALUE_NUMBER) return CXPR_SNAPSHOT_STATE_NUMBER;
+    if (value->type == CXPR_VALUE_NUMBER || value->type == CXPR_VALUE_INT64)
+        return CXPR_SNAPSHOT_STATE_NUMBER;
     return CXPR_SNAPSHOT_STATE_VALUE;
 }
 

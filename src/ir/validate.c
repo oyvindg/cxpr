@@ -10,6 +10,7 @@ static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops
 
     switch (instr->op) {
     case CXPR_OP_PUSH_CONST:
+    case CXPR_OP_PUSH_INT64:
     case CXPR_OP_PUSH_BOOL:
     case CXPR_OP_LOAD_LOCAL:
     case CXPR_OP_LOAD_LOCAL_SQUARE:
@@ -161,6 +162,7 @@ static bool cxpr_ir_bool_fast_stack_effect(const cxpr_ir_instr* instr,
 
     switch (instr->op) {
     case CXPR_OP_PUSH_CONST:
+    case CXPR_OP_PUSH_INT64:
     case CXPR_OP_LOAD_LOCAL:
     case CXPR_OP_LOAD_LOCAL_SQUARE:
     case CXPR_OP_LOAD_VAR:

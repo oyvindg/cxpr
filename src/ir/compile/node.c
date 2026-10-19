@@ -399,7 +399,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
-        if (!entry || (!entry->struct_producer && !entry->model_producer &&
+        if (!entry || (!entry->struct_producer && !entry->typed_struct_producer && !entry->model_producer &&
                        entry->defined_return_field_count == 0u)) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_FUNCTION;
@@ -438,10 +438,11 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
-        const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
-                                                        ordered_args,
-                                                        ast->data.producer_access.argc,
-                                                        reg);
+        if (!entry->typed_struct_producer)
+            const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
+                                                            ordered_args,
+                                                            ast->data.producer_access.argc,
+                                                            reg);
         if (const_key) {
             const_args = (double*)calloc(ast->data.producer_access.argc ? ast->data.producer_access.argc : 1,
                                          sizeof(double));
@@ -819,7 +820,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 err);
         }
 
-        if (entry->struct_producer && !entry->sync_func) {
+        if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func) {
             char* const_key = NULL;
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
                 if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
@@ -827,10 +828,11 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                     return false;
                 }
             }
-            const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
-                                                            (const cxpr_expr_ast* const*)ast->data.function_call.args,
-                                                            ast->data.function_call.argc,
-                                                            reg);
+            if (!entry->typed_struct_producer)
+                const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
+                                                                (const cxpr_expr_ast* const*)ast->data.function_call.args,
+                                                                ast->data.function_call.argc,
+                                                                reg);
             if (!cxpr_ir_emit(program,
                               (cxpr_ir_instr){
                                   .op = const_key ? CXPR_OP_CALL_PRODUCER_CONST

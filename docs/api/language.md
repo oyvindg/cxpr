@@ -553,21 +553,18 @@ The extension provides two complementary layers:
 - `extension.js` starts the bundled CXPR language server over IPC, watches
   `*.cxpr` files, and applies the extension's semantic-token color defaults.
 
-The language server source is
-`tools/language-server/server.js`. It delegates document analysis to
-the compiled `cxpr_document_tooling` executable, so diagnostics and structural
-information come from the C tooling rather than a JavaScript reimplementation
-of the language. Its current LSP capabilities are incremental document sync,
+The language server source is `tools/language-server/lsp-server.js`. On Linux
+x64 it loads `cxpr-node` in-process; other platforms use the bundled WASM
+analyzer. Both transports call the same C tooling core, so diagnostics and
+structural information do not have a JavaScript implementation. Its current
+LSP capabilities are incremental document sync,
 diagnostics on open/change, document symbols, folding ranges, full semantic
 tokens, same-document definition lookup, and concise symbol/function hover.
 The extension contributes default colors for the semantic token categories
 listed in `tools/vscode-cxpr/package.json`.
 
-The tooling executable is selected in this order: the VS Code setting
-`cxprLanguage.tooling.executable`, the `CXPR_DOCUMENT_TOOLING` environment
-variable, the executable bundled in the VSIX, conventional workspace build
-paths, then `PATH`. If none exists, the server reports
-`cxpr_document_tooling executable not found` as a document diagnostic.
+The standalone CLI analyzer remains an explicit emergency fallback selected
+with `CXPR_ANALYZER=cli` and `CXPR_DOCUMENT_TOOLING=/path/to/cxpr_document_tooling`.
 
 Build the server before packaging the extension:
 
@@ -582,12 +579,10 @@ npm run package:vsix
 ```
 
 The server build uses esbuild and writes `tools/language-server/dist/server.js`.
-The VSIX script requires the `zip` CLI, bundles `extension.js`, copies the
-built server and `cxpr_document_tooling`, constructs the VSIX manifest, and
+The VSIX script requires the `zip` CLI, bundles `extension.js`, the built
+server, language service, generated assets and portable WASM analyzer, then
 writes `tools/vscode-cxpr/dist/cxpr-language-<version>.vsix`. It fails with an
-actionable message when esbuild, zip, the server, or the tooling executable is
-missing. The bundled executable targets the platform on which the VSIX is
-built.
+actionable message when a required build artifact is missing.
 
 Install or replace the local extension with:
 

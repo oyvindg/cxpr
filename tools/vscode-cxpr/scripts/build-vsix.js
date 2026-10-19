@@ -44,21 +44,6 @@ function copyExternalFileIntoStage(stageRoot, srcPath, relPath) {
   fs.copyFileSync(srcPath, dstPath);
 }
 
-function copyCxprTreeIntoStage(stageRoot, srcRoot, relRoot) {
-  if (!fs.existsSync(srcRoot)) return 0;
-  let copied = 0;
-  for (const entry of fs.readdirSync(srcRoot, { withFileTypes: true })) {
-    const srcPath = path.join(srcRoot, entry.name);
-    const relPath = path.join(relRoot, entry.name);
-    if (entry.isDirectory()) copied += copyCxprTreeIntoStage(stageRoot, srcPath, relPath);
-    else if (entry.isFile() && entry.name.endsWith(".cxpr")) {
-      copyExternalFileIntoStage(stageRoot, srcPath, relPath);
-      copied++;
-    }
-  }
-  return copied;
-}
-
 function bundle(entryPath, outputPath, external = []) {
   const esbuild = path.join(__dirname, "..", "node_modules", ".bin", "esbuild");
   if (!fs.existsSync(esbuild)) {
@@ -128,6 +113,7 @@ function buildContentTypes() {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="json" ContentType="application/json" />
   <Default Extension="js" ContentType="application/javascript" />
+  <Default Extension="wasm" ContentType="application/wasm" />
   <Default Extension="md" ContentType="text/markdown" />
   <Default Extension="txt" ContentType="text/plain" />
   <Default Extension="xml" ContentType="text/xml" />
@@ -142,6 +128,9 @@ function main() {
   }
 
   const rootDir = path.resolve(__dirname, "..");
+  const cxprRoot = path.resolve(rootDir, "..", "..");
+  execFileSync(process.execPath, [path.join(cxprRoot, "tools", "language-core", "generate-grammars.js"), "--check"],
+    { stdio: "inherit" });
   const pkgPath = path.join(rootDir, "package.json");
   if (!fs.existsSync(pkgPath)) fail(`Missing package.json at ${pkgPath}`);
 
@@ -177,28 +166,24 @@ function main() {
   }
   copyExternalFileIntoStage(stageRoot, serverPath, path.join("server", "server.js"));
 
-  const executableName = process.platform === "win32"
-    ? "cxpr_document_tooling.exe"
-    : "cxpr_document_tooling";
-  const cxprRoot = path.resolve(rootDir, "..", "..");
-  const toolingCandidates = [
-    process.env.CXPR_DOCUMENT_TOOLING,
-    path.join(cxprRoot, "build", executableName),
-    path.resolve(cxprRoot, "..", "..", "build", "libs", "cxpr", executableName),
-    path.resolve(cxprRoot, "..", "..", "build", "libs", "cxpr", "Release", executableName)
-  ];
-  const toolingPath = toolingCandidates.find((candidate) => candidate && fs.existsSync(candidate));
-  if (!toolingPath) {
-    fail(`CXPR document tooling is not built. Build cxpr_document_tooling or set CXPR_DOCUMENT_TOOLING. Searched: ${toolingCandidates.filter(Boolean).join(", ")}`);
+  const languageServicePath = path.resolve(rootDir, "..", "language-service", "dist", "index.js");
+  if (!fs.existsSync(languageServicePath)) {
+    fail("CXPR language service is not built. Run npm run build in libs/cxpr/tools/language-service.");
   }
-  const stagedToolingPath = path.join("tooling", executableName);
-  copyExternalFileIntoStage(stageRoot, toolingPath, stagedToolingPath);
-  fs.chmodSync(path.join(stageRoot, "extension", stagedToolingPath), 0o755);
+  bundle(languageServicePath, path.join(stageRoot, "extension", "runtime", "language-service.js"));
 
-  const dynCxprRoot = path.resolve(cxprRoot, "..", "dyn", "cxpr");
-  const bundledLibraryCount = copyCxprTreeIntoStage(
-    stageRoot, dynCxprRoot, path.join("library", "dyn", "cxpr"));
-  if (bundledLibraryCount) console.log(`Bundled ${bundledLibraryCount} CXPR library sources`);
+  const cxprNodeRoot = path.resolve(cxprRoot, "..", "cxpr-node");
+  const runtimeFiles = new Map([
+    [path.join(cxprNodeRoot, "dist", "wasm-analyzer.js"), path.join("runtime", "wasm-analyzer.js")],
+    [path.join(cxprNodeRoot, "wasm", "dist", "cxpr_wasm.js"), path.join("runtime", "cxpr_wasm.js")],
+    [path.join(cxprNodeRoot, "wasm", "dist", "cxpr_wasm.wasm"), path.join("runtime", "cxpr_wasm.wasm")]
+  ]);
+  for (const [source, destination] of runtimeFiles) {
+    if (!fs.existsSync(source)) {
+      fail(`Missing WASM runtime asset: ${source}. Run npm run build:wasm and npm run build:ts in libs/cxpr-node.`);
+    }
+    copyExternalFileIntoStage(stageRoot, source, destination);
+  }
 
   const sharedThemePath = path.resolve(rootDir, "..", "theme", "cxpr-color-profile.json");
   if (fs.existsSync(sharedThemePath)) {

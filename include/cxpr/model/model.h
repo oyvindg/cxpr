@@ -590,6 +590,9 @@ int64_t cxpr_model_compiled_resample_requirement_duration_ns(
     const cxpr_model_compiled* program, size_t index);
 const char* cxpr_model_compiled_resample_requirement_interval(
     const cxpr_model_compiled* program, size_t index);
+/** Materialized scalar type required for one generated resample slot. */
+cxpr_model_result_kind cxpr_model_compiled_resample_requirement_result_kind(
+    const cxpr_model_compiled* program, size_t index);
 size_t cxpr_model_compiled_call_param_count(const cxpr_model_compiled* program);
 const char* cxpr_model_compiled_call_param_name(const cxpr_model_compiled* program, size_t index);
 

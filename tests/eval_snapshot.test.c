@@ -997,6 +997,42 @@ static void test_engine_flow_snapshot_uses_current_tick_state(void) {
     cxpr_engine_session_free(session);
 }
 
+static void test_snapshot_preserves_int64_type_and_value(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    cxpr_eval_snapshot snapshot = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "9007199254740993i64", &err);
+    FILE* json;
+    char buf[8192];
+    size_t nread;
+
+    assert(ast);
+    assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+    assert(snapshot.node_count > 0u);
+    assert(snapshot.nodes[0].has_value);
+    assert(snapshot.nodes[0].value.type == CXPR_VALUE_INT64);
+    assert(snapshot.nodes[0].value.i64 == INT64_C(9007199254740993));
+    assert(strcmp(snapshot.nodes[0].value_text, "9007199254740993") == 0);
+
+    json = tmpfile();
+    assert(json);
+    assert(cxpr_eval_snapshot_write_json(&snapshot, json));
+    rewind(json);
+    nread = fread(buf, 1u, sizeof(buf) - 1u, json);
+    buf[nread] = '\0';
+    assert(strstr(buf, "\"value_type\": \"int64\"") != NULL);
+    assert(strstr(buf, "\"int64\": 9007199254740993") != NULL);
+
+    fclose(json);
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     test_snapshot_marks_short_circuit_branch_skipped();
     test_snapshot_writes_host_metadata();
@@ -1019,6 +1055,7 @@ int main(void) {
     test_flow_snapshot_displays_resolved_and_final_value();
     test_flow_snapshot_writes_host_metadata();
     test_engine_flow_snapshot_uses_current_tick_state();
+    test_snapshot_preserves_int64_type_and_value();
     printf("  \xE2\x9C\x93 eval_snapshot\n");
     return 0;
 }

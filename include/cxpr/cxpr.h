@@ -21,6 +21,7 @@
 #include <cxpr/generated.h>
 #include <cxpr/execution.h>
 #include <cxpr/doc.h>
+#include <cxpr/doc_tooling.h>
 #include <cxpr/doc/ast.h>
 #include <cxpr/model/model.h>
 #include <cxpr/model/compiled.h>
@@ -30,6 +31,7 @@
 #include <cxpr/context.h>
 #include <cxpr/ir.h>
 #include <cxpr/registry.h>
+#include <cxpr/builtin.h>
 #include <cxpr/history.h>
 #include <cxpr/basket.h>
 #include <cxpr/bulk.h>

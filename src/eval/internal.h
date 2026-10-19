@@ -93,9 +93,9 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_expr_ast* ast,
                                             const cxpr_registry* reg,
                                             cxpr_error* err);
 /** @brief Return a structural hash for one AST subtree. */
-unsigned long cxpr_eval_ast_hash(const cxpr_expr_ast* ast);
+uint64_t cxpr_eval_ast_hash(const cxpr_expr_ast* ast);
 /** @brief Return a cached structural hash for a function-call AST node. */
-unsigned long cxpr_eval_function_call_hash_cached(const cxpr_expr_ast* ast);
+uint64_t cxpr_eval_function_call_hash_cached(const cxpr_expr_ast* ast);
 /** @brief Check structural AST equality for evaluation memoization. */
 bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs);
 /** @brief Return true when an AST can be memoized without bypassing runtime-aware hooks. */
@@ -103,12 +103,12 @@ bool cxpr_eval_ast_memoable(const cxpr_expr_ast* ast, const cxpr_registry* reg);
 /** @brief Look up one memoized number/bool AST result from the current eval pass. */
 bool cxpr_eval_memo_get(const cxpr_context* ctx,
                         const cxpr_expr_ast* ast,
-                        unsigned long hash,
+                        uint64_t hash,
                         cxpr_value* out_value);
 /** @brief Store one number/bool AST result in the current eval-pass memo. */
 bool cxpr_eval_memo_set(const cxpr_context* ctx,
                         const cxpr_expr_ast* ast,
-                        unsigned long hash,
+                        uint64_t hash,
                         cxpr_value value);
 /** @brief Clear memoized AST values without touching producer struct cache. */
 void cxpr_eval_memo_clear(cxpr_context* ctx);

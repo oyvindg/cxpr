@@ -176,6 +176,13 @@ const char* cxpr_model_compiled_resample_requirement_interval(
         ? program->resample_requirements[index].canonical : NULL;
 }
 
+cxpr_model_result_kind cxpr_model_compiled_resample_requirement_result_kind(
+    const cxpr_model_compiled* program, size_t index) {
+    return program && index < program->resample_requirement_count
+        ? program->resample_requirements[index].result_kind
+        : CXPR_MODEL_RESULT_UNKNOWN;
+}
+
 bool cxpr_model_compiled_seed_defaults(const cxpr_model_compiled* program,
                                       cxpr_context* ctx,
                                       const cxpr_registry* reg,
@@ -466,6 +473,18 @@ cxpr_model_result_kind cxpr_model_compiled_output_result_kind(
         program->output_declared_types &&
         program->output_declared_types[index] == CXPR_MODEL_DECL_INT)
         return CXPR_MODEL_RESULT_INT64;
+    if (program && name) {
+        for (size_t i = 0u; i < program->binding_count; ++i) {
+            if (program->bindings[i].name &&
+                cxpr_model_names_match(program->bindings[i].name, name))
+                return program->bindings[i].result_kind;
+        }
+        for (size_t i = 0u; i < program->state_default_count; ++i) {
+            if (program->state_defaults[i].name &&
+                cxpr_model_names_match(program->state_defaults[i].name, name))
+                return program->state_defaults[i].result_kind;
+        }
+    }
     return program
                ? cxpr_model_slot_result_kind_by_name(
                      program->fused_outputs, program->fused_output_count, name)
@@ -477,13 +496,21 @@ cxpr_model_result_kind cxpr_model_compiled_input_result_kind(
     size_t index) {
     const char* name = cxpr_model_compiled_input_name(program, index);
     if (program && index < program->input_count &&
-        program->input_declared_types &&
-        program->input_declared_types[index] == CXPR_MODEL_DECL_INT)
-        return CXPR_MODEL_RESULT_INT64;
-    return program
-               ? cxpr_model_slot_result_kind_by_name(
-                     program->fused_inputs, program->fused_input_count, name)
-               : CXPR_MODEL_RESULT_UNKNOWN;
+        program->input_declared_types) {
+        if (program->input_declared_types[index] == CXPR_MODEL_DECL_INT)
+            return CXPR_MODEL_RESULT_INT64;
+        if (program->input_declared_types[index] == CXPR_MODEL_DECL_BOOL)
+            return CXPR_MODEL_RESULT_BOOL;
+        if (program->input_declared_types[index] == CXPR_MODEL_DECL_NUMBER)
+            return CXPR_MODEL_RESULT_NUMBER;
+    }
+    if (program) {
+        const cxpr_model_result_kind kind = cxpr_model_slot_result_kind_by_name(
+            program->fused_inputs, program->fused_input_count, name);
+        return kind != CXPR_MODEL_RESULT_UNKNOWN
+            ? kind : CXPR_MODEL_RESULT_NUMBER;
+    }
+    return CXPR_MODEL_RESULT_UNKNOWN;
 }
 
 size_t cxpr_model_compiled_fast_path_commit_count(const cxpr_model_compiled* program) {

@@ -47,6 +47,7 @@ static const char* cxpr_snapshot_value_type_name(cxpr_value_type type) {
         case CXPR_VALUE_TIMESTAMP: return "timestamp";
         case CXPR_VALUE_DURATION: return "duration";
         case CXPR_VALUE_ARRAY: return "array";
+        case CXPR_VALUE_INT64: return "int64";
         default: return "unknown";
     }
 }
@@ -88,6 +89,9 @@ static bool cxpr_snapshot_write_value_json(FILE* out, const cxpr_value* value) {
             break;
         case CXPR_VALUE_DURATION:
             if (fprintf(out, ", \"nanoseconds\": %lld", (long long)value->i64) < 0) return false;
+            break;
+        case CXPR_VALUE_INT64:
+            if (fprintf(out, ", \"int64\": %lld", (long long)value->i64) < 0) return false;
             break;
         case CXPR_VALUE_ARRAY:
             if (fputs(", \"items\": [", out) == EOF) return false;

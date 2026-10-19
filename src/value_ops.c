@@ -25,6 +25,14 @@ static int cxpr_value_op_div_zero(cxpr_error* err) {
     return -1;
 }
 
+static int cxpr_value_op_overflow(cxpr_error* err, const char* message) {
+    if (err) {
+        err->code = CXPR_ERR_OVERFLOW;
+        err->message = message;
+    }
+    return -1;
+}
+
 static const cxpr_value* cxpr_struct_find_field(const cxpr_struct_value* s,
                                                 const char* name) {
     if (!s || !name) return NULL;
@@ -51,8 +59,87 @@ static int cxpr_value_numeric_binary_op(cxpr_valop op, double a, double b,
     case CXPR_VALOP_LTE: *out = cxpr_bool(a <= b); return 1;
     case CXPR_VALOP_GT: *out = cxpr_bool(a > b); return 1;
     case CXPR_VALOP_GTE: *out = cxpr_bool(a >= b); return 1;
+    case CXPR_NUMERIC_EQ: *out = cxpr_bool(a == b); return 1;
+    case CXPR_NUMERIC_NEQ: *out = cxpr_bool(a != b); return 1;
     }
     return cxpr_value_op_type_error(err, "Unsupported operator");
+}
+
+static int cxpr_compare_int64_double(int64_t integer, double number) {
+    if (isnan(number)) return 1;
+    if (number >= 9223372036854775808.0) return -1;
+    if (number < -9223372036854775808.0) return 1;
+    if ((double)(int64_t)number == number) {
+        int64_t converted = (int64_t)number;
+        return (integer > converted) - (integer < converted);
+    }
+    return ((long double)integer > (long double)number) -
+           ((long double)integer < (long double)number);
+}
+
+bool cxpr_numeric_equal(cxpr_value a, cxpr_value b) {
+    if (a.type == CXPR_VALUE_INT64 && b.type == CXPR_VALUE_INT64) return a.i64 == b.i64;
+    if (a.type == CXPR_VALUE_NUMBER && b.type == CXPR_VALUE_NUMBER) return a.d == b.d;
+    if (a.type == CXPR_VALUE_INT64 && b.type == CXPR_VALUE_NUMBER)
+        return !isnan(b.d) && cxpr_compare_int64_double(a.i64, b.d) == 0;
+    if (a.type == CXPR_VALUE_NUMBER && b.type == CXPR_VALUE_INT64)
+        return !isnan(a.d) && cxpr_compare_int64_double(b.i64, a.d) == 0;
+    return false;
+}
+
+int cxpr_numeric_arith(cxpr_numeric_op op, cxpr_value a, cxpr_value b,
+                       cxpr_value* out, cxpr_error* err) {
+    const bool a_i64 = a.type == CXPR_VALUE_INT64;
+    const bool b_i64 = b.type == CXPR_VALUE_INT64;
+    if ((!a_i64 && a.type != CXPR_VALUE_NUMBER) ||
+        (!b_i64 && b.type != CXPR_VALUE_NUMBER)) return 0;
+
+    if (a_i64 && b_i64 && op != CXPR_VALOP_DIV) {
+        int64_t value;
+        switch (op) {
+        case CXPR_VALOP_ADD:
+            if (__builtin_add_overflow(a.i64, b.i64, &value))
+                return cxpr_value_op_overflow(err, "int64 addition overflow");
+            *out = cxpr_int64(value); return 1;
+        case CXPR_VALOP_SUB:
+            if (__builtin_sub_overflow(a.i64, b.i64, &value))
+                return cxpr_value_op_overflow(err, "int64 subtraction overflow");
+            *out = cxpr_int64(value); return 1;
+        case CXPR_VALOP_MUL:
+            if (__builtin_mul_overflow(a.i64, b.i64, &value))
+                return cxpr_value_op_overflow(err, "int64 multiplication overflow");
+            *out = cxpr_int64(value); return 1;
+        case CXPR_VALOP_LT: *out = cxpr_bool(a.i64 < b.i64); return 1;
+        case CXPR_VALOP_LTE: *out = cxpr_bool(a.i64 <= b.i64); return 1;
+        case CXPR_VALOP_GT: *out = cxpr_bool(a.i64 > b.i64); return 1;
+        case CXPR_VALOP_GTE: *out = cxpr_bool(a.i64 >= b.i64); return 1;
+        case CXPR_NUMERIC_EQ: *out = cxpr_bool(a.i64 == b.i64); return 1;
+        case CXPR_NUMERIC_NEQ: *out = cxpr_bool(a.i64 != b.i64); return 1;
+        default: break;
+        }
+    }
+    if (op == CXPR_VALOP_DIV && ((b_i64 && b.i64 == 0) || (!b_i64 && b.d == 0.0)))
+        return cxpr_value_op_div_zero(err);
+    if (op == CXPR_NUMERIC_EQ || op == CXPR_NUMERIC_NEQ) {
+        bool equal = cxpr_numeric_equal(a, b);
+        *out = cxpr_bool(op == CXPR_NUMERIC_EQ ? equal : !equal);
+        return 1;
+    }
+    if (op == CXPR_VALOP_LT || op == CXPR_VALOP_LTE ||
+        op == CXPR_VALOP_GT || op == CXPR_VALOP_GTE) {
+        if ((!a_i64 && isnan(a.d)) || (!b_i64 && isnan(b.d))) {
+            *out = cxpr_bool(false);
+            return 1;
+        }
+        int cmp = a_i64 ? cxpr_compare_int64_double(a.i64, b.d)
+                        : -cxpr_compare_int64_double(b.i64, a.d);
+        *out = cxpr_bool(op == CXPR_VALOP_LT ? cmp < 0 :
+                         op == CXPR_VALOP_LTE ? cmp <= 0 :
+                         op == CXPR_VALOP_GT ? cmp > 0 : cmp >= 0);
+        return 1;
+    }
+    return cxpr_value_numeric_binary_op(op, a_i64 ? (double)a.i64 : a.d,
+                                        b_i64 ? (double)b.i64 : b.d, out, err);
 }
 
 static bool cxpr_value_is_struct_scalar_operand(cxpr_value value) {
@@ -154,36 +241,9 @@ static int cxpr_value_binary_op_impl(cxpr_valop op, cxpr_value a, cxpr_value b,
         return cxpr_value_struct_binary_op(op, a, b, out, err);
         }
 
-    if (a.type == CXPR_VALUE_INT64 && b.type == CXPR_VALUE_INT64) {
-        int64_t value;
-        switch (op) {
-        case CXPR_VALOP_ADD:
-            if (__builtin_add_overflow(a.i64, b.i64, &value))
-                return cxpr_value_op_type_error(err, "int64 addition overflow");
-            *out = cxpr_int64(value); return 1;
-        case CXPR_VALOP_SUB:
-            if (__builtin_sub_overflow(a.i64, b.i64, &value))
-                return cxpr_value_op_type_error(err, "int64 subtraction overflow");
-            *out = cxpr_int64(value); return 1;
-        case CXPR_VALOP_MUL:
-            if (__builtin_mul_overflow(a.i64, b.i64, &value))
-                return cxpr_value_op_type_error(err, "int64 multiplication overflow");
-            *out = cxpr_int64(value); return 1;
-        case CXPR_VALOP_DIV:
-            if (b.i64 == 0) return cxpr_value_op_div_zero(err);
-            if (a.i64 == INT64_MIN && b.i64 == -1)
-                return cxpr_value_op_type_error(err, "int64 division overflow");
-            *out = cxpr_int64(a.i64 / b.i64); return 1;
-        case CXPR_VALOP_LT: *out = cxpr_bool(a.i64 < b.i64); return 1;
-        case CXPR_VALOP_LTE: *out = cxpr_bool(a.i64 <= b.i64); return 1;
-        case CXPR_VALOP_GT: *out = cxpr_bool(a.i64 > b.i64); return 1;
-        case CXPR_VALOP_GTE: *out = cxpr_bool(a.i64 >= b.i64); return 1;
-        }
-    }
-
-    if (a.type == CXPR_VALUE_NUMBER && b.type == CXPR_VALUE_NUMBER) {
-        return cxpr_value_numeric_binary_op(op, a.d, b.d, out, err);
-    }
+    if ((a.type == CXPR_VALUE_INT64 || a.type == CXPR_VALUE_NUMBER) &&
+        (b.type == CXPR_VALUE_INT64 || b.type == CXPR_VALUE_NUMBER))
+        return cxpr_numeric_arith(op, a, b, out, err);
 
     if (a.type == CXPR_VALUE_TIMESTAMP || a.type == CXPR_VALUE_DURATION ||
         b.type == CXPR_VALUE_TIMESTAMP || b.type == CXPR_VALUE_DURATION) {
@@ -210,12 +270,8 @@ int cxpr_value_binary_op(cxpr_valop op, cxpr_value a, cxpr_value b,
     if (!a_temporal && !b_temporal && !a_struct && !b_struct &&
         !a_integer && !b_integer) return 0;
 
-    if (a_integer || b_integer) {
-        if (a_integer && b_integer)
-            return cxpr_value_binary_op_impl(op, a, b, out, err);
-        return cxpr_value_op_type_error(err,
-                                        "int64 arithmetic requires two int64 operands");
-    }
+    if (a_integer || b_integer)
+        return cxpr_value_binary_op_impl(op, a, b, out, err);
 
     if (a_struct || b_struct) {
         return cxpr_value_struct_binary_op(op, a, b, out, err);
@@ -296,6 +352,16 @@ int cxpr_value_binary_op(cxpr_valop op, cxpr_value a, cxpr_value b,
         case CXPR_VALOP_GT: *out = cxpr_bool(a.i64 > b.i64); break;
         default: *out = cxpr_bool(a.i64 >= b.i64); break;
         }
+        return 1;
+
+    case CXPR_NUMERIC_EQ:
+    case CXPR_NUMERIC_NEQ:
+        if (a.type != b.type ||
+            (a.type != CXPR_VALUE_TIMESTAMP && a.type != CXPR_VALUE_DURATION)) {
+            return cxpr_value_op_type_error(
+                err, "Equality requires two timestamps or two durations");
+        }
+        *out = cxpr_bool(op == CXPR_NUMERIC_EQ ? a.i64 == b.i64 : a.i64 != b.i64);
         return 1;
     }
 

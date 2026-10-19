@@ -81,6 +81,15 @@ static double cxpr_mean_n(const double* args, size_t argc) {
     return sum / (double)argc;
 }
 
+static double cxpr_stacked(const double* args, size_t argc, void* userdata) {
+    (void)userdata;
+    if (!args || argc < 2u) return 0.0;
+    for (size_t i = 0u; i + 1u < argc; ++i) {
+        if (!(args[i] > args[i + 1u])) return 0.0;
+    }
+    return 1.0;
+}
+
 static double cxpr_lerp(double a, double b, double t) {
     return a + (b - a) * t;
 }
@@ -521,6 +530,7 @@ static const cxpr_default_entry cxpr_default_entries[] = {
     {"argmax", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_argmax}, 1, 8},
     {"sum", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_sum}, 1, 8},
     {"mean", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_mean}, 1, 8},
+    {"stacked", CXPR_DEFAULT_VARIADIC, {.variadic = cxpr_stacked}, 2, 16},
     {"clamp", CXPR_DEFAULT_TERNARY, {.ternary = cxpr_clamp}, 3, 3},
     {"sign", CXPR_DEFAULT_UNARY, {.unary = cxpr_sign}, 1, 1},
     {"add", CXPR_DEFAULT_BINARY, {.binary = cxpr_add}, 2, 2},
@@ -631,6 +641,7 @@ void cxpr_register_math(cxpr_registry* reg) {
     cxpr_registry_add(reg, "argmax", cxpr_argmax, 1, 8, NULL, NULL);
     cxpr_registry_add(reg, "sum", cxpr_sum, 1, 8, NULL, NULL);
     cxpr_registry_add(reg, "mean", cxpr_mean, 1, 8, NULL, NULL);
+    cxpr_registry_add(reg, "stacked", cxpr_stacked, 2, 16, NULL, NULL);
     cxpr_registry_add_ternary(reg, "clamp", cxpr_clamp);
     cxpr_registry_add_unary(reg, "sign", cxpr_sign);
     cxpr_registry_add_binary(reg, "add", cxpr_add);

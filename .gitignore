@@ -1,4 +1,5 @@
 build*
+!tools/language-server/build.js
 !tools/vscode-cxpr/scripts/
 !tools/vscode-cxpr/scripts/build-vsix.js
 !src/eval/snapshot/build.c

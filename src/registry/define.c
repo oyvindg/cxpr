@@ -555,6 +555,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
         entry->typed_func = NULL;
         entry->ast_func = NULL;
         entry->struct_producer = NULL;
+        entry->typed_struct_producer = NULL;
         entry->ast_func_handler = NULL;
         entry->native_kind = CXPR_NATIVE_KIND_NONE;
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));

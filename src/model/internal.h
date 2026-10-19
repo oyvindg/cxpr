@@ -191,6 +191,7 @@ typedef struct {
     char* source_name;
     int64_t duration_ns;
     char* canonical;
+    cxpr_model_result_kind result_kind;
 } cxpr_model_resample_requirement;
 
 /** @brief Atomic mapping from a pending update slot to a state slot. */

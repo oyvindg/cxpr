@@ -695,3 +695,80 @@ char* cxpr_expr_compiled_to_c_checked_function(
     return cxpr_ir_c_emit_array_function(
         &prog->ir, qualifiers, "double", function_name, args, arg_count, true, err);
 }
+
+char* cxpr_expr_compiled_to_c_typed_checked_function(
+    const cxpr_expr_compiled* prog, const char* qualifiers,
+    const char* function_name, cxpr_error* err) {
+    cxpr_ir_c_buf b = {0};
+    char* safe_name;
+    if (err) *err = (cxpr_error){0};
+    if (!prog || !function_name) {
+        cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX, "Invalid typed checked C backend arguments");
+        return NULL;
+    }
+    safe_name = cxpr_ir_c_safe_name(NULL, function_name, 0u);
+    if (!safe_name) {
+        cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return NULL;
+    }
+    if (qualifiers && qualifiers[0]) cxpr_ir_c_printf(&b, "%s ", qualifiers);
+    cxpr_ir_c_printf(&b, "cxpr_c_typed_checked_result %s(void) {\n", safe_name);
+    free(safe_name);
+    cxpr_ir_c_printf(&b, "    cxpr_value s[%zu]; size_t sp = 0u;\n", prog->ir.count + 1u);
+    cxpr_ir_c_puts(&b, "    cxpr_c_typed_checked_result r = { cxpr_num(0.0), CXPR_OK };\n");
+    for (size_t i = 0u; i < prog->ir.count; ++i) {
+        const cxpr_ir_instr* instr = &prog->ir.code[i];
+        switch (instr->op) {
+        case CXPR_OP_PUSH_CONST:
+            cxpr_ir_c_printf(&b, "    s[sp++] = cxpr_num(%.17g);\n", instr->value);
+            break;
+        case CXPR_OP_PUSH_INT64:
+            cxpr_ir_c_printf(&b, "    s[sp++] = cxpr_int64(INT64_C(%lld));\n",
+                             (long long)instr->int64_value);
+            break;
+        case CXPR_OP_ADD:
+        case CXPR_OP_SUB:
+        case CXPR_OP_MUL:
+        case CXPR_OP_DIV:
+        case CXPR_OP_CMP_EQ:
+        case CXPR_OP_CMP_NEQ:
+        case CXPR_OP_CMP_LT:
+        case CXPR_OP_CMP_LTE:
+        case CXPR_OP_CMP_GT:
+        case CXPR_OP_CMP_GTE: {
+            const char* op = instr->op == CXPR_OP_ADD ? "CXPR_NUMERIC_ADD" :
+                             instr->op == CXPR_OP_SUB ? "CXPR_NUMERIC_SUB" :
+                             instr->op == CXPR_OP_MUL ? "CXPR_NUMERIC_MUL" :
+                             instr->op == CXPR_OP_DIV ? "CXPR_NUMERIC_DIV" :
+                             instr->op == CXPR_OP_CMP_EQ ? "CXPR_NUMERIC_EQ" :
+                             instr->op == CXPR_OP_CMP_NEQ ? "CXPR_NUMERIC_NEQ" :
+                             instr->op == CXPR_OP_CMP_LT ? "CXPR_NUMERIC_LT" :
+                             instr->op == CXPR_OP_CMP_LTE ? "CXPR_NUMERIC_LTE" :
+                             instr->op == CXPR_OP_CMP_GT ? "CXPR_NUMERIC_GT" :
+                                                          "CXPR_NUMERIC_GTE";
+            cxpr_ir_c_printf(&b,
+                "    { cxpr_value q = s[--sp], p = s[--sp], z; cxpr_error e = {0}; if (cxpr_numeric_arith(%s, p, q, &z, &e) != 1) { r.error = e.code; return r; } s[sp++] = z; }\n", op);
+            break;
+        }
+        case CXPR_OP_NEG:
+            cxpr_ir_c_puts(&b,
+                "    if (s[sp-1u].type == CXPR_VALUE_INT64) { if (s[sp-1u].i64 == INT64_MIN) { r.error = CXPR_ERR_OVERFLOW; return r; } s[sp-1u].i64 = -s[sp-1u].i64; } else s[sp-1u].d = -s[sp-1u].d;\n");
+            break;
+        case CXPR_OP_RETURN:
+            cxpr_ir_c_puts(&b, "    r.value = s[--sp]; return r;\n");
+            break;
+        default:
+            free(b.data);
+            cxpr_ir_c_fail(err, CXPR_ERR_SYNTAX,
+                           "Unsupported IR opcode for typed checked C backend");
+            return NULL;
+        }
+    }
+    cxpr_ir_c_puts(&b, "}\n");
+    if (b.oom) {
+        free(b.data);
+        cxpr_ir_c_fail(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return NULL;
+    }
+    return b.data;
+}

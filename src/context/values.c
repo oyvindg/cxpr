@@ -410,6 +410,23 @@ int64_t cxpr_context_get_local_int64(const cxpr_context* ctx, const char* name, 
     return cxpr_int64_map_get(&ctx->int64s, name, found);
 }
 
+int64_t cxpr_context_get_int64(const cxpr_context* ctx, const char* name, bool* found) {
+    bool local_found = false;
+    int64_t value;
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return 0;
+    }
+    value = cxpr_context_get_local_int64(ctx, name, &local_found);
+    if (local_found) {
+        if (found) *found = true;
+        return value;
+    }
+    if (ctx->parent) return cxpr_context_get_int64(ctx->parent, name, found);
+    if (found) *found = false;
+    return 0;
+}
+
 const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx || !name) {
         if (found) *found = false;
@@ -542,6 +559,23 @@ bool cxpr_context_get_local_param_bool(const cxpr_context* ctx, const char* name
 int64_t cxpr_context_get_local_param_int64(const cxpr_context* ctx, const char* name, bool* found) {
     if (!ctx || !name) { if (found) *found = false; return 0; }
     return cxpr_int64_map_get(&ctx->int64_params, name, found);
+}
+
+int64_t cxpr_context_get_param_int64(const cxpr_context* ctx, const char* name, bool* found) {
+    bool local_found = false;
+    int64_t value;
+    if (!ctx || !name) {
+        if (found) *found = false;
+        return 0;
+    }
+    value = cxpr_context_get_local_param_int64(ctx, name, &local_found);
+    if (local_found) {
+        if (found) *found = true;
+        return value;
+    }
+    if (ctx->parent) return cxpr_context_get_param_int64(ctx->parent, name, found);
+    if (found) *found = false;
+    return 0;
 }
 
 const char* cxpr_context_get_local_param_string(const cxpr_context* ctx, const char* name,

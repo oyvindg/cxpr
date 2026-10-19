@@ -57,6 +57,8 @@ bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* 
         if (!cxpr_ir_validate_scalar_fast_program(program)) {
             program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
         }
+    } else if (program->fast_result_kind == CXPR_IR_RESULT_INT64) {
+        /* The typed-stack int64 fast entry validates its result at execution. */
     }
 
     return true;

@@ -667,7 +667,19 @@ static int emit_model_c(const char* model_path,
         for (size_t i = 0u; i < param_count; ++i) {
             bool found = false;
             const char* name = cxpr_model_compiled_c_param_name(program, i);
-            param_values[i] = cxpr_context_get_param(ctx, name, &found);
+            if (cxpr_model_compiled_param_result_kind(program, i) ==
+                CXPR_MODEL_RESULT_INT64) {
+                const int64_t value = cxpr_context_get_param_int64(ctx, name, &found);
+                param_values[i] = (double)value;
+                if (found && (int64_t)param_values[i] != value) {
+                    fprintf(stderr,
+                            "cxpr_model_codegen: int64 default cannot be specialized exactly: %s\n",
+                            name ? name : "(null)");
+                    goto cleanup;
+                }
+            } else {
+                param_values[i] = cxpr_context_get_param(ctx, name, &found);
+            }
             if (!found) {
                 fprintf(stderr, "cxpr_model_codegen: default param missing: %s\n",
                         name ? name : "(null)");

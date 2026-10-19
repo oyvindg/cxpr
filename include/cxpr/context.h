@@ -87,6 +87,14 @@ void cxpr_context_set_string(cxpr_context* ctx, const char* name, const char* va
 void cxpr_context_set_value(cxpr_context* ctx, const char* name, const cxpr_value* value);
 void cxpr_context_set_int64(cxpr_context* ctx, const char* name, int64_t value);
 /**
+ * @brief Look up an int64 runtime variable.
+ * @param ctx Context to query, including parent fallback.
+ * @param name Variable name.
+ * @param found Optional success flag output.
+ * @return Variable value, or `0` on miss/type mismatch.
+ */
+int64_t cxpr_context_get_int64(const cxpr_context* ctx, const char* name, bool* found);
+/**
  * @brief Look up a numeric runtime variable.
  * @param ctx Context to query.
  * @param name Variable name.
@@ -155,6 +163,8 @@ void cxpr_context_set_param_string(cxpr_context* ctx, const char* name, const ch
  */
 void cxpr_context_set_param_value(cxpr_context* ctx, const char* name, const cxpr_value* value);
 void cxpr_context_set_param_int64(cxpr_context* ctx, const char* name, int64_t value);
+/** @brief Get an int64 `$param`, searching parent contexts as needed. */
+int64_t cxpr_context_get_param_int64(const cxpr_context* ctx, const char* name, bool* found);
 
 /** @brief Pre-bound variable slot for hot-loop writes. */
 typedef struct {

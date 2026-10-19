@@ -27,8 +27,9 @@ bool cxpr_model_session_get_number(const cxpr_model_session* session,
                                       const char* name,
                                       double* out_value) {
     const cxpr_model_output_state* state = cxpr_model_session_find_output(session, name);
-    if (!state || !state->has_number_current) return false;
-    if (out_value) *out_value = state->number_current;
+    if (!state || (!state->has_number_current && !state->has_int64_current)) return false;
+    if (out_value) *out_value = state->has_number_current
+        ? state->number_current : (double)state->int64_current;
     return true;
 }
 

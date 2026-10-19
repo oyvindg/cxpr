@@ -14,6 +14,8 @@
 #define CXPR_IR_RESULT_DOUBLE 1
 /** @brief IR program is known to produce a boolean scalar result. */
 #define CXPR_IR_RESULT_BOOL 2
+/** @brief IR program is known to produce an int64 scalar result. */
+#define CXPR_IR_RESULT_INT64 3
 
 /**
  * @brief Minimal opcode set for IR v1.
@@ -145,7 +147,7 @@ typedef struct {
     const cxpr_context* owner_ctx;          /**< Context owning the cached entry */
     cxpr_hashmap_entry* entries_base;       /**< Owner map base when the entry was cached */
     size_t              slot;               /**< Index into entries_base for the cached entry */
-    unsigned long       shadow_version;     /**< Structural version summary below the owner */
+    uint64_t            shadow_version;     /**< Structural version summary below the owner */
 } cxpr_ir_lookup_cache;
 
 /**
@@ -159,7 +161,7 @@ typedef struct {
     size_t capacity;            /**< Allocated instruction capacity */
     const cxpr_expr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
     cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
-    unsigned char fast_result_kind; /**< 0=unknown, 1=double, 2=bool for scalar fast-path */
+    unsigned char fast_result_kind; /**< CXPR_IR_RESULT_* fast-path classification. */
 } cxpr_ir_program;
 
 struct cxpr_expr_compiled {
