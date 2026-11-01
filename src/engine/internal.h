@@ -103,6 +103,13 @@ typedef struct {
     bool valid;
 } engine_arg_ring_entry;
 
+#define ENGINE_LOOKBACK_SOURCE_CACHE_SIZE 8u
+
+typedef struct {
+    const cxpr_expr_ast* target;
+    engine_source* source;
+} engine_lookback_source_cache_entry;
+
 struct cxpr_engine_program {
     const cxpr_registry* registry;
     bool owns_registry;
@@ -171,6 +178,9 @@ struct cxpr_engine_session {
     engine_arg_ring_entry* arg_rings;
     size_t arg_ring_count;
     size_t arg_ring_cap;
+
+    engine_lookback_source_cache_entry
+        lookback_source_cache[ENGINE_LOOKBACK_SOURCE_CACHE_SIZE];
 };
 
 bool engine_lookback_resolver(const cxpr_expr_ast* target,

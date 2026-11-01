@@ -330,6 +330,7 @@ bool engine_lookback_resolver(const cxpr_expr_ast* target, const cxpr_expr_ast* 
     engine_source* src;
     double nd, v = NAN;
     size_t n;
+    size_t source_cache_index;
     int target_type;
 
     (void)userdata;
@@ -355,6 +356,17 @@ bool engine_lookback_resolver(const cxpr_expr_ast* target, const cxpr_expr_ast* 
     n = (size_t)nd;
 
     if (!target) return false;
+    source_cache_index = ((uintptr_t)target >> 4u) &
+                         (ENGINE_LOOKBACK_SOURCE_CACHE_SIZE - 1u);
+    if (s->lookback_source_cache[source_cache_index].target == target) {
+        src = s->lookback_source_cache[source_cache_index].source;
+        if (!engine_resolve_source_call(
+                s, src, NULL, 0u, g_engine_tls_lookback_offset + n, &v, err)) {
+            return true;
+        }
+        *out = cxpr_num(v);
+        return true;
+    }
     target_type = cxpr_expr_ast_kind_of(target);
 
     /* Engine-owned: a source bound as a function call, e.g. source(id)[2].
@@ -383,6 +395,8 @@ bool engine_lookback_resolver(const cxpr_expr_ast* target, const cxpr_expr_ast* 
         name = cxpr_expr_ast_identifier_name(target);
         src = engine_find_source_in(s->sources, s->source_count, name);
         if (src) {
+            s->lookback_source_cache[source_cache_index].target = target;
+            s->lookback_source_cache[source_cache_index].source = src;
             if (!engine_resolve_source_call(
                     s, src, NULL, 0u, g_engine_tls_lookback_offset + n, &v, err)) {
                 return true;
