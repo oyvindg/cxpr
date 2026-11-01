@@ -385,6 +385,18 @@ static bool cxpr_tok_to_arith_valop(int op, cxpr_valop* out) {
 
 static cxpr_value cxpr_eval_arithmetic_op(int op, cxpr_value left, cxpr_value right,
                                           cxpr_error* err) {
+    if ((op == CXPR_TOK_PERCENT || op == CXPR_TOK_POWER) &&
+        (left.type == CXPR_VALUE_NUMBER || left.type == CXPR_VALUE_INT64) &&
+        (right.type == CXPR_VALUE_NUMBER || right.type == CXPR_VALUE_INT64)) {
+        const double left_number = left.type == CXPR_VALUE_INT64 ? (double)left.i64 : left.d;
+        const double right_number = right.type == CXPR_VALUE_INT64 ? (double)right.i64 : right.d;
+        if (op == CXPR_TOK_PERCENT && right_number == 0.0) {
+            return cxpr_eval_error(err, CXPR_ERR_DIVISION_BY_ZERO, "Modulo by zero");
+        }
+        return cxpr_num(op == CXPR_TOK_PERCENT
+                            ? fmod(left_number, right_number)
+                            : pow(left_number, right_number));
+    }
     if (left.type != CXPR_VALUE_NUMBER || right.type != CXPR_VALUE_NUMBER) {
         cxpr_valop vop;
         cxpr_value out;

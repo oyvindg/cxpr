@@ -99,11 +99,21 @@ static void test_overflow_error_parity(void) {
               CXPR_ERR_OVERFLOW, CXPR_IR_RESULT_INT64);
 }
 
+static void test_fuzz_regression_mixed_modulo_expression(void) {
+    cxpr_value tree = {0};
+    cxpr_value ir = {0};
+    eval_both("9223372036373372%3++477+++7i64 + 1i64", &tree, &ir,
+              CXPR_OK, CXPR_IR_RESULT_NUMBER);
+    assert(tree.type == CXPR_VALUE_NUMBER && ir.type == CXPR_VALUE_NUMBER);
+    assert(tree.d == ir.d);
+}
+
 int main(void) {
     test_int64_arithmetic_and_promotion();
     test_unsuffixed_integer_inference();
     test_cross_type_comparisons_are_exact();
     test_overflow_error_parity();
+    test_fuzz_regression_mixed_modulo_expression();
     puts("  â int64 IR phase A parity");
     return 0;
 }
