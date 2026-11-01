@@ -637,6 +637,18 @@ static void mutate_values_slots(churn_slots* s, size_t i) {
     cxpr_context_slot_set(&s->z, 13.5 - t * 0.25);
 }
 
+static void mutate_param_slots(cxpr_context_slot* slots, size_t i) {
+    const double t = (double)(i % 1000) * 0.001;
+    cxpr_context_slot_set(&slots[0], 1.5 + t);
+    cxpr_context_slot_set(&slots[1], 2.5 + t * 2.0);
+    cxpr_context_slot_set(&slots[2], 3.5 + t * 3.0);
+    cxpr_context_slot_set(&slots[3], 4.5 + t * 4.0);
+    cxpr_context_slot_set(&slots[4], 5.5 + t * 5.0);
+    cxpr_context_slot_set(&slots[5], 6.5 - t);
+    cxpr_context_slot_set(&slots[6], 7.5 + t * 0.5);
+    cxpr_context_slot_set(&slots[7], 8.5 - t * 0.25);
+}
+
 static void set_base_params(cxpr_context* ctx) {
     cxpr_context_set_param(ctx, "p1", 1.5);
     cxpr_context_set_param(ctx, "p2", 2.5);
@@ -845,6 +857,23 @@ static double time_mutate_params_prehashed_only(cxpr_context* ctx, size_t iterat
     for (i = 0; i < iterations; ++i) {
         mutate_params_prehashed(ctx, &hashes, i);
     }
+    end = now_ns();
+    return (double)(end - start) / (double)iterations;
+}
+
+static double time_mutate_params_slots_only(cxpr_context* ctx, size_t iterations) {
+    static const char* names[] = {"p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"};
+    size_t i;
+    long long start, end;
+    cxpr_context_slot slots[CXPR_ARRAY_COUNT(names)];
+
+    set_base_params(ctx);
+    if (!cxpr_context_param_slots_bind(ctx, names, slots, CXPR_ARRAY_COUNT(names))) {
+        fprintf(stderr, "Parameter slot bind failed\n");
+        exit(1);
+    }
+    start = now_ns();
+    for (i = 0u; i < iterations; ++i) mutate_param_slots(slots, i);
     end = now_ns();
     return (double)(end - start) / (double)iterations;
 }
@@ -1999,12 +2028,14 @@ static void bench_param_update_paths(cxpr_context* ctx) {
     double mutate_set_ns;
     double mutate_array_ns;
     double mutate_prehashed_ns;
+    double mutate_slot_ns;
 
     set_ns = time_set_base_params(ctx, iterations);
     array_ns = time_set_base_params_array(ctx, iterations);
     mutate_set_ns = time_mutate_params(ctx, iterations);
     mutate_array_ns = time_mutate_params_array_only(ctx, iterations);
     mutate_prehashed_ns = time_mutate_params_prehashed_only(ctx, iterations);
+    mutate_slot_ns = time_mutate_params_slots_only(ctx, iterations);
 
     printf("%-24s  %10s  %12s  %12s  %8s\n",
            "case", "iters", "set ns/op", "alt ns/op", "speedup");
@@ -2014,6 +2045,9 @@ static void bench_param_update_paths(cxpr_context* ctx) {
            "mutate_param_array", iterations, mutate_set_ns, mutate_array_ns, mutate_set_ns / mutate_array_ns);
     printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
            "mutate_param_hash", iterations, mutate_set_ns, mutate_prehashed_ns, mutate_set_ns / mutate_prehashed_ns);
+    printf("%-24s  %10zu  %12.2f  %12.2f  %8.2fx\n",
+           "mutate_param_slot", iterations, mutate_set_ns, mutate_slot_ns,
+           mutate_set_ns / mutate_slot_ns);
 }
 
 static double time_context_get_path(const cxpr_context* ctx, const char* name,

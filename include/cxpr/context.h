@@ -191,12 +191,39 @@ bool cxpr_context_slot_bind(cxpr_context* ctx, const char* name, cxpr_context_sl
 bool cxpr_context_slots_bind(cxpr_context* ctx, const char* const* names,
                              cxpr_context_slot* slots, size_t count);
 /**
+ * @brief Bind a slot to an existing numeric parameter.
+ * @param ctx Context that owns the parameter.
+ * @param name Parameter name without `$`.
+ * @param slot Output slot handle.
+ * @return True on success, false if the parameter was not found.
+ */
+bool cxpr_context_param_slot_bind(cxpr_context* ctx, const char* name,
+                                  cxpr_context_slot* slot);
+/**
+ * @brief Bind multiple slots to existing numeric parameters.
+ * @param ctx Context that owns the parameters.
+ * @param names Parameter names without `$`.
+ * @param slots Output slot handles.
+ * @param count Number of slots to bind.
+ * @return True when every slot was bound, false on any miss.
+ */
+bool cxpr_context_param_slots_bind(cxpr_context* ctx, const char* const* names,
+                                   cxpr_context_slot* slots, size_t count);
+/**
  * @brief Check whether a previously bound slot is still valid.
  * @param ctx Context the slot belongs to.
  * @param slot Slot to validate.
  * @return True when the slot is still safe to use.
  */
 bool cxpr_context_slot_valid(const cxpr_context* ctx, const cxpr_context_slot* slot);
+/**
+ * @brief Check whether a previously bound parameter slot is still valid.
+ * @param ctx Context the parameter slot belongs to.
+ * @param slot Parameter slot to validate.
+ * @return True when the slot is still safe to use.
+ */
+bool cxpr_context_param_slot_valid(const cxpr_context* ctx,
+                                   const cxpr_context_slot* slot);
 /**
  * @brief Write a value through a bound slot.
  * @param slot Bound slot handle.

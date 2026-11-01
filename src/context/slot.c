@@ -48,8 +48,48 @@ bool cxpr_context_slots_bind(cxpr_context* ctx, const char* const* names,
     return true;
 }
 
+bool cxpr_context_param_slot_bind(cxpr_context* ctx, const char* name,
+                                  cxpr_context_slot* slot) {
+    cxpr_hashmap_entry* entry;
+
+    if (!slot) return false;
+    slot->_ptr = NULL;
+    slot->_base = NULL;
+    if (!ctx || !name) return false;
+
+    entry = cxpr_context_find_param_slot(ctx, name, cxpr_hash_string(name));
+    if (!entry) return false;
+
+    slot->_ptr = &entry->value;
+    slot->_base = cxpr_context_params_base(ctx);
+    return true;
+}
+
+bool cxpr_context_param_slots_bind(cxpr_context* ctx, const char* const* names,
+                                   cxpr_context_slot* slots, size_t count) {
+    size_t i;
+
+    if (!names || !slots) return count == 0u;
+    for (i = 0u; i < count; ++i) {
+        slots[i] = (cxpr_context_slot){0};
+    }
+    for (i = 0u; i < count; ++i) {
+        if (!cxpr_context_param_slot_bind(ctx, names[i], &slots[i])) {
+            size_t j;
+            for (j = 0u; j < count; ++j) slots[j] = (cxpr_context_slot){0};
+            return false;
+        }
+    }
+    return true;
+}
+
 bool cxpr_context_slot_valid(const cxpr_context* ctx, const cxpr_context_slot* slot) {
     return ctx && slot && slot->_ptr && slot->_base == cxpr_context_variables_base(ctx);
+}
+
+bool cxpr_context_param_slot_valid(const cxpr_context* ctx,
+                                   const cxpr_context_slot* slot) {
+    return ctx && slot && slot->_ptr && slot->_base == cxpr_context_params_base(ctx);
 }
 
 void cxpr_context_slot_set(cxpr_context_slot* slot, double value) {

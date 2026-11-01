@@ -66,10 +66,39 @@ static void test_context_slots_bind_clears_outputs_on_miss(void) {
     cxpr_context_free(ctx);
 }
 
+static void test_context_param_slots(void) {
+    cxpr_context* ctx = cxpr_context_new();
+    const char* names[] = {"period", "signal"};
+    cxpr_context_slot slots[2] = {{0}};
+    bool found = false;
+
+    assert(ctx);
+    cxpr_context_set_param(ctx, "period", 12.0);
+    cxpr_context_set_param(ctx, "signal", 9.0);
+    assert(cxpr_context_param_slots_bind(ctx, names, slots, CXPR_ARRAY_COUNT(slots)));
+    assert(cxpr_context_param_slot_valid(ctx, &slots[0]));
+    assert(cxpr_context_param_slot_valid(ctx, &slots[1]));
+    assert(!cxpr_context_slot_valid(ctx, &slots[0]));
+    cxpr_context_slot_set(&slots[0], 26.0);
+    cxpr_context_slot_set(&slots[1], 7.0);
+    assert(cxpr_context_get_param(ctx, "period", &found) == 26.0 && found);
+    assert(cxpr_context_get_param(ctx, "signal", &found) == 7.0 && found);
+
+    cxpr_context_set_param(ctx, "extra", 1.0);
+    if (!cxpr_context_param_slot_valid(ctx, &slots[0])) {
+        assert(cxpr_context_param_slots_bind(ctx, names, slots, CXPR_ARRAY_COUNT(slots)));
+    }
+    assert(cxpr_context_slot_get(&slots[0]) == 26.0);
+    assert(!cxpr_context_param_slot_bind(ctx, "missing", &slots[0]));
+    assert(!cxpr_context_param_slot_valid(ctx, &slots[0]));
+    cxpr_context_free(ctx);
+}
+
 int main(void) {
     test_context_slot_binding_and_invalidation();
     test_context_slots_bind_and_set();
     test_context_slots_bind_clears_outputs_on_miss();
+    test_context_param_slots();
     printf("  \xE2\x9C\x93 context_slot\n");
     return 0;
 }

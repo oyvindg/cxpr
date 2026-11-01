@@ -55,9 +55,21 @@ static inline cxpr_hashmap_entry* cxpr_context_find_variable_slot(cxpr_context* 
     return cxpr_hashmap_find_prehashed_slot(&ctx->variables, key, hash);
 }
 
+/** @brief Find the mutable storage slot for one numeric parameter binding. */
+static inline cxpr_hashmap_entry* cxpr_context_find_param_slot(cxpr_context* ctx,
+                                                               const char* key,
+                                                               unsigned long hash) {
+    return cxpr_hashmap_find_prehashed_slot(&ctx->params, key, hash);
+}
+
 /** @brief Return the current base pointer of the variable map entry array. */
 static inline void* cxpr_context_variables_base(const cxpr_context* ctx) {
     return ctx ? (void*)ctx->variables.entries : NULL;
+}
+
+/** @brief Return the current base pointer of the numeric parameter map. */
+static inline void* cxpr_context_params_base(const cxpr_context* ctx) {
+    return ctx ? (void*)ctx->params.entries : NULL;
 }
 
 #endif /* CXPR_CONTEXT_INTERNAL_H */
