@@ -423,7 +423,11 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     }
                 }
             }
-            CXPR_TYPED_PUSH(result);
+            if (result.type == CXPR_VALUE_STRUCT || result.type == CXPR_VALUE_ARRAY) {
+                CXPR_TYPED_PUSH_OWNED(result);
+            } else {
+                CXPR_TYPED_PUSH(result);
+            }
             break;
         case CXPR_OP_LOAD_VAR_SQUARE:
             {
@@ -892,7 +896,11 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                 cxpr_value_free(&result);
                 return cxpr_num(NAN);
             }
-            CXPR_TYPED_PUSH(result);
+            if (result.type == CXPR_VALUE_STRUCT || result.type == CXPR_VALUE_ARRAY) {
+                CXPR_TYPED_PUSH_OWNED(result);
+            } else {
+                CXPR_TYPED_PUSH(result);
+            }
             break;
         case CXPR_OP_JUMP:
             ip = instr->index;
