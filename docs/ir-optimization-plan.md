@@ -6,6 +6,19 @@
 - Scope: `libs/cxpr` internal IR compilation and execution
 - Public API impact: none intended
 - Primary objective: reduce the runtime gap between interpreted IR and generated C
+- Commitment: Phases 0-5 are the committed core; Phases 6-8 and superinstructions are
+  profile-gated and may be descoped (see "Phase grouping and commitment")
+
+## Starting state
+
+This plan does not start from a tree-walker. The current IR is already a stack bytecode VM
+with three specialized executors (scalar-fast via computed-goto, bool, int64), compile-time
+constant folding, result-kind type inference, and prehashed, version-validated lookup caching.
+The lookback optimization plan has already executed its Phases 1-3 (per-eval array clone
+removed, compile-time target resolution, cached resolver dispatch) for a measured 9x on
+`close[1]`. A slot-based input binding has been prototyped and measured at 11.7x over hash-based
+update (`mutate_slot`). Several phases below therefore extend or productize work that is partly
+proven, not greenfield.
 
 ## Motivation
 
@@ -28,6 +41,23 @@ lowering, data access, typed values, producer fields, and lookback execution.
 Generated C/CUDA remains the production target when expressions are known at build time.
 The optimized IR evaluator remains important for editor preview, diagnostics, tests,
 dynamically supplied expressions, and environments where native compilation is unavailable.
+
+### Consumer justification (ROI gate)
+
+Because generated C/CUDA is the production hot path, the interpreter's absolute latency is not
+uniformly valuable. Effort must follow a real consumer, not the size of a baseline gap.
+
+- **High value, latency-insensitive bar is low:** editor preview and diagnostics need
+  interactivity, not nanoseconds. These are already met for scalar cases.
+- **High value, latency-sensitive:** dynamically supplied expressions evaluated per-tick in a
+  running session (no build-time codegen available), and large screening/optimization sweeps
+  that run the interpreter across many inputs. These justify Phases 1-5.
+- **Unjustified until proven:** closing the scalar gap to single-digit multiples of native code
+  purely as a benchmark goal. Phases 6-8 must each name a concrete consumer that is bottlenecked
+  on interpreter dispatch *after* Phases 1-5 land, or they are deferred/descoped.
+
+Record the bottlenecked consumer for any phase before starting it. "The benchmark gap is large"
+is not a consumer.
 
 ## Goals
 
@@ -76,6 +106,15 @@ Performance work must be developed as a benchmark-driven loop. A phase is not im
 one large pass and benchmarked afterward. Each logical optimization is a separate iteration
 with at most one to three related changes.
 
+Apply two tiers of ceremony so the protocol does not throttle exploration:
+
+- **Exploratory iteration (lightweight):** a quick build, the single most relevant benchmark
+  case, 3 trials, and the correctness/parity tests for the changed path. Used to triage a
+  hypothesis. No full report required; a one-line note of keep/reject/next is enough.
+- **Gating decision (full ceremony):** the full protocol below — all benchmark suites, 9+
+  trials, perf counters, ASan/UBSan, and a committed Markdown report. Required before a change
+  lands on the main path, before a phase is declared done, and before any legacy path is removed.
+
 ### Iteration loop
 
 For every optimization iteration:
@@ -111,7 +150,8 @@ Negative latency delta is an improvement. Positive throughput delta is an improv
 
 ### Mandatory iteration report
 
-Save one Markdown report per iteration under
+Required for every gating decision (not for exploratory triage iterations).
+Save one Markdown report per gating iteration under
 `libs/cxpr/benchmarks/results/ir-optimization/`. Each report must contain:
 
 ```text
@@ -139,7 +179,7 @@ percentage deltas.
 
 ### Benchmark controls
 
-Before each iteration:
+Before each gating iteration:
 
 1. Run all CXPR tests, including ASan/UBSan configurations.
 2. Run `cxpr_bench_ir`, `cxpr_bench_model`, `cxpr_bench_engine`,
@@ -155,6 +195,19 @@ Do not keep a change based only on a synthetic microbenchmark. It must preserve 
 at least one representative model/engine workload without materially regressing others.
 Use a minimum of nine measured trials unless the benchmark documents why a larger sample is
 required. Treat changes inside normal run-to-run variance as no improvement.
+
+## Phase grouping and commitment
+
+- **Committed core (Phases 0-5):** these address the measured, high-ROI bottlenecks (input
+  lookup, struct deep-clone, lookback, typed execution, classic optimization passes). They are
+  low semantic risk, mostly extend already-proven work, and degrade gracefully — stopping after
+  Phase 3 or 5 still leaves a coherent, faster evaluator. Plan to deliver these.
+- **Profile-gated (Phases 6-8 and superinstructions):** these constitute a register-IR plus
+  compact-bytecode plus cross-expression-fusion build-out — effectively a small optimizing
+  compiler. Do not pre-commit. Each requires (a) a named, bottlenecked consumer per the ROI gate
+  and (b) profiles collected *after* Phase 5 that show the remaining cost is dispatch/representation
+  bound. Re-derive their targets from that post-Phase-5 baseline. If production stays on generated
+  C/CUDA and no interpreter consumer is bottlenecked, descope them.
 
 ## Phase 0: lock semantic and performance baselines
 
@@ -341,6 +394,10 @@ explicitly permits the resulting floating-point differences.
 
 ## Phase 6: register IR
 
+> Profile-gated. Do not start until Phase 5 is complete, a bottlenecked interpreter consumer is
+> named, and post-Phase-5 profiles show the remaining cost is dispatch/representation bound.
+> Expect this phase to be the largest single effort in the plan.
+
 ### Design
 
 Introduce a typed, three-address register IR for optimization and code generation:
@@ -373,6 +430,9 @@ to prevent backend drift.
 - The register executor does not regress scalar benchmarks relative to the Phase 5 result.
 
 ## Phase 7: compact executable bytecode
+
+> Profile-gated. Justified only by measured instruction-cache/representation cost after Phase 6,
+> for a named consumer.
 
 The current `cxpr_ir_instr` may occupy 48 bytes even for operand-free operations. After
 optimization, lower register IR to a compact execution format with operands stored as small
@@ -408,6 +468,9 @@ fixed-width formats for common operations and an extended operand table for unco
 - Public IR inspection tests continue to pass.
 
 ## Phase 8: cross-expression strategy fusion
+
+> Profile-gated. Highest payoff for whole-session screening/optimization sweeps on the
+> interpreter; justify against that workload specifically before starting.
 
 Once single-program lowering is stable, allow the engine to compile related aliases,
 expressions, watches, and indicator dependencies into one tick plan.
@@ -462,22 +525,25 @@ performance gates are met.
 
 ## Performance targets
 
-Targets are directional gates, not permission to weaken semantics:
+Targets are directional gates, not permission to weaken semantics. The 2026-09-13 baseline gap
+is shown for calibration; treat aggressive scalar multiples as aspirational, not committed.
 
-| Area | Initial target |
-| --- | --- |
-| Simple scalar expressions | no worse than 5x generated C |
-| Large scalar arithmetic | no worse than 3x generated C |
-| Defined functions | at least 2x faster than current IR |
-| Constant lookback | at least 5x faster than current IR |
-| Known producer fields | at least 10x faster than current typed IR |
-| Engine overhead | remain at or below 15% over the low-level evaluator |
-| Per-tick allocations | zero for fully lowered programs |
-| Name/hash lookups | zero for successfully bound steady-state inputs |
+| Area | Current gap (2026-09-13) | Initial target | Reachability |
+| --- | --- | --- | --- |
+| Simple scalar expressions | 7.85x C | no worse than 5x C | plausible within committed core |
+| Large scalar arithmetic | 28.52x C | no worse than 3x C | aspirational; likely needs Phases 6-7 |
+| Defined functions | n/a | at least 2x faster than current IR | plausible (Phase 5 inlining) |
+| Constant lookback | ~1.8x gained so far | at least 5x faster than current IR | plausible (Phase 4) |
+| Known producer fields | 413-608x C | at least 10x faster than current typed IR | high-ROI, primary core goal |
+| Engine overhead | ~14-15% | remain at or below 15% over low-level eval | already near target |
+| Per-tick allocations | — | zero for fully lowered programs | committed core |
+| Name/hash lookups | — | zero for successfully bound steady-state inputs | committed core (Phase 1) |
 
-Revisit targets after Phases 3 and 5 using the new baseline. Do not claim generated-C parity
-unless the IR has been compiled to native machine code; interpreter dispatch has an inherent
-cost.
+The large-scalar 3x target is called out deliberately: reaching it from 28.52x is a ~10x
+improvement and almost certainly requires the profile-gated register-IR and compact-bytecode
+work. Do not treat it as a blocker for the committed core. Revisit all targets after Phases 3
+and 5 using the new baseline. Do not claim generated-C parity unless the IR has been compiled to
+native machine code; interpreter dispatch has an inherent cost.
 
 ## Rollout and rollback
 
@@ -506,6 +572,10 @@ without blocking the remaining independent work.
 8. Phase 7: compact executable bytecode.
 9. Phase 8: cross-expression fusion.
 10. Consider profile-driven superinstructions only after the preceding work is measured.
+
+Steps 1-6 are the committed core. Steps 7-10 (register IR, compact bytecode, fusion,
+superinstructions) are profile-gated per "Phase grouping and commitment" — each needs a named
+bottlenecked consumer and post-Phase-5 profiles before it starts.
 
 The order intentionally attacks the measured lookup, struct, and lookback costs before a
 larger IR representation rewrite. Register IR and compact bytecode should be justified by
