@@ -1,0 +1,2 @@
+model ir_producer_fields
+out result = macd(12, 26, 9).line + macd(12, 26, 9).signal + macd(12, 26, 9).histogram

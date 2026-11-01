@@ -101,7 +101,8 @@ typedef enum {
  * - LOAD_VAR / LOAD_PARAM / GET_FIELD: borrowed symbol name in name
  * - LOAD_NAMED_FIELD: borrowed root in name, borrowed field in aux_name, flat-key hash in hash
  * - CALL_PRODUCER_CONST_FIELD: cache key in name, field name in aux_name
- * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args
+ * - CALL_PRODUCER_CONST_FIELD: payload points to owned constant double args followed by
+ *   the compile-time field index encoded as a double
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
  * - LOOKBACK_PUSH: literal offset in index

@@ -139,6 +139,7 @@ typedef struct {
 } lookback_bench_case;
 
 static volatile double g_sink = 0.0;
+static size_t g_macd_producer_calls = 0u;
 
 static size_t ir_fallback_count(const cxpr_expr_compiled* program) {
     const size_t count = cxpr_expr_compiled_ir_count(program);
@@ -393,6 +394,7 @@ static void bench_macd(const double* args, size_t argc,
                        void* userdata) {
     (void)userdata;
     (void)field_count;
+    ++g_macd_producer_calls;
     if (argc != 3) {
         out[0] = cxpr_num(NAN);
         out[1] = cxpr_num(NAN);
@@ -1629,14 +1631,27 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
     }
 
     set_base_values(ctx);
+    if (strcmp(c->name, "producer_fields") == 0) {
+        cxpr_context_clear_cached_structs(ctx);
+        g_macd_producer_calls = 0u;
+    }
     ast_start = now_ns();
     ast_total = time_ast(ast, ctx, reg, c->iterations, c->mutate_context);
     ast_end = now_ns();
 
     set_base_values(ctx);
+    if (strcmp(c->name, "producer_fields") == 0) {
+        cxpr_context_clear_cached_structs(ctx);
+        g_macd_producer_calls = 0u;
+    }
     ir_start = now_ns();
     ir_total = time_ir(program, ctx, reg, c->iterations, c->mutate_context);
     ir_end = now_ns();
+    if (strcmp(c->name, "producer_fields") == 0 && g_macd_producer_calls != 1u) {
+        fprintf(stderr, "Repeated producer fields invoked producer %zu times\n",
+                g_macd_producer_calls);
+        exit(1);
+    }
 
     validate_ast_vs_ir(ast, program, ctx, reg, c);
 
@@ -2216,6 +2231,7 @@ int main(int argc, char** argv) {
         { "mixed_expr", "ir_mixed_expr.cxpr", 120000, 0, BENCH_C_MIXED_EXPR },
         { "mixed_pipe", "ir_mixed_pipe.cxpr", 120000, 0, BENCH_C_MIXED_PIPE },
         { "context_churn", "ir_context_churn.cxpr", 200000, 1, BENCH_C_CONTEXT_CHURN },
+        { "producer_fields", "ir_producer_fields.cxpr", 150000, 0, BENCH_C_NONE },
     };
     const typed_bench_case typed_cases[] = {
         { "struct_scalar_mul", "ir_struct_scalar_mul.cxpr", 120000, NULL, 0, BENCH_C_STRUCT_SCALAR_MUL },

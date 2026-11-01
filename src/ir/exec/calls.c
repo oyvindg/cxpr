@@ -233,7 +233,7 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
     cxpr_value outputs[CXPR_MAX_PRODUCER_FIELDS];
     cxpr_struct_value* produced;
     cxpr_value value;
-    bool found = false;
+    size_t field_index;
 
     if (!entry || !entry->struct_producer) {
         return cxpr_ir_runtime_error(err, "Invalid producer opcode");
@@ -247,6 +247,11 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
     }
     if (argc > CXPR_MAX_CALL_ARGS || entry->fields_per_arg > CXPR_MAX_PRODUCER_FIELDS) {
         return cxpr_ir_runtime_error(err, "Producer arity too large");
+    }
+    field_index = (size_t)const_args[argc];
+    if (field_index >= entry->fields_per_arg ||
+        strcmp(entry->struct_fields[field_index], field) != 0) {
+        return cxpr_ir_make_not_found(err, "Unknown field access");
     }
 
     existing = cxpr_context_get_cached_struct(ctx, cache_key);
@@ -266,8 +271,7 @@ cxpr_value cxpr_ir_call_producer_const_field(cxpr_func_entry* entry,
         existing = cxpr_context_get_cached_struct(ctx, cache_key);
     }
 
-    value = cxpr_ir_struct_get_field(existing, field, &found);
-    if (!found) return cxpr_ir_make_not_found(err, "Unknown field access");
+    value = cxpr_value_clone(&existing->field_values[field_index]);
     return value;
 }
 

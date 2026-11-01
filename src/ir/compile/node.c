@@ -567,7 +567,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                                             ast->data.producer_access.argc,
                                                             reg);
         if (const_key) {
-            const_args = (double*)calloc(ast->data.producer_access.argc ? ast->data.producer_access.argc : 1,
+            const_args = (double*)calloc(ast->data.producer_access.argc + 1u,
                                          sizeof(double));
             if (!const_args) {
                 free(const_key);
@@ -582,6 +582,23 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                     free(const_args);
                     free(const_key);
                     break;
+                }
+            }
+            if (const_key && const_args) {
+                size_t field_index = entry->fields_per_arg;
+                for (size_t i = 0u; i < entry->fields_per_arg; ++i) {
+                    if (strcmp(entry->struct_fields[i], ast->data.producer_access.field) == 0) {
+                        field_index = i;
+                        break;
+                    }
+                }
+                if (field_index == entry->fields_per_arg) {
+                    free(const_args);
+                    free(const_key);
+                    const_args = NULL;
+                    const_key = NULL;
+                } else {
+                    const_args[ast->data.producer_access.argc] = (double)field_index;
                 }
             }
         }
