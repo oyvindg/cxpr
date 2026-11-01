@@ -172,6 +172,7 @@ typedef struct cxpr_ir_bindings {
     uint64_t program_generation;
     cxpr_ir_lookup_cache* inputs;
     const double** direct_values;
+    const cxpr_value** direct_typed_values;
     size_t count;
     const cxpr_context* direct_ctx;
     const struct cxpr_evaluator* direct_scope;
@@ -240,7 +241,8 @@ static inline bool cxpr_ir_bindings_prepared(const cxpr_ir_bindings* bindings,
            bindings->program_generation == program->binding_generation &&
            bindings->count == program->input_count &&
            (bindings->inputs || program->count == 0u) &&
-           (bindings->direct_values || program->count == 0u);
+           (bindings->direct_values || program->count == 0u) &&
+           (bindings->direct_typed_values || program->count == 0u);
 }
 void cxpr_ir_bindings_refresh_slow(const cxpr_ir_program* program,
                                    cxpr_ir_bindings* bindings, const cxpr_context* ctx);
@@ -274,6 +276,17 @@ static inline bool cxpr_ir_bindings_direct_value(
     value = bindings->direct_values[ip];
     if (!value) return false;
     *out = *value;
+    return true;
+}
+static inline bool cxpr_ir_bindings_direct_typed_value(
+    const cxpr_ir_program* program, const cxpr_ir_bindings* bindings,
+    size_t ip, cxpr_value* out) {
+    const cxpr_value* value;
+    if (!program || !bindings || !bindings->direct_ready || !out ||
+        ip >= program->count || !bindings->direct_typed_values) return false;
+    value = bindings->direct_typed_values[ip];
+    if (!value) return false;
+    *out = cxpr_value_clone(value);
     return true;
 }
 /** @brief Return the next instruction index for an IR program.

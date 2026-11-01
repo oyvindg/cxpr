@@ -13,6 +13,7 @@ void cxpr_context_set_struct(cxpr_context* ctx, const char* name,
     if (!ctx || !name || !value) return;
     cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_STRUCT);
     cxpr_context_store_struct(&ctx->structs, name, value);
+    ctx->variables_version++;
 }
 
 void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,

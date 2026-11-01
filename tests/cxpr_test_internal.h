@@ -153,6 +153,7 @@ typedef struct {
     uint64_t program_generation;
     cxpr_ir_lookup_cache* inputs;
     const double** direct_values;
+    const cxpr_value** direct_typed_values;
     size_t count;
     const cxpr_context* direct_ctx;
     const cxpr_evaluator* direct_scope;

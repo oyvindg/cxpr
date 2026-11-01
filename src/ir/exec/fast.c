@@ -322,7 +322,11 @@ op_load_var_square: {
     CXPR_FAST_NEXT();
 }
 op_load_named_field: {
-    cxpr_value field_value = cxpr_ir_load_named_field_value(ctx, instr, err);
+    cxpr_value field_value;
+    if (cxpr_ir_bindings_direct_typed_value(program, bindings, ip, &field_value)) {
+    } else {
+        field_value = cxpr_ir_load_named_field_value(ctx, instr, err);
+    }
     if (err && err->code != CXPR_OK) return NAN;
     if (field_value.type != CXPR_VALUE_NUMBER) {
         cxpr_value_free(&field_value);

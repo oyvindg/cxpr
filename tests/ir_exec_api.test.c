@@ -74,10 +74,42 @@ static void test_standalone_bindings_rebind_after_context_growth(void) {
     cxpr_expr_parser_free(parser);
 }
 
+static void test_standalone_struct_field_binding_rebinds_on_replacement(void) {
+    const char* fields[] = {"x", "y"};
+    cxpr_value first_values[] = {cxpr_num(2.0), cxpr_num(3.0)};
+    cxpr_value second_values[] = {cxpr_num(5.0), cxpr_num(7.0)};
+    cxpr_struct_value* first = cxpr_struct_value_new(fields, first_values, 2u);
+    cxpr_struct_value* second = cxpr_struct_value_new(fields, second_values, 2u);
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_context* context = cxpr_context_new();
+    cxpr_error error = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "(vector * 2).x", &error);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, registry, &error);
+    double result = NAN;
+
+    assert(first && second && parser && registry && context && ast && program);
+    cxpr_context_set_struct(context, "vector", first);
+    assert(cxpr_expr_compiled_eval_number(program, context, registry, &result, &error));
+    assert(result == 4.0);
+    cxpr_context_set_struct(context, "vector", second);
+    assert(cxpr_expr_compiled_eval_number(program, context, registry, &result, &error));
+    assert(result == 10.0);
+
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(context);
+    cxpr_registry_free(registry);
+    cxpr_expr_parser_free(parser);
+    cxpr_struct_value_free(second);
+    cxpr_struct_value_free(first);
+}
+
 int main(void) {
     test_ir_exec_api_wrappers();
     test_ir_runtime_error_helper();
     test_standalone_bindings_rebind_after_context_growth();
+    test_standalone_struct_field_binding_rebinds_on_replacement();
     printf("  \xE2\x9C\x93 ir_exec_api\n");
     return 0;
 }
