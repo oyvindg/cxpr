@@ -171,12 +171,43 @@ static void test_expression_evaluator_grows_capacity(void) {
     cxpr_registry_free(reg);
 }
 
+static void test_expression_evaluator_rebinds_after_context_growth(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    bool found = false;
+
+    assert(reg && evaluator && ctx);
+    cxpr_context_set(ctx, "price", 3.0);
+    assert(cxpr_expression_add(evaluator, "result", "price + price", &err));
+    assert(cxpr_evaluator_compile(evaluator, &err));
+    cxpr_evaluator_eval(evaluator, ctx, &err);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_expression_get_double(evaluator, "result", &found) == 6.0 && found);
+
+    for (size_t i = 0u; i < 128u; ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "growth_%zu", i);
+        cxpr_context_set(ctx, name, (double)i);
+    }
+    cxpr_context_set(ctx, "price", 4.0);
+    cxpr_evaluator_eval(evaluator, ctx, &err);
+    assert(err.code == CXPR_OK);
+    assert(cxpr_expression_get_double(evaluator, "result", &found) == 8.0 && found);
+
+    cxpr_context_free(ctx);
+    cxpr_evaluator_free(evaluator);
+    cxpr_registry_free(reg);
+}
+
 int main(void) {
     test_expression_evaluator_lifecycle();
     test_expression_struct_alias_field_prefix();
     test_expression_evaluator_reuses_scalar_memo_across_batch();
     test_expression_evaluator_reuses_struct_producer_across_batch();
     test_expression_evaluator_grows_capacity();
+    test_expression_evaluator_rebinds_after_context_growth();
     printf("  \xE2\x9C\x93 expression_evaluator\n");
     return 0;
 }

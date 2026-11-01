@@ -64,6 +64,10 @@ cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
     return evaluator->expressions[idx].result;
 }
 
+bool cxpr_expression_has_name(const cxpr_evaluator* evaluator, const char* name) {
+    return evaluator && name && cxpr_expression_find(evaluator, name) != (size_t)-1;
+}
+
 static bool cxpr_expression_depends_on(const cxpr_evaluator* evaluator, size_t expression_idx,
                                        size_t dep_idx) {
     const cxpr_expression_entry* expression = &evaluator->expressions[expression_idx];

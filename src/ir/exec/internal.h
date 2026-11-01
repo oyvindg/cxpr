@@ -39,6 +39,7 @@ bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr, size_t offset,
 /** @brief Load a variable/param as a typed value for the general IR executor. */
 cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
                                        const cxpr_ir_program* program,
+                                       cxpr_ir_bindings* bindings,
                                        size_t ip,
                                        const cxpr_ir_instr* instr,
                                        bool* found);
@@ -95,14 +96,27 @@ cxpr_value cxpr_ir_call_defined_scalar(cxpr_func_entry* entry,
 cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
                               const cxpr_registry* reg, const double* locals,
                               size_t local_count, cxpr_error* err);
+cxpr_value cxpr_ir_exec_typed_bound(const cxpr_ir_program* program, const cxpr_context* ctx,
+                                    const cxpr_registry* reg, const double* locals,
+                                    size_t local_count, cxpr_ir_bindings* bindings,
+                                    cxpr_error* err);
 /** @brief Execute the scalar fast-path IR interpreter. */
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, double* locals,
                                 size_t local_count, cxpr_error* err);
+double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
+                                      const cxpr_context* ctx, const cxpr_registry* reg,
+                                      double* locals, size_t local_count,
+                                      cxpr_ir_bindings* bindings, cxpr_error* err);
 /** @brief Execute a boolean fast-path IR program with separate number/bool stacks. */
 bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                             const cxpr_registry* reg, const double* locals,
                             size_t local_count, bool* out_value, cxpr_error* err);
+bool cxpr_ir_exec_bool_fast_bound(const cxpr_ir_program* program,
+                                  const cxpr_context* ctx, const cxpr_registry* reg,
+                                  const double* locals, size_t local_count,
+                                  cxpr_ir_bindings* bindings, bool* out_value,
+                                  cxpr_error* err);
 /** @brief Execute an int64-classified IR program without double coercion. */
 bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                              const cxpr_registry* reg, const double* locals,
@@ -110,5 +124,10 @@ bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context*
 /** @brief Evaluate a public `cxpr_expr_compiled` to a typed runtime value. */
 cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
                                    const cxpr_registry* reg, cxpr_error* err);
+cxpr_value cxpr_expr_compiled_eval_value_bound(const cxpr_expr_compiled* prog,
+                                               const cxpr_context* ctx,
+                                               const cxpr_registry* reg,
+                                               cxpr_ir_bindings* bindings,
+                                               cxpr_error* err);
 
 #endif /* CXPR_IR_EXEC_INTERNAL_H */

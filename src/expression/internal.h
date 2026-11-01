@@ -7,6 +7,7 @@
 #define CXPR_EXPRESSION_INTERNAL_H
 
 #include "core.h" // IWYU pragma: keep
+#include "ir/internal.h"
 
 /**
  * @brief A single expression entry in the evaluator.
@@ -16,6 +17,7 @@ typedef struct {
     char* expression;         /**< Original expression string, owned */
     cxpr_expr_ast* ast;            /**< Parsed AST (NULL until compiled) */
     cxpr_expr_compiled* program;    /**< Compiled program cache (NULL until compiled) */
+    cxpr_ir_bindings bindings;      /**< Mutable per-evaluator IR input bindings. */
     cxpr_value result;        /**< Evaluation result */
     bool evaluated;
     bool used_as_struct_prefix; /**< Cached compile-time struct alias dependency flag */
@@ -49,5 +51,6 @@ bool cxpr_evaluator_reserve_for_entry(cxpr_evaluator* evaluator);
 /** @brief Look up one previously evaluated expression result by name. */
 cxpr_value cxpr_expression_lookup_typed_result(const cxpr_evaluator* evaluator,
                                                const char* name, bool* found);
+bool cxpr_expression_has_name(const cxpr_evaluator* evaluator, const char* name);
 
 #endif /* CXPR_EXPRESSION_INTERNAL_H */

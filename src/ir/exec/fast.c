@@ -177,13 +177,13 @@ bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context*
     return true;
 }
 
-double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                                const cxpr_registry* reg, double* locals,
-                                size_t local_count, cxpr_error* err) {
+double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
+                                      const cxpr_context* ctx, const cxpr_registry* reg,
+                                      double* locals, size_t local_count,
+                                      cxpr_ir_bindings* bindings, cxpr_error* err) {
     double stack[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
     size_t ip = 0;
-    cxpr_ir_lookup_cache* lookup_cache = NULL;
     const bool fast_var_ctx = ctx && !ctx->parent && !ctx->expression_scope &&
                               ctx->bools.count == 0u;
     const bool fast_param_ctx = ctx && !ctx->parent && !ctx->expression_scope;
@@ -191,6 +191,8 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
     const cxpr_hashmap* fast_param_map = fast_param_ctx ? &ctx->params : NULL;
     const unsigned long fast_var_version = fast_var_ctx ? ctx->variables_version : 0u;
     const unsigned long fast_param_version = fast_param_ctx ? ctx->params_version : 0u;
+    const double* const* direct_values;
+    cxpr_ir_lookup_cache* lookup_cache;
 
     if (err) *err = (cxpr_error){0};
     if (!program || !program->code) {
@@ -200,7 +202,9 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         }
         return NAN;
     }
-    lookup_cache = program->lookup_cache;
+    cxpr_ir_bindings_refresh(program, bindings, ctx);
+    direct_values = bindings && bindings->direct_ready ? bindings->direct_values : NULL;
+    lookup_cache = bindings ? bindings->inputs : NULL;
 
     static void* dispatch[] = {
         [CXPR_OP_PUSH_CONST] = &&op_push_const,
@@ -303,13 +307,18 @@ op_load_local_square:
     CXPR_FAST_NEXT();
 op_load_var: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_var_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_var_map) {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
             return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
         if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
     }
@@ -318,13 +327,18 @@ op_load_var: {
 }
 op_load_var_square: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_var_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_var_map) {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
             return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
         if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
     }
@@ -333,13 +347,18 @@ op_load_var_square: {
 }
 op_load_param: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_param_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_param_map) {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
             return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
         if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
     }
@@ -348,13 +367,18 @@ op_load_param: {
 }
 op_load_param_square: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_param_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_param_map) {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
             return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
         if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
     }
@@ -610,21 +634,29 @@ op_unsupported:
 #undef CXPR_FAST_DISPATCH
 }
 
-bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                            const cxpr_registry* reg, const double* locals,
-                            size_t local_count, bool* out_value, cxpr_error* err) {
+double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
+                                const cxpr_registry* reg, double* locals,
+                                size_t local_count, cxpr_error* err) {
+    return cxpr_ir_exec_scalar_fast_bound(
+        program, ctx, reg, locals, local_count, NULL, err);
+}
+
+bool cxpr_ir_exec_bool_fast_bound(const cxpr_ir_program* program,
+                                  const cxpr_context* ctx, const cxpr_registry* reg,
+                                  const double* locals, size_t local_count,
+                                  cxpr_ir_bindings* bindings, bool* out_value,
+                                  cxpr_error* err) {
     double nstack[CXPR_IR_STACK_CAPACITY];
     bool bstack[CXPR_IR_STACK_CAPACITY];
     size_t nsp = 0;
     size_t bsp = 0;
     size_t ip = 0;
-    cxpr_ir_lookup_cache* lookup_cache = NULL;
 
     if (program && program->code) {
         for (size_t i = 0; i < program->count; ++i) {
             if (program->code[i].op == CXPR_OP_PUSH_INT64) {
-                cxpr_value value = cxpr_ir_exec_typed(program, ctx, reg, locals,
-                                                       local_count, err);
+                cxpr_value value = cxpr_ir_exec_typed_bound(
+                    program, ctx, reg, locals, local_count, bindings, err);
                 if (err && err->code != CXPR_OK) return false;
                 if (value.type != CXPR_VALUE_BOOL) {
                     if (err) {
@@ -645,6 +677,7 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
     const cxpr_hashmap* fast_param_map = fast_param_ctx ? &ctx->params : NULL;
     const unsigned long fast_var_version = fast_var_ctx ? ctx->variables_version : 0u;
     const unsigned long fast_param_version = fast_param_ctx ? ctx->params_version : 0u;
+    const double* const* direct_values;
 
     if (err) *err = (cxpr_error){0};
     if (!out_value) {
@@ -654,6 +687,8 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         }
         return false;
     }
+    cxpr_ir_bindings_refresh(program, bindings, ctx);
+    direct_values = bindings && bindings->direct_ready ? bindings->direct_values : NULL;
     if (!program || !program->code) {
         if (err) {
             err->code = CXPR_ERR_SYNTAX;
@@ -661,7 +696,6 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
         }
         return false;
     }
-    lookup_cache = program->lookup_cache;
 
     static void* dispatch[] = {
         [CXPR_OP_PUSH_CONST] = &&opb_push_const,
@@ -768,14 +802,19 @@ opb_load_local_square:
     CXPR_BOOL_FAST_NEXT();
 opb_load_var: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_var_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_var_map) {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
             return false;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
         if (!found) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
@@ -787,14 +826,19 @@ opb_load_var: {
 }
 opb_load_var_square: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_var_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_var_map) {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_var_map, fast_var_version, instr,
                                              cache, &value)) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
             return false;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, false, &found);
         if (!found) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
@@ -806,14 +850,19 @@ opb_load_var_square: {
 }
 opb_load_param: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_param_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_param_map) {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             return false;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
         if (!found) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
@@ -825,14 +874,19 @@ opb_load_param: {
 }
 opb_load_param_square: {
     bool found = false;
-    cxpr_ir_lookup_cache* cache = lookup_cache ? &lookup_cache[ip] : NULL;
-    if (fast_param_map) {
+    const double* direct = direct_values ? direct_values[ip] : NULL;
+    if (direct) {
+        value = *direct;
+        found = true;
+    } else if (fast_param_map) {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         if (!cxpr_ir_exec_lookup_root_cached(ctx, fast_param_map, fast_param_version, instr,
                                              cache, &value)) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             return false;
         }
     } else {
+        cxpr_ir_lookup_cache* cache = cxpr_ir_bindings_cache(program, bindings, ip);
         value = cxpr_ir_exec_lookup_scalar_fast(ctx, instr, cache, true, &found);
         if (!found) {
             (void)cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
@@ -1098,4 +1152,11 @@ opb_unsupported:
 
 #undef CXPR_BOOL_FAST_NEXT
 #undef CXPR_BOOL_FAST_DISPATCH
+}
+
+bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
+                            const cxpr_registry* reg, const double* locals,
+                            size_t local_count, bool* out_value, cxpr_error* err) {
+    return cxpr_ir_exec_bool_fast_bound(
+        program, ctx, reg, locals, local_count, NULL, out_value, err);
 }

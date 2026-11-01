@@ -278,6 +278,7 @@ target_include_directories(test_generated_int64_resample_parity PRIVATE
 
 find_package(Threads REQUIRED)
 target_link_libraries(test_history PRIVATE Threads::Threads)
+target_link_libraries(test_ir PRIVATE Threads::Threads)
 
 add_executable(cxpr_cuda_bulk_codegen_tool cuda_bulk_codegen_tool.c)
 target_link_libraries(cxpr_cuda_bulk_codegen_tool PRIVATE cxpr)

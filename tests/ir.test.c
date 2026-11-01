@@ -25,6 +25,7 @@
 #include "cxpr_test_internal.h"
 #include <assert.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1793,6 +1794,77 @@ static void test_ir_exec_rejects_bool_result(void) {
     printf("  ✓ test_ir_exec_rejects_bool_result\n");
 }
 
+static void test_ir_deduplicates_scalar_input_descriptors(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "price + price * $scale", &err);
+    cxpr_ir_program program = {0};
+    size_t price_loads = 0u;
+    uint32_t price_slot = UINT32_MAX;
+
+    assert(ast);
+    assert(cxpr_ir_compile(ast, NULL, &program, &err));
+    assert(program.input_count == 2u);
+    for (size_t i = 0u; i < program.count; ++i) {
+        if (program.code[i].op != CXPR_OP_LOAD_VAR) continue;
+        if (price_slot == UINT32_MAX) price_slot = program.code[i].input_index;
+        assert(program.code[i].input_index == price_slot);
+        price_loads++;
+    }
+    assert(price_loads == 2u);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(p);
+    printf("  ✓ test_ir_deduplicates_scalar_input_descriptors\n");
+}
+
+typedef struct {
+    const cxpr_expr_compiled* program;
+    double input;
+    double expected;
+} cxpr_ir_thread_case;
+
+static void* cxpr_ir_eval_shared_program(void* userdata) {
+    cxpr_ir_thread_case* test_case = (cxpr_ir_thread_case*)userdata;
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+
+    assert(ctx);
+    cxpr_context_set(ctx, "price", test_case->input);
+    for (size_t i = 0u; i < 100000u; ++i) {
+        double value = 0.0;
+        assert(cxpr_expr_compiled_eval_number(
+            test_case->program, ctx, NULL, &value, &err));
+        assert(value == test_case->expected);
+    }
+    cxpr_context_free(ctx);
+    return NULL;
+}
+
+static void test_ir_compiled_program_is_shareable_across_threads(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "price * 2 + price", &err);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, NULL, &err);
+    cxpr_ir_thread_case cases[] = {
+        {program, 2.0, 6.0},
+        {program, 7.0, 21.0},
+    };
+    pthread_t threads[2];
+
+    assert(program);
+    assert(pthread_create(&threads[0], NULL, cxpr_ir_eval_shared_program, &cases[0]) == 0);
+    assert(pthread_create(&threads[1], NULL, cxpr_ir_eval_shared_program, &cases[1]) == 0);
+    assert(pthread_join(threads[0], NULL) == 0);
+    assert(pthread_join(threads[1], NULL) == 0);
+
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
+    printf("  ✓ test_ir_compiled_program_is_shareable_across_threads\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_ir_compile_number_literal();
@@ -1850,6 +1922,8 @@ int main(void) {
     test_ir_constant_folding_short_circuit_left_constant();
     test_ir_constant_folding_keeps_div_zero_runtime_error();
     test_ir_exec_rejects_bool_result();
+    test_ir_deduplicates_scalar_input_descriptors();
+    test_ir_compiled_program_is_shareable_across_threads();
     printf("All IR tests passed!\n");
     return 0;
 }

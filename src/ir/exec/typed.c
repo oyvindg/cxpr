@@ -284,9 +284,10 @@ static void cxpr_ir_release_owned_stack_values(cxpr_value* stack,
     }
 }
 
-cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
-                              const cxpr_registry* reg, const double* locals,
-                              size_t local_count, cxpr_error* err) {
+cxpr_value cxpr_ir_exec_typed_bound(const cxpr_ir_program* program, const cxpr_context* ctx,
+                                    const cxpr_registry* reg, const double* locals,
+                                    size_t local_count, cxpr_ir_bindings* bindings,
+                                    cxpr_error* err) {
     cxpr_value stack[CXPR_IR_STACK_CAPACITY];
     bool stack_owned[CXPR_IR_STACK_CAPACITY] = {false};
     size_t lookback_stack[CXPR_IR_STACK_CAPACITY];
@@ -300,6 +301,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
     if (!program || !program->code) {
         return cxpr_ir_runtime_error(err, "Empty IR program");
     }
+    cxpr_ir_bindings_refresh(program, bindings, ctx);
 
 #define CXPR_TYPED_PUSH(VALUE_EXPR)                                                     \
     do {                                                                                \
@@ -439,7 +441,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                             err, cxpr_ir_unknown_identifier_message(instr));
                     }
                 } else {
-                    result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
+                    result = cxpr_ir_load_variable_typed(ctx, program, bindings, ip, instr, &found);
                     if (!found) {
                         cxpr_ir_release_owned_stack_values(stack, stack_owned, 0u, sp);
                         return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
@@ -463,7 +465,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                             err, cxpr_ir_unknown_identifier_message(instr));
                     }
                 } else {
-                    result = cxpr_ir_load_variable_typed(ctx, program, ip, instr, &found);
+                    result = cxpr_ir_load_variable_typed(ctx, program, bindings, ip, instr, &found);
                     if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr));
                 }
             }
@@ -481,7 +483,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                         result = cxpr_string(string_value);
                     } else {
                         result = cxpr_num(cxpr_ir_lookup_cached_scalar(
-                            ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                            ctx, instr, cxpr_ir_bindings_cache(program, bindings, ip), true,
                             &found));
                     }
                 }
@@ -493,7 +495,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             {
                 bool found = false;
                 result = cxpr_num(cxpr_ir_lookup_cached_scalar(
-                    ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, true,
+                    ctx, instr, cxpr_ir_bindings_cache(program, bindings, ip), true,
                     &found));
                 if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr));
             }
@@ -1000,4 +1002,10 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
 #undef CXPR_TYPED_PUSH_SQUARED
 
     return cxpr_ir_runtime_error(err, "IR program fell off end without return");
+}
+
+cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context* ctx,
+                              const cxpr_registry* reg, const double* locals,
+                              size_t local_count, cxpr_error* err) {
+    return cxpr_ir_exec_typed_bound(program, ctx, reg, locals, local_count, NULL, err);
 }

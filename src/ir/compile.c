@@ -38,13 +38,7 @@ bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* 
         return false;
     }
 
-    program->lookup_cache =
-        (cxpr_ir_lookup_cache*)calloc(program->count, sizeof(cxpr_ir_lookup_cache));
-    if (program->count > 0 && !program->lookup_cache) {
-        if (err) {
-            err->code = CXPR_ERR_OUT_OF_MEMORY;
-            err->message = "Out of memory";
-        }
+    if (!cxpr_ir_program_prepare_inputs(program, err)) {
         cxpr_ir_program_reset(program);
         return false;
     }

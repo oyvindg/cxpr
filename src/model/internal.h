@@ -301,6 +301,7 @@ struct cxpr_model_session {
     size_t state_buffer_count;
     double* fused_slots;
     size_t fused_slot_count;
+    cxpr_ir_bindings fused_bindings;
     cxpr_context_slot* fused_input_slots;
     bool* fused_input_slot_bound;
     size_t fused_input_slot_count;

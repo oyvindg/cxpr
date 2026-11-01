@@ -6,6 +6,7 @@
 #include "../context/internal.h"
 #include "internal.h"
 #include "../eval/internal.h"
+#include "../ir/exec/internal.h"
 #include "../limits.h"
 
 #include <cxpr/analysis.h>
@@ -154,6 +155,7 @@ void cxpr_evaluator_free(cxpr_evaluator* evaluator) {
         free(evaluator->expressions[i].expression);
         cxpr_expr_ast_free(evaluator->expressions[i].ast);
         cxpr_expr_compiled_free(evaluator->expressions[i].program);
+        cxpr_ir_bindings_reset(&evaluator->expressions[i].bindings);
     }
     free(evaluator->expressions);
     free(evaluator->eval_order);
@@ -176,6 +178,7 @@ bool cxpr_evaluator_compile(cxpr_evaluator* evaluator, cxpr_error* err) {
         cxpr_expression_entry* entry = &evaluator->expressions[i];
         cxpr_analysis analysis = {0};
         cxpr_expr_compiled_free(entry->program);
+        cxpr_ir_bindings_reset(&entry->bindings);
         entry->program = NULL;
         if (!cxpr_analyze(entry->ast, evaluator->registry, &analysis, err)) {
             cxpr_expression_wrap_compile_error(entry, err);
@@ -249,13 +252,15 @@ void cxpr_evaluator_eval(cxpr_evaluator* evaluator, cxpr_context* ctx, cxpr_erro
                 return;
             }
             if (struct_alias == 0 && entry->program) {
-                (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
+                value = cxpr_expr_compiled_eval_value_bound(
+                    entry->program, ctx, evaluator->registry, &entry->bindings, &eval_err);
                 value_owned = true;
             } else if (struct_alias == 0) {
                 (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);
             }
         } else if (entry->program) {
-            (void)cxpr_expr_compiled_eval(entry->program, ctx, evaluator->registry, &value, &eval_err);
+            value = cxpr_expr_compiled_eval_value_bound(
+                entry->program, ctx, evaluator->registry, &entry->bindings, &eval_err);
             value_owned = true;
         } else {
             (void)cxpr_eval_ast(entry->ast, ctx, evaluator->registry, &value, &eval_err);

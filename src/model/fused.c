@@ -398,10 +398,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
             return true;
         }
     }
-    program->fused_ir.lookup_cache =
-        (cxpr_ir_lookup_cache*)calloc(program->fused_ir.count, sizeof(cxpr_ir_lookup_cache));
-    if (program->fused_ir.count > 0u && !program->fused_ir.lookup_cache) {
-        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+    if (!cxpr_ir_program_prepare_inputs(&program->fused_ir, err)) {
         cxpr_ir_program_reset(&program->fused_ir);
         cxpr_model_fused_program_clear(program);
         return false;

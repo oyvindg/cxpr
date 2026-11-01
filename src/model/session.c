@@ -581,6 +581,12 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
             return NULL;
         }
         session->fused_slot_count = program->fused_slot_count;
+        if (!cxpr_ir_bindings_prepare(&session->fused_bindings,
+                                      &program->fused_ir, err)) {
+            cxpr_model_session_free(session);
+            return NULL;
+        }
+        session->fused_bindings.direct_enabled = false;
         if (program->fused_input_count > 0u) {
             session->fused_input_slots =
                 (cxpr_context_slot*)calloc(program->fused_input_count,
@@ -713,6 +719,7 @@ void cxpr_model_session_free(cxpr_model_session* session) {
     }
     free(session->state_buffers);
     free(session->fused_slots);
+    cxpr_ir_bindings_reset(&session->fused_bindings);
     free(session->fused_input_slots);
     free(session->fused_input_slot_bound);
     free(session->fused_export_slots);
@@ -1165,12 +1172,13 @@ static bool cxpr_model_session_tick_fused(const cxpr_model_compiled* program,
         session->fused_slots[program->fused_inputs[i].slot] = value;
     }
 
-    ignored = cxpr_ir_exec_scalar_fast(&program->fused_ir,
-                                       session->ctx,
-                                       eval_reg,
-                                       session->fused_slots,
-                                       session->fused_slot_count,
-                                       err);
+    ignored = cxpr_ir_exec_scalar_fast_bound(&program->fused_ir,
+                                             session->ctx,
+                                             eval_reg,
+                                             session->fused_slots,
+                                             session->fused_slot_count,
+                                             &session->fused_bindings,
+                                             err);
     (void)ignored;
     if (err && err->code != CXPR_OK) return false;
 

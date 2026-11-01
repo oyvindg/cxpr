@@ -102,7 +102,7 @@ typedef enum {
  */
 typedef struct {
     cxpr_opcode op;
-    /* 4 bytes implicit padding */
+    uint32_t input_index; /**< Deduplicated scalar input slot, or UINT32_MAX. */
     const char* name;
     const char* aux_name;
     const void* payload;
@@ -152,17 +152,41 @@ typedef struct {
     uint64_t            shadow_version;     /**< Structural version summary below the owner */
 } cxpr_ir_lookup_cache;
 
+typedef struct {
+    const char* name;
+    unsigned long hash;
+    bool param;
+} cxpr_ir_input_descriptor;
+
+typedef struct cxpr_ir_bindings {
+    const struct cxpr_ir_program_tag* program_key;
+    uint64_t program_generation;
+    cxpr_ir_lookup_cache* inputs;
+    const double** direct_values;
+    size_t count;
+    const cxpr_context* direct_ctx;
+    const struct cxpr_evaluator* direct_scope;
+    cxpr_hashmap_entry* variable_base;
+    cxpr_hashmap_entry* param_base;
+    unsigned long variable_version;
+    unsigned long param_version;
+    bool direct_enabled;
+    bool direct_ready;
+} cxpr_ir_bindings;
+
 /**
  * @brief Internal compiled program representation.
  *
  * This stays internal until a public cxpr_expr_compiled API is introduced.
  */
-typedef struct {
+typedef struct cxpr_ir_program_tag {
     cxpr_ir_instr* code;        /**< Owned instruction array */
     size_t count;               /**< Number of instructions */
     size_t capacity;            /**< Allocated instruction capacity */
     const cxpr_expr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
-    cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
+    cxpr_ir_input_descriptor* inputs; /**< Immutable unique scalar input descriptors. */
+    size_t input_count;
+    uint64_t binding_generation; /**< Unique identity for evaluator binding invalidation. */
     unsigned char fast_result_kind; /**< CXPR_IR_RESULT_* fast-path classification. */
     bool number_fast_compatible; /**< Numeric API may use scalar execution for resolved lookbacks. */
 } cxpr_ir_program;
@@ -193,6 +217,52 @@ bool cxpr_ir_is_special_builtin_name(const char* name);
  * @return true on success, false on allocation failure.
  */
 bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr, cxpr_error* err);
+bool cxpr_ir_program_prepare_inputs(cxpr_ir_program* program, cxpr_error* err);
+void cxpr_ir_bindings_reset(cxpr_ir_bindings* bindings);
+bool cxpr_ir_bindings_prepare(cxpr_ir_bindings* bindings,
+                              const cxpr_ir_program* program, cxpr_error* err);
+static inline bool cxpr_ir_bindings_prepared(const cxpr_ir_bindings* bindings,
+                                             const cxpr_ir_program* program) {
+    return bindings && program && bindings->program_key == program &&
+           bindings->program_generation == program->binding_generation &&
+           bindings->count == program->input_count &&
+           (bindings->inputs || program->count == 0u) &&
+           (bindings->direct_values || program->count == 0u);
+}
+void cxpr_ir_bindings_refresh_slow(const cxpr_ir_program* program,
+                                   cxpr_ir_bindings* bindings, const cxpr_context* ctx);
+static inline void cxpr_ir_bindings_refresh(const cxpr_ir_program* program,
+                                            cxpr_ir_bindings* bindings,
+                                            const cxpr_context* ctx) {
+    if (!bindings || !bindings->direct_enabled) return;
+    if (bindings && ctx && bindings->direct_ready &&
+        bindings->program_generation == program->binding_generation &&
+        bindings->direct_ctx == ctx &&
+        bindings->direct_scope == ctx->expression_scope &&
+        bindings->variable_base == ctx->variables.entries &&
+        bindings->param_base == ctx->params.entries &&
+        bindings->variable_version == ctx->variables_version &&
+        bindings->param_version == ctx->params_version) return;
+    cxpr_ir_bindings_refresh_slow(program, bindings, ctx);
+}
+static inline cxpr_ir_lookup_cache* cxpr_ir_bindings_cache(
+    const cxpr_ir_program* program, cxpr_ir_bindings* bindings, size_t ip) {
+    if (!program || !bindings || ip >= program->count ||
+        program->code[ip].input_index == UINT32_MAX) return NULL;
+    return &bindings->inputs[ip];
+}
+static inline bool cxpr_ir_bindings_direct_value(
+    const cxpr_ir_program* program, const cxpr_ir_bindings* bindings,
+    size_t ip, double* out) {
+    const double* value;
+    if (!program || !bindings || !bindings->direct_ready || !out ||
+        ip >= program->count || program->code[ip].input_index == UINT32_MAX ||
+        program->code[ip].input_index >= bindings->count) return false;
+    value = bindings->direct_values[ip];
+    if (!value) return false;
+    *out = *value;
+    return true;
+}
 /** @brief Return the next instruction index for an IR program.
  * @param program Program to inspect.
  * @return Current instruction count, used as the next write index.

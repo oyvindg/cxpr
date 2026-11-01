@@ -6,6 +6,25 @@
 #include "internal.h"
 #include <math.h>
 
+#define CXPR_STANDALONE_BINDING_CACHE_SIZE 16u
+static CXPR_THREAD_LOCAL cxpr_ir_bindings
+    g_standalone_bindings[CXPR_STANDALONE_BINDING_CACHE_SIZE];
+
+static inline cxpr_ir_bindings* cxpr_ir_standalone_bindings(
+    const cxpr_ir_program* program, cxpr_error* err) {
+    cxpr_ir_bindings* bindings;
+    size_t slot;
+
+    if (!program || program->binding_generation == 0u) return NULL;
+    slot = (size_t)(program->binding_generation % CXPR_STANDALONE_BINDING_CACHE_SIZE);
+    bindings = &g_standalone_bindings[slot];
+    if (bindings->program_generation != program->binding_generation) {
+        if (!cxpr_ir_bindings_prepare(bindings, program, err)) return NULL;
+        bindings->direct_enabled = false;
+    }
+    return bindings;
+}
+
 static bool cxpr_ir_program_is_bare_identifier(const cxpr_ir_program* program) {
     return program &&
            program->count == 2u &&
@@ -117,8 +136,11 @@ double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
     return value.d;
 }
 
-cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
-                                   const cxpr_registry* reg, cxpr_error* err) {
+cxpr_value cxpr_expr_compiled_eval_value_bound(const cxpr_expr_compiled* prog,
+                                               const cxpr_context* ctx,
+                                               const cxpr_registry* reg,
+                                               cxpr_ir_bindings* bindings,
+                                               cxpr_error* err) {
     bool bool_value = false;
     int64_t int64_value = 0;
 
@@ -129,19 +151,26 @@ cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const c
         }
         return cxpr_num(NAN);
     }
+    if (bindings && !cxpr_ir_bindings_prepared(bindings, &prog->ir) &&
+        !cxpr_ir_bindings_prepare(bindings, &prog->ir, err)) {
+        return cxpr_num(NAN);
+    }
     if (prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
         if (cxpr_ir_program_is_bare_identifier(&prog->ir)) {
             cxpr_error typed_err = {0};
-            cxpr_value typed_value = cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, &typed_err);
+            cxpr_value typed_value = cxpr_ir_exec_typed_bound(
+                &prog->ir, ctx, reg, NULL, 0, bindings, &typed_err);
             if (typed_err.code == CXPR_OK) {
                 if (err) *err = typed_err;
                 return typed_value;
             }
         }
-        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        double fast_value = cxpr_ir_exec_scalar_fast_bound(
+            &prog->ir, ctx, reg, NULL, 0, bindings, err);
         if (err && err->code != CXPR_OK) {
             cxpr_error typed_err = {0};
-            cxpr_value typed_value = cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, &typed_err);
+            cxpr_value typed_value = cxpr_ir_exec_typed_bound(
+                &prog->ir, ctx, reg, NULL, 0, bindings, &typed_err);
             if (typed_err.code == CXPR_OK) {
                 if (err) *err = typed_err;
                 return typed_value;
@@ -151,7 +180,8 @@ cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const c
         return cxpr_num(fast_value);
     }
     if (prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
-        if (!cxpr_ir_exec_bool_fast(&prog->ir, ctx, reg, NULL, 0, &bool_value, err)) {
+        if (!cxpr_ir_exec_bool_fast_bound(
+                &prog->ir, ctx, reg, NULL, 0, bindings, &bool_value, err)) {
             return cxpr_num(NAN);
         }
         return cxpr_bool(bool_value);
@@ -161,7 +191,15 @@ cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const c
                                      &int64_value, err)) return cxpr_num(NAN);
         return cxpr_int64(int64_value);
     }
-    return cxpr_ir_exec_typed(&prog->ir, ctx, reg, NULL, 0, err);
+    return cxpr_ir_exec_typed_bound(&prog->ir, ctx, reg, NULL, 0, bindings, err);
+}
+
+cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog,
+                                         const cxpr_context* ctx,
+                                         const cxpr_registry* reg, cxpr_error* err) {
+    cxpr_ir_bindings* bindings = prog ? cxpr_ir_standalone_bindings(&prog->ir, err) : NULL;
+    if (prog && !bindings) return cxpr_num(NAN);
+    return cxpr_expr_compiled_eval_value_bound(prog, ctx, reg, bindings, err);
 }
 
 bool cxpr_expr_compiled_eval(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
@@ -198,7 +236,11 @@ bool cxpr_expr_compiled_eval_number(const cxpr_expr_compiled* prog, const cxpr_c
 
     if (prog && (prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE ||
                  prog->ir.number_fast_compatible)) {
-        double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
+        double fast_value;
+        cxpr_ir_bindings* bindings = cxpr_ir_standalone_bindings(&prog->ir, err);
+        if (!bindings) return false;
+        fast_value = cxpr_ir_exec_scalar_fast_bound(
+            &prog->ir, ctx, reg, NULL, 0, bindings, err);
         if (err && err->code != CXPR_OK) return false;
         *out_value = fast_value;
         return true;
@@ -234,7 +276,10 @@ bool cxpr_expr_compiled_eval_bool(const cxpr_expr_compiled* prog, const cxpr_con
     }
 
     if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
-        return cxpr_ir_exec_bool_fast(&prog->ir, ctx, reg, NULL, 0, out_value, err);
+        cxpr_ir_bindings* bindings = cxpr_ir_standalone_bindings(&prog->ir, err);
+        if (!bindings) return false;
+        return cxpr_ir_exec_bool_fast_bound(
+            &prog->ir, ctx, reg, NULL, 0, bindings, out_value, err);
     }
     value = cxpr_expr_compiled_eval_value(prog, ctx, reg, err);
     if (err && err->code != CXPR_OK) {

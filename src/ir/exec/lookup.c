@@ -329,6 +329,7 @@ bool cxpr_ir_pop2(cxpr_value* stack, size_t* sp, cxpr_value* left,
 
 cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
                                        const cxpr_ir_program* program,
+                                       cxpr_ir_bindings* bindings,
                                        size_t ip,
                                        const cxpr_ir_instr* instr,
                                        bool* found) {
@@ -338,6 +339,11 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
 
     if (found) *found = false;
     if (!ctx || !instr || !instr->name) return cxpr_num(0.0);
+
+    if (cxpr_ir_bindings_direct_value(program, bindings, ip, &scalar)) {
+        if (found) *found = true;
+        return cxpr_num(scalar);
+    }
 
     if (ctx->expression_scope) {
         cxpr_value scoped =
@@ -357,7 +363,7 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
     }
 
     scalar = cxpr_ir_lookup_cached_scalar(
-        ctx, instr, program->lookup_cache ? &program->lookup_cache[ip] : NULL, false,
+        ctx, instr, cxpr_ir_bindings_cache(program, bindings, ip), false,
         &scalar_found);
     if (scalar_found) {
         if (found) *found = true;

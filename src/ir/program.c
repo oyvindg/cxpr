@@ -40,9 +40,10 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
         }
     }
     free(program->code);
-    free(program->lookup_cache);
+    free(program->inputs);
     program->code = NULL;
-    program->lookup_cache = NULL;
+    program->inputs = NULL;
+    program->input_count = 0u;
     program->count = 0;
     program->capacity = 0;
     program->ast = NULL;

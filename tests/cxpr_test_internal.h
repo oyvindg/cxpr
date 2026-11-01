@@ -106,6 +106,7 @@ struct cxpr_func_entry;
 
 typedef struct {
     cxpr_opcode op;
+    uint32_t input_index;
     const char* name;
     const char* aux_name;
     const void* payload;
@@ -128,14 +129,38 @@ typedef struct {
 } cxpr_ir_lookup_cache;
 
 typedef struct {
+    const char* name;
+    unsigned long hash;
+    bool param;
+} cxpr_ir_input_descriptor;
+
+typedef struct cxpr_ir_program_tag {
     cxpr_ir_instr* code;
     size_t count;
     size_t capacity;
     const cxpr_expr_ast* ast;
-    cxpr_ir_lookup_cache* lookup_cache;
+    cxpr_ir_input_descriptor* inputs;
+    size_t input_count;
+    uint64_t binding_generation;
     unsigned char fast_result_kind;
     bool number_fast_compatible;
 } cxpr_ir_program;
+
+typedef struct {
+    const cxpr_ir_program* program_key;
+    uint64_t program_generation;
+    cxpr_ir_lookup_cache* inputs;
+    const double** direct_values;
+    size_t count;
+    const cxpr_context* direct_ctx;
+    const cxpr_evaluator* direct_scope;
+    void* variable_base;
+    void* param_base;
+    unsigned long variable_version;
+    unsigned long param_version;
+    bool direct_enabled;
+    bool direct_ready;
+} cxpr_ir_bindings;
 
 _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr too large");
 
@@ -206,8 +231,10 @@ typedef struct {
     char* expression;
     cxpr_expr_ast* ast;
     cxpr_expr_compiled* program;
+    cxpr_ir_bindings bindings;
     cxpr_value result;
     bool evaluated;
+    bool used_as_struct_prefix;
 } cxpr_expression_entry;
 
 struct cxpr_evaluator {
