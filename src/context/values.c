@@ -267,19 +267,28 @@ static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
     cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
 }
 
-static void cxpr_context_set_cached(cxpr_context* ctx, cxpr_hashmap* map,
-                                    cxpr_context_entry_cache* cache,
+static void cxpr_context_set_cached(cxpr_hashmap* map, cxpr_context_entry_cache* cache,
                                     cxpr_context_entry_cache* ptr_cache,
                                     unsigned long* version, const char* name,
                                     double value) {
+    unsigned long hash;
     cxpr_hashmap_entry* entry =
         cxpr_context_lookup_pointer_cached_entry(map, ptr_cache, name);
     if (entry) {
         entry->value = value;
         return;
     }
-    cxpr_context_set_hashed(ctx, map, cache, ptr_cache, version, name,
-                            cxpr_hash_string(name), value);
+    hash = cxpr_hash_string(name);
+    entry = cxpr_context_lookup_cached_entry(map, cache, name, hash);
+    if (entry) {
+        cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
+        entry->value = value;
+        return;
+    }
+    if (cxpr_hashmap_set_prehashed(map, name, hash, value)) (*version)++;
+    cxpr_context_refresh_cache(map, cache, name, hash);
+    entry = cxpr_hashmap_find_prehashed_slot(map, name, hash);
+    cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
 }
 
 void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
@@ -292,7 +301,10 @@ void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
 
 void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
     if (!ctx || !name) return;
-    cxpr_context_set_prehashed(ctx, name, cxpr_hash_string(name), value);
+    cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    cxpr_context_set_cached(&ctx->variables, ctx->variable_cache,
+                            ctx->variable_ptr_cache, &ctx->variables_version,
+                            name, value);
 }
 
 void cxpr_context_set_bool(cxpr_context* ctx, const char* name, bool value) {
@@ -361,7 +373,7 @@ void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries
     }
     for (i = 0; entries[i].name; ++i) {
         const char* name = entries[i].name;
-        cxpr_context_set_cached(ctx, &ctx->variables, ctx->variable_cache,
+        cxpr_context_set_cached(&ctx->variables, ctx->variable_cache,
                                 ctx->variable_ptr_cache, &ctx->variables_version,
                                 name, entries[i].value);
     }
@@ -478,7 +490,10 @@ void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
 
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
     if (!ctx || !name) return;
-    cxpr_context_set_param_prehashed(ctx, name, cxpr_hash_string(name), value);
+    cxpr_context_clear_param_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    cxpr_context_set_cached(&ctx->params, ctx->param_cache,
+                            ctx->param_ptr_cache, &ctx->params_version,
+                            name, value);
 }
 
 void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* entries) {
@@ -500,7 +515,7 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
     }
     for (i = 0; entries[i].name; ++i) {
         const char* name = entries[i].name;
-        cxpr_context_set_cached(ctx, &ctx->params, ctx->param_cache,
+        cxpr_context_set_cached(&ctx->params, ctx->param_cache,
                                 ctx->param_ptr_cache, &ctx->params_version,
                                 name, entries[i].value);
     }
