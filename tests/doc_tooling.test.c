@@ -22,6 +22,24 @@ static const char baseline_json[] =
     "\"type\":\"assignment\"},{\"line\":2,\"start\":13,\"length\":5,\"type\":\"input\"}],"
     "\"functions\":[],\"diagnostics\":[]}\n";
 
+static void test_outline_splits_comma_separated_outputs(void) {
+    const char* source =
+        "model demo\n"
+        "entry = true\n"
+        "exit = false\n"
+        "out entry, exit\n";
+    char* json = cxpr_document_analyze_json(source, "outputs.cxpr");
+
+    assert(json != NULL);
+    assert(strstr(json, "\"kind\":\"output\",\"name\":\"entry\",\"value\":\"\","
+                        "\"startLine\":3,\"startChar\":4,\"endLine\":3,\"endChar\":9") != NULL);
+    assert(strstr(json, "\"kind\":\"output\",\"name\":\"exit\",\"value\":\"\","
+                        "\"startLine\":3,\"startChar\":11,\"endLine\":3,\"endChar\":15") != NULL);
+    assert(strstr(json, "\"name\":\"entry, exit\"") == NULL);
+    cxpr_document_json_free(json);
+    printf("  ✓ test_outline_splits_comma_separated_outputs\n");
+}
+
 static char* read_fixture(void) {
     const char* path = CXPR_TEST_SOURCE_DIR "/fixtures/doc_tooling_markers.cxpr";
     FILE* file = fopen(path, "rb");
@@ -657,6 +675,7 @@ static void test_function_catalog_exposes_inferred_parameter_types(void) {
 
 int main(void) {
     test_analysis_baseline();
+    test_outline_splits_comma_separated_outputs();
     test_analysis_exposes_model_type();
     test_registry_signature_fields();
     test_marker_resolution();

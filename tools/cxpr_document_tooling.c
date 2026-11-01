@@ -136,6 +136,18 @@ static void json_string(const char* text) {
     fputc('"', stdout);
 }
 
+static void json_string_n(const char* text, size_t length) {
+    char* copy = (char*)malloc(length + 1u);
+    if (!copy) {
+        json_string("");
+        return;
+    }
+    memcpy(copy, text, length);
+    copy[length] = '\0';
+    json_string(copy);
+    free(copy);
+}
+
 static void recover_error_location(cxpr_error* err, const char* source) {
     const char* marker;
     const char* start;
@@ -336,6 +348,37 @@ static void emit_outline_node(const cxpr_doc_ast_node* node, int* comma) {
     cxpr_source_span span = cxpr_doc_ast_node_span(node);
     if (!is_outline_node(kind)) return;
     if (kind == CXPR_DOC_AST_INPUT_BLOCK && (!name || !name[0])) return;
+    if (kind == CXPR_DOC_AST_OUTPUT_DECL && name && strchr(name, ',')) {
+        const char* cursor = name;
+        while (*cursor) {
+            const char* start = cursor;
+            const char* delimiter;
+            const char* end;
+            cxpr_source_span output_span = span;
+            while (*start == ' ' || *start == '\t') start++;
+            delimiter = start;
+            while (*delimiter && *delimiter != ',') delimiter++;
+            end = delimiter;
+            while (end > start && (end[-1] == ' ' || end[-1] == '\t')) end--;
+            if (end > start) {
+                if (*comma) fputc(',', stdout);
+                *comma = 1;
+                output_span.start.column = span.start.column + 4u + (size_t)(start - name);
+                output_span.end = output_span.start;
+                output_span.end.column += (size_t)(end - start);
+                fputs("{\"kind\":\"output\",\"name\":", stdout);
+                json_string_n(start, (size_t)(end - start));
+                fputs(",\"value\":", stdout);
+                json_string(value ? value : "");
+                fputc(',', stdout);
+                emit_range(output_span);
+                fputc('}', stdout);
+            }
+            if (!*delimiter) break;
+            cursor = delimiter + 1;
+        }
+        return;
+    }
     if (*comma) fputc(',', stdout);
     *comma = 1;
     fputs("{\"kind\":", stdout);
