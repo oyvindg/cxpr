@@ -300,6 +300,7 @@ struct cxpr_model_session {
     void* output_history_storage;
     cxpr_model_history_entry* state_buffers;
     size_t state_buffer_count;
+    void* fused_storage;
     double* fused_slots;
     size_t fused_slot_count;
     cxpr_ir_bindings fused_bindings;

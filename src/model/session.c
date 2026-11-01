@@ -149,6 +149,27 @@ static void cxpr_model_history_entry_free(cxpr_model_history_entry* entry,
     entry->count = 0u;
     entry->next = 0u;
 }
+
+static bool cxpr_model_storage_append(size_t* storage_size,
+                                      size_t count,
+                                      size_t element_size,
+                                      size_t alignment,
+                                      size_t* offset) {
+    size_t padding = 0u;
+
+    if (!storage_size || !offset || alignment == 0u) return false;
+    if (*storage_size % alignment != 0u) {
+        padding = alignment - *storage_size % alignment;
+    }
+    if (padding > SIZE_MAX - *storage_size) return false;
+    *offset = *storage_size + padding;
+    if (count > SIZE_MAX / element_size ||
+        count * element_size > SIZE_MAX - *offset) {
+        return false;
+    }
+    *storage_size = *offset + count * element_size;
+    return true;
+}
 static cxpr_value cxpr_model_context_get_history_value(const cxpr_context* ctx,
                                                        const char* key,
                                                        bool* found) {
@@ -625,12 +646,46 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         session->pending_capacity = program->binding_count;
     }
     if (program->has_fused_ir && program->fused_slot_count > 0u) {
-        session->fused_slots = (double*)calloc(program->fused_slot_count, sizeof(double));
-        if (!session->fused_slots) {
+        size_t storage_size = 0u;
+        size_t slots_offset, input_slots_offset, input_bound_offset;
+        size_t export_slots_offset, export_bound_offset;
+        size_t commit_slots_offset, commit_bound_offset;
+        size_t pending_values_offset, pending_bound_offset;
+
+        if (!cxpr_model_storage_append(&storage_size, program->fused_slot_count,
+                                       sizeof(double), _Alignof(double), &slots_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_input_count,
+                                       sizeof(cxpr_context_slot), _Alignof(cxpr_context_slot),
+                                       &input_slots_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_input_count,
+                                       sizeof(bool), _Alignof(bool), &input_bound_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_export_count,
+                                       sizeof(cxpr_context_slot), _Alignof(cxpr_context_slot),
+                                       &export_slots_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_export_count,
+                                       sizeof(bool), _Alignof(bool), &export_bound_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_commit_count,
+                                       sizeof(cxpr_context_slot), _Alignof(cxpr_context_slot),
+                                       &commit_slots_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_commit_count,
+                                       sizeof(bool), _Alignof(bool), &commit_bound_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_commit_count,
+                                       sizeof(double), _Alignof(double),
+                                       &pending_values_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->fused_commit_count,
+                                       sizeof(bool), _Alignof(bool), &pending_bound_offset)) {
             cxpr_model_session_free(session);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
+        session->fused_storage = calloc(1u, storage_size);
+        if (!session->fused_storage) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        session->fused_slots = (double*)((unsigned char*)session->fused_storage +
+                                         slots_offset);
         session->fused_slot_count = program->fused_slot_count;
         if (!cxpr_ir_bindings_prepare(&session->fused_bindings,
                                       &program->fused_ir, err)) {
@@ -639,47 +694,28 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         }
         session->fused_bindings.direct_enabled = false;
         if (program->fused_input_count > 0u) {
-            session->fused_input_slots =
-                (cxpr_context_slot*)calloc(program->fused_input_count,
-                                           sizeof(cxpr_context_slot));
-            session->fused_input_slot_bound =
-                (bool*)calloc(program->fused_input_count, sizeof(bool));
-            if (!session->fused_input_slots || !session->fused_input_slot_bound) {
-                cxpr_model_session_free(session);
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-                return NULL;
-            }
+            session->fused_input_slots = (cxpr_context_slot*)(
+                (unsigned char*)session->fused_storage + input_slots_offset);
+            session->fused_input_slot_bound = (bool*)(
+                (unsigned char*)session->fused_storage + input_bound_offset);
             session->fused_input_slot_count = program->fused_input_count;
         }
         if (program->fused_export_count > 0u) {
-            session->fused_export_slots =
-                (cxpr_context_slot*)calloc(program->fused_export_count,
-                                           sizeof(cxpr_context_slot));
-            session->fused_export_slot_bound =
-                (bool*)calloc(program->fused_export_count, sizeof(bool));
-            if (!session->fused_export_slots || !session->fused_export_slot_bound) {
-                cxpr_model_session_free(session);
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-                return NULL;
-            }
+            session->fused_export_slots = (cxpr_context_slot*)(
+                (unsigned char*)session->fused_storage + export_slots_offset);
+            session->fused_export_slot_bound = (bool*)(
+                (unsigned char*)session->fused_storage + export_bound_offset);
             session->fused_export_slot_count = program->fused_export_count;
         }
         if (program->fused_commit_count > 0u) {
-            session->fused_commit_slots =
-                (cxpr_context_slot*)calloc(program->fused_commit_count,
-                                           sizeof(cxpr_context_slot));
-            session->fused_commit_slot_bound =
-                (bool*)calloc(program->fused_commit_count, sizeof(bool));
-            session->fused_pending_values =
-                (double*)calloc(program->fused_commit_count, sizeof(double));
-            session->fused_pending_bound =
-                (bool*)calloc(program->fused_commit_count, sizeof(bool));
-            if (!session->fused_commit_slots || !session->fused_commit_slot_bound ||
-                !session->fused_pending_values || !session->fused_pending_bound) {
-                cxpr_model_session_free(session);
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-                return NULL;
-            }
+            session->fused_commit_slots = (cxpr_context_slot*)(
+                (unsigned char*)session->fused_storage + commit_slots_offset);
+            session->fused_commit_slot_bound = (bool*)(
+                (unsigned char*)session->fused_storage + commit_bound_offset);
+            session->fused_pending_values = (double*)(
+                (unsigned char*)session->fused_storage + pending_values_offset);
+            session->fused_pending_bound = (bool*)(
+                (unsigned char*)session->fused_storage + pending_bound_offset);
             session->fused_commit_slot_count = program->fused_commit_count;
             session->fused_pending_count = program->fused_commit_count;
         }
@@ -767,16 +803,8 @@ void cxpr_model_session_free(cxpr_model_session* session) {
         cxpr_model_history_entry_free(&session->state_buffers[i], true, true);
     }
     free(session->state_buffers);
-    free(session->fused_slots);
+    free(session->fused_storage);
     cxpr_ir_bindings_reset(&session->fused_bindings);
-    free(session->fused_input_slots);
-    free(session->fused_input_slot_bound);
-    free(session->fused_export_slots);
-    free(session->fused_export_slot_bound);
-    free(session->fused_commit_slots);
-    free(session->fused_commit_slot_bound);
-    free(session->fused_pending_values);
-    free(session->fused_pending_bound);
     for (size_t i = 0; i < session->child_session_count; ++i) {
         cxpr_model_session_free(session->child_sessions[i]);
     }
