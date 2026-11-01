@@ -42,6 +42,21 @@ cxpr_expr_ast* cxpr_expr_ast_number_new(double value) {
     return node;
 }
 
+cxpr_expr_ast* cxpr_expr_ast_number_new_with_lexeme(double value,
+                                                    const char* lexeme,
+                                                    size_t length) {
+    cxpr_expr_ast* node = cxpr_expr_ast_number_new(value);
+    if (!node || !lexeme) return node;
+    node->data.number.lexeme = (char*)malloc(length + 1u);
+    if (!node->data.number.lexeme) {
+        free(node);
+        return NULL;
+    }
+    memcpy(node->data.number.lexeme, lexeme, length);
+    node->data.number.lexeme[length] = '\0';
+    return node;
+}
+
 cxpr_expr_ast* cxpr_expr_ast_int64_new(int64_t value) {
     cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;

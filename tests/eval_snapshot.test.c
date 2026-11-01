@@ -17,6 +17,27 @@ static cxpr_expr_ast* parse_required(const char* expression) {
     return ast;
 }
 
+static void test_snapshot_preserves_numeric_literal_lexeme(void) {
+    cxpr_expr_ast* ast = parse_required("0.000001");
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+
+    assert(ctx != NULL && reg != NULL);
+    assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+    assert(snapshot.node_count == 1u);
+    assert(strcmp(snapshot.nodes[0].label, "0.000001") == 0);
+    assert(strcmp(snapshot.nodes[0].source, "0.000001") == 0);
+    assert(snapshot.nodes[0].value.type == CXPR_VALUE_NUMBER);
+    assert(snapshot.nodes[0].value.d == 0.000001);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+}
+
 static double test_rsi(const double* args, size_t argc, void* userdata) {
     (void)args;
     (void)argc;
@@ -1163,6 +1184,7 @@ static void test_snapshot_record_literal_has_named_field_children(void) {
 }
 
 int main(void) {
+    test_snapshot_preserves_numeric_literal_lexeme();
     test_snapshot_marks_short_circuit_branch_skipped();
     test_snapshot_writes_host_metadata();
     test_snapshot_does_not_prefix_unary_operand_label();

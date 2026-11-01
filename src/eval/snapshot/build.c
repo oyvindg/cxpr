@@ -88,7 +88,9 @@ static char* cxpr_snapshot_label(const cxpr_expr_ast* ast) {
     if (!ast) return cxpr_snapshot_strdup("?");
     switch (cxpr_expr_ast_kind_of(ast)) {
         case CXPR_NODE_NUMBER:
-            return cxpr_snapshot_printf_number(cxpr_expr_ast_number_value(ast));
+            return ast->data.number.lexeme
+                ? cxpr_snapshot_strdup(ast->data.number.lexeme)
+                : cxpr_snapshot_printf_number(cxpr_expr_ast_number_value(ast));
         case CXPR_NODE_BOOL:
             return cxpr_snapshot_strdup(cxpr_expr_ast_bool_value(ast) ? "true" : "false");
         case CXPR_NODE_STRING:
