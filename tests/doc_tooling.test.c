@@ -626,8 +626,8 @@ static void test_function_parameters_preserve_origin_token_types(void) {
 static void test_function_catalog_exposes_inferred_parameter_types(void) {
     const char* source =
         "model demo\n"
-        "fn risk(high, peak_bars) {\n"
-        "  peak = max(window(high, peak_bars))\n"
+        "fn risk(high, peak_samples) {\n"
+        "  peak = max(window(high, peak_samples))\n"
         "  return peak\n"
         "}\n";
     char* json = cxpr_document_analyze_json(source, "function-types.cxpr");
@@ -636,7 +636,7 @@ static void test_function_catalog_exposes_inferred_parameter_types(void) {
                   "\"name\":\"risk\",\"builtin\":false,\"minArgs\":2,\"maxArgs\":2") != NULL);
     assert(strstr(json,
                   "\"parameters\":[{\"name\":\"high\",\"type\":\"number\"},"
-                  "{\"name\":\"peak_bars\",\"type\":\"number\"}]") != NULL);
+                  "{\"name\":\"peak_samples\",\"type\":\"number\"}]") != NULL);
     cxpr_document_json_free(json);
 }
 
