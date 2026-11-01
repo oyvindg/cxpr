@@ -41,13 +41,16 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
     }
     free(program->code);
     free(program->inputs);
+    free(program->value_kinds);
     program->code = NULL;
     program->inputs = NULL;
+    program->value_kinds = NULL;
     program->input_count = 0u;
     program->count = 0;
     program->capacity = 0;
     program->ast = NULL;
     program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
+    program->int64_fast_compatible = false;
     program->number_fast_compatible = false;
 }
 
@@ -780,6 +783,14 @@ void cxpr_expr_compiled_dump(const cxpr_expr_compiled* prog, FILE* out) {
     for (i = 0; i < prog->ir.count; ++i) {
         const cxpr_ir_instr* instr = &prog->ir.code[i];
         fprintf(stream, "%zu: %s", i, cxpr_ir_internal_opcode_name(instr->op));
+        if (prog->ir.value_kinds) {
+            static const char* const kind_names[] = {
+                "none", "dynamic", "f64", "i64", "bool"
+            };
+            const unsigned char kind = prog->ir.value_kinds[i];
+            fprintf(stream, " kind=%s",
+                    kind < CXPR_ARRAY_COUNT(kind_names) ? kind_names[kind] : "invalid");
+        }
         if (instr->name) fprintf(stream, " name=%s", instr->name);
         if (instr->aux_name) fprintf(stream, " aux=%s", instr->aux_name);
         if (instr->func) fprintf(stream, " argc=%zu func=%s", instr->index, instr->func->name);

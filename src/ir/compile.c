@@ -43,6 +43,12 @@ bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* 
         return false;
     }
 
+    program->int64_fast_compatible = cxpr_ir_validate_int64_fast_program(program);
+    if (!cxpr_ir_program_lower_value_kinds(program, err)) {
+        cxpr_ir_program_reset(program);
+        return false;
+    }
+
     if (program->fast_result_kind == CXPR_IR_RESULT_BOOL) {
         if (!cxpr_ir_validate_bool_fast_program(program)) {
             program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
@@ -52,7 +58,7 @@ bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* 
             program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
         }
     } else if (program->fast_result_kind == CXPR_IR_RESULT_INT64) {
-        /* The typed-stack int64 fast entry validates its result at execution. */
+        /* Unsupported dynamic int64 programs retain the typed fallback. */
     }
 
     if (program->fast_result_kind == CXPR_IR_RESULT_UNKNOWN) {

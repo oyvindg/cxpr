@@ -105,6 +105,12 @@ cxpr_value cxpr_ir_exec_value_with_locals(const cxpr_ir_program* program,
             program, ctx, reg, (double*)locals, local_count, err));
     }
     if (program && program->fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        if (program->int64_fast_compatible) {
+            if (!cxpr_ir_exec_int64_bool_fast(program, &bool_value, err)) {
+                return cxpr_num(NAN);
+            }
+            return cxpr_bool(bool_value);
+        }
         if (!cxpr_ir_exec_bool_fast(
                 program, ctx, reg, locals, local_count, &bool_value, err)) {
             return cxpr_num(NAN);
@@ -180,6 +186,12 @@ cxpr_value cxpr_expr_compiled_eval_value_bound(const cxpr_expr_compiled* prog,
         return cxpr_num(fast_value);
     }
     if (prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        if (prog->ir.int64_fast_compatible) {
+            if (!cxpr_ir_exec_int64_bool_fast(&prog->ir, &bool_value, err)) {
+                return cxpr_num(NAN);
+            }
+            return cxpr_bool(bool_value);
+        }
         if (!cxpr_ir_exec_bool_fast_bound(
                 &prog->ir, ctx, reg, NULL, 0, bindings, &bool_value, err)) {
             return cxpr_num(NAN);
@@ -276,6 +288,9 @@ bool cxpr_expr_compiled_eval_bool(const cxpr_expr_compiled* prog, const cxpr_con
     }
 
     if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_BOOL) {
+        if (prog->ir.int64_fast_compatible) {
+            return cxpr_ir_exec_int64_bool_fast(&prog->ir, out_value, err);
+        }
         cxpr_ir_bindings* bindings = cxpr_ir_standalone_bindings(&prog->ir, err);
         if (!bindings) return false;
         return cxpr_ir_exec_bool_fast_bound(

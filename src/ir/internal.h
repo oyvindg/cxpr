@@ -17,6 +17,14 @@
 /** @brief IR program is known to produce an int64 scalar result. */
 #define CXPR_IR_RESULT_INT64 3
 
+typedef enum {
+    CXPR_IR_VALUE_NONE = 0,
+    CXPR_IR_VALUE_DYNAMIC,
+    CXPR_IR_VALUE_F64,
+    CXPR_IR_VALUE_I64,
+    CXPR_IR_VALUE_BOOL
+} cxpr_ir_value_kind;
+
 /**
  * @brief Minimal opcode set for IR v1.
  *
@@ -187,7 +195,9 @@ typedef struct cxpr_ir_program_tag {
     cxpr_ir_input_descriptor* inputs; /**< Immutable unique scalar input descriptors. */
     size_t input_count;
     uint64_t binding_generation; /**< Unique identity for evaluator binding invalidation. */
+    unsigned char* value_kinds; /**< Immutable cxpr_ir_value_kind per instruction result. */
     unsigned char fast_result_kind; /**< CXPR_IR_RESULT_* fast-path classification. */
+    bool int64_fast_compatible; /**< Closed int64/bool program needs no cxpr_value stack. */
     bool number_fast_compatible; /**< Numeric API may use scalar execution for resolved lookbacks. */
 } cxpr_ir_program;
 
@@ -218,6 +228,8 @@ bool cxpr_ir_is_special_builtin_name(const char* name);
  */
 bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr, cxpr_error* err);
 bool cxpr_ir_program_prepare_inputs(cxpr_ir_program* program, cxpr_error* err);
+bool cxpr_ir_program_lower_value_kinds(cxpr_ir_program* program, cxpr_error* err);
+bool cxpr_ir_program_lower_value_kinds(cxpr_ir_program* program, cxpr_error* err);
 void cxpr_ir_bindings_reset(cxpr_ir_bindings* bindings);
 bool cxpr_ir_bindings_prepare(cxpr_ir_bindings* bindings,
                               const cxpr_ir_program* program, cxpr_error* err);

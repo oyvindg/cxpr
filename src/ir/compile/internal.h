@@ -61,6 +61,7 @@ bool cxpr_ir_runtime_call_needs_catchor_passthrough(const cxpr_expr_ast* ast);
  */
 unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                              size_t depth);
+bool cxpr_ir_validate_int64_fast_program(const cxpr_ir_program* program);
 /** @brief Lower one AST subtree into IR instructions.
  * @param ast AST subtree to compile.
  * @param program Destination IR program.

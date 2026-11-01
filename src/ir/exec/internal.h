@@ -121,6 +121,8 @@ bool cxpr_ir_exec_bool_fast_bound(const cxpr_ir_program* program,
 bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                              const cxpr_registry* reg, const double* locals,
                              size_t local_count, int64_t* out_value, cxpr_error* err);
+bool cxpr_ir_exec_int64_bool_fast(const cxpr_ir_program* program,
+                                  bool* out_value, cxpr_error* err);
 /** @brief Evaluate a public `cxpr_expr_compiled` to a typed runtime value. */
 cxpr_value cxpr_expr_compiled_eval_value(const cxpr_expr_compiled* prog, const cxpr_context* ctx,
                                    const cxpr_registry* reg, cxpr_error* err);

@@ -142,7 +142,9 @@ typedef struct cxpr_ir_program_tag {
     cxpr_ir_input_descriptor* inputs;
     size_t input_count;
     uint64_t binding_generation;
+    unsigned char* value_kinds;
     unsigned char fast_result_kind;
+    bool int64_fast_compatible;
     bool number_fast_compatible;
 } cxpr_ir_program;
 
@@ -224,6 +226,13 @@ bool cxpr_ir_compile(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                      cxpr_ir_program* program, cxpr_error* err);
 double cxpr_ir_exec(const cxpr_ir_program* program, const cxpr_context* ctx,
                     const cxpr_registry* reg, cxpr_error* err);
+bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program,
+                             const cxpr_context* ctx,
+                             const cxpr_registry* reg,
+                             const double* locals, size_t local_count,
+                             int64_t* out_value, cxpr_error* err);
+bool cxpr_ir_exec_int64_bool_fast(const cxpr_ir_program* program,
+                                  bool* out_value, cxpr_error* err);
 void cxpr_ir_program_reset(cxpr_ir_program* program);
 
 typedef struct {

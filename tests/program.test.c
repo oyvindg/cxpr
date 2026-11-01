@@ -394,6 +394,7 @@ static void test_program_dump(void) {
     size_t n = fread(buf, 1, sizeof(buf) - 1, tmp);
     buf[n] = '\0';
     assert(strstr(buf, "LOAD_VAR") != NULL);
+    assert(strstr(buf, "kind=f64") != NULL);
     assert(strstr(buf, "RETURN") != NULL);
 
     fclose(tmp);

@@ -33,6 +33,8 @@
 #define ASSERT_DOUBLE_EQ(a, b) assert(fabs((a) - (b)) < EPSILON)
 #define TEST_IR_RESULT_UNKNOWN 0
 #define TEST_IR_RESULT_DOUBLE 1
+#define TEST_IR_RESULT_INT64 3
+#define TEST_IR_VALUE_I64 3
 
 static double fn_distance3(const double* args, size_t argc, void* ud) {
     (void)argc;
@@ -1865,6 +1867,75 @@ static void test_ir_compiled_program_is_shareable_across_threads(void) {
     printf("  ✓ test_ir_compiled_program_is_shareable_across_threads\n");
 }
 
+static void test_ir_int64_overflow_uses_closed_lowered_executor(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
+        parser, "9223372036854775807i64 + 1i64", &err);
+    cxpr_ir_program program = {0};
+    int64_t value = 0;
+
+    assert(ast);
+    assert(cxpr_ir_compile(ast, NULL, &program, &err));
+    assert(program.fast_result_kind == TEST_IR_RESULT_INT64);
+    assert(program.int64_fast_compatible);
+    assert(program.value_kinds);
+    assert(program.value_kinds[0] == TEST_IR_VALUE_I64);
+    assert(program.value_kinds[1] == TEST_IR_VALUE_I64);
+    assert(program.value_kinds[2] == TEST_IR_VALUE_I64);
+    assert(!cxpr_ir_exec_int64_fast(
+        &program, ctx, NULL, NULL, 0u, &value, &err));
+    assert(err.code == CXPR_ERR_OVERFLOW);
+    assert(strcmp(err.message, "int64 addition overflow") == 0);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(ctx);
+    cxpr_expr_parser_free(parser);
+    printf("  ✓ test_ir_int64_overflow_uses_closed_lowered_executor\n");
+}
+
+static void test_ir_closed_int64_executor_arithmetic_and_comparison(void) {
+    cxpr_ir_instr arithmetic_code[] = {
+        {.op = CXPR_OP_PUSH_INT64, .int64_value = 7},
+        {.op = CXPR_OP_PUSH_INT64, .int64_value = 3},
+        {.op = CXPR_OP_SUB},
+        {.op = CXPR_OP_PUSH_INT64, .int64_value = 4},
+        {.op = CXPR_OP_MUL},
+        {.op = CXPR_OP_NEG},
+        {.op = CXPR_OP_RETURN},
+    };
+    cxpr_ir_instr comparison_code[] = {
+        {.op = CXPR_OP_PUSH_INT64, .int64_value = INT64_C(9007199254740993)},
+        {.op = CXPR_OP_PUSH_INT64, .int64_value = INT64_C(9007199254740992)},
+        {.op = CXPR_OP_CMP_GT},
+        {.op = CXPR_OP_RETURN},
+    };
+    cxpr_ir_program arithmetic = {
+        .code = arithmetic_code,
+        .count = CXPR_ARRAY_COUNT(arithmetic_code),
+        .fast_result_kind = TEST_IR_RESULT_INT64,
+        .int64_fast_compatible = true,
+    };
+    cxpr_ir_program comparison = {
+        .code = comparison_code,
+        .count = CXPR_ARRAY_COUNT(comparison_code),
+        .fast_result_kind = CXPR_IR_RESULT_BOOL,
+        .int64_fast_compatible = true,
+    };
+    cxpr_error err = {0};
+    int64_t integer = 0;
+    bool boolean = false;
+
+    assert(cxpr_ir_exec_int64_fast(
+        &arithmetic, NULL, NULL, NULL, 0u, &integer, &err));
+    assert(integer == -16);
+    assert(cxpr_ir_exec_int64_bool_fast(&comparison, &boolean, &err));
+    assert(boolean);
+    printf("  ✓ test_ir_closed_int64_executor_arithmetic_and_comparison\n");
+}
+
 int main(void) {
     printf("Running IR tests...\n");
     test_ir_compile_number_literal();
@@ -1924,6 +1995,8 @@ int main(void) {
     test_ir_exec_rejects_bool_result();
     test_ir_deduplicates_scalar_input_descriptors();
     test_ir_compiled_program_is_shareable_across_threads();
+    test_ir_int64_overflow_uses_closed_lowered_executor();
+    test_ir_closed_int64_executor_arithmetic_and_comparison();
     printf("All IR tests passed!\n");
     return 0;
 }

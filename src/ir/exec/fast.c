@@ -153,30 +153,6 @@ static inline bool cxpr_ir_exec_column_lookback_fast(const cxpr_ir_instr* instr,
     return true;
 }
 
-bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
-                             const cxpr_registry* reg, const double* locals,
-                             size_t local_count, int64_t* out_value, cxpr_error* err) {
-    cxpr_value value;
-    if (!out_value) {
-        if (err) {
-            err->code = CXPR_ERR_TYPE_MISMATCH;
-            err->message = "Output pointer is NULL";
-        }
-        return false;
-    }
-    value = cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
-    if (err && err->code != CXPR_OK) return false;
-    if (value.type != CXPR_VALUE_INT64) {
-        if (err) {
-            err->code = CXPR_ERR_TYPE_MISMATCH;
-            err->message = "Expression did not evaluate to int64";
-        }
-        return false;
-    }
-    *out_value = value.i64;
-    return true;
-}
-
 double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
                                       const cxpr_context* ctx, const cxpr_registry* reg,
                                       double* locals, size_t local_count,
