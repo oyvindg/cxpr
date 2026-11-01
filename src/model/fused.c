@@ -250,11 +250,11 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                                         &program->fused_input_count,
                                         model->inputs[i],
                                         slot,
-                                        model->input_declared_types &&
-                                                model->input_declared_types[i] == CXPR_MODEL_DECL_INT
+                                        program->input_declared_types &&
+                                                program->input_declared_types[i] == CXPR_MODEL_DECL_INT
                                             ? CXPR_MODEL_RESULT_INT64
-                                            : model->input_declared_types &&
-                                                      model->input_declared_types[i] == CXPR_MODEL_DECL_BOOL
+                                            : program->input_declared_types &&
+                                                      program->input_declared_types[i] == CXPR_MODEL_DECL_BOOL
                                                   ? CXPR_MODEL_RESULT_BOOL
                                                   : CXPR_MODEL_RESULT_NUMBER,
                                         err)) {
