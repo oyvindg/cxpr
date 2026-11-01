@@ -291,9 +291,23 @@ static void cxpr_context_set_cached(cxpr_hashmap* map, cxpr_context_entry_cache*
     cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
 }
 
+static bool cxpr_context_has_typed_variables(const cxpr_context* ctx) {
+    return ctx->bools.count || ctx->int64s.count || ctx->strings.count ||
+           ctx->arrays.count || ctx->structs.count;
+}
+
+static bool cxpr_context_has_typed_params(const cxpr_context* ctx) {
+    return ctx->bool_params.count || ctx->int64_params.count ||
+           ctx->string_params.count || ctx->array_params.count ||
+           ctx->structs.count;
+}
+
 void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
                                 unsigned long hash, double value) {
-    cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    if (!ctx || !name) return;
+    if (cxpr_context_has_typed_variables(ctx)) {
+        cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    }
     cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
                             ctx->variable_ptr_cache, &ctx->variables_version,
                             name, hash, value);
@@ -301,7 +315,9 @@ void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
 
 void cxpr_context_set(cxpr_context* ctx, const char* name, double value) {
     if (!ctx || !name) return;
-    cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    if (cxpr_context_has_typed_variables(ctx)) {
+        cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    }
     cxpr_context_set_cached(&ctx->variables, ctx->variable_cache,
                             ctx->variable_ptr_cache, &ctx->variables_version,
                             name, value);
@@ -360,8 +376,7 @@ void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries
 
     if (!ctx || !entries) return;
 
-    if (ctx->bools.count || ctx->int64s.count || ctx->strings.count ||
-        ctx->arrays.count || ctx->structs.count) {
+    if (cxpr_context_has_typed_variables(ctx)) {
         for (i = 0; entries[i].name; ++i) {
             const char* name = entries[i].name;
             cxpr_bool_map_remove(&ctx->bools, name);
@@ -482,7 +497,10 @@ const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* n
 
 void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
                                       unsigned long hash, double value) {
-    cxpr_context_clear_param_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    if (!ctx || !name) return;
+    if (cxpr_context_has_typed_params(ctx)) {
+        cxpr_context_clear_param_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    }
     cxpr_context_set_hashed(ctx, &ctx->params, ctx->param_cache,
                             ctx->param_ptr_cache, &ctx->params_version,
                             name, hash, value);
@@ -490,7 +508,9 @@ void cxpr_context_set_param_prehashed(cxpr_context* ctx, const char* name,
 
 void cxpr_context_set_param(cxpr_context* ctx, const char* name, double value) {
     if (!ctx || !name) return;
-    cxpr_context_clear_param_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    if (cxpr_context_has_typed_params(ctx)) {
+        cxpr_context_clear_param_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
+    }
     cxpr_context_set_cached(&ctx->params, ctx->param_cache,
                             ctx->param_ptr_cache, &ctx->params_version,
                             name, value);
@@ -501,9 +521,7 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
 
     if (!ctx || !entries) return;
 
-    if (ctx->bool_params.count || ctx->int64_params.count ||
-        ctx->string_params.count || ctx->array_params.count ||
-        ctx->structs.count) {
+    if (cxpr_context_has_typed_params(ctx)) {
         for (i = 0; entries[i].name; ++i) {
             const char* name = entries[i].name;
             cxpr_bool_map_remove(&ctx->bool_params, name);
