@@ -9,10 +9,9 @@
 #define CXPR_OVERLAY_CONTEXT_CACHE_MAX 64u
 
 /*
- * The empty-overlay reuse cache is thread-local: each thread keeps its own
- * free list so concurrent overlay create/free (which happens implicitly during
- * evaluation of scoped-source and producer calls) never races. The atexit hook
- * only reclaims the registering thread's cache; worker threads should call
+ * The empty-context reuse cache is thread-local: each thread keeps its own
+ * free list so concurrent context create/free never races. The atexit hook only
+ * reclaims the registering thread's cache; worker threads should call
  * cxpr_thread_cleanup() before exiting to release theirs.
  */
 static CXPR_THREAD_LOCAL cxpr_context* cxpr_overlay_context_cache = NULL;
@@ -81,7 +80,17 @@ void cxpr_thread_cleanup(void) {
 }
 
 cxpr_context* cxpr_context_new(void) {
-    cxpr_context* ctx = (cxpr_context*)calloc(1, sizeof(cxpr_context));
+    cxpr_context* ctx;
+
+    if (cxpr_overlay_context_cache) {
+        ctx = cxpr_overlay_context_cache;
+        cxpr_overlay_context_cache = ctx->overlay_cache_next;
+        cxpr_overlay_context_cache_count--;
+        cxpr_context_reset_empty_overlay(ctx, NULL);
+        return ctx;
+    }
+
+    ctx = (cxpr_context*)calloc(1, sizeof(cxpr_context));
     if (!ctx) return NULL;
     cxpr_hashmap_init(&ctx->variables);
     cxpr_hashmap_init(&ctx->params);
@@ -116,17 +125,7 @@ cxpr_context* cxpr_context_new(void) {
 }
 
 cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent) {
-    cxpr_context* ctx;
-
-    if (cxpr_overlay_context_cache) {
-        ctx = cxpr_overlay_context_cache;
-        cxpr_overlay_context_cache = ctx->overlay_cache_next;
-        cxpr_overlay_context_cache_count--;
-        cxpr_context_reset_empty_overlay(ctx, parent);
-        return ctx;
-    }
-
-    ctx = cxpr_context_new();
+    cxpr_context* ctx = cxpr_context_new();
     if (!ctx) return NULL;
     ctx->parent = parent;
     return ctx;
@@ -143,13 +142,17 @@ void cxpr_context_clear_expression_scope(cxpr_context* ctx) {
 }
 
 void cxpr_context_free(cxpr_context* ctx) {
+    bool is_empty;
+
     if (!ctx) return;
-    if (ctx->parent && cxpr_overlay_context_cache_count < CXPR_OVERLAY_CONTEXT_CACHE_MAX) {
+    is_empty = cxpr_context_overlay_is_empty(ctx);
+    if ((ctx->parent || is_empty) &&
+        cxpr_overlay_context_cache_count < CXPR_OVERLAY_CONTEXT_CACHE_MAX) {
         if (!cxpr_overlay_context_cache_atexit_registered) {
             atexit(cxpr_thread_cleanup);
             cxpr_overlay_context_cache_atexit_registered = true;
         }
-        if (!cxpr_context_overlay_is_empty(ctx)) cxpr_context_clear(ctx);
+        if (!is_empty) cxpr_context_clear(ctx);
         cxpr_context_clear_expression_scope(ctx);
         cxpr_context_reset_empty_overlay(ctx, NULL);
         ctx->overlay_cache_next = cxpr_overlay_context_cache;

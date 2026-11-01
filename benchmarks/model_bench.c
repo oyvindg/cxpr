@@ -947,6 +947,20 @@ static int benchmark_history_session_setup(void) {
     return 1;
 }
 
+static int benchmark_context_setup(void) {
+    const size_t iterations = 20000u;
+    long long start = now_ns();
+
+    for (size_t i = 0u; i < iterations; ++i) {
+        cxpr_context* context = cxpr_context_new();
+        if (!context) return 0;
+        cxpr_context_free(context);
+    }
+    printf("context_setup %.2f ns/context\n",
+           (double)(now_ns() - start) / (double)iterations);
+    return 1;
+}
+
 int main(int argc, char** argv) {
     const size_t eval_iters = 200000u;
     if (argc == 2 && strcmp(argv[1], "--candidate-setup") == 0) {
@@ -957,6 +971,9 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && strcmp(argv[1], "--history-session-setup") == 0) {
         return benchmark_history_session_setup() ? 0 : 2;
+    }
+    if (argc == 2 && strcmp(argv[1], "--context-setup") == 0) {
+        return benchmark_context_setup() ? 0 : 2;
     }
     const double host_eval = time_host_registered_eval(eval_iters);
     const double model_eval = time_model_eval(eval_iters);
