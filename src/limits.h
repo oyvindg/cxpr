@@ -14,7 +14,7 @@
 #define CXPR_MAX_PRODUCER_FIELDS 64
 
 /** @brief Recursion limit used when deciding whether IR inlining stays tractable. */
-#define CXPR_IR_INLINE_DEPTH_LIMIT 8
+#define CXPR_IR_INLINE_DEPTH_LIMIT 16
 /** @brief Recursion limit used by IR type/result inference helpers. */
 #define CXPR_IR_INFER_DEPTH_LIMIT 32
 /** @brief Fixed operand-stack capacity for IR interpreters and validators. */

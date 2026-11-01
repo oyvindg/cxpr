@@ -152,12 +152,55 @@ static void test_known_struct_arithmetic_lowers_selected_fields(void) {
     cxpr_expr_parser_free(p);
 }
 
+static void test_deep_scalar_defined_chain_inlines_without_call_opcode(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_context* context = cxpr_context_new();
+    cxpr_error error = {0};
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
+    double result = NAN;
+
+    assert(parser && registry && context);
+    cxpr_register_defaults(registry);
+    assert(cxpr_registry_define_fn(registry, "q0(x) => x * x").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q1(x) => sqrt(q0(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q2(x) => sqrt(q1(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q3(x) => sqrt(q2(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q4(x) => sqrt(q3(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q5(x) => sqrt(q4(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q6(x) => sqrt(q5(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q7(x) => sqrt(q6(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q8(x) => sqrt(q7(x))").code == CXPR_OK);
+    assert(cxpr_registry_define_fn(registry, "q9(x) => sqrt(q8(x))").code == CXPR_OK);
+
+    ast = cxpr_expr_ast_parse(parser, "q9(x)", &error);
+    assert(ast);
+    program = cxpr_expr_compile(ast, registry, &error);
+    assert(program);
+    for (size_t i = 0u; i < cxpr_expr_compiled_ir_count(program); ++i) {
+        cxpr_ir_instruction instruction;
+        assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
+        assert(instruction.op != CXPR_IR_OP_CALL_DEFINED);
+    }
+    cxpr_context_set(context, "x", 4.0);
+    assert(cxpr_expr_compiled_eval_number(program, context, registry, &result, &error));
+    assert(isfinite(result));
+
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(context);
+    cxpr_registry_free(registry);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     test_ir_compile_with_locals_and_fast_kind();
     test_ir_compile_array_literal_builds_array_ir();
     test_ir_compile_rejects_wrong_builtin_arity();
     test_long_unknown_field_has_eval_parity();
     test_known_struct_arithmetic_lowers_selected_fields();
+    test_deep_scalar_defined_chain_inlines_without_call_opcode();
     printf("  \xE2\x9C\x93 ir_compile\n");
     return 0;
 }

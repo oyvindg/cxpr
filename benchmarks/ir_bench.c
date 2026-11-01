@@ -1585,8 +1585,7 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
         free_bench_model(&source);
         exit(1);
     }
-    if (strcmp(c->name, "defined_call") == 0 || strcmp(c->name, "struct_call") == 0 ||
-        strcmp(c->name, "struct_binding") == 0) {
+    if (strcmp(c->name, "struct_call") == 0 || strcmp(c->name, "struct_binding") == 0) {
         bool found_call_defined = false;
         const size_t instruction_count = cxpr_expr_compiled_ir_count(program);
         for (size_t i = 0u; i < instruction_count; ++i) {
