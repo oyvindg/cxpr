@@ -21,7 +21,8 @@ export interface SourceRequirement {
 export interface Analysis {
   ok: boolean; diagnostics?: Diagnostic[]; outline?: OutlineItem[]; tokens?: SemanticToken[]
   sourceTokens?: SemanticToken[]; requirements?: SourceRequirement[]
-  functions?: FunctionInfo[]; folds?: Fold[]; error?: string; line?: number; column?: number
+  functions?: FunctionInfo[]; folds?: Fold[]; modelType?: string
+  error?: string; line?: number; column?: number
 }
 export interface SymbolResolution {
   name: string; kind: string; type?: string; builtin?: boolean; signature?: string

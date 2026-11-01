@@ -10,7 +10,7 @@ static const char baseline_json[] =
     "\"startLine\":0,\"startChar\":0,\"endLine\":0,\"endChar\":10},{\"kind\":\"input\","
     "\"name\":\"close\",\"value\":\"\",\"startLine\":1,\"startChar\":0,\"endLine\":1,"
     "\"endChar\":8},{\"kind\":\"output\",\"name\":\"result\",\"value\":\"\","
-    "\"startLine\":2,\"startChar\":0,\"endLine\":2,\"endChar\":18}],\"folds\":[{"
+    "\"startLine\":2,\"startChar\":0,\"endLine\":2,\"endChar\":18}],\"modelType\":\"\",\"folds\":[{"
     "\"startLine\":0,\"startChar\":0,\"endLine\":3,\"endChar\":0}],\"requirements\":[],\"tokens\":[{\"line\":0,"
     "\"start\":6,\"length\":4,\"type\":\"assignment\"},{\"line\":1,\"start\":3,\"length\":5,"
     "\"type\":\"input\"},{\"line\":2,\"start\":4,\"length\":6,\"type\":\"assignment\"}],"
@@ -79,6 +79,18 @@ static void test_analysis_baseline(void) {
     char* json = cxpr_document_analyze_json(source, "baseline.cxpr");
     assert(json != NULL);
     assert(strcmp(json, baseline_json) == 0);
+    cxpr_document_json_free(json);
+}
+
+static void test_analysis_exposes_model_type(void) {
+    const char* source =
+        "model bollinger {\n"
+        "  type = \"indicator\"\n"
+        "}\n"
+        "out value = 1\n";
+    char* json = cxpr_document_analyze_json(source, "bollinger.cxpr");
+    assert(json != NULL);
+    assert(strstr(json, "\"modelType\":\"indicator\"") != NULL);
     cxpr_document_json_free(json);
 }
 
@@ -645,6 +657,7 @@ static void test_function_catalog_exposes_inferred_parameter_types(void) {
 
 int main(void) {
     test_analysis_baseline();
+    test_analysis_exposes_model_type();
     test_registry_signature_fields();
     test_marker_resolution();
     test_model_resolution_has_callable_metadata();

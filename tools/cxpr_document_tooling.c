@@ -1011,7 +1011,18 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
     recover_error_location(&semantic_err, source);
     fputs("{\"ok\":true,\"outline\":[", stdout);
     walk_outline(cxpr_doc_ast_root(ast), &comma);
-    fputs("],\"folds\":[", stdout);
+    fputs("],\"modelType\":", stdout);
+    {
+        const cxpr_model_host_block* model_block =
+            model ? cxpr_model_host_block_by_kind(model, "model") : NULL;
+        char* model_type = NULL;
+        if (model_block) {
+            (void)cxpr_host_block_field_string_by_key(model_block, "type", &model_type);
+        }
+        json_string(model_type ? model_type : "");
+        free(model_type);
+    }
+    fputs(",\"folds\":[", stdout);
     comma = 0;
     walk_folds(cxpr_doc_ast_root(ast), &comma);
     fputs("],\"requirements\":[", stdout);
