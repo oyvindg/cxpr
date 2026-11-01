@@ -11,6 +11,6 @@
 /** @brief Public cxpr minor version. */
 #define CXPR_VERSION_MINOR 3
 /** @brief Public cxpr patch version. */
-#define CXPR_VERSION_PATCH 3
+#define CXPR_VERSION_PATCH 2
 
 #endif /* CXPR_VERSION_H */

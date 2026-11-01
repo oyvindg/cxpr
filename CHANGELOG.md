@@ -2,26 +2,12 @@
 
 ## Unreleased
 
-- Added append-only `CXPR_ERR_OVERFLOW`, `CXPR_IR_RESULT_INT64`, and
-  `CXPR_DEBUG_RESULT_INT64` values.
-- Integer `+`, `-`, and `*` now report `CXPR_ERR_OVERFLOW`; integer division
-  now returns `double`, and mixed `int64`/`double` arithmetic promotes to
-  `double`. Numeric comparisons compare mathematical values across those two
-  runtime types, including exact equality around the 2^53 boundary.
-- Added the additive typed checked-C backend
-  `cxpr_expr_compiled_to_c_typed_checked_function`, preserving scalar result
-  types and arithmetic error codes without changing the legacy double ABI.
-- Added exact int64 context/history/resample host bindings, including exported
-  context/parameter get/set symbols for managed P/Invoke consumers. These are
-  additive exports; existing ABI signatures and the shared-library SONAME are
-  unchanged.
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.3] - 2026-11-01
+## [0.3.2] - 2026-11-01
 
 Public pre-1.0 release. Consumers should apply normal `0.x` compatibility
 expectations: source/API adjustments may arrive in later minor releases.
@@ -35,6 +21,9 @@ expectations: source/API adjustments may arrive in later minor releases.
   optimizer constraints and candidate execution.
 - Exact `int64` values across arithmetic, contexts, history, resampling,
   generated C, debug metadata, and managed host bindings.
+- Append-only `CXPR_ERR_OVERFLOW`, `CXPR_IR_RESULT_INT64`, and
+  `CXPR_DEBUG_RESULT_INT64` values plus a typed checked-C backend that preserves
+  scalar result types and arithmetic errors.
 - Public document-tooling and evaluation-flow snapshot metadata used by the
   language service, portable WASM analyzer, and VS Code integration.
 - Generic bulk-grid and flow-field/pathfinding primitives, including host
@@ -55,12 +44,6 @@ expectations: source/API adjustments may arrive in later minor releases.
   host-visible argument-range expectations.
 - NVRTC resident optimizer kernels now compile with the required device-visible
   value helpers.
-
-## [0.3.2]
-
-The project is pre-1.0. The public library version has been reset to `0.3.2`;
-historical release headings and tags were renumbered without changing their
-associated commits.
 
 ## [0.3.1] - 2026-09-13
 
@@ -427,7 +410,6 @@ associated commits.
 Initial tagged releases. Detailed per-version history predates this changelog;
 see the Git tags `v0.0.1`–`v0.0.5` for the corresponding commits.
 
-[0.3.3]: https://github.com/oyvindg/cxpr/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/oyvindg/cxpr/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/oyvindg/cxpr/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/oyvindg/cxpr/compare/v0.2.9...v0.3.0

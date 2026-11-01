@@ -5,7 +5,7 @@ implemented in the current source tree. Public declarations in
 `include/cxpr/`, their implementations, and executable tests are the source of
 truth. Historical plans and release notes are not API specifications.
 
-Version 0.3.3 is a public pre-1.0 release. Consumers should apply normal `0.x`
+Version 0.3.2 is a public pre-1.0 release. Consumers should apply normal `0.x`
 compatibility expectations; later minor releases may adjust the source/API
 surface.
 
@@ -52,7 +52,7 @@ hot paths and running the benchmarks.
 
 | Contract | Current value | Header |
 | --- | ---: | --- |
-| Library version | 0.3.3 | `<cxpr/version.h>` |
+| Library version | 0.3.2 | `<cxpr/version.h>` |
 | Generated model descriptor ABI | 5 | `<cxpr/generated.h>` |
 | Generated resample view ABI | 1 | `<cxpr/generated.h>` |
 | Public IR view API | 1 | `<cxpr/ir.h>` |
