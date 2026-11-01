@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #ifdef CXPR_BENCH_RSI_MODEL_INLINE
@@ -843,8 +844,84 @@ static const char* rsi_fused_ir_disabled_opcode(void) {
     return opcode;
 }
 
-int main(void) {
+static int benchmark_optimizer_candidate_setup(void) {
+    const size_t iterations = 20000u;
+    cxpr_error err = {0};
+    char* source = read_fixture("fixtures/strategies/rsi_state_model.cxpr");
+    cxpr_model* model;
+    cxpr_model_compiled* program;
+    long long base_start, base_ns, params_start, params_ns;
+
+    if (!source) return 0;
+    model = cxpr_model_parse(source, &err);
+    program = model ? cxpr_model_compile(model, NULL, &err) : NULL;
+    if (!program) return 0;
+    base_start = now_ns();
+    for (size_t i = 0u; i < iterations; ++i) {
+        cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
+        if (!session) return 0;
+        cxpr_model_session_free(session);
+    }
+    base_ns = now_ns() - base_start;
+    params_start = now_ns();
+    for (size_t i = 0u; i < iterations; ++i) {
+        cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
+        if (!session ||
+            !cxpr_model_session_set_param(session, "rsi_period", 4.0, &err) ||
+            !cxpr_model_session_set_param(session, "entry_rsi", 65.0, &err) ||
+            !cxpr_model_session_set_param(session, "exit_rsi", 40.0, &err)) return 0;
+        cxpr_model_session_free(session);
+    }
+    params_ns = now_ns() - params_start;
+    printf("candidate_setup base=%.2f ns with_3_params=%.2f ns param_delta=%.2f ns\n",
+           (double)base_ns / (double)iterations,
+           (double)params_ns / (double)iterations,
+           (double)(params_ns - base_ns) / (double)iterations);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    free(source);
+    return 1;
+}
+
+static int benchmark_optimizer_grid_setup(void) {
+    const char* source =
+        "model grid_setup\n"
+        "$a = 0 { optimize { min = 0, max = 9, step = 1 } }\n"
+        "$b = 0 { optimize { min = 0, max = 9, step = 1 } }\n"
+        "$c = 0 { optimize { min = 0, max = 9, step = 1 } }\n"
+        "assert $a + $b + $c >= 0\n"
+        "score = $a + $b + $c\n"
+        "out score { optimize { maximize } }\n";
+    const size_t iterations = 100u;
+    cxpr_error err = {0};
+    cxpr_doc* doc = cxpr_doc_parse_model(source, &err);
+    cxpr_model_compiled* program = doc ? cxpr_model_compile(cxpr_doc_model(doc), NULL, &err) : NULL;
+    cxpr_model_optimize_inputs inputs = {0};
+    long long start;
+
+    if (!program) return 0;
+    start = now_ns();
+    for (size_t i = 0u; i < iterations; ++i) {
+        cxpr_model_optimize_grid grid = {0};
+        if (!cxpr_model_optimize_prepare_grid(program, &inputs, &grid, &err)) return 0;
+        if (grid.candidate_count != 1000u || grid.active_count != 1000u) return 0;
+        cxpr_model_optimize_grid_free(&grid);
+    }
+    printf("grid_setup %.2f ns/candidate\n",
+           (double)(now_ns() - start) / (double)(iterations * 1000u));
+    cxpr_model_compiled_free(program);
+    cxpr_doc_free(doc);
+    return 1;
+}
+
+int main(int argc, char** argv) {
     const size_t eval_iters = 200000u;
+    if (argc == 2 && strcmp(argv[1], "--candidate-setup") == 0) {
+        return benchmark_optimizer_candidate_setup() ? 0 : 2;
+    }
+    if (argc == 2 && strcmp(argv[1], "--grid-setup") == 0) {
+        return benchmark_optimizer_grid_setup() ? 0 : 2;
+    }
     const double host_eval = time_host_registered_eval(eval_iters);
     const double model_eval = time_model_eval(eval_iters);
     const double host_signal_helper_eval = time_host_registered_signal_helper_eval(eval_iters);

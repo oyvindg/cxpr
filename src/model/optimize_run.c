@@ -28,6 +28,7 @@ bool cxpr_model_optimize_prepare_grid(
     cxpr_model_optimize_grid* out,
     cxpr_error* err) {
     size_t* indices = NULL;
+    cxpr_context* context = NULL;
     size_t total = 1u;
     if (err) *err = (cxpr_error){0};
     if (!program || !inputs || !out || program->optimize_dimension_count == 0u ||
@@ -50,15 +51,14 @@ bool cxpr_model_optimize_prepare_grid(
     indices = (size_t*)calloc(out->param_count, sizeof(*indices));
     if (!out->params || !out->active || !indices) goto oom;
 
+    context = cxpr_context_new();
+    if (!context) goto oom;
+    if (!cxpr_model_compiled_seed_defaults(program, context, program->registry, err)) {
+        goto fail;
+    }
+
     for (size_t candidate = 0u; candidate < total; ++candidate) {
-        cxpr_context* context = cxpr_context_new();
-        bool allowed = context != NULL;
-        if (!context) goto oom;
-        if (!cxpr_model_compiled_seed_defaults(
-                program, context, program->registry, err)) {
-            cxpr_context_free(context);
-            goto fail;
-        }
+        bool allowed = true;
         for (size_t i = 0u; i < out->param_count; ++i) {
             const double value = cxpr_optimize_dimension_value(
                 &program->optimize_dimensions[i], indices[i]);
@@ -72,7 +72,6 @@ bool cxpr_model_optimize_prepare_grid(
             bool passed = false;
             if (!cxpr_eval_ast_bool(program->asserts[i].expr, context,
                                     program->registry, &passed, err)) {
-                cxpr_context_free(context);
                 goto fail;
             }
             if (passed) continue;
@@ -88,19 +87,19 @@ bool cxpr_model_optimize_prepare_grid(
                         ? program->asserts[i].span.start.line : 0u,
                     program->asserts[i].has_span
                         ? program->asserts[i].span.start.column : 0u);
-                cxpr_context_free(context);
                 goto fail;
             }
         }
         out->active[candidate] = allowed ? 1u : 0u;
         if (allowed) ++out->active_count;
-        cxpr_context_free(context);
+        cxpr_context_clear_cached_structs(context);
         for (size_t i = out->param_count; i-- > 0u;) {
             if (++indices[i] < cxpr_optimize_dimension_size(
                     &program->optimize_dimensions[i])) break;
             indices[i] = 0u;
         }
     }
+    cxpr_context_free(context);
     free(indices);
     if (out->active_count == 0u) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
@@ -113,6 +112,7 @@ oom:
     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
                          "Optimize candidate space is too large", 0, 0);
 fail:
+    cxpr_context_free(context);
     free(indices);
     cxpr_model_optimize_grid_free(out);
     return false;
