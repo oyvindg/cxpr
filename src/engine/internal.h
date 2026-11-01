@@ -146,6 +146,8 @@ struct cxpr_engine_session {
     cxpr_context* ctx;    /* persistent per-session store */
     int64_t cursor;       /* -1 before first tick */
 
+    cxpr_context_slot* param_slots; /* parallel to immutable program params */
+
     engine_source* sources; /* per-session copy: bindings overridable, names borrowed from prog */
     size_t source_count;
 

@@ -802,6 +802,31 @@ static void test_engine_qualified_param_names(void) {
     value = cxpr_engine_get_double(session, "sum", &found);
     assert(found);
     assert(value == 13.0);
+    cxpr_engine_set_param(session, "base.period", 13.0);
+    cxpr_engine_set_param(session, "period", 7.0);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    value = cxpr_engine_get_double(session, "sum", &found);
+    assert(found);
+    assert(value == 20.0);
+    for (size_t i = 0u; i < 64u; ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "external_%zu", i);
+        cxpr_context_set_param(cxpr_engine_session_context(session), name, (double)i);
+    }
+    cxpr_engine_set_param(session, "period", 11.0);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    value = cxpr_engine_get_double(session, "sum", &found);
+    assert(found);
+    assert(value == 24.0);
+    {
+        const cxpr_value boolean = CXPR_VALUE_BOOL_INIT(true);
+        cxpr_engine_set_param_value(session, "period", &boolean);
+    }
+    cxpr_engine_set_param(session, "period", 3.0);
+    assert(cxpr_engine_tick(session, NULL, NULL, &err));
+    value = cxpr_engine_get_double(session, "sum", &found);
+    assert(found);
+    assert(value == 16.0);
     cxpr_engine_session_free(session);
 }
 

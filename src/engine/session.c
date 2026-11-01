@@ -80,6 +80,15 @@ cxpr_engine_session* cxpr_engine_session_new(const cxpr_engine_program* prog) {
     for (i = 0; i < prog->param_count; ++i) {
         cxpr_context_set_param(s->ctx, prog->params[i].name, prog->params[i].value);
     }
+    if (prog->param_count > 0u) {
+        s->param_slots = (cxpr_context_slot*)calloc(prog->param_count,
+                                                     sizeof(*s->param_slots));
+        if (!s->param_slots) goto fail;
+        for (i = 0u; i < prog->param_count; ++i) {
+            if (!cxpr_context_param_slot_bind(s->ctx, prog->params[i].name,
+                                              &s->param_slots[i])) goto fail;
+        }
+    }
     for (i = 0; i < prog->role_count; ++i) {
         engine_seed_role(s->ctx, prog->roles[i].name, prog->roles[i].members,
                          prog->roles[i].count, prog->roles[i].bound_count);
@@ -112,6 +121,7 @@ void cxpr_engine_session_free(cxpr_engine_session* session) {
     if (!session) return;
     if (session->eval) cxpr_evaluator_free(session->eval);
     if (session->ctx) cxpr_context_free(session->ctx);
+    free(session->param_slots);
     for (i = 0; i < session->source_count; ++i) free(session->sources[i].ring);
     free(session->sources);
     for (i = 0; i < session->expr_ring_count; ++i) {
@@ -174,14 +184,35 @@ cxpr_context* cxpr_engine_session_context(cxpr_engine_session* session) {
 /* -------------------------------------------------------------------------- */
 
 void cxpr_engine_set_param(cxpr_engine_session* session, const char* name, double value) {
+    size_t i;
     if (!session || !name) return;
+    for (i = 0u; i < session->prog->param_count; ++i) {
+        if (strcmp(session->prog->params[i].name, name) != 0) continue;
+        if (!cxpr_context_param_slot_valid(session->ctx, &session->param_slots[i]) &&
+            !cxpr_context_param_slot_bind(session->ctx, name, &session->param_slots[i])) {
+            break;
+        }
+        cxpr_context_slot_set(&session->param_slots[i], value);
+        return;
+    }
     cxpr_context_set_param(session->ctx, name, value);
 }
 
 void cxpr_engine_set_param_value(cxpr_engine_session* session, const char* name,
                                  const cxpr_value* value) {
+    size_t i;
     if (!session || !name || !value) return;
+    if (value->type == CXPR_VALUE_NUMBER) {
+        cxpr_engine_set_param(session, name, value->d);
+        return;
+    }
     cxpr_context_set_param_value(session->ctx, name, value);
+    for (i = 0u; i < session->prog->param_count; ++i) {
+        if (strcmp(session->prog->params[i].name, name) == 0) {
+            session->param_slots[i] = (cxpr_context_slot){0};
+            break;
+        }
+    }
 }
 
 static engine_source* engine_find_source(cxpr_engine_session* session, const char* name) {

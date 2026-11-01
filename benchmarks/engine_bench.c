@@ -20,6 +20,7 @@
 
 #define NBARS 4096u
 #define REPS  3000u
+#define PARAM_UPDATES 5000000u
 
 static volatile double g_sink = 0.0;
 static double open_[NBARS], high_[NBARS], low_[NBARS], close_[NBARS];
@@ -48,6 +49,47 @@ static void report(const char* name, long long low_ns, long long low_sig,
 static void report_detail(const char* name, long long ns) {
     double total = (double)NBARS * (double)REPS;
     printf("  %-24s %7.2f ns/bar\n", name, (double)ns / total);
+}
+
+static int run_param_updates(void) {
+    const cxpr_expression_def expressions[] = {{"scaled", "close * $scale"}};
+    const cxpr_context_entry params[] = {{"scale", 1.0}};
+    cxpr_engine_config config = {0};
+    cxpr_error err = {0};
+    cxpr_engine_session* session;
+    cxpr_context* context;
+    long long context_start, context_ns, engine_start, engine_ns;
+    unsigned i;
+    bool found = false;
+
+    config.expressions = expressions;
+    config.expression_count = CXPR_ARRAY_COUNT(expressions);
+    config.params = params;
+    config.param_count = CXPR_ARRAY_COUNT(params);
+    session = cxpr_engine_session_create(&config, &err);
+    context = cxpr_context_new();
+    if (!session || !context) return 0;
+    cxpr_context_set_param(context, "scale", 1.0);
+
+    context_start = now_ns();
+    for (i = 0u; i < PARAM_UPDATES; ++i) {
+        cxpr_context_set_param(context, "scale", 1.0 + (double)(i & 255u));
+    }
+    context_ns = now_ns() - context_start;
+    engine_start = now_ns();
+    for (i = 0u; i < PARAM_UPDATES; ++i) {
+        cxpr_engine_set_param(session, "scale", 1.0 + (double)(i & 255u));
+    }
+    engine_ns = now_ns() - engine_start;
+    sink_add(cxpr_context_get_param(context, "scale", &found));
+    sink_add(cxpr_context_get_param(cxpr_engine_session_context(session), "scale", &found));
+    printf("[param-update] context %7.2f ns/op | engine-slot %7.2f ns/op | speedup %.2fx\n",
+           (double)context_ns / (double)PARAM_UPDATES,
+           (double)engine_ns / (double)PARAM_UPDATES,
+           (double)context_ns / (double)engine_ns);
+    cxpr_context_free(context);
+    cxpr_engine_session_free(session);
+    return 1;
 }
 
 static cxpr_expr_ast* parse_or_die(cxpr_expr_parser* parser, const char* expr, cxpr_error* err) {
@@ -403,10 +445,13 @@ static int run_lookback(void) {
     return raw_sig == low_sig && low_sig == no_watch_sig && low_sig == eng_sig;
 }
 
-int main(void) {
+int main(int argc, char** argv) {
     unsigned i;
     uint64_t s = 0x9e3779b97f4a7c15ULL;
     int ok = 1;
+    if (argc == 2 && strcmp(argv[1], "--param-update") == 0) {
+        return run_param_updates() ? 0 : 2;
+    }
     for (i = 0; i < NBARS; ++i) {
         double o, c;
         s = s * 6364136223846793005ULL + 1442695040888963407ULL;
@@ -420,6 +465,7 @@ int main(void) {
     printf("bars=%u reps=%u  (%.0f ticks/scenario)\n", NBARS, REPS, (double)NBARS * REPS);
     ok &= run_basic();
     ok &= run_lookback();
+    ok &= run_param_updates();
     printf("(sink %.3f)\n", (double)g_sink);
     return ok ? 0 : 2;
 }
