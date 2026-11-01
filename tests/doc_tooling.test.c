@@ -623,6 +623,23 @@ static void test_function_parameters_preserve_origin_token_types(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_function_catalog_exposes_inferred_parameter_types(void) {
+    const char* source =
+        "model demo\n"
+        "fn risk(high, peak_bars) {\n"
+        "  peak = max(window(high, peak_bars))\n"
+        "  return peak\n"
+        "}\n";
+    char* json = cxpr_document_analyze_json(source, "function-types.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "\"name\":\"risk\",\"builtin\":false,\"minArgs\":2,\"maxArgs\":2") != NULL);
+    assert(strstr(json,
+                  "\"parameters\":[{\"name\":\"high\",\"type\":\"number\"},"
+                  "{\"name\":\"peak_bars\",\"type\":\"number\"}]") != NULL);
+    cxpr_document_json_free(json);
+}
+
 
 int main(void) {
     test_analysis_baseline();
@@ -659,6 +676,7 @@ int main(void) {
     test_optimize_block_is_named_argument();
     test_function_body_outline_exposes_native_expressions();
     test_function_parameters_preserve_origin_token_types();
+    test_function_catalog_exposes_inferred_parameter_types();
     puts("doc tooling tests passed");
     return 0;
 }

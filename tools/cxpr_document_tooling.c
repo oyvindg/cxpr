@@ -18,6 +18,8 @@ typedef struct {
     int failed;
 } cxpr_json_writer;
 
+static const char* tooling_value_type_name(cxpr_value_type type);
+
 static int cxpr_json_reserve(cxpr_json_writer* writer, size_t extra) {
     size_t required;
     size_t capacity;
@@ -764,6 +766,58 @@ static void tooling_register_functions(cxpr_registry* registry) {
                           2u, 2u, CXPR_VALUE_NUMBER, NULL, NULL);
 }
 
+static void tooling_register_model_functions(cxpr_registry* registry,
+                                             const cxpr_model* model) {
+    if (!registry || !model) return;
+    for (size_t i = 0u; i < cxpr_model_function_count(model); ++i) {
+        const char* source = cxpr_model_function_source(model, i);
+        if (source) (void)cxpr_registry_define_fn(registry, source);
+    }
+    for (size_t i = 0u; i < model->record_function_count; ++i) {
+        const cxpr_model_record_function* record = &model->record_functions[i];
+        const char** field_names;
+        const cxpr_expr_ast** field_bodies;
+        if (!record->name || record->field_count == 0u) continue;
+        field_names = (const char**)calloc(record->field_count, sizeof(*field_names));
+        field_bodies = (const cxpr_expr_ast**)calloc(record->field_count, sizeof(*field_bodies));
+        if (!field_names || !field_bodies) {
+            free(field_names);
+            free(field_bodies);
+            continue;
+        }
+        for (size_t j = 0u; j < record->field_count; ++j) {
+            field_names[j] = record->fields[j].name;
+            field_bodies[j] = record->fields[j].expr;
+        }
+        (void)cxpr_registry_define_record_fn(
+            registry, record->name, (const char* const*)record->params,
+            record->param_count, field_names, field_bodies, record->field_count);
+        free(field_names);
+        free(field_bodies);
+    }
+}
+
+static void tooling_emit_defined_function_types(const cxpr_func_entry* entry) {
+    size_t param_count = 0u;
+    const char* const* param_names = cxpr_registry_entry_param_names(entry, &param_count);
+    fputs(",\"type\":", stdout);
+    json_string(entry && entry->has_return_type
+                    ? tooling_value_type_name(entry->return_type)
+                    : "unknown");
+    fputs(",\"parameters\":[", stdout);
+    for (size_t i = 0u; entry && i < param_count; ++i) {
+        if (i) fputc(',', stdout);
+        fputs("{\"name\":", stdout);
+        json_string(param_names[i]);
+        fputs(",\"type\":", stdout);
+        json_string(entry->arg_types && i < entry->arg_type_count
+                        ? tooling_value_type_name(entry->arg_types[i])
+                        : "unknown");
+        fputc('}', stdout);
+    }
+    fputc(']', stdout);
+}
+
 typedef struct tooling_requirement {
     const char* source;
     char interval[CXPR_RESAMPLE_CANONICAL_CAPACITY];
@@ -975,6 +1029,7 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
     {
         cxpr_registry* registry = cxpr_registry_new();
         tooling_register_functions(registry);
+        tooling_register_model_functions(registry, model);
         int function_json_comma = 0;
         for (size_t i = 0u; i < cxpr_model_function_count(model); ++i) {
             char* declaration = NULL;
@@ -1011,8 +1066,14 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
             function_json_comma = 1;
             fputs("{\"name\":", stdout);
             json_string(function_name);
-            fputs(",\"builtin\":false,\"minArgs\":0,\"maxArgs\":0,\"signature\":", stdout);
+            {
+                const cxpr_func_entry* entry = cxpr_registry_find(registry, function_name);
+                size_t arity = entry ? entry->max_args : 0u;
+                fprintf(stdout, ",\"builtin\":false,\"minArgs\":%zu,\"maxArgs\":%zu,\"signature\":",
+                        arity, arity);
+            }
             json_string(declaration);
+            tooling_emit_defined_function_types(cxpr_registry_find(registry, function_name));
             fputc('}', stdout);
             free(declaration);
         }
@@ -1032,7 +1093,9 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
                 if (j > 0u) fputs(", ", stdout);
                 fputs(record->params[j], stdout);
             }
-            fputs(")\"}", stdout);
+            fputs(")\"", stdout);
+            tooling_emit_defined_function_types(cxpr_registry_find(registry, record->name));
+            fputc('}', stdout);
         }
         for (size_t i = 0u; i < function_count; ++i) {
             size_t min_args = 0u;
