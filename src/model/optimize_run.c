@@ -28,6 +28,7 @@ bool cxpr_model_optimize_prepare_grid(
     cxpr_model_optimize_grid* out,
     cxpr_error* err) {
     size_t* indices = NULL;
+    cxpr_context_slot* param_slots = NULL;
     cxpr_context* context = NULL;
     size_t total = 1u;
     if (err) *err = (cxpr_error){0};
@@ -49,12 +50,18 @@ bool cxpr_model_optimize_prepare_grid(
     out->params = (cxpr_value*)calloc(total * out->param_count, sizeof(*out->params));
     out->active = (unsigned char*)calloc(total, sizeof(*out->active));
     indices = (size_t*)calloc(out->param_count, sizeof(*indices));
-    if (!out->params || !out->active || !indices) goto oom;
+    param_slots = (cxpr_context_slot*)calloc(out->param_count, sizeof(*param_slots));
+    if (!out->params || !out->active || !indices || !param_slots) goto oom;
 
     context = cxpr_context_new();
     if (!context) goto oom;
     if (!cxpr_model_compiled_seed_defaults(program, context, program->registry, err)) {
         goto fail;
+    }
+    for (size_t i = 0u; i < out->param_count; ++i) {
+        (void)cxpr_context_param_slot_bind(context,
+                                           program->optimize_dimensions[i].name,
+                                           &param_slots[i]);
     }
 
     for (size_t candidate = 0u; candidate < total; ++candidate) {
@@ -63,7 +70,14 @@ bool cxpr_model_optimize_prepare_grid(
             const double value = cxpr_optimize_dimension_value(
                 &program->optimize_dimensions[i], indices[i]);
             out->params[candidate * out->param_count + i] = cxpr_num(value);
-            cxpr_context_set_param(context, program->optimize_dimensions[i].name, value);
+            if (cxpr_context_param_slot_valid(context, &param_slots[i])) {
+                cxpr_context_slot_set(&param_slots[i], value);
+            } else {
+                cxpr_context_set_param(context, program->optimize_dimensions[i].name, value);
+                (void)cxpr_context_param_slot_bind(context,
+                                                   program->optimize_dimensions[i].name,
+                                                   &param_slots[i]);
+            }
         }
         /* Validate load-time invariants and prune optimize-scoped candidates.
            An assert referencing an optimize $param prunes this candidate on
@@ -100,6 +114,7 @@ bool cxpr_model_optimize_prepare_grid(
         }
     }
     cxpr_context_free(context);
+    free(param_slots);
     free(indices);
     if (out->active_count == 0u) {
         cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
@@ -113,6 +128,7 @@ oom:
                          "Optimize candidate space is too large", 0, 0);
 fail:
     cxpr_context_free(context);
+    free(param_slots);
     free(indices);
     cxpr_model_optimize_grid_free(out);
     return false;
