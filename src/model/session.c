@@ -134,9 +134,10 @@ static bool cxpr_model_eval_ast_bool_result(const cxpr_expr_ast* ast,
     return true;
 }
 
-static void cxpr_model_history_entry_free(cxpr_model_history_entry* entry) {
+static void cxpr_model_history_entry_free(cxpr_model_history_entry* entry,
+                                          bool owns_name) {
     if (!entry) return;
-    free(entry->name);
+    if (owns_name) free(entry->name);
     for (size_t i = 0; i < entry->capacity; ++i) {
         cxpr_value_free(&entry->values[i]);
     }
@@ -510,12 +511,11 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         }
         session->history_count = program->history_spec_count;
         for (size_t i = 0; i < program->history_spec_count; ++i) {
-            session->histories[i].name = cxpr_strdup(program->history_specs[i].name);
+            session->histories[i].name = program->history_specs[i].name;
             session->histories[i].capacity = program->history_specs[i].depth;
             session->histories[i].values = (cxpr_value*)calloc(
                 session->histories[i].capacity, sizeof(cxpr_value));
-            if (!session->histories[i].name ||
-                (session->histories[i].capacity > 0u && !session->histories[i].values)) {
+            if (session->histories[i].capacity > 0u && !session->histories[i].values) {
                 cxpr_model_session_free(session);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
@@ -705,11 +705,11 @@ void cxpr_model_session_free(cxpr_model_session* session) {
     cxpr_context_free(session->ctx);
     free(session->outputs);
     for (size_t i = 0; i < session->history_count; ++i) {
-        cxpr_model_history_entry_free(&session->histories[i]);
+        cxpr_model_history_entry_free(&session->histories[i], false);
     }
     free(session->histories);
     for (size_t i = 0; i < session->state_buffer_count; ++i) {
-        cxpr_model_history_entry_free(&session->state_buffers[i]);
+        cxpr_model_history_entry_free(&session->state_buffers[i], true);
     }
     free(session->state_buffers);
     free(session->fused_slots);

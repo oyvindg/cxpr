@@ -914,6 +914,39 @@ static int benchmark_optimizer_grid_setup(void) {
     return 1;
 }
 
+static int benchmark_history_session_setup(void) {
+    const char* source =
+        "model history_setup\n"
+        "in close\n"
+        "a = close\n"
+        "b = close * 2\n"
+        "c = close * 3\n"
+        "d = close * 4\n"
+        "e = close * 5\n"
+        "f = close * 6\n"
+        "g = close * 7\n"
+        "h = close * 8\n"
+        "out result = a[1] + b[2] + c[3] + d[4] + e[5] + f[6] + g[7] + h[8]\n";
+    const size_t iterations = 20000u;
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_model_parse(source, &err);
+    cxpr_model_compiled* program = model ? cxpr_model_compile(model, NULL, &err) : NULL;
+    long long start;
+
+    if (!program) return 0;
+    start = now_ns();
+    for (size_t i = 0u; i < iterations; ++i) {
+        cxpr_model_session* session = cxpr_model_session_new(program, NULL, &err);
+        if (!session) return 0;
+        cxpr_model_session_free(session);
+    }
+    printf("history_session_setup %.2f ns/session\n",
+           (double)(now_ns() - start) / (double)iterations);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    return 1;
+}
+
 int main(int argc, char** argv) {
     const size_t eval_iters = 200000u;
     if (argc == 2 && strcmp(argv[1], "--candidate-setup") == 0) {
@@ -921,6 +954,9 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && strcmp(argv[1], "--grid-setup") == 0) {
         return benchmark_optimizer_grid_setup() ? 0 : 2;
+    }
+    if (argc == 2 && strcmp(argv[1], "--history-session-setup") == 0) {
+        return benchmark_history_session_setup() ? 0 : 2;
     }
     const double host_eval = time_host_registered_eval(eval_iters);
     const double model_eval = time_model_eval(eval_iters);
