@@ -141,6 +141,13 @@ static void test_named_param_producer_cache_paths(void) {
     assert(result.type == CXPR_VALUE_NUMBER);
     assert(fabs(result.d - 2.9) < 1e-12);
     assert(g_struct_call_count == 1);
+    assert(cxpr_expr_compiled_eval(prog, ctx, reg, &result, &err));
+    assert(fabs(result.d - 2.9) < 1e-12);
+    assert(g_struct_call_count == 1);
+    cxpr_context_clear_cached_structs(ctx);
+    assert(cxpr_expr_compiled_eval(prog, ctx, reg, &result, &err));
+    assert(fabs(result.d - 2.9) < 1e-12);
+    assert(g_struct_call_count == 2);
     cxpr_expr_compiled_free(prog);
     cxpr_expr_ast_free(ast);
 

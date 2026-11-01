@@ -20,6 +20,7 @@ void cxpr_context_set_cached_struct(cxpr_context* ctx, const char* name,
                                     const cxpr_struct_value* value) {
     if (!ctx) return;
     cxpr_context_store_struct(&ctx->cached_structs, name, value);
+    ctx->cached_structs_version++;
 }
 
 const cxpr_struct_value* cxpr_context_get_struct(const cxpr_context* ctx,

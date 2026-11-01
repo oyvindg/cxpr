@@ -168,7 +168,8 @@ void cxpr_ir_bindings_refresh_slow(const cxpr_ir_program* program,
         bindings->variable_base == ctx->variables.entries &&
         bindings->param_base == ctx->params.entries &&
         bindings->variable_version == ctx->variables_version &&
-        bindings->param_version == ctx->params_version) {
+        bindings->param_version == ctx->params_version &&
+        bindings->cached_structs_version == ctx->cached_structs_version) {
         return;
     }
 
@@ -179,11 +180,23 @@ void cxpr_ir_bindings_refresh_slow(const cxpr_ir_program* program,
     bindings->param_base = ctx->params.entries;
     bindings->variable_version = ctx->variables_version;
     bindings->param_version = ctx->params_version;
+    bindings->cached_structs_version = ctx->cached_structs_version;
     for (size_t ip = 0u; ip < program->count; ++ip) {
         const uint32_t input_index = program->code[ip].input_index;
         const cxpr_ir_input_descriptor* input;
         bindings->direct_typed_values[ip] = NULL;
         bindings->direct_values[ip] = NULL;
+        if (program->code[ip].op == CXPR_OP_CALL_PRODUCER_CONST_FIELD &&
+            program->code[ip].payload) {
+            const cxpr_struct_value* value = cxpr_context_get_cached_struct(
+                ctx, program->code[ip].name);
+            const size_t field = (size_t)((const double*)program->code[ip].payload)[
+                program->code[ip].index];
+            if (value && field < value->field_count &&
+                strcmp(value->field_names[field], program->code[ip].aux_name) == 0) {
+                bindings->direct_typed_values[ip] = &value->field_values[field];
+            }
+        }
         if (program->code[ip].op == CXPR_OP_LOAD_NAMED_FIELD &&
             !ctx->expression_scope) {
             const cxpr_struct_value* value =

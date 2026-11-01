@@ -158,6 +158,7 @@ struct cxpr_context {
     cxpr_context_entry_cache param_ptr_cache[CXPR_CONTEXT_ENTRY_CACHE_SIZE];
     unsigned long variables_version;
     unsigned long params_version;
+    unsigned long cached_structs_version;
     const struct cxpr_context* parent;
     const struct cxpr_evaluator* expression_scope;
     struct cxpr_context* overlay_cache_next;

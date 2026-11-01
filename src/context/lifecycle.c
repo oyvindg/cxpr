@@ -55,6 +55,7 @@ static void cxpr_context_reset_empty_overlay(cxpr_context* ctx, const cxpr_conte
     ctx->eval_memo.depth = 0u;
     ctx->variables_version = 1;
     ctx->params_version = 1;
+    ctx->cached_structs_version = 1;
     ctx->parent = parent;
     ctx->expression_scope = NULL;
     ctx->overlay_cache_next = NULL;
@@ -108,6 +109,7 @@ cxpr_context* cxpr_context_new(void) {
     ctx->eval_memo.depth = 0u;
     ctx->variables_version = 1;
     ctx->params_version = 1;
+    ctx->cached_structs_version = 1;
     ctx->parent = NULL;
     ctx->overlay_cache_next = NULL;
     return ctx;
@@ -306,6 +308,7 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
     }
     clone->variables_version = ctx->variables_version;
     clone->params_version = ctx->params_version;
+    clone->cached_structs_version = ctx->cached_structs_version;
     clone->eval_memo.entries = NULL;
     clone->eval_memo.capacity = 0u;
     clone->eval_memo.count = 0u;
@@ -352,11 +355,13 @@ void cxpr_context_clear(cxpr_context* ctx) {
     cxpr_context_clear_entry_cache(ctx->param_ptr_cache);
     ctx->variables_version++;
     ctx->params_version++;
+    ctx->cached_structs_version++;
 }
 
 void cxpr_context_clear_cached_structs(cxpr_context* ctx) {
     if (!ctx) return;
     cxpr_struct_map_clear(&ctx->cached_structs);
+    ctx->cached_structs_version++;
     ctx->eval_memo.count = 0u;
     ctx->eval_memo.depth = 0u;
 }

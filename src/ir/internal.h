@@ -180,6 +180,7 @@ typedef struct cxpr_ir_bindings {
     cxpr_hashmap_entry* param_base;
     unsigned long variable_version;
     unsigned long param_version;
+    unsigned long cached_structs_version;
     bool direct_enabled;
     bool direct_ready;
 } cxpr_ir_bindings;
@@ -257,7 +258,8 @@ static inline void cxpr_ir_bindings_refresh(const cxpr_ir_program* program,
         bindings->variable_base == ctx->variables.entries &&
         bindings->param_base == ctx->params.entries &&
         bindings->variable_version == ctx->variables_version &&
-        bindings->param_version == ctx->params_version) return;
+        bindings->param_version == ctx->params_version &&
+        bindings->cached_structs_version == ctx->cached_structs_version) return;
     cxpr_ir_bindings_refresh_slow(program, bindings, ctx);
 }
 static inline cxpr_ir_lookup_cache* cxpr_ir_bindings_cache(

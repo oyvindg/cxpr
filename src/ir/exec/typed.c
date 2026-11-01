@@ -890,10 +890,12 @@ cxpr_value cxpr_ir_exec_typed_bound(const cxpr_ir_program* program, const cxpr_c
             CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_CALL_PRODUCER_CONST_FIELD:
-            result = cxpr_ir_call_producer_const_field((cxpr_func_entry*)instr->func,
-                                                       instr->name, ctx,
-                                                       (const double*)instr->payload,
-                                                       instr->index, instr->aux_name, err);
+            if (!cxpr_ir_bindings_direct_typed_value(program, bindings, ip, &result)) {
+                result = cxpr_ir_call_producer_const_field((cxpr_func_entry*)instr->func,
+                                                           instr->name, ctx,
+                                                           (const double*)instr->payload,
+                                                           instr->index, instr->aux_name, err);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
             CXPR_TYPED_PUSH(result);
             break;
