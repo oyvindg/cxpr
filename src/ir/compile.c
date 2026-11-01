@@ -61,6 +61,15 @@ bool cxpr_ir_compile_with_locals(const cxpr_expr_ast* ast, const cxpr_registry* 
         /* The typed-stack int64 fast entry validates its result at execution. */
     }
 
+    if (program->fast_result_kind == CXPR_IR_RESULT_UNKNOWN) {
+        bool has_resolved_lookback = false;
+        for (size_t i = 0; i < program->count; ++i) {
+            has_resolved_lookback |= program->code[i].op == CXPR_OP_LOOKBACK_RESOLVE;
+        }
+        program->number_fast_compatible =
+            has_resolved_lookback && cxpr_ir_validate_scalar_fast_program(program);
+    }
+
     return true;
 }
 

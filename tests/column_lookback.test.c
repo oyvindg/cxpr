@@ -389,6 +389,46 @@ static void test_column_lookback_rejects_invalid_registration(void) {
     cxpr_registry_free(reg);
 }
 
+static void test_compiled_column_binding_preserves_runtime_guards(void) {
+    static const double first[] = {10.0, 20.0, 30.0};
+    static const double second[] = {100.0, 200.0, 300.0};
+    int64_t cursor = 2;
+    cxpr_lookback_column first_column = {"close", first, sizeof(double), 3u};
+    cxpr_lookback_column second_column = {"close", second, sizeof(double), 3u};
+    cxpr_value array_elements[] = {cxpr_num(111.0), cxpr_num(222.0)};
+    cxpr_value array = cxpr_array(cxpr_array_value_new(array_elements, 2u));
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
+    cxpr_error err = {0};
+    double out = NAN;
+
+    assert(parser && ctx && reg && array.a);
+    assert(cxpr_register_column_lookback(reg, &first_column, 1u, &cursor));
+    ast = parse_or_die(parser, "close[1]");
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program && err.code == CXPR_OK);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &out, &err));
+    expect_double_eq(out, 20.0, "compiled direct column binding");
+
+    assert(cxpr_register_column_lookback(reg, &second_column, 1u, &cursor));
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &out, &err));
+    expect_double_eq(out, 200.0, "compiled binding invalidated by registry replacement");
+
+    cxpr_context_set_value(ctx, "close", &array);
+    cxpr_value_free(&array);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &out, &err));
+    expect_double_eq(out, 222.0, "runtime array overrides bound column");
+
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_context_free(ctx);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     printf("Running column lookback tests...\n");
     test_column_lookback_resolves_bound_columns();
@@ -397,6 +437,7 @@ int main(void) {
     test_column_lookback_leaves_unknown_or_dynamic_targets_unresolved();
     test_defined_function_struct_arg_preserves_series_lookback();
     test_column_lookback_rejects_invalid_registration();
+    test_compiled_column_binding_preserves_runtime_guards();
     printf("All column lookback tests passed!\n");
     return 0;
 }

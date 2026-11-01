@@ -94,6 +94,17 @@ struct cxpr_registry {
     size_t index_capability_capacity;
 };
 
+/** @brief Direct view of one built-in column lookback binding. */
+typedef struct {
+    const void* base;
+    size_t stride;
+    size_t count;
+    const int64_t* cursor;
+} cxpr_column_lookback_binding;
+
+bool cxpr_registry_column_lookback_binding(const cxpr_registry* reg, const char* name,
+                                           cxpr_column_lookback_binding* out);
+
 const cxpr_index_capability_entry* cxpr_registry_find_index_capability(
     const cxpr_registry* reg, const char* target_name);
 const cxpr_index_capability_entry* cxpr_registry_select_index_capability(

@@ -33,6 +33,9 @@ bool cxpr_ir_pop1(cxpr_value* stack, size_t* sp, cxpr_value* out,
 /** @brief Pop two values from the IR operand stack in left/right order. */
 bool cxpr_ir_pop2(cxpr_value* stack, size_t* sp, cxpr_value* left,
                   cxpr_value* right, cxpr_error* err);
+bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr, size_t offset,
+                                    const cxpr_context* ctx, const cxpr_registry* reg,
+                                    cxpr_value* out, cxpr_error* err);
 /** @brief Load a variable/param as a typed value for the general IR executor. */
 cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
                                        const cxpr_ir_program* program,

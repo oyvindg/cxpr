@@ -18,6 +18,7 @@ static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops
     case CXPR_OP_LOAD_VAR_SQUARE:
     case CXPR_OP_LOAD_PARAM:
     case CXPR_OP_LOAD_PARAM_SQUARE:
+    case CXPR_OP_LOOKBACK_RESOLVE:
         *pops = 0;
         *pushes = 1;
         return true;

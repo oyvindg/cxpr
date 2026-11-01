@@ -7,6 +7,7 @@
  * registry/AST/types API.
  */
 
+#include "internal.h"
 #include <cxpr/registry.h>
 #include <cxpr/expr/ast.h>
 #include <cxpr/types.h>
@@ -59,6 +60,30 @@ static void cxpr_column_lookback_free(void* userdata) {
     if (!st) return;
     free(st->cols);
     free(st);
+}
+
+bool cxpr_registry_column_lookback_binding(const cxpr_registry* reg, const char* name,
+                                           cxpr_column_lookback_binding* out) {
+    const cxpr_column_lookback_state* state;
+
+    if (out) *out = (cxpr_column_lookback_binding){0};
+    if (!reg || !name || !out ||
+        reg->lookback_resolver != cxpr_column_lookback_resolve ||
+        !reg->lookback_userdata) {
+        return false;
+    }
+    state = (const cxpr_column_lookback_state*)reg->lookback_userdata;
+    for (size_t i = 0; i < state->count; ++i) {
+        const cxpr_lookback_column* column = &state->cols[i];
+        if (column->name && strcmp(column->name, name) == 0) {
+            out->base = column->base;
+            out->stride = column->stride;
+            out->count = column->count;
+            out->cursor = state->cursor;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool cxpr_register_column_lookback(cxpr_registry* reg,

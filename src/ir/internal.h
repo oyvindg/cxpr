@@ -135,6 +135,8 @@ typedef struct {
     bool capability_handled;
     cxpr_lookback_resolver_ptr resolver;
     void* resolver_userdata;
+    cxpr_column_lookback_binding column;
+    bool column_bound;
 } cxpr_ir_lookback_payload;
 
 _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr for stor");
@@ -162,6 +164,7 @@ typedef struct {
     const cxpr_expr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
     cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
     unsigned char fast_result_kind; /**< CXPR_IR_RESULT_* fast-path classification. */
+    bool number_fast_compatible; /**< Numeric API may use scalar execution for resolved lookbacks. */
 } cxpr_ir_program;
 
 struct cxpr_expr_compiled {

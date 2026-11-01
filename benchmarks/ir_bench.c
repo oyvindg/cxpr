@@ -156,11 +156,11 @@ static size_t ir_fallback_count(const cxpr_expr_compiled* program) {
 
 static void print_ir_metadata(const cxpr_expr_compiled* program, long long compile_ns) {
     const cxpr_ir_result_kind kind = cxpr_expr_compiled_ir_result_kind(program);
-    const char* kind_name = "unknown/typed";
+    const char* kind_name = "unknown";
     if (kind == CXPR_IR_RESULT_NUMBER) kind_name = "number-fast";
     else if (kind == CXPR_IR_RESULT_BOOL) kind_name = "bool-fast";
     else if (kind == CXPR_IR_RESULT_INT64) kind_name = "int64-fast";
-    printf("  IR metadata: compile_ns=%lld instructions=%zu ast_fallbacks=%zu executor=%s\n",
+    printf("  IR metadata: compile_ns=%lld instructions=%zu ast_fallbacks=%zu result_kind=%s\n",
            compile_ns, cxpr_expr_compiled_ir_count(program), ir_fallback_count(program),
            kind_name);
 }
@@ -512,6 +512,17 @@ static void set_lookback_bar(cxpr_context* ctx, size_t i) {
     g_lookback_cursor = (int64_t)(i % LOOKBACK_BARS);
     cxpr_context_set(ctx, "close", g_close[g_lookback_cursor]);
     cxpr_context_set(ctx, "high", g_high[g_lookback_cursor]);
+}
+
+typedef struct {
+    cxpr_context_slot close;
+    cxpr_context_slot high;
+} lookback_slots;
+
+static void set_lookback_bar_slots(lookback_slots* slots, size_t i) {
+    g_lookback_cursor = (int64_t)(i % LOOKBACK_BARS);
+    cxpr_context_slot_set(&slots->close, g_close[g_lookback_cursor]);
+    cxpr_context_slot_set(&slots->high, g_high[g_lookback_cursor]);
 }
 
 static void mutate_values(cxpr_context* ctx, size_t i) {
@@ -1742,14 +1753,15 @@ static void bench_one_typed(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_re
 }
 
 static double time_ast_lookback(const cxpr_expr_ast* ast, cxpr_context* ctx,
-                                const cxpr_registry* reg, size_t iterations) {
+                                const cxpr_registry* reg, lookback_slots* slots,
+                                size_t iterations) {
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
 
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
-        set_lookback_bar(ctx, i);
+        set_lookback_bar_slots(slots, i);
         if (!cxpr_eval_ast_number(ast, ctx, reg, &value, &err)) {
             fprintf(stderr, "AST lookback benchmark eval failed at iter %zu: %s\n",
                     i, err.message ? err.message : "(null)");
@@ -1762,14 +1774,15 @@ static double time_ast_lookback(const cxpr_expr_ast* ast, cxpr_context* ctx,
 }
 
 static double time_ir_lookback(const cxpr_expr_compiled* program, cxpr_context* ctx,
-                               const cxpr_registry* reg, size_t iterations) {
+                               const cxpr_registry* reg, lookback_slots* slots,
+                               size_t iterations) {
     size_t i;
     double total = 0.0;
     cxpr_error err = {0};
 
     for (i = 0; i < iterations; ++i) {
         double value = 0.0;
-        set_lookback_bar(ctx, i);
+        set_lookback_bar_slots(slots, i);
         if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &value, &err)) {
             fprintf(stderr, "IR lookback benchmark eval failed at iter %zu: %s\n",
                     i, err.message ? err.message : "(null)");
@@ -1783,14 +1796,14 @@ static double time_ir_lookback(const cxpr_expr_compiled* program, cxpr_context* 
 
 static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_expr_compiled* program,
                                         cxpr_context* ctx, const cxpr_registry* reg,
-                                        const lookback_bench_case* c) {
+                                        lookback_slots* slots, const lookback_bench_case* c) {
     cxpr_error ast_err = {0};
     cxpr_error ir_err = {0};
 
     for (size_t i = 0u; i < LOOKBACK_BARS; ++i) {
         double ast_value = NAN;
         double ir_value = NAN;
-        set_lookback_bar(ctx, i);
+        set_lookback_bar_slots(slots, i);
         if (!cxpr_eval_ast_number(ast, ctx, reg, &ast_value, &ast_err)) ast_value = NAN;
         if (!cxpr_expr_compiled_eval_number(program, ctx, reg, &ir_value, &ir_err)) ir_value = NAN;
         if (ast_err.code != ir_err.code) {
@@ -1826,6 +1839,7 @@ static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr
     bench_model_source source = load_bench_model(c->fixture);
     const cxpr_expr_ast* ast = source.result;
     cxpr_expr_compiled* program;
+    lookback_slots slots;
 
     (void)parser;
     compile_start = now_ns();
@@ -1837,15 +1851,22 @@ static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr
         exit(1);
     }
 
+    set_lookback_bar(ctx, 0u);
+    if (!cxpr_context_slot_bind(ctx, "close", &slots.close) ||
+        !cxpr_context_slot_bind(ctx, "high", &slots.high)) {
+        fprintf(stderr, "Failed to bind lookback benchmark input slots\n");
+        exit(1);
+    }
+
     ast_start = now_ns();
-    ast_total = time_ast_lookback(ast, ctx, reg, c->iterations);
+    ast_total = time_ast_lookback(ast, ctx, reg, &slots, c->iterations);
     ast_end = now_ns();
 
     ir_start = now_ns();
-    ir_total = time_ir_lookback(program, ctx, reg, c->iterations);
+    ir_total = time_ir_lookback(program, ctx, reg, &slots, c->iterations);
     ir_end = now_ns();
 
-    validate_lookback_ast_vs_ir(ast, program, ctx, reg, c);
+    validate_lookback_ast_vs_ir(ast, program, ctx, reg, &slots, c);
 
     ast_ns = (double)(ast_end - ast_start) / (double)c->iterations;
     ir_ns = (double)(ir_end - ir_start) / (double)c->iterations;

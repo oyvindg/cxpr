@@ -124,6 +124,35 @@ static inline bool cxpr_ir_exec_lookup_root_cached(const cxpr_context* ctx,
     return true;
 }
 
+static inline bool cxpr_ir_exec_column_lookback_fast(const cxpr_ir_instr* instr,
+                                                     size_t offset,
+                                                     const cxpr_context* ctx,
+                                                     const cxpr_registry* reg,
+                                                     double* out) {
+    const cxpr_ir_lookback_payload* payload;
+    const cxpr_context* current;
+    int64_t index;
+
+    if (!instr || !out || offset > (size_t)INT64_MAX) return false;
+    payload = (const cxpr_ir_lookback_payload*)instr->payload;
+    if (!payload || !payload->column_bound || reg != payload->compile_registry ||
+        reg->lookback_resolver != payload->resolver ||
+        reg->lookback_userdata != payload->resolver_userdata) {
+        return false;
+    }
+    for (current = ctx; current; current = current->parent) {
+        if (current->arrays.count != 0u) return false;
+    }
+    index = (payload->column.cursor ? *payload->column.cursor : 0) - (int64_t)offset;
+    if (!payload->column.base || index < 0 || (size_t)index >= payload->column.count) {
+        *out = NAN;
+        return true;
+    }
+    *out = *(const double*)((const char*)payload->column.base +
+                           (size_t)index * payload->column.stride);
+    return true;
+}
+
 bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                              const cxpr_registry* reg, const double* locals,
                              size_t local_count, int64_t* out_value, cxpr_error* err) {
@@ -225,7 +254,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
         [CXPR_OP_JUMP_IF_TRUE] = &&op_jump_if_true,
         [CXPR_OP_LOOKBACK_PUSH] = &&op_unsupported,
         [CXPR_OP_LOOKBACK_POP] = &&op_unsupported,
-        [CXPR_OP_LOOKBACK_RESOLVE] = &&op_unsupported,
+        [CXPR_OP_LOOKBACK_RESOLVE] = &&op_lookback_resolve,
         [CXPR_OP_STORE_LOCAL] = &&op_store_local,
         [CXPR_OP_RETURN] = &&op_return,
         [CXPR_OP_INDEX] = &&op_unsupported
@@ -330,6 +359,29 @@ op_load_param_square: {
         if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_param_message(instr)).d;
     }
     stack[sp++] = value * value;
+    CXPR_FAST_NEXT();
+}
+op_lookback_resolve: {
+    cxpr_value resolved = cxpr_num(NAN);
+    if (cxpr_ir_exec_column_lookback_fast(instr, instr->index, ctx, reg, &value)) {
+        stack[sp++] = value;
+        CXPR_FAST_NEXT();
+    }
+    if (!cxpr_ir_resolve_lookback_instr(instr, instr->index, ctx, reg, &resolved, err)) {
+        if (err && err->code != CXPR_OK) return NAN;
+        return cxpr_ir_runtime_error(err, "Lookback resolver failed").d;
+    }
+    if (resolved.type != CXPR_VALUE_NUMBER) {
+        if (resolved.type == CXPR_VALUE_ARRAY || resolved.type == CXPR_VALUE_STRUCT) {
+            cxpr_value_free(&resolved);
+        }
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Lookback did not evaluate to double";
+        }
+        return NAN;
+    }
+    stack[sp++] = resolved.d;
     CXPR_FAST_NEXT();
 }
 op_add:

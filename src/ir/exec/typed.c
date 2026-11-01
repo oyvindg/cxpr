@@ -16,6 +16,13 @@ static void cxpr_ir_typed_free_composite(cxpr_value* value) {
     }
 }
 
+static bool cxpr_ir_context_has_arrays(const cxpr_context* ctx) {
+    for (const cxpr_context* current = ctx; current; current = current->parent) {
+        if (current->arrays.count != 0u) return true;
+    }
+    return false;
+}
+
 static const char* cxpr_ir_unknown_param_message(const cxpr_ir_instr* instr) {
     static CXPR_THREAD_LOCAL char message[256];
     if (!instr || !instr->name || instr->name[0] == '\0') {
@@ -110,7 +117,7 @@ static bool cxpr_ir_resolve_lookback_target(const cxpr_expr_ast* target,
         target, &index_ast, ctx, reg, reg->lookback_userdata, out, err);
 }
 
-static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
+bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
                                            size_t offset,
                                            const cxpr_context* ctx,
                                            const cxpr_registry* reg,
@@ -142,7 +149,7 @@ static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
                 *out = cxpr_value_clone(&element);
                 return true;
             }
-            {
+            if (cxpr_ir_context_has_arrays(ctx)) {
                 bool found = false;
                 cxpr_value runtime_target = cxpr_context_get_typed(ctx, payload->key, &found);
                 if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
@@ -162,6 +169,22 @@ static bool cxpr_ir_resolve_lookback_instr(const cxpr_ir_instr* instr,
             }
         }
         if (offset > (size_t)INT64_MAX) return false;
+        if (identifier && payload->column_bound &&
+            reg == payload->compile_registry &&
+            reg->lookback_resolver == payload->resolver &&
+            reg->lookback_userdata == payload->resolver_userdata) {
+            const int64_t cursor = payload->column.cursor ? *payload->column.cursor : 0;
+            const int64_t index = cursor - (int64_t)offset;
+            if (payload->column.base && index >= 0 &&
+                (size_t)index < payload->column.count) {
+                const char* address = (const char*)payload->column.base +
+                                      (size_t)index * payload->column.stride;
+                *out = cxpr_num(*(const double*)address);
+            } else {
+                *out = cxpr_num(NAN);
+            }
+            return true;
+        }
         index_ast.type = CXPR_NODE_NUMBER;
         index_ast.data.number.value = (double)offset;
         if (!identifier && payload->resolver &&

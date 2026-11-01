@@ -134,6 +134,7 @@ typedef struct {
     const cxpr_expr_ast* ast;
     cxpr_ir_lookup_cache* lookup_cache;
     unsigned char fast_result_kind;
+    bool number_fast_compatible;
 } cxpr_ir_program;
 
 _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr too large");

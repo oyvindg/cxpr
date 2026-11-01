@@ -67,6 +67,10 @@ static cxpr_ir_lookback_payload* cxpr_ir_lookback_payload_new(
     if (reg) {
         payload->resolver = reg->lookback_resolver;
         payload->resolver_userdata = reg->lookback_userdata;
+        if (payload->kind == CXPR_IR_LOOKBACK_IDENT_ARRAY && payload->key) {
+            payload->column_bound = cxpr_registry_column_lookback_binding(
+                reg, payload->key, &payload->column);
+        }
     }
     return payload;
 }

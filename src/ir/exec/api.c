@@ -196,7 +196,8 @@ bool cxpr_expr_compiled_eval_number(const cxpr_expr_compiled* prog, const cxpr_c
         return false;
     }
 
-    if (prog && prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE) {
+    if (prog && (prog->ir.fast_result_kind == CXPR_IR_RESULT_DOUBLE ||
+                 prog->ir.number_fast_compatible)) {
         double fast_value = cxpr_ir_exec_scalar_fast(&prog->ir, ctx, reg, NULL, 0, err);
         if (err && err->code != CXPR_OK) return false;
         *out_value = fast_value;

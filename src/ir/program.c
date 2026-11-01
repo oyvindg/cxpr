@@ -47,6 +47,7 @@ void cxpr_ir_program_reset(cxpr_ir_program* program) {
     program->capacity = 0;
     program->ast = NULL;
     program->fast_result_kind = CXPR_IR_RESULT_UNKNOWN;
+    program->number_fast_compatible = false;
 }
 
 bool cxpr_ir_emit(cxpr_ir_program* program, cxpr_ir_instr instr, cxpr_error* err) {
