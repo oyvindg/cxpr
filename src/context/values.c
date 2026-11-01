@@ -330,7 +330,20 @@ void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries
     if (!ctx || !entries) return;
 
     for (i = 0; entries[i].name; ++i) {
-        cxpr_context_set(ctx, entries[i].name, entries[i].value);
+        const char* name = entries[i].name;
+        cxpr_bool_map_remove(&ctx->bools, name);
+        cxpr_int64_map_remove(&ctx->int64s, name);
+        cxpr_string_map_remove(&ctx->strings, name);
+        cxpr_context_remove_array(&ctx->arrays, name);
+        cxpr_context_remove_struct(&ctx->structs, name);
+    }
+    cxpr_context_clear_entry_cache(ctx->variable_cache);
+    cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
+    for (i = 0; entries[i].name; ++i) {
+        const char* name = entries[i].name;
+        cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
+                                ctx->variable_ptr_cache, &ctx->variables_version,
+                                name, cxpr_hash_string(name), entries[i].value);
     }
 }
 
