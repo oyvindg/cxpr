@@ -494,6 +494,30 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
         return b.data;
     }
 
+    if (cxpr_model_names_match(name, "clamp") && argc == 3u) {
+        if (handled) *handled = true;
+        cxpr_model_c_puts(&b, "cxpr_model_clamp_c(");
+        for (size_t i = 0u; i < argc; ++i) {
+            char* arg = cxpr_expr_ast_to_c_at_offset(
+                cxpr_expr_ast_call_arg(ast, i), lookback_offset, &target, err);
+            if (!arg) {
+                free(b.data);
+                return NULL;
+            }
+            if (i > 0u) cxpr_model_c_puts(&b, ", ");
+            cxpr_model_c_puts(&b, arg);
+            free(arg);
+        }
+        cxpr_model_c_puts(&b, ")");
+        if (b.oom) {
+            free(b.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                 "Out of memory", 0, 0);
+            return NULL;
+        }
+        return b.data;
+    }
+
     if (cxpr_model_names_match(name, "mean") && argc >= 1u && argc <= 8u) {
         if (handled) *handled = true;
         cxpr_model_c_puts(&b, "((");

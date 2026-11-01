@@ -3,7 +3,8 @@ file(GLOB_RECURSE CXPR_C_TESTS CONFIGURE_DEPENDS
 )
 # Generated-C parity is registered below after its generated header exists.
 list(REMOVE_ITEM CXPR_C_TESTS
-    "${CMAKE_CURRENT_SOURCE_DIR}/int64_generated_parity.test.c")
+    "${CMAKE_CURRENT_SOURCE_DIR}/int64_generated_parity.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/codegen_regressions_generated.test.c")
 list(SORT CXPR_C_TESTS)
 set(CXPR_C_TEST_NAMES)
 
@@ -108,6 +109,38 @@ add_dependencies(test_int64_generated_parity generate_cxpr_int64_parity)
 add_test(NAME int64_generated_parity COMMAND test_int64_generated_parity)
 
 if(TARGET cxpr_model_codegen)
+    set(CXPR_CODEGEN_REGRESSION_FIXTURE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/codegen_regressions")
+    set(CXPR_CODEGEN_REGRESSION_GENERATED_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_codegen_regressions")
+    set(CXPR_CODEGEN_REGRESSION_GENERATED_C
+        "${CXPR_CODEGEN_REGRESSION_GENERATED_DIR}/codegen_regressions.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_CODEGEN_REGRESSION_GENERATED_C}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CXPR_CODEGEN_REGRESSION_GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_CODEGEN_REGRESSION_FIXTURE_DIR}/root.cxpr"
+            --output "${CXPR_CODEGEN_REGRESSION_GENERATED_C}"
+            --function codegen_regressions_tick
+        DEPENDS
+            cxpr_model_codegen
+            "${CXPR_CODEGEN_REGRESSION_FIXTURE_DIR}/root.cxpr"
+            "${CXPR_CODEGEN_REGRESSION_FIXTURE_DIR}/child.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_codegen_regressions
+        DEPENDS "${CXPR_CODEGEN_REGRESSION_GENERATED_C}")
+    add_executable(test_codegen_regressions_generated
+        codegen_regressions_generated.test.c)
+    add_dependencies(test_codegen_regressions_generated
+        generate_cxpr_codegen_regressions)
+    target_link_libraries(test_codegen_regressions_generated PRIVATE cxpr)
+    target_include_directories(test_codegen_regressions_generated PRIVATE
+        "${CXPR_CODEGEN_REGRESSION_GENERATED_DIR}")
+    target_compile_options(test_codegen_regressions_generated PRIVATE -UNDEBUG)
+    add_test(NAME codegen_regressions_generated
+        COMMAND $<TARGET_FILE:test_codegen_regressions_generated>)
+
     set(CXPR_PATHFINDING_FIXTURE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding")
     set(CXPR_PATHFINDING_GENERATED_DIR
@@ -611,6 +644,39 @@ if(TARGET cxpr_model_codegen)
     add_test(
         NAME cxpr_compiled_strategy_example
         COMMAND $<TARGET_FILE:cxpr_compiled_strategy_example>)
+
+    set(CXPR_AUDIO_DSP_EXAMPLE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../examples/audio_dsp")
+    set(CXPR_AUDIO_DSP_GENERATED_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_examples/audio_dsp")
+    set(CXPR_AUDIO_DSP_GENERATED_C
+        "${CXPR_AUDIO_DSP_GENERATED_DIR}/synth_and_filter.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_AUDIO_DSP_GENERATED_C}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CXPR_AUDIO_DSP_GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_AUDIO_DSP_EXAMPLE_DIR}/synth_and_filter.cxpr"
+            --output "${CXPR_AUDIO_DSP_GENERATED_C}"
+            --function synth_and_filter_example_tick
+        DEPENDS
+            cxpr_model_codegen
+            "${CXPR_AUDIO_DSP_EXAMPLE_DIR}/synth_and_filter.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_audio_dsp_example
+        DEPENDS "${CXPR_AUDIO_DSP_GENERATED_C}")
+    add_executable(cxpr_example_audio_dsp
+        "${CXPR_AUDIO_DSP_EXAMPLE_DIR}/host.c")
+    add_dependencies(cxpr_example_audio_dsp generate_cxpr_audio_dsp_example)
+    target_link_libraries(cxpr_example_audio_dsp PRIVATE cxpr)
+    target_include_directories(cxpr_example_audio_dsp PRIVATE
+        "${CXPR_AUDIO_DSP_GENERATED_DIR}")
+    target_compile_definitions(cxpr_example_audio_dsp PRIVATE
+        CXPR_AUDIO_DSP_SOURCE="${CXPR_AUDIO_DSP_EXAMPLE_DIR}/synth_and_filter.cxpr")
+    target_compile_options(cxpr_example_audio_dsp PRIVATE -UNDEBUG)
+    add_test(
+        NAME cxpr_example_audio_dsp
+        COMMAND $<TARGET_FILE:cxpr_example_audio_dsp>)
 endif()
 
 # Standalone CPU <-> cxcu (CUDA) parity for optimize-scoped assert pruning.

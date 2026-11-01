@@ -198,10 +198,21 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         free(helper_name);
         for (size_t i = 0u; i < child->input_count; ++i) {
             size_t input_index = 0u;
-            const cxpr_expr_ast* source_arg =
-                (i == program->children[child_index].source_input_index)
-                    ? cxpr_model_child_call_source_arg(&program->children[child_index], child, ast)
-                    : NULL;
+            const cxpr_expr_ast* source_arg = NULL;
+            for (size_t arg_i = 0u;
+                 arg_i < cxpr_expr_ast_producer_arg_count(ast);
+                 ++arg_i) {
+                const char* name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
+                if (name && cxpr_model_names_match(name, child->inputs[i])) {
+                    source_arg = cxpr_expr_ast_producer_arg(ast, arg_i);
+                    break;
+                }
+            }
+            if (!source_arg &&
+                i == program->children[child_index].source_input_index) {
+                source_arg = cxpr_model_child_call_source_arg(
+                    &program->children[child_index], child, ast);
+            }
             if (!source_arg &&
                 i == program->children[child_index].source_input_index &&
                 i < cxpr_expr_ast_producer_arg_count(ast)) {

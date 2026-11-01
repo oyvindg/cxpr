@@ -376,8 +376,10 @@ char* cxpr_model_compiled_generate_c_outputs(
                                 sp - 2u, sp - 2u, sp - 1u);
             break;
         case CXPR_OP_CLAMP:
-            cxpr_model_c_printf(&b, "    { double _cx_clamp = _cx_v%zu; if (_cx_clamp < _cx_v%zu) _cx_clamp = _cx_v%zu; if (_cx_clamp > _cx_v%zu) _cx_clamp = _cx_v%zu; _cx_v%zu = _cx_clamp; }\n",
-                                sp - 3u, sp - 2u, sp - 2u, sp - 1u, sp - 1u, sp - 3u);
+            cxpr_model_c_printf(
+                &b,
+                "    _cx_v%zu = cxpr_model_clamp_c(_cx_v%zu, _cx_v%zu, _cx_v%zu);\n",
+                sp - 3u, sp - 3u, sp - 2u, sp - 1u);
             break;
         case CXPR_OP_CALL_UNARY:
             {

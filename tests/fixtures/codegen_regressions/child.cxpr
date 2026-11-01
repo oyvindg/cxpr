@@ -1,0 +1,7 @@
+model child { source_arg = "source" }
+
+in { source, adjustment }
+
+value = clamp(source * 10 + adjustment, 10, -10) + pi()
+
+out { value }

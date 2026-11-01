@@ -303,6 +303,10 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
         cxpr_cg_puts(b, "NAN");
         return 1;
     }
+    if (strcmp(name, "pi") == 0 && argc == 0u) {
+        cxpr_cg_puts(b, "3.14159265358979323846");
+        return 1;
+    }
 
     /* min/max: variadic -> nested fmin/fmax (right-folded). */
     if ((strcmp(name, "min") == 0 || strcmp(name, "max") == 0) && argc >= 1) {

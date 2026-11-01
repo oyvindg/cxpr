@@ -29,6 +29,19 @@ typedef unsigned long size_t;
 #endif
 #endif
 
+CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_clamp_c(double value,
+                                                     double lower,
+                                                     double upper) {
+    if (lower > upper) {
+        const double temporary = lower;
+        lower = upper;
+        upper = temporary;
+    }
+    if (value < lower) return lower;
+    if (value > upper) return upper;
+    return value;
+}
+
 CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values,
                                                            size_t count,
                                                            int period,

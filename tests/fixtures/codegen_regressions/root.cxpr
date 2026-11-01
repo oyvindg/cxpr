@@ -1,0 +1,10 @@
+model codegen_regressions
+
+use child
+
+in { source, explicit_source, adjustment, explicit_adjustment }
+
+result = child(source=explicit_source, adjustment=explicit_adjustment).value
+direct_clamp = clamp(explicit_source * 10 + explicit_adjustment, 10, -10)
+
+out { result, direct_clamp }
