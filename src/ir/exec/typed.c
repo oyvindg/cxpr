@@ -885,9 +885,13 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
                     return cxpr_ir_runtime_error(err, "Lookback resolver failed");
                 }
             } else {
+                result = cxpr_null();
                 (void)cxpr_eval_ast(instr->ast, ctx, reg, &result, err);
             }
-            if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+            if (err && err->code != CXPR_OK) {
+                cxpr_value_free(&result);
+                return cxpr_num(NAN);
+            }
             CXPR_TYPED_PUSH(result);
             break;
         case CXPR_OP_JUMP:
