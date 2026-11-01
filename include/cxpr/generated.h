@@ -50,6 +50,27 @@ typedef struct cxpr_resample_view {
 } cxpr_resample_view;
 #endif
 
+/** Parallel typed resample view used when a generated model requires int64. */
+#ifndef CXPR_TYPED_RESAMPLE_VIEW_DEFINED
+#define CXPR_TYPED_RESAMPLE_VIEW_DEFINED 1
+typedef struct cxpr_typed_resample_view {
+    const double* number_values;
+    const int64_t* int64_values;
+    const size_t* alignment;
+    size_t value_count;
+    size_t primary_count;
+    cxpr_value_type value_type;
+} cxpr_typed_resample_view;
+#endif
+
+static inline int cxpr_typed_resample_view_valid(
+    const cxpr_typed_resample_view* view) {
+    if (!view || (view->primary_count > 0u && !view->alignment)) return 0;
+    if (view->value_type == CXPR_VALUE_NUMBER) return view->number_values != NULL;
+    if (view->value_type == CXPR_VALUE_INT64) return view->int64_values != NULL;
+    return 0;
+}
+
 typedef enum cxpr_resample_view_status {
     CXPR_RESAMPLE_VIEW_OK = 0,
     CXPR_RESAMPLE_VIEW_NULL,
@@ -92,6 +113,12 @@ typedef void (*cxpr_generated_resample_tick_fn)(
     const cxpr_value* params,
     cxpr_value* outputs,
     const cxpr_resample_view* views,
+    size_t primary_cursor);
+
+/** Generated tick ABI for mixed number/int64 pre-materialized series. */
+typedef void (*cxpr_generated_typed_resample_tick_fn)(
+    void* state, const cxpr_value* inputs, const cxpr_value* params,
+    cxpr_value* outputs, const cxpr_typed_resample_view* views,
     size_t primary_cursor);
 
 /** @brief Return the state-block size required by a generated model. */

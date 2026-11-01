@@ -1,0 +1,34 @@
+// PROPOSED SYNTAX -- does not parse with the current front end.
+// Design source: docs/read_only_peer_state.md
+//
+// Peer-state form of the flow-field cell. Replaces the halo-gathered
+// grid_relax_4nabo.cxpr (d_n/d_s/d_e/d_w scalar inputs) with peer reads of a
+// neighbour cell's own `dist` state from the frozen previous snapshot.
+//
+// New surface exercised:
+//   - `peers { ... }` declaration
+//   - `slot.field` reads (n.dist, ...)
+//   - peer visibility of `dist` inferred from the reads (no export keyword)
+model flow_field_cell
+
+in { cost, is_wall, is_goal }
+peers { n, s, e, w }
+
+$INF = 1e18
+fn sadd(a, b) = min(a + b, $INF)
+
+cand_n = sadd(n.dist, cost)
+cand_s = sadd(s.dist, cost)
+cand_e = sadd(e.dist, cost)
+cand_w = sadd(w.dist, cost)
+
+next_dist = is_wall > 0 ? $INF
+          : is_goal > 0 ? 0
+          : min(cand_n, cand_s, cand_e, cand_w)
+
+dist := next_dist initial $INF
+
+out {
+    next_dist,
+    dir = argmin(cand_n, cand_s, cand_e, cand_w)
+}

@@ -170,6 +170,7 @@ cxpr_ir_result_kind cxpr_expr_compiled_ir_result_kind(const cxpr_expr_compiled* 
     switch (program->ir.fast_result_kind) {
     case CXPR_IR_RESULT_DOUBLE: return CXPR_IR_RESULT_NUMBER;
     case CXPR_IR_RESULT_BOOL: return CXPR_IR_RESULT_BOOL;
+    case CXPR_IR_RESULT_INT64: return CXPR_IR_RESULT_INT64;
     default: return CXPR_IR_RESULT_UNKNOWN;
     }
 }

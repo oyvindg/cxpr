@@ -1,6 +1,9 @@
 file(GLOB_RECURSE CXPR_C_TESTS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.test.c"
 )
+# Generated-C parity is registered below after its generated header exists.
+list(REMOVE_ITEM CXPR_C_TESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/int64_generated_parity.test.c")
 list(SORT CXPR_C_TESTS)
 set(CXPR_C_TEST_NAMES)
 
@@ -31,6 +34,15 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
        "${CMAKE_CURRENT_SOURCE_DIR}/scale_parity_benchmark.test.c")
         continue()
     endif()
+    # cxcu/CUDA parity test is registered separately (needs cxpr_cxcu + CUDA).
+    if(test_file STREQUAL
+       "${CMAKE_CURRENT_SOURCE_DIR}/optimize_cxcu_constraint_parity.test.c")
+        continue()
+    endif()
+    if(NOT TARGET cxpr_model_codegen AND test_file MATCHES
+       "(bulk_buffer_parity|bulk_codegen_e2e|composition_bulk_codegen_e2e|dynamic_host_e2e|pathfinding_flow_e2e|pathfinding_generated_parity)\\.test\\.c$")
+        continue()
+    endif()
     file(RELATIVE_PATH test_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${test_file}")
     string(REPLACE ".test.c" "" test_base "${test_rel}")
     string(REPLACE "/" "_" test_base "${test_base}")
@@ -56,8 +68,124 @@ foreach(test_file IN LISTS CXPR_C_TESTS)
     endif()
 
     add_test(NAME "${test_base}" COMMAND "$<TARGET_FILE:${target_name}>")
+    if(test_base STREQUAL "bulk_reduce")
+        set_tests_properties("${test_base}" PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     list(APPEND CXPR_C_TEST_NAMES "${test_base}")
 endforeach()
+
+if(TARGET cxpr_document_tooling)
+    add_executable(cxpr_doc_tooling_native_baseline
+        doc_tooling_native_baseline.c)
+    target_link_libraries(cxpr_doc_tooling_native_baseline PRIVATE cxpr)
+    add_test(
+        NAME doc_tooling_cli_native_parity
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCLI=$<TARGET_FILE:cxpr_document_tooling>"
+            "-DNATIVE_BASELINE=$<TARGET_FILE:cxpr_doc_tooling_native_baseline>"
+            "-DFIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/doc_tooling_baseline.cxpr"
+            "-DSOURCE_NAME=baseline.cxpr"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/doc_tooling_cli_parity"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/doc_tooling_cli_parity.cmake")
+endif()
+
+add_executable(cxpr_int64_codegen_tool int64_codegen_tool.c)
+target_link_libraries(cxpr_int64_codegen_tool PRIVATE cxpr)
+set(CXPR_INT64_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_int64")
+set(CXPR_INT64_GENERATED_HEADER "${CXPR_INT64_GENERATED_DIR}/int64_generated.h")
+add_custom_command(
+    OUTPUT "${CXPR_INT64_GENERATED_HEADER}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CXPR_INT64_GENERATED_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0
+            $<TARGET_FILE:cxpr_int64_codegen_tool> "${CXPR_INT64_GENERATED_HEADER}"
+    DEPENDS cxpr_int64_codegen_tool
+    VERBATIM)
+add_custom_target(generate_cxpr_int64_parity DEPENDS "${CXPR_INT64_GENERATED_HEADER}")
+add_executable(test_int64_generated_parity int64_generated_parity.test.c)
+target_link_libraries(test_int64_generated_parity PRIVATE cxpr)
+target_include_directories(test_int64_generated_parity PRIVATE "${CXPR_INT64_GENERATED_DIR}")
+add_dependencies(test_int64_generated_parity generate_cxpr_int64_parity)
+add_test(NAME int64_generated_parity COMMAND test_int64_generated_parity)
+
+if(TARGET cxpr_model_codegen)
+    set(CXPR_PATHFINDING_FIXTURE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding")
+    set(CXPR_PATHFINDING_GENERATED_DIR
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_pathfinding")
+    set(CXPR_PATHFINDING_ARGMIN_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_argmin_argmax.gen.c")
+    set(CXPR_PATHFINDING_TIES_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_ties.gen.c")
+    set(CXPR_PATHFINDING_GRID4_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_grid4.gen.c")
+    set(CXPR_PATHFINDING_GRID8_C
+        "${CXPR_PATHFINDING_GENERATED_DIR}/pathfinding_grid8.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_PATHFINDING_ARGMIN_C}" "${CXPR_PATHFINDING_TIES_C}"
+            "${CXPR_PATHFINDING_GRID4_C}" "${CXPR_PATHFINDING_GRID8_C}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CXPR_PATHFINDING_GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/argmin_argmax.cxpr"
+            --output "${CXPR_PATHFINDING_ARGMIN_C}"
+            --function pathfinding_argmin_argmax_tick
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/ties.cxpr"
+            --output "${CXPR_PATHFINDING_TIES_C}"
+            --function pathfinding_ties_tick
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_4nabo.cxpr"
+            --output "${CXPR_PATHFINDING_GRID4_C}"
+            --function pathfinding_grid4_tick
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_8nabo.cxpr"
+            --output "${CXPR_PATHFINDING_GRID8_C}"
+            --function pathfinding_grid8_tick
+        DEPENDS cxpr_model_codegen
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/argmin_argmax.cxpr"
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/ties.cxpr"
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_4nabo.cxpr"
+            "${CXPR_PATHFINDING_FIXTURE_DIR}/grid_relax_8nabo.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_pathfinding_parity
+        DEPENDS "${CXPR_PATHFINDING_ARGMIN_C}" "${CXPR_PATHFINDING_TIES_C}"
+            "${CXPR_PATHFINDING_GRID4_C}" "${CXPR_PATHFINDING_GRID8_C}")
+    add_dependencies(test_pathfinding_generated_parity
+        generate_cxpr_pathfinding_parity)
+    add_dependencies(test_pathfinding_flow_e2e
+        generate_cxpr_pathfinding_parity)
+    target_include_directories(test_pathfinding_generated_parity PRIVATE
+        "${CXPR_PATHFINDING_GENERATED_DIR}")
+    target_include_directories(test_pathfinding_flow_e2e PRIVATE
+        "${CXPR_PATHFINDING_GENERATED_DIR}")
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        target_compile_options(test_pathfinding_generated_parity PRIVATE
+            -ffp-contract=off)
+    endif()
+endif()
+
+# Keep the machine-readable pathfinding acceptance map honest at configure time.
+if(TARGET cxpr_model_codegen)
+    set(CXPR_PATHFINDING_ACCEPTANCE
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/acceptance.json")
+    file(READ "${CXPR_PATHFINDING_ACCEPTANCE}" CXPR_PATHFINDING_ACCEPTANCE_JSON)
+    string(JSON CXPR_PATHFINDING_ACCEPTANCE_COUNT LENGTH
+        "${CXPR_PATHFINDING_ACCEPTANCE_JSON}" requirements)
+    math(EXPR CXPR_PATHFINDING_ACCEPTANCE_LAST
+        "${CXPR_PATHFINDING_ACCEPTANCE_COUNT} - 1")
+    foreach(index RANGE 0 ${CXPR_PATHFINDING_ACCEPTANCE_LAST})
+        string(JSON fixture GET "${CXPR_PATHFINDING_ACCEPTANCE_JSON}"
+            requirements ${index} fixture)
+        string(JSON cpu_test GET "${CXPR_PATHFINDING_ACCEPTANCE_JSON}"
+            requirements ${index} cpu_test)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/${fixture}")
+            message(FATAL_ERROR "Pathfinding acceptance fixture is missing: ${fixture}")
+        endif()
+        if(NOT TARGET "test_${cpu_test}")
+            message(FATAL_ERROR "Pathfinding acceptance test is not registered: ${cpu_test}")
+        endif()
+    endforeach()
+endif()
 
 if(CXPR_BUILD_SHARED)
     add_executable(test_pinvoke_smoke pinvoke_smoke.c)
@@ -132,6 +260,22 @@ add_custom_target(generate_cxpr_resample_function DEPENDS "${CXPR_GENERATED_RESA
 add_dependencies(test_generated_resample_parity generate_cxpr_resample_function)
 target_include_directories(test_generated_resample_parity PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 
+add_executable(cxpr_generated_int64_resample_codegen_tool
+    generated_int64_resample_codegen_tool.c)
+target_link_libraries(cxpr_generated_int64_resample_codegen_tool PRIVATE cxpr)
+set(CXPR_GENERATED_INT64_RESAMPLE_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_int64_resample_function.h")
+add_custom_command(OUTPUT "${CXPR_GENERATED_INT64_RESAMPLE_HEADER}"
+    COMMAND $<TARGET_FILE:cxpr_generated_int64_resample_codegen_tool>
+            "${CXPR_GENERATED_INT64_RESAMPLE_HEADER}"
+    DEPENDS cxpr_generated_int64_resample_codegen_tool VERBATIM)
+add_custom_target(generate_cxpr_int64_resample_function
+    DEPENDS "${CXPR_GENERATED_INT64_RESAMPLE_HEADER}")
+add_dependencies(test_generated_int64_resample_parity
+    generate_cxpr_int64_resample_function)
+target_include_directories(test_generated_int64_resample_parity PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
+
 find_package(Threads REQUIRED)
 target_link_libraries(test_history PRIVATE Threads::Threads)
 
@@ -151,6 +295,43 @@ if(CXPR_BUILD_CUDA_TESTS)
     endif()
     enable_language(CUDA)
 
+    set(CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_pathfinding_argmin.cuh")
+    set(CXPR_CUDA_PATHFINDING_TIES_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_pathfinding_ties.cuh")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED}"
+            "${CXPR_CUDA_PATHFINDING_TIES_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/argmin_argmax.cxpr"
+            "${CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED}"
+            cxpr_pathfinding_argmin_tick
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/ties.cxpr"
+            "${CXPR_CUDA_PATHFINDING_TIES_GENERATED}"
+            cxpr_pathfinding_ties_tick
+        DEPENDS cxpr_cuda_bulk_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/argmin_argmax.cxpr"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pathfinding/ties.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_pathfinding_fixtures
+        DEPENDS "${CXPR_CUDA_PATHFINDING_ARGMIN_GENERATED}"
+            "${CXPR_CUDA_PATHFINDING_TIES_GENERATED}")
+    add_executable(test_cuda_pathfinding_parity cuda_pathfinding_parity.cu)
+    add_dependencies(test_cuda_pathfinding_parity
+        generate_cxpr_cuda_pathfinding_fixtures)
+    target_include_directories(test_cuda_pathfinding_parity PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+    target_compile_options(test_cuda_pathfinding_parity PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
+    set_target_properties(test_cuda_pathfinding_parity PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_pathfinding_parity
+        COMMAND $<TARGET_FILE:test_cuda_pathfinding_parity>)
+    set_tests_properties(cuda_pathfinding_parity PROPERTIES
+        LABELS "cuda" SKIP_RETURN_CODE 77)
+
     set(CXPR_CUDA_BULK_GENERATED
         "${CMAKE_CURRENT_BINARY_DIR}/cxpr_klein_gordon_generated.cuh")
     add_custom_command(
@@ -167,6 +348,7 @@ if(CXPR_BUILD_CUDA_TESTS)
     add_dependencies(test_cuda_bulk_runtime generate_cxpr_cuda_bulk_fixture)
     target_include_directories(test_cuda_bulk_runtime PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_bulk_runtime PRIVATE cxpr)
     set_target_properties(test_cuda_bulk_runtime PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
     add_test(NAME cuda_bulk_runtime COMMAND $<TARGET_FILE:test_cuda_bulk_runtime>)
@@ -202,10 +384,62 @@ if(CXPR_BUILD_CUDA_TESTS)
     add_dependencies(cxpr_cuda_bulk_benchmark generate_cxpr_cuda_bulk_fixture)
     target_include_directories(cxpr_cuda_bulk_benchmark PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(cxpr_cuda_bulk_benchmark PRIVATE cxpr)
     target_compile_options(cxpr_cuda_bulk_benchmark PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
     set_target_properties(cxpr_cuda_bulk_benchmark PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_bulk_benchmark_smoke
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_benchmark> 262144 50 256 3)
+    set_tests_properties(cuda_bulk_benchmark_smoke PROPERTIES LABELS "cuda;benchmark")
+
+    set(CXPR_CUDA_OPTIMIZE_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_optimize_candidate_generated.cuh")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_OPTIMIZE_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_cuda_bulk_codegen_tool>
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/optimize/cuda_candidate.cxpr"
+            "${CXPR_CUDA_OPTIMIZE_GENERATED}"
+            cxpr_optimize_candidate_tick
+        DEPENDS cxpr_cuda_bulk_codegen_tool
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/optimize/cuda_candidate.cxpr"
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_optimize_fixture
+        DEPENDS "${CXPR_CUDA_OPTIMIZE_GENERATED}")
+    add_executable(test_cuda_optimize_runtime cuda_optimize_runtime.cu)
+    add_dependencies(test_cuda_optimize_runtime generate_cxpr_cuda_optimize_fixture)
+    target_include_directories(test_cuda_optimize_runtime PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_optimize_runtime PRIVATE cxpr)
+    target_compile_definitions(test_cuda_optimize_runtime PRIVATE
+        CXPR_CUDA_OPTIMIZE_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/optimize/cuda_candidate.cxpr")
+    set_target_properties(test_cuda_optimize_runtime PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_optimize_runtime COMMAND $<TARGET_FILE:test_cuda_optimize_runtime>)
+    set_tests_properties(cuda_optimize_runtime PROPERTIES LABELS "cuda")
+
+    set(CXPR_CUDA_RESAMPLE_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/cxpr_resample_generated.cu")
+    add_custom_command(
+        OUTPUT "${CXPR_CUDA_RESAMPLE_GENERATED}"
+        COMMAND ${CMAKE_COMMAND} -E env
+            CXPR_CUDA_SOURCE_OUT=${CXPR_CUDA_RESAMPLE_GENERATED}
+            $<TARGET_FILE:test_cuda_index_contract>
+        DEPENDS test_cuda_index_contract
+        VERBATIM)
+    add_custom_target(generate_cxpr_cuda_resample_fixture
+        DEPENDS "${CXPR_CUDA_RESAMPLE_GENERATED}")
+    add_executable(test_cuda_resample_runtime cuda_resample_runtime.cu)
+    add_dependencies(test_cuda_resample_runtime generate_cxpr_cuda_resample_fixture)
+    target_include_directories(test_cuda_resample_runtime PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(test_cuda_resample_runtime PRIVATE cxpr)
+    target_compile_definitions(test_cuda_resample_runtime PRIVATE
+        CXPR_CUDA_RESAMPLE_GENERATED="${CXPR_CUDA_RESAMPLE_GENERATED}")
+    set_target_properties(test_cuda_resample_runtime PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    add_test(NAME cuda_resample_runtime COMMAND $<TARGET_FILE:test_cuda_resample_runtime>)
+    set_tests_properties(cuda_resample_runtime PROPERTIES LABELS "cuda")
 endif()
 
 if(TARGET cxpr_model_codegen)
@@ -378,7 +612,16 @@ if(TARGET cxpr_model_codegen)
         COMMAND $<TARGET_FILE:cxpr_compiled_strategy_example>)
 endif()
 
-if(CXPR_ENABLE_ASAN)
-    set_tests_properties(${CXPR_C_TEST_NAMES} PROPERTIES
-        ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+# Standalone CPU <-> cxcu (CUDA) parity for optimize-scoped assert pruning.
+if(CXPR_WITH_CXCU AND TARGET cxpr_cxcu)
+    add_executable(cxpr_optimize_cxcu_constraint_parity
+        optimize_cxcu_constraint_parity.test.c)
+    target_link_libraries(cxpr_optimize_cxcu_constraint_parity PRIVATE cxpr_cxcu)
+    target_compile_definitions(cxpr_optimize_cxcu_constraint_parity PRIVATE
+        CXPR_CXCU_TEST_INCLUDE_OPTION="-I${CMAKE_CURRENT_SOURCE_DIR}/../include")
+    target_compile_options(cxpr_optimize_cxcu_constraint_parity PRIVATE -UNDEBUG)
+    add_test(NAME optimize_cxcu_constraint_parity
+        COMMAND $<TARGET_FILE:cxpr_optimize_cxcu_constraint_parity>)
+    set_tests_properties(optimize_cxcu_constraint_parity PROPERTIES
+        LABELS "cuda" SKIP_RETURN_CODE 77)
 endif()

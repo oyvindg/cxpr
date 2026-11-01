@@ -28,6 +28,7 @@ static void cxpr_registry_replace_entry(cxpr_func_entry* entry) {
     entry->typed_func = NULL;
     entry->ast_func = NULL;
     entry->struct_producer = NULL;
+    entry->typed_struct_producer = NULL;
     entry->native_kind = CXPR_NATIVE_KIND_NONE;
     memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
     entry->arg_types = NULL;
@@ -429,6 +430,56 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
     reg->version++;
 }
 
+void cxpr_registry_add_struct_typed(
+    cxpr_registry* reg, const char* name,
+    cxpr_typed_struct_producer_ptr func,
+    size_t min_args, size_t max_args,
+    const cxpr_value_type* arg_types,
+    const char* const* fields, size_t field_count,
+    void* userdata, cxpr_userdata_free_fn free_userdata) {
+    cxpr_value_type* owned_arg_types;
+    char** owned_fields;
+    cxpr_func_entry* entry;
+    if (!reg || !name || !func || !fields || field_count == 0u) return;
+    owned_arg_types = cxpr_registry_clone_arg_types(arg_types, max_args);
+    if (arg_types && max_args && !owned_arg_types) return;
+    owned_fields = (char**)calloc(field_count, sizeof(char*));
+    if (!owned_fields) { free(owned_arg_types); return; }
+    for (size_t i = 0u; i < field_count; ++i) {
+        owned_fields[i] = cxpr_strdup(fields[i]);
+        if (!owned_fields[i]) {
+            for (size_t j = 0u; j < i; ++j) free(owned_fields[j]);
+            free(owned_fields);
+            free(owned_arg_types);
+            return;
+        }
+    }
+    entry = cxpr_registry_find(reg, name);
+    if (entry) cxpr_registry_replace_entry(entry);
+    else {
+        if (reg->count >= reg->capacity && !cxpr_registry_grow(reg)) {
+            for (size_t i = 0u; i < field_count; ++i) free(owned_fields[i]);
+            free(owned_fields);
+            free(owned_arg_types);
+            return;
+        }
+        entry = &reg->entries[reg->count++];
+        cxpr_registry_prepare_entry(entry, name);
+    }
+    entry->typed_struct_producer = func;
+    entry->min_args = min_args;
+    entry->max_args = max_args;
+    entry->arg_types = owned_arg_types;
+    entry->arg_type_count = max_args;
+    entry->return_type = CXPR_VALUE_STRUCT;
+    entry->has_return_type = true;
+    entry->userdata = userdata;
+    entry->userdata_free = free_userdata;
+    entry->struct_fields = owned_fields;
+    entry->fields_per_arg = field_count;
+    reg->version++;
+}
+
 bool cxpr_registry_set_struct_codegen(cxpr_registry* reg, const char* name,
                                       cxpr_struct_codegen_ptr codegen,
                                       void* userdata,
@@ -436,7 +487,7 @@ bool cxpr_registry_set_struct_codegen(cxpr_registry* reg, const char* name,
     cxpr_func_entry* entry;
     if (!reg || !name || !codegen) return false;
     entry = cxpr_registry_find(reg, name);
-    if (!entry || !entry->struct_producer) return false;
+    if (!entry || (!entry->struct_producer && !entry->typed_struct_producer)) return false;
     if (entry->struct_codegen_userdata == userdata) {
         entry->struct_codegen = codegen;
         if (free_userdata) entry->struct_codegen_userdata_free = free_userdata;

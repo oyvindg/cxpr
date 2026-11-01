@@ -81,7 +81,7 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
     }
 
     for (size_t i = 0; i < argc; ++i) {
-        if (args[i].type != CXPR_VALUE_NUMBER) {
+        if (args[i].type != CXPR_VALUE_NUMBER && args[i].type != CXPR_VALUE_INT64) {
             if (err) {
                 err->code = CXPR_ERR_TYPE_MISMATCH;
                 err->message = "Function arguments must be numbers";
@@ -91,7 +91,8 @@ cxpr_value cxpr_registry_call_typed(const cxpr_registry* reg, const char* name,
             }
             return cxpr_num(NAN);
         }
-        scalar_args[i] = args[i].d;
+        scalar_args[i] = args[i].type == CXPR_VALUE_INT64
+            ? (double)args[i].i64 : args[i].d;
     }
 
     if (err) *err = (cxpr_error){0};

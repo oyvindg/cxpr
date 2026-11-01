@@ -96,6 +96,10 @@ typedef enum {
     /** @brief Anonymous output expression or record/model output. */
     CXPR_DOC_AST_ANONYMOUS_OUTPUT,
 
+    /** @brief Model condition: a load-time invariant that additionally prunes
+        optimizer candidates when it references optimize $params. */
+    CXPR_DOC_AST_ASSERT,
+
     /** @brief Metadata attached to a model, declaration, binding or output. */
     CXPR_DOC_AST_METADATA
 } cxpr_doc_ast_kind;

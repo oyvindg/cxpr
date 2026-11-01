@@ -461,6 +461,7 @@ static void test_document_ast_lowering_handles_use_aliases_and_groups(void) {
         "out high, close\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
+    cxpr_doc_ast* syntax;
     const cxpr_model* model;
     cxpr_source_span span;
 
@@ -819,6 +820,60 @@ static void test_document_ast_represents_advanced_existing_syntax(void) {
     printf("  ✓ test_document_ast_represents_advanced_existing_syntax\n");
 }
 
+static void test_model_declaration_accepts_parenthesized_metadata(void) {
+    cxpr_doc_ast* syntax;
+    const char* source =
+        "model bkadx_breakaway_ltf_base(\n"
+        "    timeframe = \"30m\",\n"
+        "    type = \"strategy\"\n"
+        ")\n"
+        "in close\n"
+        "out close\n";
+    cxpr_error err = {0};
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
+    const cxpr_model* model;
+
+    assert(document != NULL);
+    assert(err.code == CXPR_OK);
+    model = cxpr_doc_model(document);
+    assert(model != NULL);
+    assert(strcmp(cxpr_model_name(model), "bkadx_breakaway_ltf_base") == 0);
+    assert(cxpr_model_metadata_count(model) == 1u);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "timeframe"),
+                   "\"30m\"", 5u) == 0);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "type"),
+                   "\"strategy\"", 10u) == 0);
+
+    cxpr_doc_free(document);
+
+    syntax = cxpr_doc_ast_parse(
+        "model brace_metadata { custom = max(1, 2) }\nout 1\n",
+        "brace-metadata.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    cxpr_doc_ast_free(syntax);
+
+    document = cxpr_doc_parse_model(
+        "model combined(something = 123, shared = 1) "
+        "{ other = 345, shared = 2 }\n"
+        "value = 1\nout value\n",
+        &err);
+    assert(document != NULL);
+    assert(err.code == CXPR_OK);
+    model = cxpr_doc_model(document);
+    assert(model != NULL);
+    assert(cxpr_model_metadata_count(model) == 1u);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "something"),
+                   "123", 3u) == 0);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "other"),
+                   "345", 3u) == 0);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "shared"),
+                   "2", 1u) == 0);
+    cxpr_doc_free(document);
+
+    printf("  ✓ test_model_declaration_accepts_parenthesized_metadata\n");
+}
+
 static void test_document_ast_represents_struct_input_blocks(void) {
     const char* source =
         "model struct_input_shape\n"
@@ -847,6 +902,50 @@ static void test_document_ast_represents_struct_input_blocks(void) {
     printf("  ✓ test_document_ast_represents_struct_input_blocks\n");
 }
 
+static void test_document_ast_represents_assert_conditions(void) {
+    const char* source =
+        "model constrained\n"
+        "$fast = 12\n"
+        "$slow = 26\n"
+        "assert $fast > 0 { description = \"positive\" }\n"
+        "assert $fast < $slow { description = \"ordered\" }\n"
+        "out $fast\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* syntax =
+        cxpr_doc_ast_parse(source, "constraints.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* invariant;
+    const cxpr_doc_ast_node* constraint;
+
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 6u);
+    invariant = cxpr_doc_ast_node_child(root, 3u);
+    constraint = cxpr_doc_ast_node_child(root, 4u);
+    /* Both conditions parse as asserts; optimizer-scope is a compile-time
+       classification, not a distinct statement kind. */
+    assert(cxpr_doc_ast_node_kind(invariant) == CXPR_DOC_AST_ASSERT);
+    assert(cxpr_doc_ast_node_expr(invariant) != NULL);
+    assert(cxpr_doc_ast_node_child_count(invariant) == 1u);
+    assert(cxpr_doc_ast_node_kind(constraint) == CXPR_DOC_AST_ASSERT);
+    assert(cxpr_doc_ast_node_expr(constraint) != NULL);
+    assert(cxpr_doc_ast_node_child_count(constraint) == 1u);
+    cxpr_doc_ast_free(syntax);
+
+    /* The legacy `optimize <expr>` statement is no longer a valid keyword. */
+    {
+        cxpr_error legacy_err = {0};
+        cxpr_doc_ast* legacy = cxpr_doc_ast_parse(
+            "model legacy\n$a = 1 { optimize = [1, 2] }\noptimize $a < 2\nout $a\n",
+            "legacy.cxpr", CXPR_DOC_EXTENSION_MODEL, &legacy_err);
+        assert(legacy == NULL);
+        assert(legacy_err.code == CXPR_ERR_SYNTAX);
+    }
+
+    printf("  ✓ test_document_ast_represents_assert_conditions\n");
+}
+
 static void test_load_document_file_is_primary_entrypoint(void) {
     const char* path = "/tmp/cxpr_document_manifest_test.cxpr";
     FILE* file = fopen(path, "wb");
@@ -873,6 +972,7 @@ static void test_load_document_file_is_primary_entrypoint(void) {
 static void test_manifest_document_accepts_comment_forms(void) {
     const char* source =
         "/** profile docs */\n"
+        "/* // something */ /* some comment /* nested comments */ after nested comments */\n"
         "host_profile trading { // host block\n"
         "  type = \"host_profile\" # line metadata\n"
         "  source close { /** nested docs */\n"
@@ -912,6 +1012,45 @@ static void test_manifest_document_accepts_comment_forms(void) {
     printf("  ✓ test_manifest_document_accepts_comment_forms\n");
 }
 
+static void test_binding_expression_error_has_document_column(void) {
+    const char* source =
+        "model demo\n"
+        "fast_avg = x ema(close, 12).value\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* document = cxpr_doc_ast_parse(
+        source, "bad-binding.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+
+    assert(document == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(strcmp(err.message,
+                  "Implicit multiplication is not supported; use '*' explicitly") == 0);
+    assert(err.line == 2u);
+    assert(err.column == 14u);
+
+    err = (cxpr_error){0};
+    document = cxpr_doc_ast_parse(
+        "model demo\nin close, $xxxx = 0abc\nout close\n",
+        "bad-input.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    assert(document == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.line == 2u);
+    assert(err.column == 20u);
+    assert(strcmp(err.message,
+                  "Implicit multiplication is not supported; use '*' explicitly") == 0);
+
+    err = (cxpr_error){0};
+    document = cxpr_doc_ast_parse(
+        "model demo\nin close, $xxx=0babc\nout close\n",
+        "bad-binary-input.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    assert(document == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.line == 2u);
+    assert(err.column == 16u);
+    assert(strcmp(err.message,
+                  "Binary numeric literals are not supported; use decimal notation") == 0);
+    printf("  ✓ test_binding_expression_error_has_document_column\n");
+}
+
 int main(void) {
     printf("Running cxpr document tests...\n");
     test_manifest_document_accepts_host_blocks_without_model();
@@ -934,9 +1073,12 @@ int main(void) {
     test_document_model_exposes_semantic_source_spans();
     test_document_ast_function_body_host_fields_and_visitor();
     test_document_ast_represents_advanced_existing_syntax();
+    test_model_declaration_accepts_parenthesized_metadata();
     test_document_ast_represents_struct_input_blocks();
+    test_document_ast_represents_assert_conditions();
     test_load_document_file_is_primary_entrypoint();
     test_manifest_document_accepts_comment_forms();
+    test_binding_expression_error_has_document_column();
     printf("All document tests passed.\n");
     return 0;
 }

@@ -19,6 +19,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool scalar_values_equal(const cxpr_value* a, const cxpr_value* b) {
+    if (a->type != b->type) return false;
+    switch (a->type) {
+    case CXPR_VALUE_NUMBER: return a->d == b->d || (a->d != a->d && b->d != b->d);
+    case CXPR_VALUE_BOOL: return a->b == b->b;
+    case CXPR_VALUE_INT64:
+    case CXPR_VALUE_TIMESTAMP:
+    case CXPR_VALUE_DURATION: return a->i64 == b->i64;
+    case CXPR_VALUE_NULL: return true;
+    case CXPR_VALUE_STRING: return strcmp(a->str, b->str) == 0;
+    default: return true; /* Nested ownership is still exercised and freed below. */
+    }
+}
+
+static void free_nested_value(cxpr_value* value) {
+    if (value->type == CXPR_VALUE_ARRAY || value->type == CXPR_VALUE_STRUCT) {
+        cxpr_value_free(value);
+    }
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
@@ -54,15 +74,24 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
             cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
             if (program) {
-                cxpr_context* ctx = cxpr_context_new();
-                if (ctx) {
-                    double num = 0.0;
-                    bool flag = false;
-                    /* Exercise both typed exit points of the executor. */
-                    (void)cxpr_expr_compiled_eval_number(program, ctx, reg, &num, &err);
-                    (void)cxpr_expr_compiled_eval_bool(program, ctx, reg, &flag, &err);
-                    cxpr_context_free(ctx);
+                cxpr_context* ast_ctx = cxpr_context_new();
+                cxpr_context* ir_ctx = cxpr_context_new();
+                if (ast_ctx && ir_ctx) {
+                    cxpr_value ast_value = cxpr_num(0.0);
+                    cxpr_value ir_value = cxpr_num(0.0);
+                    cxpr_error ast_err = {0};
+                    cxpr_error ir_err = {0};
+                    bool ast_ok = cxpr_eval_ast(ast, ast_ctx, reg, &ast_value, &ast_err);
+                    bool ir_ok = cxpr_expr_compiled_eval(program, ir_ctx, reg, &ir_value, &ir_err);
+                    if (ast_ok != ir_ok || (!ast_ok && ast_err.code != ir_err.code) ||
+                        (ast_ok && !scalar_values_equal(&ast_value, &ir_value))) {
+                        __builtin_trap();
+                    }
+                    if (ast_ok) free_nested_value(&ast_value);
+                    if (ir_ok) free_nested_value(&ir_value);
                 }
+                cxpr_context_free(ast_ctx);
+                cxpr_context_free(ir_ctx);
                 cxpr_expr_compiled_free(program);
             }
             cxpr_registry_free(reg);

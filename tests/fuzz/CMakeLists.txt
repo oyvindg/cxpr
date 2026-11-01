@@ -8,8 +8,20 @@ if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang|AppleClang")
         "Re-run with -DCMAKE_C_COMPILER=clang, e.g. cmake --preset fuzz.")
 endif()
 
+add_library(cxpr_fuzz_core STATIC ${CXPR_SOURCES})
+target_include_directories(cxpr_fuzz_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+target_include_directories(cxpr_fuzz_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+target_compile_options(cxpr_fuzz_core PRIVATE
+    -fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -g)
+target_link_options(cxpr_fuzz_core PRIVATE -fsanitize=address,undefined)
+if(UNIX)
+    target_link_libraries(cxpr_fuzz_core PUBLIC m)
+endif()
+
 add_executable(cxpr_fuzz_parse parse_fuzzer.c)
-target_link_libraries(cxpr_fuzz_parse PRIVATE cxpr)
+target_link_libraries(cxpr_fuzz_parse PRIVATE cxpr_fuzz_core)
 target_compile_options(cxpr_fuzz_parse PRIVATE -fsanitize=fuzzer,address,undefined -g)
 target_link_options(cxpr_fuzz_parse PRIVATE -fsanitize=fuzzer,address,undefined)
 
@@ -17,3 +29,6 @@ target_link_options(cxpr_fuzz_parse PRIVATE -fsanitize=fuzzer,address,undefined)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/corpus)
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/corpus/seed_arith "rsi < 30 and volume > $min_volume")
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/corpus/seed_call  "clamp(ema(close, 14), 0.0, 1.0) ? a : b")
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/corpus/seed_int64_arith "9007199254740993i64 + 2i64")
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/corpus/seed_int64_mixed "5i64 / 2i64 == 2.5")
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/corpus/seed_int64_overflow "9223372036854775807i64 + 1i64")

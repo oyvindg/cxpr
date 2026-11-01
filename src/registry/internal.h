@@ -18,6 +18,7 @@ typedef struct cxpr_func_entry {
     cxpr_typed_func_ptr typed_func; /**< Fully typed function pointer */
     cxpr_expr_ast_func_ptr ast_func; /**< AST-aware function pointer */
     cxpr_struct_producer_ptr struct_producer; /**< Struct-producing callback */
+    cxpr_typed_struct_producer_ptr typed_struct_producer; /**< Typed struct producer */
     cxpr_struct_codegen_ptr struct_codegen; /**< Optional generated-C field emitter */
     void* struct_codegen_userdata;
     cxpr_userdata_free_fn struct_codegen_userdata_free;

@@ -23,6 +23,13 @@ static void test_hashmap_internal_operations(void) {
     assert(cxpr_hashmap_find_prehashed_entry(&map, "beta", hash) != NULL);
     assert(cxpr_hashmap_find_prehashed_slot(&map, "beta", hash) != NULL);
 
+    /* djb2 collisions modulo the initial capacity exercise probe-chain repair. */
+    assert(cxpr_hashmap_set(&map, "a", 10.0));
+    assert(cxpr_hashmap_set(&map, "A", 11.0));
+    assert(cxpr_hashmap_remove(&map, "a"));
+    assert(cxpr_hashmap_get(&map, "A", &found) == 11.0 && found);
+    assert(!cxpr_hashmap_remove(&map, "missing"));
+
     clone = cxpr_hashmap_clone(&map);
     assert(clone);
     assert(cxpr_hashmap_get(clone, "alpha", &found) == 2.5);

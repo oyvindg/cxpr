@@ -66,26 +66,26 @@ static void test_call_arg_binding_reports_named_arg_error(void) {
     cxpr_expr_parser_free(parser);
 }
 
-static void test_call_arg_binding_accepts_bars_alias_for_samples(void) {
+static void test_call_arg_binding_rejects_unknown_sample_count_name(void) {
     cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_expr_ast* ast;
     cxpr_error err = {0};
     cxpr_func_entry* entry;
-    const cxpr_expr_ast* ordered[2] = {0};
+    cxpr_error_code code = CXPR_OK;
+    const char* message = NULL;
 
     assert(parser && reg);
     cxpr_register_defaults(reg);
 
-    ast = cxpr_expr_ast_parse(parser, "rising(value=close, bars=3)", &err);
+    ast = cxpr_expr_ast_parse(parser, "rising(value=close, sample_count=3)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "rising");
     assert(entry);
 
-    assert(cxpr_call_bind_args(ast, entry, ordered, NULL, NULL));
-    assert(cxpr_expr_ast_kind_of(ordered[0]) == CXPR_NODE_IDENTIFIER);
-    assert(cxpr_expr_ast_kind_of(ordered[1]) == CXPR_NODE_NUMBER);
-    assert(cxpr_expr_ast_number_value(ordered[1]) == 3.0);
+    assert(!cxpr_call_bind_args(ast, entry, NULL, &code, &message));
+    assert(code == CXPR_ERR_SYNTAX);
+    assert(message != NULL);
 
     cxpr_expr_ast_free(ast);
     cxpr_registry_free(reg);
@@ -103,7 +103,7 @@ static void test_call_arg_binding_accepts_condition_alias_for_value(void) {
     assert(parser && reg);
     cxpr_register_defaults(reg);
 
-    ast = cxpr_expr_ast_parse(parser, "repeat(condition=close > base, bars=3)", &err);
+    ast = cxpr_expr_ast_parse(parser, "repeat(condition=close > base, samples=3)", &err);
     assert(ast);
     entry = cxpr_registry_find(reg, "repeat");
     assert(entry);
@@ -121,7 +121,7 @@ static void test_call_arg_binding_accepts_condition_alias_for_value(void) {
 int main(void) {
     test_call_arg_binding_reorders_named_arguments();
     test_call_arg_binding_reports_named_arg_error();
-    test_call_arg_binding_accepts_bars_alias_for_samples();
+    test_call_arg_binding_rejects_unknown_sample_count_name();
     test_call_arg_binding_accepts_condition_alias_for_value();
     printf("  \xE2\x9C\x93 call_args\n");
     return 0;

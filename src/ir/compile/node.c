@@ -24,17 +24,51 @@ static bool cxpr_ir_index_has_literal_array_base(const cxpr_expr_ast* target) {
     return target && target->type == CXPR_NODE_ARRAY;
 }
 
-static bool cxpr_ir_simple_lookback_target(const cxpr_expr_ast* ast) {
-    if (!ast) return false;
-    switch (ast->type) {
-    case CXPR_NODE_IDENTIFIER:
-    case CXPR_NODE_FIELD_ACCESS:
-    case CXPR_NODE_CHAIN_ACCESS:
-    case CXPR_NODE_PRODUCER_ACCESS:
-        return true;
-    default:
-        return false;
+static bool cxpr_ir_index_has_scalar_literal_base(const cxpr_expr_ast* target) {
+    while (target && target->type == CXPR_NODE_INDEX) {
+        target = target->data.index.target;
     }
+    if (!target) return false;
+    return target->type == CXPR_NODE_NUMBER || target->type == CXPR_NODE_INT64 ||
+           target->type == CXPR_NODE_BOOL || target->type == CXPR_NODE_STRING;
+}
+
+static cxpr_ir_lookback_payload* cxpr_ir_lookback_payload_new(
+    const cxpr_expr_ast* target, const cxpr_registry* reg) {
+    cxpr_ir_lookback_payload* payload =
+        (cxpr_ir_lookback_payload*)calloc(1u, sizeof(*payload));
+    const cxpr_index_capability_entry* capability;
+    cxpr_error ignored = {0};
+    bool handled = false;
+
+    if (!payload) return NULL;
+    payload->target = target;
+    payload->compile_registry = reg;
+    if (target && target->type == CXPR_NODE_IDENTIFIER) {
+        payload->kind = CXPR_IR_LOOKBACK_IDENT_ARRAY;
+        payload->key = target->data.identifier.name;
+    } else if (target && target->type == CXPR_NODE_FIELD_ACCESS) {
+        payload->kind = CXPR_IR_LOOKBACK_PRODUCER_FIELD_CHAIN;
+        payload->key = target->data.field_access.full_key;
+    } else if (target && target->type == CXPR_NODE_CHAIN_ACCESS) {
+        payload->kind = CXPR_IR_LOOKBACK_PRODUCER_FIELD_CHAIN;
+        payload->key = target->data.chain_access.full_key;
+        payload->segments = target->data.chain_access.path;
+        payload->segment_count = target->data.chain_access.depth;
+    } else {
+        payload->kind = CXPR_IR_LOOKBACK_RESOLVER;
+    }
+    capability = cxpr_registry_select_index_capability(reg, target, &ignored, &handled);
+    if (capability && ignored.code == CXPR_OK) {
+        payload->capability = capability->resolve;
+        payload->capability_userdata = capability->userdata;
+    }
+    payload->capability_handled = handled;
+    if (reg) {
+        payload->resolver = reg->lookback_resolver;
+        payload->resolver_userdata = reg->lookback_userdata;
+    }
+    return payload;
 }
 
 static bool cxpr_ir_emit_defined_direct_field_call(cxpr_func_entry* entry,
@@ -374,7 +408,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
-        if (!entry || (!entry->struct_producer && !entry->model_producer &&
+        if (!entry || (!entry->struct_producer && !entry->typed_struct_producer && !entry->model_producer &&
                        entry->defined_return_field_count == 0u)) {
             if (err) {
                 err->code = CXPR_ERR_UNKNOWN_FUNCTION;
@@ -413,10 +447,11 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
-        const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
-                                                        ordered_args,
-                                                        ast->data.producer_access.argc,
-                                                        reg);
+        if (!entry->typed_struct_producer)
+            const_key = cxpr_ir_build_constant_producer_key(ast->data.producer_access.name,
+                                                            ordered_args,
+                                                            ast->data.producer_access.argc,
+                                                            reg);
         if (const_key) {
             const_args = (double*)calloc(ast->data.producer_access.argc ? ast->data.producer_access.argc : 1,
                                          sizeof(double));
@@ -492,8 +527,10 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             }
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_INDEX }, err);
         }
-        if (cxpr_lookback_literal_offset(
+        if (!cxpr_ir_index_has_scalar_literal_base(target) &&
+            cxpr_lookback_literal_offset(
                 ast->data.index.index, &offset, NULL, NULL)) {
+            cxpr_ir_lookback_payload* payload;
             while (target && target->type == CXPR_NODE_INDEX) {
                 unsigned inner_offset;
                 unsigned summed;
@@ -506,30 +543,24 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                 offset = summed;
                 target = target->data.index.target;
             }
-            if (!cxpr_ir_simple_lookback_target(target)) {
-                return cxpr_ir_emit(program,
-                                    (cxpr_ir_instr){
-                                        .op = CXPR_OP_LOOKBACK_RESOLVE,
-                                        .index = offset,
-                                        .payload = target,
-                                    },
-                                    err);
+            payload = cxpr_ir_lookback_payload_new(target, reg);
+            if (!payload) {
+                if (err) {
+                    err->code = CXPR_ERR_OUT_OF_MEMORY;
+                    err->message = "Out of memory";
+                }
+                return false;
             }
             if (!cxpr_ir_emit(program,
                               (cxpr_ir_instr){
-                                  .op = CXPR_OP_LOOKBACK_PUSH,
+                                  .op = CXPR_OP_LOOKBACK_RESOLVE,
                                   .index = offset,
-                              },
-                              err)) {
+                                  .payload = payload,
+                              }, err)) {
+                free(payload);
                 return false;
             }
-            if (!cxpr_ir_compile_node(target, program, reg,
-                                      local_names, local_count, subst, inline_depth, err)) {
-                return false;
-            }
-            return cxpr_ir_emit(program,
-                                (cxpr_ir_instr){ .op = CXPR_OP_LOOKBACK_POP },
-                                err);
+            return true;
         }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
@@ -592,6 +623,14 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                     .ast = ast,
                                 },
                                 err);
+        }
+        if (ast->data.function_call.argc < entry->min_args ||
+            ast->data.function_call.argc > entry->max_args) {
+            if (err) {
+                err->code = CXPR_ERR_WRONG_ARITY;
+                err->message = "Wrong number of arguments";
+            }
+            return false;
         }
 
         if (strcmp(fname, "if") == 0 && ast->data.function_call.argc == 3) {
@@ -704,7 +743,10 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 err);
         }
 
-        if ((strcmp(fname, "min") == 0 || strcmp(fname, "max") == 0) &&
+        if ((strcmp(fname, "min") == 0 || strcmp(fname, "max") == 0 ||
+             strcmp(fname, "argmin") == 0 || strcmp(fname, "argmax") == 0 ||
+             strcmp(fname, "sum") == 0) &&
+            !entry->defined_body &&
             ast->data.function_call.argc >= 1 &&
             ast->data.function_call.argc <= 8) {
             size_t i;
@@ -788,7 +830,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 err);
         }
 
-        if (entry->struct_producer && !entry->sync_func) {
+        if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func) {
             char* const_key = NULL;
             for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
                 if (!cxpr_ir_compile_node(ast->data.function_call.args[i], program, reg,
@@ -796,10 +838,11 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                     return false;
                 }
             }
-            const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
-                                                            (const cxpr_expr_ast* const*)ast->data.function_call.args,
-                                                            ast->data.function_call.argc,
-                                                            reg);
+            if (!entry->typed_struct_producer)
+                const_key = cxpr_ir_build_constant_producer_key(ast->data.function_call.name,
+                                                                (const cxpr_expr_ast* const*)ast->data.function_call.args,
+                                                                ast->data.function_call.argc,
+                                                                reg);
             if (!cxpr_ir_emit(program,
                               (cxpr_ir_instr){
                                   .op = const_key ? CXPR_OP_CALL_PRODUCER_CONST

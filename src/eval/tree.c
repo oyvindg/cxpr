@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void cxpr_eval_free_composite(cxpr_value* value);
+
 static const char* cxpr_eval_unknown_function_message(const char* name) {
     static CXPR_THREAD_LOCAL char message[256];
     if (!name || name[0] == '\0') return "Unknown function";
@@ -113,7 +115,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
             cxpr_func_entry* entry =
                 cxpr_registry_find(reg, base_ast->data.function_call.name);
             if (entry &&
-                (entry->struct_producer ||
+                (entry->struct_producer || entry->typed_struct_producer ||
                  entry->model_producer ||
                  entry->defined_return_field_count > 0u)) {
                 cxpr_expr_ast producer_ast = {0};
@@ -123,16 +125,28 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
                 producer_ast.data.producer_access.arg_names = base_ast->data.function_call.arg_names;
                 producer_ast.data.producer_access.argc = base_ast->data.function_call.argc;
                 producer_ast.data.producer_access.field = ast->data.field_access.field;
-                return cxpr_eval_cached_producer_access(&producer_ast, ctx, reg, err);
+                {
+                    cxpr_value result =
+                        cxpr_eval_cached_producer_access(&producer_ast, ctx, reg, err);
+                    free(producer_ast.data.producer_access.cached_const_key);
+                    return result;
+                }
             }
         }
         cxpr_value base = cxpr_eval_node(ast->data.field_access.base, ctx, reg, err);
-        if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+        cxpr_value result;
+        if (err && err->code != CXPR_OK) {
+            cxpr_eval_free_composite(&base);
+            return cxpr_num(NAN);
+        }
         if (base.type != CXPR_VALUE_STRUCT) {
+            cxpr_eval_free_composite(&base);
             return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "Field access requires a struct base");
         }
-        return cxpr_eval_struct_field_value(base.s, ast->data.field_access.field, err);
+        result = cxpr_eval_struct_field_value(base.s, ast->data.field_access.field, err);
+        cxpr_eval_free_composite(&base);
+        return result;
     }
 
     if (ctx && ctx->expression_scope) {
@@ -172,7 +186,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
         }
         {
             cxpr_func_entry* producer = cxpr_registry_find(reg, ast->data.field_access.object);
-            if (producer && producer->struct_producer) {
+            if (producer && (producer->struct_producer || producer->typed_struct_producer)) {
                 value = cxpr_eval_struct_producer(producer, ast->data.field_access.object,
                                                   ast->data.field_access.field, NULL, 0,
                                                   ctx, reg, err);
@@ -193,6 +207,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
 cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   cxpr_error* err) {
     const cxpr_struct_value* current;
+    cxpr_value owned_root = cxpr_null();
     size_t start_index = 1u;
 
     if (ctx && ctx->expression_scope) {
@@ -237,12 +252,13 @@ cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* 
     current = cxpr_context_get_struct(ctx, ast->data.chain_access.path[0]);
     if (!current) {
         bool found = false;
-        cxpr_value root = cxpr_context_get_typed(ctx, ast->data.chain_access.path[0], &found);
-        if (found && root.type == CXPR_VALUE_STRUCT) {
-            current = root.s;
+        owned_root = cxpr_context_get_typed(ctx, ast->data.chain_access.path[0], &found);
+        if (found && owned_root.type == CXPR_VALUE_STRUCT) {
+            current = owned_root.s;
         }
     }
     if (!current) {
+        cxpr_eval_free_composite(&owned_root);
         return cxpr_eval_error(
             err,
             CXPR_ERR_UNKNOWN_IDENTIFIER,
@@ -263,21 +279,28 @@ walk_fields:
         }
 
         if (!found) {
+            cxpr_eval_free_composite(&owned_root);
             return cxpr_eval_error(
                 err,
                 CXPR_ERR_UNKNOWN_IDENTIFIER,
                 cxpr_eval_unknown_field_message(ast->data.chain_access.full_key));
         }
 
-        if (i + 1 == ast->data.chain_access.depth) return cxpr_value_clone(&value);
+        if (i + 1 == ast->data.chain_access.depth) {
+            cxpr_value result = cxpr_value_clone(&value);
+            cxpr_eval_free_composite(&owned_root);
+            return result;
+        }
 
         if (value.type != CXPR_VALUE_STRUCT) {
+            cxpr_eval_free_composite(&owned_root);
             return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "Chain access requires struct intermediates");
         }
         current = value.s;
     }
 
+    cxpr_eval_free_composite(&owned_root);
     return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
 }
 
@@ -319,7 +342,13 @@ static const char* cxpr_eval_prepare_const_key_for_call(const cxpr_expr_ast* ast
 }
 
 static bool cxpr_eval_values_equal(cxpr_value left, cxpr_value right, bool* out) {
-    if (!out || left.type != right.type) return false;
+    if (!out) return false;
+    if ((left.type == CXPR_VALUE_NUMBER || left.type == CXPR_VALUE_INT64) &&
+        (right.type == CXPR_VALUE_NUMBER || right.type == CXPR_VALUE_INT64)) {
+        *out = cxpr_numeric_equal(left, right);
+        return true;
+    }
+    if (left.type != right.type) return false;
 
     switch (left.type) {
     case CXPR_VALUE_NUMBER:
@@ -356,6 +385,18 @@ static bool cxpr_tok_to_arith_valop(int op, cxpr_valop* out) {
 
 static cxpr_value cxpr_eval_arithmetic_op(int op, cxpr_value left, cxpr_value right,
                                           cxpr_error* err) {
+    if ((op == CXPR_TOK_PERCENT || op == CXPR_TOK_POWER) &&
+        (left.type == CXPR_VALUE_NUMBER || left.type == CXPR_VALUE_INT64) &&
+        (right.type == CXPR_VALUE_NUMBER || right.type == CXPR_VALUE_INT64)) {
+        const double left_number = left.type == CXPR_VALUE_INT64 ? (double)left.i64 : left.d;
+        const double right_number = right.type == CXPR_VALUE_INT64 ? (double)right.i64 : right.d;
+        if (op == CXPR_TOK_PERCENT && right_number == 0.0) {
+            return cxpr_eval_error(err, CXPR_ERR_DIVISION_BY_ZERO, "Modulo by zero");
+        }
+        return cxpr_num(op == CXPR_TOK_PERCENT
+                            ? fmod(left_number, right_number)
+                            : pow(left_number, right_number));
+    }
     if (left.type != CXPR_VALUE_NUMBER || right.type != CXPR_VALUE_NUMBER) {
         cxpr_valop vop;
         cxpr_value out;
@@ -447,33 +488,60 @@ static cxpr_value cxpr_eval_binary_values(int op, cxpr_value left, cxpr_value ri
     }
 }
 
+static void cxpr_eval_free_composite(cxpr_value* value) {
+    /* Evaluated strings borrow AST/context storage; composite results are owned. */
+    if (value && (value->type == CXPR_VALUE_STRUCT || value->type == CXPR_VALUE_ARRAY)) {
+        cxpr_value_free(value);
+    }
+}
+
 static cxpr_value cxpr_eval_binary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                       const cxpr_registry* reg, cxpr_error* err) {
     int op = ast->data.binary_op.op;
     cxpr_value left = cxpr_eval_node(ast->data.binary_op.left, ctx, reg, err);
     cxpr_value right;
+    cxpr_value result;
 
-    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (err && err->code != CXPR_OK) {
+        cxpr_eval_free_composite(&left);
+        return cxpr_num(NAN);
+    }
 
     if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
         if (!cxpr_require_type(left, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
+            cxpr_eval_free_composite(&left);
             return cxpr_num(NAN);
         }
-        if (op == CXPR_TOK_AND && !left.b) return cxpr_bool(false);
-        if (op == CXPR_TOK_OR && left.b) return cxpr_bool(true);
+        if (op == CXPR_TOK_AND && !left.b) {
+            cxpr_eval_free_composite(&left);
+            return cxpr_bool(false);
+        }
+        if (op == CXPR_TOK_OR && left.b) {
+            cxpr_eval_free_composite(&left);
+            return cxpr_bool(true);
+        }
     }
 
     right = cxpr_eval_node(ast->data.binary_op.right, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (err && err->code != CXPR_OK) {
+        cxpr_eval_free_composite(&left);
+        cxpr_eval_free_composite(&right);
+        return cxpr_num(NAN);
+    }
 
     if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) {
         if (!cxpr_require_type(right, CXPR_VALUE_BOOL, err, "Logical operators require bool")) {
+            cxpr_eval_free_composite(&left);
+            cxpr_eval_free_composite(&right);
             return cxpr_num(NAN);
         }
-        return cxpr_bool(right.b);
+        result = cxpr_bool(right.b);
+    } else {
+        result = cxpr_eval_binary_values(op, left, right, err);
     }
-
-    return cxpr_eval_binary_values(op, left, right, err);
+    cxpr_eval_free_composite(&left);
+    cxpr_eval_free_composite(&right);
+    return result;
 }
 
 static cxpr_value cxpr_eval_unary_op(const cxpr_expr_ast* ast, const cxpr_context* ctx,
@@ -550,6 +618,9 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             }
         }
         array = cxpr_array_value_new(values, ast->data.array.count);
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            cxpr_eval_free_composite(&values[i]);
+        }
         free(values);
         if (!array) {
             return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
@@ -828,7 +899,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         if (entry->ast_func) {
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
         }
-        if (entry->struct_producer && !entry->sync_func && !entry->value_func &&
+        if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func && !entry->value_func &&
             !cxpr_expr_ast_call_uses_named_args(ast)) {
             char const_key_local[256];
             char* const_key_heap = NULL;
@@ -837,8 +908,14 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             if (const_key) {
                 const cxpr_struct_value* cached = cxpr_context_get_cached_struct(ctx, const_key);
                 if (cached) {
+                    cxpr_struct_value* owned = cxpr_struct_value_new(
+                        (const char* const*)cached->field_names,
+                        cached->field_values,
+                        cached->field_count);
                     free(const_key_heap);
-                    return cxpr_struct((cxpr_struct_value*)cached);
+                    if (!owned)
+                        return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                    return cxpr_struct(owned);
                 }
             }
             {
@@ -847,9 +924,18 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
                 const cxpr_struct_value* produced =
                     cxpr_eval_struct_result(entry, name, direct_args, argc,
                                             const_key, ctx, reg, err);
+                cxpr_struct_value* owned = NULL;
+                if (produced) {
+                    owned = cxpr_struct_value_new(
+                        (const char* const*)produced->field_names,
+                        produced->field_values,
+                        produced->field_count);
+                }
                 free(const_key_heap);
                 if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-                return cxpr_struct((cxpr_struct_value*)produced);
+                if (!owned)
+                    return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                return cxpr_struct(owned);
             }
         }
         if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
@@ -861,11 +947,20 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         if (entry->defined_body || entry->defined_return_field_count > 0u) {
             return cxpr_eval_defined_function(entry, ast, ctx, reg, err);
         }
-        if (entry->struct_producer && !entry->sync_func && !entry->value_func) {
+        if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func && !entry->value_func) {
             const cxpr_struct_value* produced =
                 cxpr_eval_struct_result(entry, name, ordered_args, argc, NULL, ctx, reg, err);
+            cxpr_struct_value* owned = NULL;
+            if (produced) {
+                owned = cxpr_struct_value_new(
+                    (const char* const*)produced->field_names,
+                    produced->field_values,
+                    produced->field_count);
+            }
             if (err && err->code != CXPR_OK) return cxpr_num(NAN);
-            return cxpr_struct((cxpr_struct_value*)produced);
+            if (!owned)
+                return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            return cxpr_struct(owned);
         }
 
         if (entry->struct_fields && !entry->struct_producer && entry->sync_func) {
@@ -949,14 +1044,20 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
 
         {
             cxpr_value args[CXPR_MAX_CALL_ARGS];
+            cxpr_value result;
             if (argc > CXPR_MAX_CALL_ARGS) {
                 return cxpr_eval_error(err, CXPR_ERR_WRONG_ARITY, "Too many function arguments");
             }
             for (size_t i = 0; i < argc; i++) {
                 args[i] = cxpr_eval_node(ordered_args[i], ctx, reg, err);
-                if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                if (err && err->code != CXPR_OK) {
+                    for (size_t j = 0; j <= i; ++j) cxpr_eval_free_composite(&args[j]);
+                    return cxpr_num(NAN);
+                }
             }
-            return cxpr_registry_call_typed(reg, name, args, argc, err);
+            result = cxpr_registry_call_typed(reg, name, args, argc, err);
+            for (size_t i = 0; i < argc; ++i) cxpr_eval_free_composite(&args[i]);
+            return result;
         }
     }
 
@@ -987,7 +1088,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
 
 cxpr_value cxpr_eval_node(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                           const cxpr_registry* reg, cxpr_error* err) {
-    unsigned long hash;
+    uint64_t hash;
     cxpr_value cached;
     cxpr_value value;
 

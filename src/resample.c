@@ -11,6 +11,19 @@ static void set_error(cxpr_error* err, cxpr_error_code code, const char* message
     *err = (cxpr_error){0}; err->code = code; err->message = message;
 }
 
+cxpr_value_type cxpr_resample_aggregate_result_type(
+    cxpr_value_type input_type, cxpr_resample_aggregate aggregate) {
+    if (aggregate == CXPR_RESAMPLE_AGG_COUNT) return CXPR_VALUE_INT64;
+    if (aggregate == CXPR_RESAMPLE_AGG_MEAN) {
+        return input_type == CXPR_VALUE_NUMBER || input_type == CXPR_VALUE_INT64
+            ? CXPR_VALUE_NUMBER : CXPR_VALUE_NULL;
+    }
+    if (aggregate < CXPR_RESAMPLE_AGG_FIRST ||
+        aggregate > CXPR_RESAMPLE_AGG_SUM) return CXPR_VALUE_NULL;
+    return input_type == CXPR_VALUE_NUMBER || input_type == CXPR_VALUE_INT64
+        ? input_type : CXPR_VALUE_NULL;
+}
+
 static void locate_error(cxpr_error* err, const cxpr_expr_ast* ast) {
     cxpr_source_span span;
     if (!err || !cxpr_expr_ast_source_span(ast, &span)) return;

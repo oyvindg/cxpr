@@ -32,7 +32,7 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_expr_ast* ast,
     const char* const_key;
     bool found = false;
 
-    if (!entry || (!entry->struct_producer && !entry->model_producer &&
+    if (!entry || (!entry->struct_producer && !entry->typed_struct_producer && !entry->model_producer &&
                    entry->defined_return_field_count == 0u)) {
         return cxpr_eval_error(
             err,
@@ -99,15 +99,16 @@ cxpr_value cxpr_eval_cached_producer_access(const cxpr_expr_ast* ast,
         return result;
     }
 
-    const_key = cxpr_eval_prepare_const_key_for_producer(ast,
-                                                         ordered_args,
-                                                         ast->data.producer_access.argc,
-                                                         ctx,
-                                                         reg,
-                                                         const_key_local,
-                                                         sizeof(const_key_local),
-                                                         &const_key_heap,
-                                                         err);
+    const_key = entry->typed_struct_producer ? NULL :
+        cxpr_eval_prepare_const_key_for_producer(ast,
+                                                 ordered_args,
+                                                 ast->data.producer_access.argc,
+                                                 ctx,
+                                                 reg,
+                                                 const_key_local,
+                                                 sizeof(const_key_local),
+                                                 &const_key_heap,
+                                                 err);
     if (const_key) {
         produced = cxpr_context_get_cached_struct(ctx, const_key);
         if (!produced) {

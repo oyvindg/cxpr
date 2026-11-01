@@ -15,6 +15,11 @@ bool cxpr_snapshot_json_string(FILE* out, const char* text);
 bool cxpr_snapshot_write_optional_value_fields(FILE* out,
                                                const cxpr_value* value,
                                                int has_value);
+bool cxpr_snapshot_write_optional_typed_value_fields(FILE* out,
+                                                     const cxpr_value* value,
+                                                     int has_value,
+                                                     cxpr_value_type inferred_type,
+                                                     int has_inferred_type);
 bool cxpr_snapshot_write_document_prefix(
     FILE* out,
     const char* schema,

@@ -100,6 +100,10 @@ typedef bool (*cxpr_lookback_resolver_ptr)(const cxpr_expr_ast* target,
 typedef void (*cxpr_struct_producer_ptr)(const double* args, size_t argc,
                                          cxpr_value* out, size_t field_count,
                                          void* userdata);
+/** Typed counterpart to `cxpr_struct_producer_ptr`. */
+typedef void (*cxpr_typed_struct_producer_ptr)(const cxpr_value* args, size_t argc,
+                                               cxpr_value* out, size_t field_count,
+                                               void* userdata);
 /**
  * @brief Emit an owned C expression for one field of a struct producer.
  *
@@ -503,6 +507,14 @@ void cxpr_registry_add_struct(cxpr_registry* reg, const char* name,
                               const char* const* fields, size_t field_count,
                               void* userdata,
                               cxpr_userdata_free_fn free_userdata);
+/** Register a struct producer with exact typed arguments. */
+void cxpr_registry_add_struct_typed(
+    cxpr_registry* reg, const char* name,
+    cxpr_typed_struct_producer_ptr func,
+    size_t min_args, size_t max_args,
+    const cxpr_value_type* arg_types,
+    const char* const* fields, size_t field_count,
+    void* userdata, cxpr_userdata_free_fn free_userdata);
 
 /**
  * @brief Attach generated-C support to a registered struct producer.
@@ -550,6 +562,25 @@ bool cxpr_timeseries_is_builtin(const char* name);
  * @return Error payload with `code == CXPR_OK` on success.
  */
 cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def);
+
+/**
+ * @brief Bind a function call's arguments to the registered parameter order.
+ *
+ * Positional and named argument validation follows the same rules used by the
+ * evaluator and IR compiler. @p out_args must have room for the call's
+ * argument count.
+ *
+ * @param reg Registry containing the called function.
+ * @param name Registered function name.
+ * @param call_ast Function-call AST to bind.
+ * @param out_args Output array receiving arguments in parameter order.
+ * @return Error payload with `code == CXPR_OK` on success.
+ */
+cxpr_error cxpr_registry_bind_call_args(
+    const cxpr_registry* reg,
+    const char* name,
+    const cxpr_expr_ast* call_ast,
+    const cxpr_expr_ast** out_args);
 
 /**
  * @brief Emit an expression-defined function as a standalone scalar C function.

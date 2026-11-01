@@ -38,7 +38,7 @@ cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
     cxpr_value result;
     bool found = false;
 
-    if (!entry || !entry->struct_producer) {
+    if (!entry || (!entry->struct_producer && !entry->typed_struct_producer)) {
         return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown field access");
     }
 
@@ -55,8 +55,14 @@ cxpr_value cxpr_eval_struct_producer(cxpr_func_entry* entry, const char* name,
 double cxpr_eval_scalar_arg(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                             const cxpr_registry* reg, cxpr_error* err) {
     cxpr_value value = cxpr_eval_node(ast, ctx, reg, err);
-    if (err && err->code != CXPR_OK) return NAN;
+    if (err && err->code != CXPR_OK) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
+        return NAN;
+    }
     if (!cxpr_require_type(value, CXPR_VALUE_NUMBER, err, "Expected double argument")) {
+        if (value.type == CXPR_VALUE_STRUCT || value.type == CXPR_VALUE_ARRAY)
+            cxpr_value_free(&value);
         return NAN;
     }
     return value.d;

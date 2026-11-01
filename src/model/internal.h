@@ -4,6 +4,7 @@
 #include "core.h"
 #include "ir/compile/internal.h"
 #include <cxpr/model/model.h>
+#include <cxpr/model/optimize.h>
 #include <cxpr/source.h>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -69,6 +70,18 @@ typedef struct {
     bool has_span;
 } cxpr_model_metadata;
 
+typedef struct {
+    char* source;
+    cxpr_expr_ast* expr;
+    char* description;
+    cxpr_source_span span;
+    bool has_span;
+    /* True when the condition references a $param carrying optimize metadata.
+       Such asserts prune optimizer candidates on failure instead of aborting
+       the sweep, while still validating the declared defaults at load time. */
+    bool optimize_scoped;
+} cxpr_model_assert;
+
 /** @brief Compiled model binding and its inferred execution metadata. */
 typedef struct {
     char* key;
@@ -120,6 +133,8 @@ struct cxpr_model {
     size_t anonymous_output_count;
     cxpr_model_metadata* metadatas;
     size_t metadata_count;
+    cxpr_model_assert* asserts;
+    size_t assert_count;
     cxpr_model_host_block* host_blocks;
     size_t host_block_count;
 };
@@ -176,6 +191,7 @@ typedef struct {
     char* source_name;
     int64_t duration_ns;
     char* canonical;
+    cxpr_model_result_kind result_kind;
 } cxpr_model_resample_requirement;
 
 /** @brief Atomic mapping from a pending update slot to a state slot. */
@@ -245,6 +261,12 @@ struct cxpr_model_compiled {
     size_t fused_commit_count;
     cxpr_model_compiled_binding* constants;
     size_t constant_count;
+    cxpr_model_assert* asserts;
+    size_t assert_count;
+    cxpr_model_optimize_dimension* optimize_dimensions;
+    size_t optimize_dimension_count;
+    cxpr_model_optimize_objective* optimize_objectives;
+    size_t optimize_objective_count;
     cxpr_model_compiled_binding* state_defaults;
     size_t state_default_count;
     cxpr_model_compiled_binding* bindings;
@@ -302,8 +324,18 @@ struct cxpr_model_session {
     size_t pending_count;
 };
 
+bool cxpr_model_prepare_optimize(const cxpr_model* model,
+                                 cxpr_model_compiled* program,
+                                 cxpr_error* err);
+bool cxpr_model_compile_conditions(const cxpr_model* model,
+                                   cxpr_model_compiled* program,
+                                   const cxpr_registry* registry,
+                                   cxpr_error* err);
+
 void cxpr_model_set_error(cxpr_error* err, cxpr_error_code code,
                           const char* message, size_t line, size_t column);
+bool cxpr_model_condition_is_optimize_scoped(const cxpr_model* model,
+                                             const cxpr_expr_ast* expr);
 bool cxpr_model_names_match(const char* a, const char* b);
 bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right);
 void cxpr_model_context_set_compiled_number(cxpr_context* ctx,

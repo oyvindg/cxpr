@@ -171,6 +171,22 @@ char* cxpr_expr_compiled_to_c_checked_function(
     const char* function_name, const cxpr_c_program_arg* args,
     size_t arg_count, cxpr_error* err);
 
+/** Exact typed result returned by generated checked scalar functions. */
+typedef struct cxpr_c_typed_checked_result {
+    cxpr_value value;
+    cxpr_error_code error;
+} cxpr_c_typed_checked_result;
+
+/**
+ * Emit a checked, typed scalar function. This additive backend preserves
+ * int64 values and reports arithmetic errors without changing the legacy
+ * double-returning generated-function ABI. The current phase-A backend accepts
+ * closed scalar IR programs (no external arguments).
+ */
+char* cxpr_expr_compiled_to_c_typed_checked_function(
+    const cxpr_expr_compiled* prog, const char* qualifiers,
+    const char* function_name, cxpr_error* err);
+
 /**
  * @brief Transpile a single AST into a C expression string at a lookback offset.
  *

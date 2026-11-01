@@ -30,7 +30,8 @@ typedef enum cxpr_debug_node_kind {
 typedef enum cxpr_debug_result_type {
     CXPR_DEBUG_RESULT_UNKNOWN = 0,
     CXPR_DEBUG_RESULT_NUMBER = 1,
-    CXPR_DEBUG_RESULT_BOOL = 2
+    CXPR_DEBUG_RESULT_BOOL = 2,
+    CXPR_DEBUG_RESULT_INT64 = 3
 } cxpr_debug_result_type;
 
 /** Half-open source span. Lines are one-based; offsets and columns are zero-based. */

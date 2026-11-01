@@ -143,7 +143,7 @@ static int cxpr_cg_emit_trend_call(const cxpr_expr_ast* ast, unsigned lookback_o
         const char* arg_name = cxpr_expr_ast_call_arg_name(ast, i);
         if (arg_name && strcmp(arg_name, "value") == 0) {
             value_ast = cxpr_expr_ast_call_arg(ast, i);
-        } else if (arg_name && (strcmp(arg_name, "bars") == 0 || strcmp(arg_name, "samples") == 0)) {
+        } else if (arg_name && strcmp(arg_name, "samples") == 0) {
             bars_ast = cxpr_expr_ast_call_arg(ast, i);
         }
     }
@@ -191,7 +191,7 @@ static int cxpr_cg_emit_repeat_call(const cxpr_expr_ast* ast, unsigned lookback_
         const char* arg_name = cxpr_expr_ast_call_arg_name(ast, i);
         if (arg_name && strcmp(arg_name, "condition") == 0) {
             condition_ast = cxpr_expr_ast_call_arg(ast, i);
-        } else if (arg_name && (strcmp(arg_name, "bars") == 0 || strcmp(arg_name, "samples") == 0)) {
+        } else if (arg_name && strcmp(arg_name, "samples") == 0) {
             bars_ast = cxpr_expr_ast_call_arg(ast, i);
         }
     }
@@ -315,6 +315,41 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
             if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, i), lookback_offset, b, target, err)) return 0;
             cxpr_cg_putc(b, ')');
         }
+        return 1;
+    }
+
+    /* sum: fixed-arity scalar left fold. Parentheses preserve source order. */
+    if (strcmp(name, "sum") == 0 && argc >= 1) {
+        for (size_t i = 1; i < argc; ++i) cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 0), lookback_offset, b, target, err)) return 0;
+        for (size_t i = 1; i < argc; ++i) {
+            cxpr_cg_puts(b, " + ");
+            if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, i), lookback_offset, b, target, err)) return 0;
+            cxpr_cg_putc(b, ')');
+        }
+        return 1;
+    }
+
+    /* argmin/argmax: scalar-only tournament. Strict comparisons make ties keep
+     * the lower source index. The largest supported basket has only 8 values. */
+    if ((strcmp(name, "argmin") == 0 || strcmp(name, "argmax") == 0) && argc >= 1) {
+        const char* op = strcmp(name, "argmin") == 0 ? " <= " : " >= ";
+        char index_literal[32];
+        for (size_t candidate = 0; candidate + 1 < argc; ++candidate) {
+            cxpr_cg_putc(b, '(');
+            for (size_t other = candidate + 1; other < argc; ++other) {
+                if (other > candidate + 1) cxpr_cg_puts(b, " && ");
+                if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, candidate), lookback_offset, b, target, err)) return 0;
+                cxpr_cg_puts(b, op);
+                if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, other), lookback_offset, b, target, err)) return 0;
+            }
+            cxpr_cg_puts(b, " ? ");
+            snprintf(index_literal, sizeof(index_literal), "%zu.0 : ", candidate);
+            cxpr_cg_puts(b, index_literal);
+        }
+        snprintf(index_literal, sizeof(index_literal), "%zu.0", argc - 1);
+        cxpr_cg_puts(b, index_literal);
+        for (size_t candidate = 0; candidate + 1 < argc; ++candidate) cxpr_cg_putc(b, ')');
         return 1;
     }
 

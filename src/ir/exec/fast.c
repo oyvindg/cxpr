@@ -124,6 +124,30 @@ static inline bool cxpr_ir_exec_lookup_root_cached(const cxpr_context* ctx,
     return true;
 }
 
+bool cxpr_ir_exec_int64_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
+                             const cxpr_registry* reg, const double* locals,
+                             size_t local_count, int64_t* out_value, cxpr_error* err) {
+    cxpr_value value;
+    if (!out_value) {
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Output pointer is NULL";
+        }
+        return false;
+    }
+    value = cxpr_ir_exec_typed(program, ctx, reg, locals, local_count, err);
+    if (err && err->code != CXPR_OK) return false;
+    if (value.type != CXPR_VALUE_INT64) {
+        if (err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Expression did not evaluate to int64";
+        }
+        return false;
+    }
+    *out_value = value.i64;
+    return true;
+}
+
 double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_context* ctx,
                                 const cxpr_registry* reg, double* locals,
                                 size_t local_count, cxpr_error* err) {
@@ -151,6 +175,7 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
 
     static void* dispatch[] = {
         [CXPR_OP_PUSH_CONST] = &&op_push_const,
+        [CXPR_OP_PUSH_INT64] = &&op_push_int64,
         [CXPR_OP_PUSH_BOOL] = &&op_push_bool,
         [CXPR_OP_PUSH_STRING] = &&op_unsupported,
         [CXPR_OP_LOAD_LOCAL] = &&op_load_local,
@@ -231,6 +256,9 @@ double cxpr_ir_exec_scalar_fast(const cxpr_ir_program* program, const cxpr_conte
 
 op_push_const:
     stack[sp++] = instr->value;
+    CXPR_FAST_NEXT();
+op_push_int64:
+    stack[sp++] = (double)instr->int64_value;
     CXPR_FAST_NEXT();
 op_push_bool:
     stack[sp++] = instr->value != 0.0 ? 1.0 : 0.0;
@@ -539,6 +567,25 @@ bool cxpr_ir_exec_bool_fast(const cxpr_ir_program* program, const cxpr_context* 
     size_t bsp = 0;
     size_t ip = 0;
     cxpr_ir_lookup_cache* lookup_cache = NULL;
+
+    if (program && program->code) {
+        for (size_t i = 0; i < program->count; ++i) {
+            if (program->code[i].op == CXPR_OP_PUSH_INT64) {
+                cxpr_value value = cxpr_ir_exec_typed(program, ctx, reg, locals,
+                                                       local_count, err);
+                if (err && err->code != CXPR_OK) return false;
+                if (value.type != CXPR_VALUE_BOOL) {
+                    if (err) {
+                        err->code = CXPR_ERR_TYPE_MISMATCH;
+                        err->message = "Expression did not evaluate to bool";
+                    }
+                    return false;
+                }
+                if (out_value) *out_value = value.b;
+                return out_value != NULL;
+            }
+        }
+    }
     const bool fast_var_ctx = ctx && !ctx->parent && !ctx->expression_scope &&
                               ctx->bools.count == 0u;
     const bool fast_param_ctx = ctx && !ctx->parent && !ctx->expression_scope;

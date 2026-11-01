@@ -7,13 +7,13 @@ scheduling, persistence, and accelerator dispatch.
 
 The public contract is `<cxpr/generated.h>`. A host should reject an artifact
 unless `cxpr_generated_model_descriptor_abi_valid()` succeeds. The current
-descriptor ABI is `CXPR_GENERATED_MODEL_ABI_VERSION == 4`; it supports at most
+descriptor ABI is `CXPR_GENERATED_MODEL_ABI_VERSION == 5`; it supports at most
 64 inputs, outputs, and parameters. Artifact-owned descriptor names, schema
 arrays, and callbacks have static lifetime.
 
-`descriptor->tick(state, inputs, params, outputs)` consumes dense arrays in the
-descriptor's declared order. Numbers and booleans cross this ABI as `double`;
-boolean values are `0.0` or `1.0`. Defaults in the descriptor are metadata: the
+`descriptor->tick(state, inputs, params, outputs)` consumes dense `cxpr_value`
+arrays in the descriptor's declared order. The value tag preserves numbers,
+booleans, and 64-bit integers across the ABI. Defaults in the descriptor are metadata: the
 host must construct the actual parameter array.
 
 Allocate `descriptor->state_size()` bytes for each independent evaluator. The
@@ -30,11 +30,19 @@ and a primary cursor follow the normal arguments. Validate every view with
 an alignment entry maps a primary row to a materialized-series row, while
 `CXPR_RESAMPLE_ALIGNMENT_MISSING` denotes no value.
 
-The version-4 `cxpr_generated_model_descriptor` stores the scalar four-argument
+The version-5 `cxpr_generated_model_descriptor` stores the typed four-argument
 tick type; it does not carry a resample tick pointer. Use the generated
 resample function and the requirement accessors in `<cxpr/model/model.h>`
 directly. The current generic `<cxpr/bulk.h>` runner likewise accepts descriptor
 ticks only; a CUDA or other resample-aware bulk wrapper is host code.
+
+## Migrating from ABI 4 to ABI 5
+
+ABI 5 replaces the `double` input, parameter, and output arrays with
+`cxpr_value` arrays. Construct values with `cxpr_num`, `cxpr_bool`, or
+`cxpr_int64`, inspect the output tag before reading its union member, and
+recompile generated artifacts and hosts together. Hosts must reject ABI 4
+descriptors rather than calling them through the ABI 5 function pointer.
 
 Generated source is portable C and can be compiled into an application,
 library, or build-generated object. CUDA source generation is a separate plugin

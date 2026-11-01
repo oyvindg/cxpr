@@ -707,13 +707,15 @@ static void test_generated_backend_rejects_record_and_vector_requirements(void) 
     cxpr_error err = {0};
     requirements[0].value_type = CXPR_VALUE_NUMBER;
     assert(cxpr_validate_generated_resample_bindings(&bindings, &err));
+    requirements[0].value_type = CXPR_VALUE_INT64;
+    assert(cxpr_validate_generated_resample_bindings(&bindings, &err));
     requirements[0].value_type = CXPR_VALUE_STRUCT;
     assert(!cxpr_validate_generated_resample_bindings(&bindings, &err));
     assert(err.code == CXPR_ERR_TYPE_MISMATCH);
     assert(strstr(err.message, "record/vector") != NULL);
     requirements[0].value_type = CXPR_VALUE_ARRAY;
     assert(!cxpr_validate_generated_resample_bindings(&bindings, &err));
-    assert(strstr(err.message, "scalar numeric") != NULL);
+    assert(strstr(err.message, "scalar number/int64") != NULL);
 }
 
 int main(void) {

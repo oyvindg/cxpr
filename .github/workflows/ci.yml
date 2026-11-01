@@ -72,8 +72,13 @@ jobs:
       - name: Test
         run: ctest --preset asan
 
+      - name: Verify core instrumentation
+        run: scripts/check_compile_instrumentation.sh build-asan -fsanitize=address
+
   ubsan:
     runs-on: ubuntu-latest
+    env:
+      UBSAN_OPTIONS: halt_on_error=1
     steps:
       - uses: actions/checkout@v4
 
@@ -85,6 +90,45 @@ jobs:
 
       - name: Test
         run: ctest --preset ubsan
+
+      - name: Verify core instrumentation
+        run: scripts/check_compile_instrumentation.sh build-ubsan -fsanitize=undefined
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset coverage
+      - run: cmake --build --preset coverage --parallel
+      - run: ctest --preset coverage
+      - run: scripts/check_compile_instrumentation.sh build-coverage --coverage
+
+  build-options:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shared: [OFF, ON]
+        tools: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build-options
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCXPR_BUILD_SHARED=${{ matrix.shared }}
+          -DCXPR_BUILD_TOOLS=${{ matrix.tools }}
+          -DCXPR_BUILD_BENCHMARKS=OFF
+      - run: cmake --build build-options --parallel
+      - run: ctest --test-dir build-options --output-on-failure
+
+  cmake-minimum:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --user cmake==3.21.4
+      - run: ~/.local/bin/cmake -S . -B build-cmake-min -DCXPR_BUILD_BENCHMARKS=OFF
+      - run: ~/.local/bin/cmake --build build-cmake-min --parallel
 
   fuzz:
     runs-on: ubuntu-latest

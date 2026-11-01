@@ -320,6 +320,12 @@ bool cxpr_model_compiled_seed_defaults(const cxpr_model_compiled* program,
                                       const cxpr_registry* reg,
                                       cxpr_error* err);
 
+/** @brief Evaluate load-time parameter assertions against a seeded context. */
+bool cxpr_model_compiled_check_asserts(const cxpr_model_compiled* program,
+                                       const cxpr_context* ctx,
+                                       const cxpr_registry* reg,
+                                       cxpr_error* err);
+
 /**
  * @brief Evaluate all model bindings in dependency order.
  *
@@ -584,6 +590,9 @@ int64_t cxpr_model_compiled_resample_requirement_duration_ns(
     const cxpr_model_compiled* program, size_t index);
 const char* cxpr_model_compiled_resample_requirement_interval(
     const cxpr_model_compiled* program, size_t index);
+/** Materialized scalar type required for one generated resample slot. */
+cxpr_model_result_kind cxpr_model_compiled_resample_requirement_result_kind(
+    const cxpr_model_compiled* program, size_t index);
 size_t cxpr_model_compiled_call_param_count(const cxpr_model_compiled* program);
 const char* cxpr_model_compiled_call_param_name(const cxpr_model_compiled* program, size_t index);
 
@@ -595,6 +604,11 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
 void cxpr_model_session_free(cxpr_model_session* session);
 /** @brief Return the session-owned context for host input writes and output reads. */
 cxpr_context* cxpr_model_session_context(cxpr_model_session* session);
+/** @brief Override a numeric model parameter in a newly-created session. */
+bool cxpr_model_session_set_param(cxpr_model_session* session,
+                                  const char* name,
+                                  double value,
+                                  cxpr_error* err);
 /**
  * @brief Evaluate one deterministic model tick with the reference/tooling runtime.
  *
@@ -692,6 +706,9 @@ bool cxpr_model_output_source_span(const cxpr_model* model,
                                    cxpr_source_span* out_span);
 
 size_t cxpr_model_metadata_count(const cxpr_model* model);
+/** Optimizer-only candidate constraints retained on the parsed model. */
+size_t cxpr_model_constraint_count(const cxpr_model* model);
+const cxpr_expr_ast* cxpr_model_constraint_at(const cxpr_model* model, size_t index);
 const char* cxpr_model_metadata_name(const cxpr_model* model, size_t index);
 const char* cxpr_model_metadata_body(const cxpr_model* model, size_t index);
 cxpr_model_metadata_target_kind cxpr_model_metadata_target_kind_at(

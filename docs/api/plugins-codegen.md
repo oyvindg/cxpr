@@ -19,7 +19,7 @@ Functions returning an allocated artifact string transfer ownership to the
 caller; use the matching plugin free function. Emit functions stream content
 through the supplied host callbacks instead. The debug-map contract has its own
 `CXPR_DEBUG_MAP_ABI_VERSION == 1`; generated evaluator descriptors separately
-use `CXPR_GENERATED_MODEL_ABI_VERSION == 4`.
+use `CXPR_GENERATED_MODEL_ABI_VERSION == 5`.
 
 The C backend is the normal deployment path for CPU hosts and the scalar basis
 for bulk execution. The CUDA backend emits device-compatible model math, but it

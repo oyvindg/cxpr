@@ -20,6 +20,35 @@ are structure-of-arrays columns, parameters are shared for a launch, and state
 is independently strided per cell. A host may call `cxpr_bulk_run_range` on
 disjoint ranges from its own worker pool.
 
+## Distance- and flow-field descriptor (version 1)
+
+[`distance_field_cell.cxpr`](distance_field_cell.cxpr) and
+[`flow_field_cell.cxpr`](flow_field_cell.cxpr) define the version-1 `grid_relax`
+interop contract. The host halo-gathers scalar columns `d_n`, `d_s`, `d_e`, and
+`d_w`, followed by `cost`, `is_wall`, and `is_goal`. Blocked and out-of-bounds
+neighbors use the finite sentinel `$INF = 1e18`; the model's `sadd` helper keeps
+sentinel arithmetic saturated.
+
+The flow output `dir` is an index in the canonical order N, S, E, W (0..3).
+For an eight-neighbor descriptor, append NE, NW, SE, SW (4..7). `dir` is
+undefined when `next_dist >= $INF`; the host must validate this before movement.
+The host remains responsible for occupancy, collision checks, buffer swaps,
+convergence, and conflicting movement intents.
+
+```text
+dist = goal/wall initialization
+repeat:
+    halo-gather dist into d_n/d_s/d_e/d_w
+    cxpr_bulk_run(grid_relax_v1, current_inputs, next_outputs)
+    residual = deterministic host reduction of abs(next_dist - dist)
+    swap(dist, next_dist)
+until residual == 0 or iteration_limit reached
+```
+
+Keep the descriptor version with the host-side schema and reject unknown
+versions before binding columns. Iteration is deliberately host-owned; no graph
+traversal, heap, or array-valued column crosses the cxpr ABI.
+
 For CUDA, the existing CUDA plugin emits the scalar device evaluator. A future
 bulk artifact will add the generic one-thread-per-element wrapper; topology,
 allocation, streams, timestep loops, and buffer swaps remain host-owned.

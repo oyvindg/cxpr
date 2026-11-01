@@ -216,7 +216,7 @@ static bool cxpr_document_parse_decl_type(const char* text,
         *element_type = CXPR_MODEL_ELEMENT_BOOL;
         return true;
     }
-    if (!strcmp(text, "int")) {
+    if (!strcmp(text, "int") || !strcmp(text, "int64")) {
         *declared_type = CXPR_MODEL_DECL_INT;
         *element_type = CXPR_MODEL_ELEMENT_INT;
         return true;
@@ -238,7 +238,8 @@ static bool cxpr_document_parse_decl_type(const char* text,
     } else return false;
     if (!strncmp(inner, "number", 6u)) *element_type = CXPR_MODEL_ELEMENT_NUMBER;
     else if (!strncmp(inner, "bool", 4u)) *element_type = CXPR_MODEL_ELEMENT_BOOL;
-    else if (!strncmp(inner, "int", 3u)) *element_type = CXPR_MODEL_ELEMENT_INT;
+    else if (!strncmp(inner, "int64", 5u) || !strncmp(inner, "int", 3u))
+        *element_type = CXPR_MODEL_ELEMENT_INT;
     else return false;
     return true;
 }
@@ -585,6 +586,53 @@ static bool cxpr_doc_model_append_constant(cxpr_model* model,
         return false;
     }
     model->constant_count++;
+    return true;
+}
+
+static char* cxpr_document_statement_description(const cxpr_doc_ast_node* node) {
+    for (size_t i = 0u; i < cxpr_doc_ast_node_child_count(node); ++i) {
+        const cxpr_doc_ast_node* metadata = cxpr_doc_ast_node_child(node, i);
+        if (cxpr_doc_ast_node_kind(metadata) != CXPR_DOC_AST_METADATA) continue;
+        for (size_t j = 0u; j < cxpr_doc_ast_node_child_count(metadata); ++j) {
+            const cxpr_doc_ast_node* field = cxpr_doc_ast_node_child(metadata, j);
+            const char* name = cxpr_doc_ast_node_name(field);
+            const char* value = cxpr_doc_ast_node_text(field);
+            size_t length;
+            if (!name || strcmp(name, "description") != 0 || !value) continue;
+            length = strlen(value);
+            if (length >= 2u && ((value[0] == '"' && value[length - 1u] == '"') ||
+                                 (value[0] == '\'' && value[length - 1u] == '\''))) {
+                char* result = (char*)malloc(length - 1u);
+                if (!result) return NULL;
+                memcpy(result, value + 1, length - 2u);
+                result[length - 2u] = '\0';
+                return result;
+            }
+            return cxpr_strdup(value);
+        }
+    }
+    return cxpr_strdup("Assertion failed");
+}
+
+static bool cxpr_doc_model_append_condition(cxpr_model* model,
+                                            const cxpr_doc_ast_node* node) {
+    cxpr_model_assert** items = &model->asserts;
+    size_t* count = &model->assert_count;
+    cxpr_model_assert* grown;
+    const char* text = cxpr_doc_ast_node_text(node);
+    const cxpr_expr_ast* expr = cxpr_doc_ast_node_expr(node);
+    if (!text || !expr) return false;
+    grown = (cxpr_model_assert*)realloc(*items, (*count + 1u) * sizeof(**items));
+    if (!grown) return false;
+    *items = grown;
+    grown[*count] = (cxpr_model_assert){0};
+    grown[*count].source = cxpr_strdup(text);
+    grown[*count].expr = cxpr_expr_ast_clone(expr);
+    grown[*count].description = cxpr_document_statement_description(node);
+    grown[*count].span = cxpr_doc_ast_node_span(node);
+    grown[*count].has_span = true;
+    if (!grown[*count].source || !grown[*count].expr || !grown[*count].description) return false;
+    (*count)++;
     return true;
 }
 
@@ -1078,13 +1126,11 @@ done:
     return ok;
 }
 
-static bool cxpr_doc_model_append_metadata(cxpr_model* model,
-                                                const char* metadata_name,
-                                                const char* target_name,
-                                                cxpr_model_metadata_target_kind target_kind,
-                                                const cxpr_doc_ast_node* metadata_node) {
+static bool cxpr_doc_model_append_metadata_body(
+    cxpr_model* model, const char* metadata_name, const char* target_name,
+    cxpr_model_metadata_target_kind target_kind, const char* body,
+    cxpr_source_span span, bool has_span) {
     cxpr_model_metadata* grown;
-    const char* body = cxpr_doc_ast_node_text(metadata_node);
     if (!model || !metadata_name || !target_name || !body) return false;
     grown = (cxpr_model_metadata*)realloc(
         model->metadatas, (model->metadata_count + 1u) * sizeof(*model->metadatas));
@@ -1095,14 +1141,49 @@ static bool cxpr_doc_model_append_metadata(cxpr_model* model,
     model->metadatas[model->metadata_count].body = cxpr_strdup(body);
     model->metadatas[model->metadata_count].target_kind = target_kind;
     model->metadatas[model->metadata_count].target_name = cxpr_strdup(target_name);
-    model->metadatas[model->metadata_count].span = cxpr_doc_ast_node_span(metadata_node);
-    model->metadatas[model->metadata_count].has_span = true;
+    model->metadatas[model->metadata_count].span = span;
+    model->metadatas[model->metadata_count].has_span = has_span;
     if (!model->metadatas[model->metadata_count].name ||
         !model->metadatas[model->metadata_count].body ||
         !model->metadatas[model->metadata_count].target_name) {
         return false;
     }
     model->metadata_count++;
+    return true;
+}
+
+static bool cxpr_doc_model_append_metadata(cxpr_model* model,
+                                           const char* metadata_name,
+                                           const char* target_name,
+                                           cxpr_model_metadata_target_kind target_kind,
+                                           const cxpr_doc_ast_node* metadata_node) {
+    return cxpr_doc_model_append_metadata_body(
+        model, metadata_name, target_name, target_kind,
+        cxpr_doc_ast_node_text(metadata_node), cxpr_doc_ast_node_span(metadata_node), true);
+}
+
+static bool cxpr_document_lower_record_leaf_metadata(
+    cxpr_model* model, const cxpr_expr_ast* record, const char* prefix) {
+    if (!record || cxpr_expr_ast_kind_of(record) != CXPR_NODE_RECORD || !prefix) return true;
+    for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i) {
+        const char* field = cxpr_expr_ast_record_field_name(record, i);
+        const cxpr_expr_ast* value = cxpr_expr_ast_record_field_value(record, i);
+        const char* metadata = cxpr_expr_ast_record_field_metadata(record, i);
+        size_t path_len;
+        char* path;
+        bool ok;
+        if (!field) return false;
+        path_len = strlen(prefix) + strlen(field) + 2u;
+        path = (char*)malloc(path_len);
+        if (!path) return false;
+        snprintf(path, path_len, "%s.%s", prefix, field);
+        ok = (!metadata || cxpr_doc_model_append_metadata_body(
+                  model, "param", path, CXPR_MODEL_METADATA_TARGET_PARAM,
+                  metadata, (cxpr_source_span){0}, false)) &&
+             cxpr_document_lower_record_leaf_metadata(model, value, path);
+        free(path);
+        if (!ok) return false;
+    }
     return true;
 }
 
@@ -1303,7 +1384,11 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
         case CXPR_DOC_AST_PARAM_DECL:
             return cxpr_doc_model_append_constant(model, node, false) &&
                    cxpr_document_lower_metadata_children(
-                       model, node, "param", CXPR_MODEL_METADATA_TARGET_PARAM);
+                       model, node, "param", CXPR_MODEL_METADATA_TARGET_PARAM) &&
+                   cxpr_document_lower_record_leaf_metadata(
+                       model, cxpr_doc_ast_node_expr(node), name ? name : "");
+        case CXPR_DOC_AST_ASSERT:
+            return cxpr_doc_model_append_condition(model, node);
         case CXPR_DOC_AST_STATE_DECL:
             return cxpr_doc_model_append_binding(model, CXPR_MODEL_BINDING_STATE, node) &&
                    cxpr_document_lower_metadata_children(

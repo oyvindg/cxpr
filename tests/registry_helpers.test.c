@@ -55,6 +55,7 @@ static void test_registry_helper_cloners_and_reset(void) {
     owned.arg_types = cloned_types;
     owned.arg_type_count = 2;
     cxpr_registry_clear_owned_entry(&owned);
+    free(owned.name);
     cxpr_registry_free(reg);
 }
 

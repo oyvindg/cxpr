@@ -1,0 +1,8 @@
+model ir_struct_binding
+in { vector }
+fn project(v) {
+    sum = v.x + v.y
+    diff = v.x - v.y
+    out { sum, diff }
+}
+out result = project(vector).sum

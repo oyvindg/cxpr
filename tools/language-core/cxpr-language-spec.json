@@ -1,0 +1,17 @@
+{
+  "tokenTypes": [
+    "type", "function", "import", "importPath", "parameter", "namedArgument",
+    "assignment", "block", "plotBlock", "property", "reference", "input",
+    "state", "variable", "string", "number", "operator", "keyword",
+    "punctuation", "comment"
+  ],
+  "keywords": [
+    "and", "as", "or", "not", "if", "then", "else", "fn", "from", "in",
+    "initial", "model", "name", "out", "return", "state", "update", "use",
+    "true", "false", "null", "assert", "optimize"
+  ],
+  "typeNames": ["bool", "buffer", "int", "number", "series"],
+  "operatorTokens": ["<=", ">=", "==", "!=", "&&", "||", "|>", "**"],
+  "punctuationChars": [".", ",", "(", ")", "[", "]", "{", "}"],
+  "singleCharOperators": ["+", "-", "*", "/", "%", "^", "<", ">", "=", "!", "?", ":"]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@cxpr/language-core-assets",
+  "private": true,
+  "scripts": {
+    "generate": "node generate-grammars.js",
+    "check": "node generate-grammars.js --check",
+    "test": "node --test test/*.test.js"
+  }
+}

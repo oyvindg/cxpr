@@ -1,0 +1,13 @@
+model ir_defined_call
+in { x }
+fn q0(x) = x * x
+fn q1(x) = sqrt(q0(x))
+fn q2(x) = sqrt(q1(x))
+fn q3(x) = sqrt(q2(x))
+fn q4(x) = sqrt(q3(x))
+fn q5(x) = sqrt(q4(x))
+fn q6(x) = sqrt(q5(x))
+fn q7(x) = sqrt(q6(x))
+fn q8(x) = sqrt(q7(x))
+fn q9(x) = sqrt(q8(x))
+out result = q9(x)

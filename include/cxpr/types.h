@@ -8,7 +8,19 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#if defined(CXPR_TYPES_DEVICE_ONLY)
+/*
+ * Pulling glibc's <stdint.h> into an NVRTC device translation unit breaks
+ * name-expression resolution (the generated `#pragma nv_mangled_name` fails
+ * with "cannot form address of a non-__global__ function"). Device-only builds
+ * therefore provide the single fixed-width type cxpr_value needs directly.
+ */
+#ifndef _STDINT_H
+typedef long long int64_t;
+#endif
+#else
 #include <stdint.h>
+#endif
 
 /** @brief Number of elements in a fixed-size C array. */
 #define CXPR_ARRAY_COUNT(values) (sizeof(values) / sizeof((values)[0]))
@@ -52,7 +64,10 @@ typedef enum {
     CXPR_ERR_TYPE_MISMATCH,
     CXPR_ERR_OUT_OF_MEMORY,
     CXPR_ERR_INVALID_INDEX,
-    CXPR_ERR_INDEX_OUT_OF_RANGE
+    CXPR_ERR_INDEX_OUT_OF_RANGE,
+    CXPR_ERR_ASSERTION_FAILED,
+    CXPR_ERR_UNAVAILABLE,
+    CXPR_ERR_OVERFLOW
 } cxpr_error_code;
 
 /** @brief Runtime type tags for `cxpr_value`. */
@@ -81,9 +96,31 @@ typedef struct cxpr_value {
     };
 } cxpr_value;
 
+/** Numeric operations accepted by the shared checked scalar algebra. */
+typedef enum cxpr_numeric_op {
+    CXPR_NUMERIC_ADD = 0,
+    CXPR_NUMERIC_SUB = 1,
+    CXPR_NUMERIC_MUL = 2,
+    CXPR_NUMERIC_DIV = 3,
+    CXPR_NUMERIC_LT = 4,
+    CXPR_NUMERIC_LTE = 5,
+    CXPR_NUMERIC_GT = 6,
+    CXPR_NUMERIC_GTE = 7,
+    CXPR_NUMERIC_EQ = 8,
+    CXPR_NUMERIC_NEQ = 9
+} cxpr_numeric_op;
+
 #define CXPR_VALUE_NUMBER_INIT(value_) { .type = CXPR_VALUE_NUMBER, .d = (value_) }
 #define CXPR_VALUE_BOOL_INIT(value_) { .type = CXPR_VALUE_BOOL, .b = (value_) }
 #define CXPR_VALUE_INT64_INIT(value_) { .type = CXPR_VALUE_INT64, .i64 = (value_) }
+
+#ifndef CXPR_HOST_DEVICE
+#if defined(__CUDACC__) || defined(__CUDACC_RTC__)
+#define CXPR_HOST_DEVICE __host__ __device__
+#else
+#define CXPR_HOST_DEVICE
+#endif
+#endif
 
 /** @brief Owned collection of named typed fields. */
 struct cxpr_struct_value {
@@ -103,8 +140,12 @@ struct cxpr_array_value {
  * @param d Numeric payload.
  * @return Value tagged as `CXPR_VALUE_NUMBER`.
  */
-static inline cxpr_value cxpr_num(double d) {
-    return (cxpr_value){ .type = CXPR_VALUE_NUMBER, .d = d };
+#ifndef CXPR_TYPES_DEVICE_ONLY
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_num(double d) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_NUMBER;
+    value.d = d;
+    return value;
 }
 
 /**
@@ -112,22 +153,30 @@ static inline cxpr_value cxpr_num(double d) {
  * @param b Boolean payload.
  * @return Value tagged as `CXPR_VALUE_BOOL`.
  */
-static inline cxpr_value cxpr_bool(bool b) {
-    return (cxpr_value){ .type = CXPR_VALUE_BOOL, .b = b };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_bool(bool b) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_BOOL;
+    value.b = b;
+    return value;
 }
 
-static inline cxpr_value cxpr_int64(int64_t value) {
-    return (cxpr_value){ .type = CXPR_VALUE_INT64, .i64 = value };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_int64(int64_t value) {
+    cxpr_value result = {0};
+    result.type = CXPR_VALUE_INT64;
+    result.i64 = value;
+    return result;
 }
-
 
 /**
  * @brief Construct a struct `cxpr_value`.
  * @param s Struct payload pointer.
  * @return Value tagged as `CXPR_VALUE_STRUCT`.
  */
-static inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
-    return (cxpr_value){ .type = CXPR_VALUE_STRUCT, .s = s };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_STRUCT;
+    value.s = s;
+    return value;
 }
 
 /**
@@ -135,16 +184,21 @@ static inline cxpr_value cxpr_struct(cxpr_struct_value* s) {
  * @param str String payload pointer. The pointer is borrowed by the value.
  * @return Value tagged as `CXPR_VALUE_STRING`.
  */
-static inline cxpr_value cxpr_string(const char* str) {
-    return (cxpr_value){ .type = CXPR_VALUE_STRING, .str = str ? str : "" };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_string(const char* str) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_STRING;
+    value.str = str ? str : "";
+    return value;
 }
 
 /**
  * @brief Construct a null `cxpr_value`.
  * @return Value tagged as `CXPR_VALUE_NULL`.
  */
-static inline cxpr_value cxpr_null(void) {
-    return (cxpr_value){ .type = CXPR_VALUE_NULL, .i64 = 0 };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_null(void) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_NULL;
+    return value;
 }
 
 /**
@@ -152,8 +206,11 @@ static inline cxpr_value cxpr_null(void) {
  * @param unix_ns Timestamp payload as Unix nanoseconds.
  * @return Value tagged as `CXPR_VALUE_TIMESTAMP`.
  */
-static inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
-    return (cxpr_value){ .type = CXPR_VALUE_TIMESTAMP, .i64 = unix_ns };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_TIMESTAMP;
+    value.i64 = unix_ns;
+    return value;
 }
 
 /**
@@ -161,8 +218,11 @@ static inline cxpr_value cxpr_timestamp(int64_t unix_ns) {
  * @param nanoseconds Duration payload in nanoseconds.
  * @return Value tagged as `CXPR_VALUE_DURATION`.
  */
-static inline cxpr_value cxpr_duration(int64_t nanoseconds) {
-    return (cxpr_value){ .type = CXPR_VALUE_DURATION, .i64 = nanoseconds };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_duration(int64_t nanoseconds) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_DURATION;
+    value.i64 = nanoseconds;
+    return value;
 }
 
 /**
@@ -170,10 +230,15 @@ static inline cxpr_value cxpr_duration(int64_t nanoseconds) {
  * @param a Array payload pointer.
  * @return Value tagged as `CXPR_VALUE_ARRAY`.
  */
-static inline cxpr_value cxpr_array(cxpr_array_value* a) {
-    return (cxpr_value){ .type = CXPR_VALUE_ARRAY, .a = a };
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_array(cxpr_array_value* a) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_ARRAY;
+    value.a = a;
+    return value;
 }
+#endif
 
+#ifndef CXPR_TYPES_DEVICE_ONLY
 /**
  * @brief Deep-clone a typed value.
  *
@@ -218,6 +283,7 @@ cxpr_array_value* cxpr_array_value_new(const cxpr_value* values, size_t count);
  * @param a Array value to free. May be NULL.
  */
 void cxpr_array_value_free(cxpr_array_value* a);
+#endif
 
 /**
  * @brief Error payload filled by APIs that can fail.
@@ -237,10 +303,19 @@ typedef struct cxpr_error {
 } cxpr_error;
 
 /**
+ * Apply checked arithmetic/comparison to int64 and number operands.
+ * Returns 1 on success, 0 for unsupported operand types, and -1 with `err`
+ * populated on overflow or division by zero.
+ */
+int cxpr_numeric_arith(cxpr_numeric_op op, cxpr_value a, cxpr_value b,
+                       cxpr_value* out, cxpr_error* err);
+
+/**
  * @brief Return a human-readable string for an error code.
  * @param code Error code to describe.
  * @return Static string description for `code`.
  */
+#ifndef CXPR_TYPES_DEVICE_ONLY
 const char* cxpr_error_string(cxpr_error_code code);
 /**
  * @brief Format a complete, human-readable description of an error.
@@ -264,6 +339,7 @@ size_t cxpr_error_format(const cxpr_error* err, char* buffer, size_t size);
  * @return Hash value suitable for prehashed context APIs.
  */
 unsigned long cxpr_hash_string(const char* str);
+#endif
 
 #ifdef __cplusplus
 }

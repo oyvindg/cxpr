@@ -18,6 +18,8 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
 
     switch (ast->type) {
         case CXPR_NODE_NUMBER:
+            free(ast->data.number.lexeme);
+            break;
         case CXPR_NODE_INT64:
         case CXPR_NODE_BOOL:
             break;
@@ -41,6 +43,12 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
                     cxpr_expr_ast_free(ast->data.record.field_values[i]);
                 }
                 free(ast->data.record.field_values);
+            }
+            if (ast->data.record.field_metadata) {
+                for (size_t i = 0; i < ast->data.record.field_count; ++i) {
+                    free(ast->data.record.field_metadata[i]);
+                }
+                free(ast->data.record.field_metadata);
             }
             break;
         case CXPR_NODE_STRING:

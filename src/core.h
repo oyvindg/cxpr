@@ -81,16 +81,15 @@ static inline char* cxpr_strtok_r(char* str, const char* delim, char** saveptr) 
  * Shared by the tree evaluator and the typed IR executor so that timestamp and
  * duration arithmetic/ordering can never diverge between the two engines.
  */
-typedef enum {
-    CXPR_VALOP_ADD,
-    CXPR_VALOP_SUB,
-    CXPR_VALOP_MUL,
-    CXPR_VALOP_DIV,
-    CXPR_VALOP_LT,
-    CXPR_VALOP_LTE,
-    CXPR_VALOP_GT,
-    CXPR_VALOP_GTE
-} cxpr_valop;
+typedef cxpr_numeric_op cxpr_valop;
+#define CXPR_VALOP_ADD CXPR_NUMERIC_ADD
+#define CXPR_VALOP_SUB CXPR_NUMERIC_SUB
+#define CXPR_VALOP_MUL CXPR_NUMERIC_MUL
+#define CXPR_VALOP_DIV CXPR_NUMERIC_DIV
+#define CXPR_VALOP_LT CXPR_NUMERIC_LT
+#define CXPR_VALOP_LTE CXPR_NUMERIC_LTE
+#define CXPR_VALOP_GT CXPR_NUMERIC_GT
+#define CXPR_VALOP_GTE CXPR_NUMERIC_GTE
 
 /**
  * @brief Apply timestamp/duration arithmetic and ordering to typed operands.
@@ -121,5 +120,8 @@ typedef enum {
  */
 int cxpr_value_binary_op(cxpr_valop op, cxpr_value a, cxpr_value b,
                          cxpr_value* out, cxpr_error* err);
+
+/** Checked numeric algebra shared by AST and IR execution. */
+bool cxpr_numeric_equal(cxpr_value a, cxpr_value b);
 
 #endif /* CXPR_CORE_H */

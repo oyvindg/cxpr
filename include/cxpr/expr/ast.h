@@ -242,6 +242,7 @@ const char* cxpr_expr_ast_record_field_name(const cxpr_expr_ast* ast, size_t ind
  * @return Borrowed field expression, or NULL when out of range.
  */
 const cxpr_expr_ast* cxpr_expr_ast_record_field_value(const cxpr_expr_ast* ast, size_t index);
+const char* cxpr_expr_ast_record_field_metadata(const cxpr_expr_ast* ast, size_t index);
 /**
  * @brief Return the identifier name for an identifier node.
  * @param ast Identifier node to inspect.

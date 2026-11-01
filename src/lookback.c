@@ -23,7 +23,22 @@ bool cxpr_lookback_literal_offset(const cxpr_expr_ast* index_ast,
     unsigned offset;
 
     if (out_offset) *out_offset = 0u;
-    if (!index_ast || cxpr_expr_ast_kind_of(index_ast) != CXPR_NODE_NUMBER) {
+    if (!index_ast) {
+        return cxpr_lookback_err(
+            err,
+            context ? context : "lookback requires constant index");
+    }
+    if (cxpr_expr_ast_kind_of(index_ast) == CXPR_NODE_INT64) {
+        const int64_t value = cxpr_expr_ast_int64_value(index_ast);
+        if (value < 0 || (uint64_t)value > (uint64_t)(~0u)) {
+            return cxpr_lookback_err(
+                err,
+                context ? context : "lookback requires non-negative integer index");
+        }
+        if (out_offset) *out_offset = (unsigned)value;
+        return true;
+    }
+    if (cxpr_expr_ast_kind_of(index_ast) != CXPR_NODE_NUMBER) {
         return cxpr_lookback_err(
             err,
             context ? context : "lookback requires constant index");

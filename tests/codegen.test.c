@@ -241,7 +241,7 @@ static void test_lookback_codegen_with_leaf_hook(void) {
     assert(strcmp(out, "((close[i] < close[(i >= 1u ? i - 1u : 0u)]) && (close[(i >= 1u ? i - 1u : 0u)] < close[(i >= 2u ? i - 2u : 0u)]))") == 0);
     free(out);
 
-    out = to_c_with_lookback("repeat(condition=close > open, bars=2)");
+    out = to_c_with_lookback("repeat(condition=close > open, samples=2)");
     assert(strcmp(out, "(((close[i] > open[i])) && ((close[(i >= 1u ? i - 1u : 0u)] > open[(i >= 1u ? i - 1u : 0u)])))") == 0);
     free(out);
 

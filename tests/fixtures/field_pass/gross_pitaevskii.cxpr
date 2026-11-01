@@ -1,0 +1,33 @@
+// PROPOSED SYNTAX -- does not parse with the current front end.
+// Design source: docs/shared_and_local_pass.md
+//
+// Normalized field evolution on a 3D grid: compute the global norm first
+// (shared pass), then take one explicit local step and divide by it.
+// This is the canonical "compute the quantum field globally before looping
+// locally" case. A complex amplitude is carried as two real fields re/im
+// because cxpr values are real doubles.
+//
+// New surface exercised (union of both design docs):
+//   - shared reduce over the previous snapshot -> shared.norm2
+//   - `peers { ... }` with 3D face connectivity + slot.field reads
+//   - local step reading previous state, peers, and the shared value
+model gross_pitaevskii
+
+shared {
+    in { dt }
+    norm2 = sum(re*re + im*im)
+}
+
+peers { xm, xp, ym, yp, zm, zp }
+in { potential, re0, im0 }
+
+$half = 0.5
+
+lap_re = xm.re + xp.re + ym.re + yp.re + zm.re + zp.re - 6*re
+lap_im = xm.im + xp.im + ym.im + yp.im + zm.im + zp.im - 6*im
+
+inv = 1 / sqrt(shared.norm2)
+re := (re + dt * ($half*lap_im - potential*im)) * inv initial re0
+im := (im - dt * ($half*lap_re - potential*re)) * inv initial im0
+
+out { density = (re*re + im*im) }

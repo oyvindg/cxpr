@@ -47,6 +47,7 @@ static const char* cxpr_snapshot_value_type_name(cxpr_value_type type) {
         case CXPR_VALUE_TIMESTAMP: return "timestamp";
         case CXPR_VALUE_DURATION: return "duration";
         case CXPR_VALUE_ARRAY: return "array";
+        case CXPR_VALUE_INT64: return "int64";
         default: return "unknown";
     }
 }
@@ -89,6 +90,9 @@ static bool cxpr_snapshot_write_value_json(FILE* out, const cxpr_value* value) {
         case CXPR_VALUE_DURATION:
             if (fprintf(out, ", \"nanoseconds\": %lld", (long long)value->i64) < 0) return false;
             break;
+        case CXPR_VALUE_INT64:
+            if (fprintf(out, ", \"int64\": %lld", (long long)value->i64) < 0) return false;
+            break;
         case CXPR_VALUE_ARRAY:
             if (fputs(", \"items\": [", out) == EOF) return false;
             if (value->a) {
@@ -121,11 +125,22 @@ static bool cxpr_snapshot_write_value_json(FILE* out, const cxpr_value* value) {
 bool cxpr_snapshot_write_optional_value_fields(FILE* out,
                                                const cxpr_value* value,
                                                int has_value) {
+    return cxpr_snapshot_write_optional_typed_value_fields(
+        out, value, has_value, CXPR_VALUE_NUMBER, 0);
+}
+
+bool cxpr_snapshot_write_optional_typed_value_fields(FILE* out,
+                                                     const cxpr_value* value,
+                                                     int has_value,
+                                                     cxpr_value_type inferred_type,
+                                                     int has_inferred_type) {
     if (fprintf(out, ", \"has_value\": %s, \"value_type\": ",
                 has_value ? "true" : "false") < 0) {
         return false;
     }
-    if (!cxpr_snapshot_json_string(out, has_value ? cxpr_snapshot_value_type_name(value->type) : "")) {
+    if (!cxpr_snapshot_json_string(
+            out, has_value ? cxpr_snapshot_value_type_name(value->type)
+                           : has_inferred_type ? cxpr_snapshot_value_type_name(inferred_type) : "")) {
         return false;
     }
     if (fputs(", \"typed_value\": ", out) == EOF) return false;
@@ -192,7 +207,9 @@ bool cxpr_eval_snapshot_write_json_ex(const cxpr_eval_snapshot* snapshot,
         if (!cxpr_snapshot_json_string(out, node->resolved)) return false;
         if (fputs(", \"value\": ", out) == EOF) return false;
         if (!cxpr_snapshot_json_string(out, node->value_text)) return false;
-        if (!cxpr_snapshot_write_optional_value_fields(out, &node->value, node->has_value)) {
+        if (!cxpr_snapshot_write_optional_typed_value_fields(
+                out, &node->value, node->has_value,
+                node->inferred_type, node->has_inferred_type)) {
             return false;
         }
         if (fprintf(out, ", \"active\": %s, \"state\": \"%s\"",

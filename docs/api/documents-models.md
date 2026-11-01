@@ -99,6 +99,27 @@ One session represents one mutable run. Do not share it concurrently. State
 updates are atomic across a tick: expressions observe state from the start of
 the tick, updates are staged, and commits become current on the next tick.
 
+## Model invariants and optimization
+
+Compiled parameter invariants are checked when a session is created and can be
+checked explicitly with `cxpr_model_compiled_check_asserts`. Seed or override
+the parameter context first; a false invariant returns
+`CXPR_ERR_ASSERTION_FAILED` with its source description.
+
+Include `<cxpr/model/optimize.h>` to inspect search dimensions, constraints, and
+objectives or to execute a candidate search. `cxpr_model_optimize` uses the CPU
+implementation. `cxpr_model_optimize_with_backend` can delegate execution to a
+versioned host backend while CXPR retains candidate and result semantics. The
+returned `cxpr_model_optimize_result` owns its candidate arrays; release them
+with `cxpr_model_optimize_result_free`.
+
+For custom execution, `cxpr_model_optimize_prepare_grid` creates the
+candidate-major parameter grid and marks candidates that satisfy model
+invariants. Execute active candidates in the host, then call
+`cxpr_model_optimize_finalize_results` to apply objective ordering and select
+`best_index`. Release an unfinished or consumed grid with
+`cxpr_model_optimize_grid_free`.
+
 ## Generated-support boundary
 
 The session API is the reference/tooling runtime and a useful parity oracle. For
@@ -147,6 +168,7 @@ Companion public headers have deliberately separate roles:
 
 - `<cxpr/model/compiled.h>` is the convenience include for compiled models;
 - `<cxpr/model/imports.h>` owns import-graph construction;
+- `<cxpr/model/optimize.h>` defines optimizer introspection and execution;
 - `<cxpr/model/plugin.h>` defines model-plugin descriptors and execution;
 - `<cxpr/model/runtime.h>` supplies header-only helpers referenced by emitted C.
 

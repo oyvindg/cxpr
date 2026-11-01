@@ -12,15 +12,38 @@ typedef struct cxpr_cuda_buf {
     size_t cap;
 } cxpr_cuda_buf;
 
+static const char cxpr_cuda_value_runtime_source[] =
+    "#define CXPR_TYPES_DEVICE_ONLY 1\n"
+    "#include <cxpr/types.h>\n"
+    "#undef CXPR_TYPES_DEVICE_ONLY\n"
+    "static __host__ __device__ inline cxpr_value cxpr_num(double x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_NUMBER; v.d = x; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_bool(bool x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_BOOL; v.b = x; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_int64(int64_t x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_INT64; v.i64 = x; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_struct(cxpr_struct_value* x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_STRUCT; v.s = x; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_string(const char* x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_STRING; v.str = x ? x : \"\"; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_null(void) { cxpr_value v = {CXPR_VALUE_NULL}; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_timestamp(int64_t x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_TIMESTAMP; v.i64 = x; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_duration(int64_t x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_DURATION; v.i64 = x; return v; }\n"
+    "static __host__ __device__ inline cxpr_value cxpr_array(cxpr_array_value* x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_ARRAY; v.a = x; return v; }\n\n";
+
 static int cxpr_cuda_append_bytes(
     cxpr_cuda_buf* b,
     const char* text,
     size_t n) {
+    size_t required;
     if (!b || !text) return 0;
-    if (b->len + n + 1u > b->cap) {
+    if (b->len == SIZE_MAX || n > SIZE_MAX - b->len - 1u) return 0;
+    required = b->len + n + 1u;
+    if (required > b->cap) {
         size_t cap = b->cap ? b->cap : 512u;
         char* next;
-        while (b->len + n + 1u > cap) cap *= 2u;
+        while (required > cap) {
+            if (cap > SIZE_MAX / 2u) {
+                cap = required;
+                break;
+            }
+            cap *= 2u;
+        }
         next = (char*)realloc(b->data, cap);
         if (!next) return 0;
         b->data = next;
@@ -217,7 +240,7 @@ static const char* cxpr_cuda_model_runtime_source =
     "#endif\n"
     "#define cxpr_model_runtime_isnan(x) ((x) != (x))\n"
     "#ifndef CXPR_MODEL_RUNTIME_LINKAGE\n"
-    "#define CXPR_MODEL_RUNTIME_LINKAGE static __device__ inline\n"
+    "#define CXPR_MODEL_RUNTIME_LINKAGE static __host__ __device__ inline\n"
     "#endif\n"
     "CXPR_MODEL_RUNTIME_LINKAGE double cxpr_model_window_eval_c(const double* values, size_t count, int period, int op) {\n"
     "    double sum = 0.0;\n"
@@ -303,7 +326,7 @@ char* cxpr_cuda_plugin_source_from_program(
     cxpr_error* err) {
     static const cxpr_cuda_plugin_options defaults = {
         "cxpr_model_tick",
-        "static __device__ __forceinline__"
+        "static __host__ __device__ inline"
     };
     const cxpr_cuda_plugin_options* opts = options ? options : &defaults;
     const char* function_name = opts->function_name ? opts->function_name : defaults.function_name;
@@ -325,7 +348,7 @@ char* cxpr_cuda_plugin_source_from_program(
     patched = cxpr_cuda_replace_all(
         code,
         "static inline double cxpr_fn_",
-        "static __device__ double cxpr_fn_");
+        "static __host__ __device__ double cxpr_fn_");
     if (!patched) {
         free(code);
         return NULL;
@@ -338,6 +361,18 @@ char* cxpr_cuda_plugin_source_from_program(
     if (!runtime_patched) {
         free(code);
         return NULL;
+    }
+    {
+        char* value_patched = cxpr_cuda_replace_all(
+            runtime_patched,
+            "#include <cxpr/types.h>\n",
+            cxpr_cuda_value_runtime_source);
+        free(runtime_patched);
+        runtime_patched = value_patched;
+        if (!runtime_patched) {
+            free(code);
+            return NULL;
+        }
     }
     init_patched = cxpr_cuda_replace_all(
         runtime_patched,

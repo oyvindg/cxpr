@@ -1,0 +1,26 @@
+// Distance-field relaxation cell -- the "works today" baseline (min-fold + saturating
+// add, no direction). Compiles and bulk-runs on release/0.3.2 as-is.
+//
+// One iteration of label-correcting relaxation: dist = min(sadd(neighbour, cost)).
+// The host halo-gathers d_n/d_s/d_e/d_w per cell, ticks this model to fixpoint
+// (swapping buffers between iterations), and drives convergence.
+//
+// Sentinel saturation (R7) is expressed as a plain `fn` -- no builtin needed -- so a
+// blocked/unreachable neighbour ($INF) stays $INF. The flow-field variant
+// (flow_field_cell.cxpr) adds direction once R6 (argmin) lands.
+model distance_field_cell
+
+in { d_n, d_s, d_e, d_w, cost, is_wall, is_goal }
+
+$INF = 1e18
+
+fn sadd(a, b) = min(a + b, $INF)
+
+cand_n = sadd(d_n, cost)
+cand_s = sadd(d_s, cost)
+cand_e = sadd(d_e, cost)
+cand_w = sadd(d_w, cost)
+
+next_dist = is_wall > 0 ? $INF : is_goal > 0 ? 0 : min(cand_n, cand_s, cand_e, cand_w)
+
+out { next_dist }

@@ -52,9 +52,33 @@ static void test_ir_compile_reset_struct_defined_function_repeatedly(void) {
     printf("  ✓ test_ir_compile_reset_struct_defined_function_repeatedly\n");
 }
 
+static void test_call_ast_releases_partial_struct_on_error(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_context* context = cxpr_context_new();
+    cxpr_error error = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "{}-T.i", &error);
+    cxpr_expr_compiled* program;
+    cxpr_value result = cxpr_null();
+
+    assert(ast && error.code == CXPR_OK);
+    program = cxpr_expr_compile(ast, registry, &error);
+    assert(program && error.code == CXPR_OK);
+    assert(!cxpr_expr_compiled_eval(program, context, registry, &result, &error));
+    assert(error.code != CXPR_OK);
+    cxpr_value_free(&result);
+
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(context);
+    cxpr_registry_free(registry);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     printf("Running IR ownership tests...\n");
     test_ir_compile_reset_struct_defined_function_repeatedly();
+    test_call_ast_releases_partial_struct_on_error();
     printf("All IR ownership tests passed!\n");
     return 0;
 }

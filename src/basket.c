@@ -4,8 +4,9 @@
  */
 
 #include "core.h"
-#include "registry/internal.h"
+#include "registry/internal.h" // IWYU pragma: keep
 #include <cxpr/basket.h>
+#include <cxpr/builtin.h>
 #include <math.h>
 #include <string.h>
 
@@ -40,13 +41,8 @@ static char* cxpr_basket_role_struct_name(const char* role) {
 }
 
 bool cxpr_basket_is_builtin(const char* name) {
-    if (!name) return false;
-    return strcmp(name, "avg") == 0 ||
-           strcmp(name, "any") == 0 ||
-           strcmp(name, "all") == 0 ||
-           strcmp(name, "min") == 0 ||
-           strcmp(name, "max") == 0 ||
-           strcmp(name, "count") == 0;
+    const cxpr_function_info* builtin = cxpr_builtin_find(name);
+    return builtin && (builtin->flags & CXPR_BUILTIN_BASKET) != 0u;
 }
 
 bool cxpr_basket_is_aggregate_function(const char* name, size_t argc) {
@@ -232,6 +228,31 @@ static cxpr_value cxpr_basket_eval_folded_results(const char* fn,
         return cxpr_num(numeric);
     }
 
+    if (strcmp(fn, "argmin") == 0 || strcmp(fn, "argmax") == 0) {
+        size_t best = 0;
+        for (i = 0; i < count; ++i) {
+            if (results[i].type != CXPR_VALUE_NUMBER) {
+                return cxpr_basket_eval_error(err, "argmin()/argmax() requires numeric results");
+            }
+            if (i > 0 && ((strcmp(fn, "argmin") == 0 && results[i].d < results[best].d) ||
+                          (strcmp(fn, "argmax") == 0 && results[i].d > results[best].d))) {
+                best = i;
+            }
+        }
+        return cxpr_num((double)best);
+    }
+
+    if (strcmp(fn, "sum") == 0) {
+        numeric = 0.0;
+        for (i = 0; i < count; ++i) {
+            if (results[i].type != CXPR_VALUE_NUMBER) {
+                return cxpr_basket_eval_error(err, "sum() requires numeric results");
+            }
+            numeric += results[i].d;
+        }
+        return cxpr_num(numeric);
+    }
+
     return cxpr_basket_eval_error(err, "Unsupported basket builtin");
 }
 
@@ -347,7 +368,9 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_expr_ast* call_ast,
     argc = cxpr_expr_ast_call_arg_count(call_ast);
 
     if (argc != 1) {
-        if (fn && (strcmp(fn, "avg") == 0 || strcmp(fn, "min") == 0 || strcmp(fn, "max") == 0)) {
+        if (fn && (strcmp(fn, "avg") == 0 || strcmp(fn, "min") == 0 ||
+                   strcmp(fn, "max") == 0 || strcmp(fn, "argmin") == 0 ||
+                   strcmp(fn, "argmax") == 0 || strcmp(fn, "sum") == 0)) {
             if (!cxpr_basket_eval_direct_args(call_ast, ctx, reg, fn, err, &direct)) {
                 return direct;
             }
@@ -384,6 +407,10 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_expr_ast* call_ast,
             return cxpr_num(cxpr_basket_nan());
         }
         if (free_role_count == 0) {
+            if (fn && (strcmp(fn, "argmin") == 0 || strcmp(fn, "argmax") == 0)) {
+                cxpr_basket_free_names(free_roles, free_role_count);
+                return cxpr_num(0.0);
+            }
             ok = cxpr_eval_ast(arg_ast, ctx, reg, &result, err);
             cxpr_basket_free_names(free_roles, free_role_count);
             if (!ok) return cxpr_num(cxpr_basket_nan());
@@ -445,6 +472,12 @@ void cxpr_register_basket_builtins(cxpr_registry* reg) {
     cxpr_registry_add_ast(reg, "min", cxpr_basket_eval_call, 1, 8,
                           CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_add_ast(reg, "max", cxpr_basket_eval_call, 1, 8,
+                          CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_add_ast(reg, "argmin", cxpr_basket_eval_call, 1, 8,
+                          CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_add_ast(reg, "argmax", cxpr_basket_eval_call, 1, 8,
+                          CXPR_VALUE_NUMBER, NULL, NULL);
+    cxpr_registry_add_ast(reg, "sum", cxpr_basket_eval_call, 1, 8,
                           CXPR_VALUE_NUMBER, NULL, NULL);
 }
 

@@ -39,7 +39,7 @@ Important gaps:
 - no end-to-end grid example proves `.cxpr` -> C -> bulk parity yet.
 
 The standalone cxpr test baseline was 114/114 passing before bulk work began.
-Legacy `cxpr-cxta-adapter` is explicitly outside this plan.
+Legacy technical-analysis adapters are explicitly outside this plan.
 
 ## Design rules
 

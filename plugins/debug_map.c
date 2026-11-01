@@ -177,6 +177,7 @@ static cxpr_debug_result_type cxpr_debug_result_type_from_model(
     switch (kind) {
         case CXPR_MODEL_RESULT_NUMBER: return CXPR_DEBUG_RESULT_NUMBER;
         case CXPR_MODEL_RESULT_BOOL: return CXPR_DEBUG_RESULT_BOOL;
+        case CXPR_MODEL_RESULT_INT64: return CXPR_DEBUG_RESULT_INT64;
         default: return CXPR_DEBUG_RESULT_UNKNOWN;
     }
 }
@@ -185,6 +186,7 @@ static const char* cxpr_debug_result_c_name(cxpr_debug_result_type type) {
     switch (type) {
         case CXPR_DEBUG_RESULT_NUMBER: return "CXPR_DEBUG_RESULT_NUMBER";
         case CXPR_DEBUG_RESULT_BOOL: return "CXPR_DEBUG_RESULT_BOOL";
+        case CXPR_DEBUG_RESULT_INT64: return "CXPR_DEBUG_RESULT_INT64";
         default: return "CXPR_DEBUG_RESULT_UNKNOWN";
     }
 }

@@ -57,6 +57,18 @@ field access because a field-access dot follows an expression. A leading sign
 is a unary operator. `null`, `Null`, and `NULL` lex as the numeric NaN sentinel.
 No other capitalization of `null` is special.
 
+Do not use `null`/NaN for blocked or unreachable distances. Field algorithms
+should define a large finite model parameter (conventionally `$INF = 1e18`) and
+use a saturating helper:
+
+```cxpr
+$INF = 1e18
+fn sadd(a, b) = min(a + b, $INF)
+```
+
+This guarantees `sadd($INF, cost) == $INF` and `min($INF, x) == x` for finite,
+non-negative path costs without introducing NaNs in generated C or CUDA output.
+
 Strings use single or double quotes. A backslash causes the following
 character to be skipped while finding the closing quote, but the lexer retains
 the source bytes rather than interpreting C-style escapes:
@@ -73,6 +85,19 @@ Semicolons are accepted only by the document layer as optional trailing
 statement punctuation. The expression lexer itself has no semicolon token.
 
 ## Expressions
+
+The fixed-arity scalar folds `min`, `max`, `sum`, `argmin`, and `argmax` accept
+one through eight arguments. `argmin` and `argmax` return the zero-based index
+of the selected argument as a numeric scalar; exact ties select the lowest
+index. The returned indices 0..7 are exactly representable as `double` (as are
+all integers through 2^53). These folds do not change the scalar model/bulk ABI.
+
+When an index depends on floating-point expressions, generated artifacts must
+be compiled without reassociation or multiply-add contraction: do not enable
+`-ffast-math`; use `-ffp-contract=off` for GCC/Clang and `--fmad=false` for
+NVCC. This preserves the same comparison operands and tie-breaking result as
+tree evaluation and IR. The pathfinding acceptance tests include a binary64
+case whose selected index changes if `a * b + c` is contracted.
 
 ### Primary forms
 
@@ -225,10 +250,10 @@ host tick.
 ## Model documents
 
 A model file is a sequence of top-level statements. A statement normally ends
-at the next non-indented top-level line; braces allow multiline blocks, and
-indented lines continue the current statement. Commas or newlines separate
-entries in declaration and host blocks. Optional trailing semicolons are
-trimmed.
+at the next non-indented top-level line; balanced braces or parentheses allow
+multiline declarations, and indented lines continue the current statement.
+Commas or newlines separate entries in declaration and host blocks. Optional
+trailing semicolons are trimmed.
 
 A representative model is:
 
@@ -251,12 +276,24 @@ out bars
 
 ```cxpr
 model name
+model name(key = value, flag)
 model name { key = value, flag, nested { key = value } }
+model name(key = value) { other = value }
 ```
 
-A non-empty model name is required by validation. The braced body is model
-metadata represented as a host block. Bare host fields mean `true`. Host block
-syntax uses `=`, not YAML `:` mappings.
+A non-empty model name is required by validation. Parentheses provide the
+compact form for model metadata, while braces remain useful for larger or
+nested metadata. Both forms may be combined and are lowered to one metadata
+collection. If the same key occurs in both places, the braced value overrides
+the parenthesized value. Bare host fields mean `true`. Metadata syntax uses
+`=`, not YAML `:` mappings.
+
+```cxpr
+model strategy(timeframe = "30m", type = "strategy") {
+    description = "30-minute breakout strategy"
+    enabled = true
+}
+```
 
 Metadata values are stored as source text and can be strings, numbers, arrays,
 flags, or nested blocks. A newline or comma must separate adjacent assignments;
@@ -338,6 +375,33 @@ $period = 20 { min = 1, max = 100, optimize = [8, 13, 21] }
 Constant/parameter initializers may refer to previously declared parameters,
 but validation rejects unknown `$` names and ordinary runtime symbols in a
 constant expression.
+
+### Invariants and optimization metadata
+
+`assert` declares a load-time invariant over model parameters. The condition
+must be boolean and may only depend on `$` parameters and parameter-only
+defined functions. A failed invariant rejects session creation with
+`CXPR_ERR_ASSERTION_FAILED`; the optional description becomes the diagnostic.
+
+```cxpr
+assert $fast > 0 { description = "Fast period must be positive" }
+assert $fast < $slow { description = "Fast period must precede slow" }
+```
+
+Optimization dimensions belong to parameter metadata. Use either a bounded
+range or an explicit value list. Objectives belong to bindings or outputs and
+declare one direction:
+
+```cxpr
+$fast = 12 { optimize { min = 5, max = 30, step = 1 } }
+$slow = 26 { optimize { values = [20, 30, 50] } }
+error = abs(target - prediction) { optimize { minimize } }
+out score { optimize { maximize } }
+```
+
+The compiler validates ranges, value lists, objective directions, and
+parameter-only invariants. Normal model evaluation enforces `assert`; candidate
+enumeration and objective ranking are performed through the optimizer API.
 
 ### Bindings
 
@@ -528,41 +592,36 @@ The extension provides two complementary layers:
 - `extension.js` starts the bundled CXPR language server over IPC, watches
   `*.cxpr` files, and applies the extension's semantic-token color defaults.
 
-The language server source is
-`libs/cxpr/tools/language-server/server.js`. It delegates document analysis to
-the compiled `cxpr_document_tooling` executable, so diagnostics and structural
-information come from the C tooling rather than a JavaScript reimplementation
-of the language. Its current LSP capabilities are incremental document sync,
+The language server source is `tools/language-server/lsp-server.js`. On Linux
+x64 it loads `cxpr-node` in-process; other platforms use the bundled WASM
+analyzer. Both transports call the same C tooling core, so diagnostics and
+structural information do not have a JavaScript implementation. Its current
+LSP capabilities are incremental document sync,
 diagnostics on open/change, document symbols, folding ranges, full semantic
 tokens, same-document definition lookup, and concise symbol/function hover.
 The extension contributes default colors for the semantic token categories
 listed in `tools/vscode-cxpr/package.json`.
 
-The tooling executable is selected in this order: the VS Code setting
-`cxprLanguage.tooling.executable`, the `CXPR_DOCUMENT_TOOLING` environment
-variable, then conventional workspace paths under `build/libs/cxpr` (including
-`Debug` and `Release` subdirectories). If none exists, the server reports
-`cxpr_document_tooling executable not found` as a document diagnostic.
+The standalone CLI analyzer remains an explicit emergency fallback selected
+with `CXPR_ANALYZER=cli` and `CXPR_DOCUMENT_TOOLING=/path/to/cxpr_document_tooling`.
 
 Build the server before packaging the extension:
 
 ```sh
-cd libs/cxpr/tools/language-server
+cd tools/language-server
 npm install
 npm run build
 
-cd ../../../../tools/vscode-cxpr
+cd tools/vscode-cxpr
 npm install
 npm run package:vsix
 ```
 
-The server build uses esbuild and writes
-`libs/cxpr/tools/language-server/dist/server.js`. The VSIX script requires the
-`zip` CLI, bundles `extension.js`, copies that built server, constructs the
-VSIX manifest, and writes
-`tools/vscode-cxpr/dist/cxpr-language-0.1.0.vsix` for the current package
-version. It fails with an actionable message when esbuild, zip, or the built
-server is missing.
+The server build uses esbuild and writes `tools/language-server/dist/server.js`.
+The VSIX script requires the `zip` CLI, bundles `extension.js`, the built
+server, language service, generated assets and portable WASM analyzer, then
+writes `tools/vscode-cxpr/dist/cxpr-language-<version>.vsix`. It fails with an
+actionable message when a required build artifact is missing.
 
 Install or replace the local extension with:
 

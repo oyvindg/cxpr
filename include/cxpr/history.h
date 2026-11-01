@@ -26,10 +26,23 @@ typedef struct {
     size_t count;
 } cxpr_history_numeric_source;
 
+/** Borrowed immutable int64 source storage. A stride of zero means sizeof(int64_t). */
+typedef struct {
+    const char* name;
+    const void* base;
+    size_t stride;
+    size_t count;
+} cxpr_history_int64_source;
+
 /** Resolve a currently-bound borrowed source view by exact registered name. */
 typedef bool (*cxpr_history_numeric_view_fn)(
     void* userdata, const char* name,
     cxpr_history_numeric_source* out_source, int64_t* out_cursor);
+
+/** Resolve a currently-bound borrowed int64 source view by exact registered name. */
+typedef bool (*cxpr_history_int64_view_fn)(
+    void* userdata, const char* name,
+    cxpr_history_int64_source* out_source, int64_t* out_cursor);
 
 /**
  * Register copied source descriptors backed by borrowed immutable storage.
@@ -52,6 +65,23 @@ bool cxpr_register_history_contiguous_numbers(
     const int64_t* cursor,
     cxpr_history_bounds_policy policy);
 
+/** Register copied int64 descriptors backed by borrowed immutable storage. */
+bool cxpr_register_history_int64_sources(
+    cxpr_registry* reg,
+    const cxpr_history_int64_source* sources,
+    size_t source_count,
+    const int64_t* cursor,
+    cxpr_history_bounds_policy policy);
+
+/** Convenience adapter for one contiguous int64 column. */
+bool cxpr_register_history_contiguous_int64(
+    cxpr_registry* reg,
+    const char* name,
+    const int64_t* values,
+    size_t count,
+    const int64_t* cursor,
+    cxpr_history_bounds_policy policy);
+
 /**
  * Register stable source names backed by a dynamically resolved borrowed view.
  * This supports hosts that rebind buffers while keeping offset validation,
@@ -60,6 +90,13 @@ bool cxpr_register_history_contiguous_numbers(
 bool cxpr_register_history_numeric_provider(
     cxpr_registry* reg, const char* const* source_names, size_t source_count,
     cxpr_history_numeric_view_fn view, void* userdata,
+    cxpr_userdata_free_fn free_userdata,
+    cxpr_history_bounds_policy policy);
+
+/** Register stable int64 source names backed by a dynamically resolved view. */
+bool cxpr_register_history_int64_provider(
+    cxpr_registry* reg, const char* const* source_names, size_t source_count,
+    cxpr_history_int64_view_fn view, void* userdata,
     cxpr_userdata_free_fn free_userdata,
     cxpr_history_bounds_policy policy);
 

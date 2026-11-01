@@ -88,7 +88,8 @@ typedef enum {
 typedef enum {
     CXPR_IR_RESULT_UNKNOWN = 0,
     CXPR_IR_RESULT_NUMBER = 1,
-    CXPR_IR_RESULT_BOOL = 2
+    CXPR_IR_RESULT_BOOL = 2,
+    CXPR_IR_RESULT_INT64 = 3
 } cxpr_ir_result_kind;
 
 /**

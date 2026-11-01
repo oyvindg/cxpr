@@ -280,7 +280,9 @@ static int cxpr_print_node(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, i
 
     switch (ast->type) {
         case CXPR_NODE_NUMBER:
-            return cxpr_print_number(p, ast->data.number.value);
+            return ast->data.number.lexeme
+                ? cxpr_printer_append(p, ast->data.number.lexeme)
+                : cxpr_print_number(p, ast->data.number.value);
         case CXPR_NODE_INT64: {
             char text[32];
             snprintf(text, sizeof(text), "%" PRId64 "i64", ast->data.integer.value);

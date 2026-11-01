@@ -526,7 +526,8 @@ static void test_comments_are_whitespace(void) {
                     "close // trailing line comment\n"
                     "+ /** block comment */ open\n"
                     "+ /* multi\n"
-                    "line */ high");
+                    "line */ high\n"
+                    "+ /* // something */ /* some comment /* nested comments */ after nested comments */ low");
     tok = cxpr_lexer_next(&lex);
     assert(tok.type == CXPR_TOK_IDENTIFIER);
     assert(tok.length == 5 && memcmp(tok.start, "close", 5) == 0);
@@ -538,6 +539,10 @@ static void test_comments_are_whitespace(void) {
     tok = cxpr_lexer_next(&lex);
     assert(tok.type == CXPR_TOK_IDENTIFIER);
     assert(tok.length == 4 && memcmp(tok.start, "high", 4) == 0);
+    assert(cxpr_lexer_next(&lex).type == CXPR_TOK_PLUS);
+    tok = cxpr_lexer_next(&lex);
+    assert(tok.type == CXPR_TOK_IDENTIFIER);
+    assert(tok.length == 3 && memcmp(tok.start, "low", 3) == 0);
     assert(cxpr_lexer_next(&lex).type == CXPR_TOK_EOF);
 
     printf("  ✓ test_comments_are_whitespace\n");

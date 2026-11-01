@@ -42,6 +42,21 @@ cxpr_expr_ast* cxpr_expr_ast_number_new(double value) {
     return node;
 }
 
+cxpr_expr_ast* cxpr_expr_ast_number_new_with_lexeme(double value,
+                                                    const char* lexeme,
+                                                    size_t length) {
+    cxpr_expr_ast* node = cxpr_expr_ast_number_new(value);
+    if (!node || !lexeme) return node;
+    node->data.number.lexeme = (char*)malloc(length + 1u);
+    if (!node->data.number.lexeme) {
+        free(node);
+        return NULL;
+    }
+    memcpy(node->data.number.lexeme, lexeme, length);
+    node->data.number.lexeme[length] = '\0';
+    return node;
+}
+
 cxpr_expr_ast* cxpr_expr_ast_int64_new(int64_t value) {
     cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
@@ -70,6 +85,13 @@ cxpr_expr_ast* cxpr_expr_ast_array_new(cxpr_expr_ast** elements, size_t count) {
 cxpr_expr_ast* cxpr_expr_ast_record_new(const char* const* field_names,
                               cxpr_expr_ast** field_values,
                               size_t field_count) {
+    return cxpr_expr_ast_record_new_with_metadata(
+        field_names, field_values, NULL, field_count);
+}
+
+cxpr_expr_ast* cxpr_expr_ast_record_new_with_metadata(
+    const char* const* field_names, cxpr_expr_ast** field_values,
+    const char* const* field_metadata, size_t field_count) {
     cxpr_expr_ast* node = (cxpr_expr_ast*)calloc(1, sizeof(cxpr_expr_ast));
     if (!node) return NULL;
     node->type = CXPR_NODE_RECORD;
@@ -77,7 +99,8 @@ cxpr_expr_ast* cxpr_expr_ast_record_new(const char* const* field_names,
     node->data.record.field_count = field_count;
     if (field_count == 0u) return node;
     node->data.record.field_names = (char**)calloc(field_count, sizeof(char*));
-    if (!node->data.record.field_names) {
+    node->data.record.field_metadata = (char**)calloc(field_count, sizeof(char*));
+    if (!node->data.record.field_names || !node->data.record.field_metadata) {
         cxpr_expr_ast_free(node);
         return NULL;
     }
@@ -86,6 +109,13 @@ cxpr_expr_ast* cxpr_expr_ast_record_new(const char* const* field_names,
         if (!node->data.record.field_names[i]) {
             cxpr_expr_ast_free(node);
             return NULL;
+        }
+        if (field_metadata && field_metadata[i]) {
+            node->data.record.field_metadata[i] = cxpr_strdup(field_metadata[i]);
+            if (!node->data.record.field_metadata[i]) {
+                cxpr_expr_ast_free(node);
+                return NULL;
+            }
         }
     }
     return node;

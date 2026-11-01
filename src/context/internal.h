@@ -36,6 +36,18 @@ int64_t cxpr_context_get_local_param_int64(const cxpr_context* ctx, const char* 
 const char* cxpr_context_get_local_string(const cxpr_context* ctx, const char* name, bool* found);
 /** @brief Look up a string param only on this exact context, without parent fallback. */
 const char* cxpr_context_get_local_param_string(const cxpr_context* ctx, const char* name, bool* found);
+typedef enum {
+    CXPR_CONTEXT_KEEP_NUMBER,
+    CXPR_CONTEXT_KEEP_BOOL,
+    CXPR_CONTEXT_KEEP_INT64,
+    CXPR_CONTEXT_KEEP_STRING,
+    CXPR_CONTEXT_KEEP_ARRAY,
+    CXPR_CONTEXT_KEEP_STRUCT
+} cxpr_context_binding_kind;
+void cxpr_context_clear_variable_bindings(cxpr_context* ctx, const char* name,
+                                          cxpr_context_binding_kind keep);
+void cxpr_context_clear_param_bindings(cxpr_context* ctx, const char* name,
+                                       cxpr_context_binding_kind keep);
 /** @brief Find the mutable storage slot for one variable binding. */
 static inline cxpr_hashmap_entry* cxpr_context_find_variable_slot(cxpr_context* ctx,
                                                                   const char* key,

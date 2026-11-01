@@ -187,6 +187,9 @@ static cxpr_typecheck_static_type cxpr_typecheck_join(cxpr_typecheck_static_type
     if (a == b) return a;
     if (a == CXPR_STATIC_UNKNOWN) return b;
     if (b == CXPR_STATIC_UNKNOWN) return a;
+    if (cxpr_typecheck_is_numeric(a) && cxpr_typecheck_is_numeric(b)) {
+        return CXPR_STATIC_NUMBER;
+    }
     (void)cxpr_typecheck_error(err, "?:", "branches with matching types",
                           "ternary branch", node, b);
     return CXPR_STATIC_ERROR;
@@ -278,15 +281,10 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_expr_as
         }
         if (lt == CXPR_STATIC_STRUCT || rt == CXPR_STATIC_STRUCT)
             return CXPR_STATIC_STRUCT;
+        if (op == CXPR_TOK_SLASH) return CXPR_STATIC_NUMBER;
         if (lt == CXPR_STATIC_INT64 && rt == CXPR_STATIC_INT64)
             return CXPR_STATIC_INT64;
-        if (lt != CXPR_STATIC_UNKNOWN && rt != CXPR_STATIC_UNKNOWN && lt != rt) {
-            cxpr_typecheck_error(err, cxpr_typecheck_op_name(op),
-                                 "matching numeric types", "right operand", right, rt);
-            return CXPR_STATIC_ERROR;
-        }
-        return lt == CXPR_STATIC_INT64 || rt == CXPR_STATIC_INT64
-                   ? CXPR_STATIC_INT64 : CXPR_STATIC_NUMBER;
+        return CXPR_STATIC_NUMBER;
     case CXPR_TOK_PERCENT:
     case CXPR_TOK_POWER:
         if (!cxpr_typecheck_is_numeric(lt)) {
@@ -314,6 +312,8 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_binary(const cxpr_expr_as
     case CXPR_TOK_EQ:
     case CXPR_TOK_NEQ:
         if (lt != CXPR_STATIC_UNKNOWN && rt != CXPR_STATIC_UNKNOWN && lt != rt) {
+            if (cxpr_typecheck_is_numeric(lt) && cxpr_typecheck_is_numeric(rt))
+                return CXPR_STATIC_BOOL;
             cxpr_typecheck_error(err, cxpr_typecheck_op_name(op), "matching operand types",
                             "right operand", right, rt);
             return CXPR_STATIC_ERROR;

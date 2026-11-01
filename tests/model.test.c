@@ -2507,6 +2507,33 @@ static void test_model_c_init_explicitly_zeros_state_storage(void) {
     printf("  ✓ test_model_c_init_explicitly_zeros_state_storage\n");
 }
 
+static void test_model_c_init_preserves_numeric_state_default(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C,
+        true,
+        false,
+    };
+    cxpr_model* model = parse_model_ok(
+        "model state_default\n"
+        "state value = 5.5\n"
+        "out value\n");
+    cxpr_model_compiled* program =
+        cxpr_model_compile_with_options(model, NULL, &options, &err);
+    char* code;
+
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "state_default_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "_cx_state->state_value = 5.5;") != NULL);
+
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_model_c_init_preserves_numeric_state_default\n");
+}
+
 static void test_model_c_single_value_history_has_no_cursor(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -2951,15 +2978,10 @@ static void test_imported_producer_explicit_call_params_hide_internal_params(voi
         "value = configurable(source=close, epsilon=2).value\n"
         "out value\n");
     parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
-    assert(parent_program != NULL);
-    session = cxpr_model_session_new(parent_program, NULL, &err);
-    assert(session != NULL);
-    ctx = cxpr_model_session_context(session);
-    cxpr_context_set(ctx, "close", 10.0);
-    assert(!cxpr_model_session_tick(parent_program, session, NULL, &err));
-    assert(err.code != CXPR_OK);
-    cxpr_model_session_free(session);
-    cxpr_model_compiled_free(parent_program);
+    assert(parent_program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Unknown named argument") != NULL);
     cxpr_model_free(parent);
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
@@ -3012,6 +3034,21 @@ static void test_imported_producer_implicit_market_inputs_precede_no_params(void
     cxpr_model_session_free(session);
     cxpr_model_compiled_free(parent_program);
     cxpr_model_free(parent);
+
+    err = (cxpr_error){0};
+    parent = parse_model_ok(
+        "model invalid_market_parent\n"
+        "use market_indicator\n"
+        "in high, low, close\n"
+        "value = market_indicator(periodx=7).value\n"
+        "out value\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Unknown named argument") != NULL);
+    cxpr_model_free(parent);
+
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_implicit_market_inputs_precede_no_params\n");
@@ -3818,6 +3855,7 @@ static void test_robot_hexapod_fixture_simulates_vec3_io(void) {
         assert(fabs(q_norm - 1.0) < 1e-9);
         orientation_state = cxpr_context_get_typed(ctx, "orientation", &found);
         assert(found && orientation_state.type == CXPR_VALUE_STRUCT);
+        cxpr_value_free(&orientation_state);
 
         front_left_coxa = cxpr_context_get_field(ctx, "front_left", "coxa", &found);
         assert(found && front_left_coxa.type == CXPR_VALUE_NUMBER);
@@ -4147,6 +4185,30 @@ static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     printf("  ✓ test_window_param_bounds_drive_capacity_and_session_clamp\n");
+}
+
+static void test_child_window_call_param_uses_dynamic_capacity(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model child_window { source_arg = \"source\" }\n"
+        "in source, $period = 20\n"
+        "value = max(window(source, $period))\n"
+        "out value\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    assert(program != NULL);
+    assert(cxpr_model_compiled_call_param_count(program) == 1u);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "child_window_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_history512") != NULL);
+    assert(strstr(code, "fmin((double)512u, round(_cx_param_0))") != NULL);
+
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_child_window_call_param_uses_dynamic_capacity\n");
 }
 
 static void test_dynamic_lookback_uses_parameter_max(void) {
@@ -4757,6 +4819,35 @@ static void test_int64_state_and_generated_boundary_are_exact(void) {
     printf("  ✓ test_int64_state_and_generated_boundary_are_exact\n");
 }
 
+static void test_int64_source_boundary_and_internal_inference(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model typed_counter\n"
+        "in { count: int64, $step: int64 = 1 }\n"
+        "next = count + $step\n"
+        "out next\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    assert(program && err.code == CXPR_OK);
+    assert(cxpr_model_compiled_input_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_param_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_binding_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    assert(cxpr_model_compiled_output_result_kind(program, 0u) ==
+           CXPR_MODEL_RESULT_INT64);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "typed_counter_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "cxpr_int64(next)") != NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_int64_source_boundary_and_internal_inference\n");
+}
+
 int main(void) {
     test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
@@ -4836,6 +4927,7 @@ int main(void) {
     test_session_direct_record_producer_lookback();
     test_model_c_common_subexpression_eliminates_duplicate_bindings();
     test_model_c_init_explicitly_zeros_state_storage();
+    test_model_c_init_preserves_numeric_state_default();
     test_model_c_single_value_history_has_no_cursor();
     test_model_c_history_ring_layout_and_initialization();
     test_compile_imported_producer_infers_missing_child_inputs();
@@ -4864,6 +4956,7 @@ int main(void) {
     test_local_record_fields_can_reference_previous_fields();
     test_record_param_field_access_emits_c_tick();
     test_window_param_bounds_drive_capacity_and_session_clamp();
+    test_child_window_call_param_uses_dynamic_capacity();
     test_dynamic_lookback_uses_parameter_max();
     test_history_depth_composes_index_offsets();
     test_dynamic_lookback_requires_parameter_max();
@@ -4874,6 +4967,7 @@ int main(void) {
     test_rsi_state_strategy_fixture_emits_c_tick();
     test_rsi_state_strategy_fixture_matches_golden_values();
     test_int64_state_and_generated_boundary_are_exact();
+    test_int64_source_boundary_and_internal_inference();
     printf("All model parser tests passed.\n");
     return 0;
 }

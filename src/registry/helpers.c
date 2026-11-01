@@ -158,6 +158,7 @@ void cxpr_registry_reset_entry(cxpr_func_entry* entry) {
     entry->typed_func = NULL;
     entry->ast_func = NULL;
     entry->struct_producer = NULL;
+    entry->typed_struct_producer = NULL;
     entry->model_producer = NULL;
     entry->model_producer_userdata = NULL;
     entry->ast_func_handler = NULL;

@@ -90,6 +90,13 @@ static bool cxpr_model_window_period_depth(const cxpr_model* model,
                 goto resolved;
             }
         }
+        for (size_t i = 0u; i < model->constant_count; ++i) {
+            if (model->constants[i].is_call_param &&
+                cxpr_model_names_match(model->constants[i].name, param_name)) {
+                raw = 512.0;
+                goto resolved;
+            }
+        }
     }
     if (!cxpr_model_window_constant_expr(model, period_ast, &raw)) raw = 512.0;
 resolved:

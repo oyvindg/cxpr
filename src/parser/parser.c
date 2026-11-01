@@ -94,14 +94,36 @@ cxpr_expr_ast* cxpr_expr_ast_parse(cxpr_expr_parser* p, const char* expression, 
     }
 
     if (!cxpr_expr_parser_check(p, CXPR_TOK_EOF)) {
+        const cxpr_token next = cxpr_expr_parser_peek_next(p);
+        const bool adjacent_zero_prefix =
+            p->previous.type == CXPR_TOK_NUMBER && p->previous.length == 1u &&
+            p->previous.start[0] == '0' && p->current.type == CXPR_TOK_IDENTIFIER &&
+            p->previous.position + p->previous.length == p->current.position;
+        const bool unsupported_binary = adjacent_zero_prefix &&
+            (p->current.start[0] == 'b' || p->current.start[0] == 'B');
+        const bool unsupported_hexadecimal = adjacent_zero_prefix &&
+            (p->current.start[0] == 'x' || p->current.start[0] == 'X');
         p->had_error = true;
         p->last_error.code = CXPR_ERR_SYNTAX;
-        p->last_error.message = cxpr_expr_parser_token_starts_primary(p->current.type)
-                                    ? "Implicit multiplication is not supported; use '*' explicitly"
-                                    : "Unexpected token after expression";
-        p->last_error.position = p->current.position;
-        p->last_error.line = p->current.line;
-        p->last_error.column = p->current.column;
+        if (unsupported_binary) {
+            p->last_error.message =
+                "Binary numeric literals are not supported; use decimal notation";
+        } else if (unsupported_hexadecimal) {
+            p->last_error.message =
+                "Hexadecimal numeric literals are not supported; use decimal notation";
+        } else if (p->current.type == CXPR_TOK_IDENTIFIER && next.type == CXPR_TOK_LBRACE) {
+            p->last_error.message =
+                "Unexpected identifier before metadata block; metadata must follow the value directly";
+        } else {
+            p->last_error.message = cxpr_expr_parser_token_starts_primary(p->current.type)
+                                        ? "Implicit multiplication is not supported; use '*' explicitly"
+                                        : "Unexpected token after expression";
+        }
+        const cxpr_token* error_token = unsupported_binary || unsupported_hexadecimal
+            ? &p->previous : &p->current;
+        p->last_error.position = error_token->position;
+        p->last_error.line = error_token->line;
+        p->last_error.column = error_token->column;
         cxpr_expr_ast_free(ast);
         if (err) *err = p->last_error;
         return NULL;

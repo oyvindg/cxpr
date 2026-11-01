@@ -14,6 +14,8 @@
 #define CXPR_IR_RESULT_DOUBLE 1
 /** @brief IR program is known to produce a boolean scalar result. */
 #define CXPR_IR_RESULT_BOOL 2
+/** @brief IR program is known to produce an int64 scalar result. */
+#define CXPR_IR_RESULT_INT64 3
 
 /**
  * @brief Minimal opcode set for IR v1.
@@ -95,7 +97,7 @@ typedef enum {
  * - CALL_AST: borrowed AST pointer in ast
  * - JUMP / conditional jumps: target index in index
  * - LOOKBACK_PUSH: literal offset in index
- * - LOOKBACK_RESOLVE: target AST in payload, literal offset in index
+ * - LOOKBACK_RESOLVE: owned cxpr_ir_lookback_payload in payload, literal offset in index
  * - arithmetic / comparisons / return: no extra operand
  */
 typedef struct {
@@ -114,6 +116,27 @@ typedef struct {
     };
 } cxpr_ir_instr;
 
+typedef enum {
+    CXPR_IR_LOOKBACK_IDENT_ARRAY,
+    CXPR_IR_LOOKBACK_PRODUCER_FIELD_CHAIN,
+    CXPR_IR_LOOKBACK_RESOLVER
+} cxpr_ir_lookback_target_kind;
+
+/** Compile-time resolved metadata owned by one LOOKBACK_RESOLVE instruction. */
+typedef struct {
+    const cxpr_expr_ast* target; /**< Borrowed from the compiled program's owned AST. */
+    cxpr_ir_lookback_target_kind kind;
+    const char* key;             /**< Borrowed identifier or precomputed flat chain key. */
+    char* const* segments;       /**< Borrowed interned AST segments, when applicable. */
+    size_t segment_count;
+    const cxpr_registry* compile_registry;
+    cxpr_index_capability_fn capability;
+    void* capability_userdata;
+    bool capability_handled;
+    cxpr_lookback_resolver_ptr resolver;
+    void* resolver_userdata;
+} cxpr_ir_lookback_payload;
+
 _Static_assert(sizeof(cxpr_ir_instr) <= 48, "cxpr_ir_instr for stor");
 
 /**
@@ -124,7 +147,7 @@ typedef struct {
     const cxpr_context* owner_ctx;          /**< Context owning the cached entry */
     cxpr_hashmap_entry* entries_base;       /**< Owner map base when the entry was cached */
     size_t              slot;               /**< Index into entries_base for the cached entry */
-    unsigned long       shadow_version;     /**< Structural version summary below the owner */
+    uint64_t            shadow_version;     /**< Structural version summary below the owner */
 } cxpr_ir_lookup_cache;
 
 /**
@@ -138,7 +161,7 @@ typedef struct {
     size_t capacity;            /**< Allocated instruction capacity */
     const cxpr_expr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
     cxpr_ir_lookup_cache* lookup_cache; /**< Optional per-instruction lookup cache */
-    unsigned char fast_result_kind; /**< 0=unknown, 1=double, 2=bool for scalar fast-path */
+    unsigned char fast_result_kind; /**< CXPR_IR_RESULT_* fast-path classification. */
 } cxpr_ir_program;
 
 struct cxpr_expr_compiled {

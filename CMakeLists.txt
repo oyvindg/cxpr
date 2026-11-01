@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/cxpr/version.h" CXPR_VERSION_DEFINES
     REGEX "^#define CXPR_VERSION_(MAJOR|MINOR|PATCH) [0-9]+$"
@@ -37,6 +37,34 @@ option(CXPR_ENABLE_ASAN "Enable AddressSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer instrumentation" OFF)
 option(CXPR_ENABLE_COVERAGE "Enable compiler coverage instrumentation" OFF)
 option(CXPR_BUILD_SHARED "Build cxpr as a shared library" OFF)
+option(CXPR_WITH_CXCU "Build the optional public CXCU optimizer backend" OFF)
+
+set(CXPR_LANGUAGE_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tools/language-core")
+set(CXPR_LANGUAGE_GENERATED
+    "${CXPR_LANGUAGE_CORE_DIR}/generated/cxpr.monarch.json"
+    "${CXPR_LANGUAGE_CORE_DIR}/generated/cxpr_language_spec.inc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/language-server/cxpr-language-core.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/language-service/legacy/cxpr-language-core.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/vscode-cxpr/syntaxes/cxpr.tmLanguage.json")
+find_program(CXPR_NODE_EXECUTABLE NAMES node nodejs)
+if(CXPR_NODE_EXECUTABLE)
+    add_custom_command(
+        OUTPUT ${CXPR_LANGUAGE_GENERATED}
+        COMMAND "${CXPR_NODE_EXECUTABLE}" "${CXPR_LANGUAGE_CORE_DIR}/generate-grammars.js"
+        DEPENDS
+            "${CXPR_LANGUAGE_CORE_DIR}/cxpr-language-spec.json"
+            "${CXPR_LANGUAGE_CORE_DIR}/cxpr-language-core.js"
+            "${CXPR_LANGUAGE_CORE_DIR}/cxpr-grammar.js"
+            "${CXPR_LANGUAGE_CORE_DIR}/generate-grammars.js"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Generating CXPR C, Monarch and TextMate language assets"
+        VERBATIM)
+    add_custom_target(cxpr_language_assets DEPENDS ${CXPR_LANGUAGE_GENERATED})
+elseif(NOT EXISTS "${CXPR_LANGUAGE_CORE_DIR}/generated/cxpr_language_spec.inc")
+    message(FATAL_ERROR
+        "CXPR language assets are missing and Node.js was not found. "
+        "Install Node.js and run tools/language-core/generate-grammars.js.")
+endif()
 
 if(CXPR_ENABLE_ASAN AND MSVC)
     message(FATAL_ERROR "CXPR_ENABLE_ASAN is only supported on GCC/Clang-style toolchains")
@@ -67,6 +95,7 @@ file(GLOB_RECURSE CXPR_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
 list(APPEND CXPR_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/c.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/cuda.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/plugins/debug_map.c"
@@ -80,6 +109,9 @@ else()
     add_library(cxpr STATIC ${CXPR_SOURCES})
 endif()
 add_library(cxpr::cxpr ALIAS cxpr)
+if(TARGET cxpr_language_assets)
+    add_dependencies(cxpr cxpr_language_assets)
+endif()
 
 set_target_properties(cxpr PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -127,6 +159,8 @@ if(CXPR_ENABLE_ASAN OR CXPR_ENABLE_UBSAN)
 
     list(APPEND CXPR_SANITIZER_FLAGS -fno-omit-frame-pointer)
 
+    target_compile_options(cxpr PRIVATE ${CXPR_SANITIZER_FLAGS})
+    target_link_options(cxpr PRIVATE ${CXPR_SANITIZER_FLAGS})
     add_compile_options(${CXPR_SANITIZER_FLAGS})
     add_link_options(${CXPR_SANITIZER_FLAGS})
 endif()
@@ -135,6 +169,25 @@ endif()
 # the dependency propagated. CMake ignores the name on platforms without libm.
 if(UNIX)
     target_link_libraries(cxpr PUBLIC m)
+endif()
+
+if(CXPR_WITH_CXCU)
+    if(NOT TARGET cxcu::cxcu)
+        find_package(cxcu CONFIG REQUIRED)
+    endif()
+    add_library(cxpr_cxcu STATIC
+        adapters/cxcu/src/backend.c
+    )
+    add_library(cxpr::cxcu ALIAS cxpr_cxcu)
+    set_target_properties(cxpr_cxcu PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        EXPORT_NAME cxcu
+    )
+    target_link_libraries(cxpr_cxcu PUBLIC cxpr::cxpr cxcu::cxcu)
+    target_include_directories(cxpr_cxcu PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -147,7 +200,7 @@ if(CXPR_BUILD_TOOLS)
     target_link_libraries(cxpr_model_codegen PRIVATE cxpr)
 
     add_executable(cxpr_document_tooling
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling.c")
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cxpr_document_tooling_cli.c")
     target_link_libraries(cxpr_document_tooling PRIVATE cxpr)
     target_include_directories(cxpr_document_tooling PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -170,6 +223,24 @@ if(CXPR_BUILD_TESTS)
     add_executable(cxpr_example_ast_snapshot_cytoscape
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/ast_snapshot_cytoscape.c")
     target_link_libraries(cxpr_example_ast_snapshot_cytoscape PRIVATE cxpr)
+
+    add_executable(cxpr_example_generated_descriptor_host
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/generated_descriptor_host.c")
+    target_link_libraries(cxpr_example_generated_descriptor_host PRIVATE cxpr)
+    add_test(NAME examples_generated_descriptor_host
+             COMMAND "$<TARGET_FILE:cxpr_example_generated_descriptor_host>")
+
+    add_executable(cxpr_example_optimize_host
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/optimize_host.c")
+    target_link_libraries(cxpr_example_optimize_host PRIVATE cxpr)
+    add_test(NAME examples_optimize_host
+             COMMAND "$<TARGET_FILE:cxpr_example_optimize_host>")
+
+    add_executable(cxpr_example_optimize_multiobjective
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/optimize_multiobjective.c")
+    target_link_libraries(cxpr_example_optimize_multiobjective PRIVATE cxpr)
+    add_test(NAME examples_optimize_multiobjective
+             COMMAND "$<TARGET_FILE:cxpr_example_optimize_multiobjective>")
 endif()
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -208,6 +279,15 @@ install(
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+if(CXPR_WITH_CXCU)
+    install(
+        TARGETS cxpr_cxcu
+        EXPORT cxprTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 
 install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/

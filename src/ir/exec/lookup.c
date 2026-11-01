@@ -78,7 +78,8 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
 
     root_len = (size_t)(dot - instr->name);
     if (root_len == 0 || root_len >= sizeof(root)) {
-        return cxpr_ir_runtime_error(err, "Field access root too long");
+        return cxpr_ir_make_not_found(
+            err, cxpr_ir_unknown_lookup_message("field access", instr->name));
     }
 
     memcpy(root, instr->name, root_len);
@@ -89,7 +90,7 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
             ctx->expression_scope,
             instr->name,
             &found);
-        if (found) return scoped;
+        if (found) return cxpr_value_clone(&scoped);
 
         scoped = cxpr_expression_lookup_typed_result(
             ctx->expression_scope,
@@ -116,6 +117,8 @@ cxpr_value cxpr_ir_load_field_value(const cxpr_context* ctx, const cxpr_registry
             } else {
                 value = cxpr_context_get_field(ctx, root, dot + 1, &found);
             }
+            if (produced.type == CXPR_VALUE_STRUCT || produced.type == CXPR_VALUE_ARRAY)
+                cxpr_value_free(&produced);
             if (found) return value;
         }
     }
@@ -290,12 +293,23 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
 
 bool cxpr_ir_push_squared(cxpr_value* stack, size_t* sp, cxpr_value value,
                           cxpr_error* err) {
-    if (!cxpr_ir_require_type(value, CXPR_VALUE_NUMBER, err,
-                              "Square operation requires double operand")) {
+    cxpr_value squared;
+    int handled;
+    if (value.type == CXPR_VALUE_NUMBER) {
+        squared = cxpr_num(value.d * value.d);
+        handled = 1;
+    } else {
+        handled = cxpr_value_binary_op(
+            CXPR_VALOP_MUL, value, value, &squared, err);
+    }
+    if (handled != 1) {
+        if (handled == 0 && err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Square operation requires numeric operand";
+        }
         return false;
     }
-    value.d *= value.d;
-    return cxpr_ir_stack_push(stack, sp, value, 64, err);
+    return cxpr_ir_stack_push(stack, sp, squared, 64, err);
 }
 
 bool cxpr_ir_pop1(cxpr_value* stack, size_t* sp, cxpr_value* out,
@@ -330,7 +344,7 @@ cxpr_value cxpr_ir_load_variable_typed(const cxpr_context* ctx,
             cxpr_expression_lookup_typed_result(ctx->expression_scope, instr->name, &scope_found);
         if (scope_found) {
             if (found) *found = true;
-            return scoped;
+            return cxpr_value_clone(&scoped);
         }
     }
 

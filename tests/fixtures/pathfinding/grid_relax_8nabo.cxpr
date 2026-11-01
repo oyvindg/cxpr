@@ -1,0 +1,27 @@
+// R6 argmin with R7 sentinel saturation as a plain `fn`, not a builtin.
+// 8-neighbour variant of the `grid_relax` interop descriptor. Diagonal cost is
+// supplied separately by the host (typically ~sqrt(2) * cost).
+model grid_relax_8nabo
+
+in { d_n, d_s, d_e, d_w, d_ne, d_nw, d_se, d_sw, cost, cost_diag, is_wall, is_goal }
+
+$INF = 1e18
+
+fn sadd(a, b) = min(a + b, $INF)
+
+cand_n  = sadd(d_n,  cost)
+cand_s  = sadd(d_s,  cost)
+cand_e  = sadd(d_e,  cost)
+cand_w  = sadd(d_w,  cost)
+cand_ne = sadd(d_ne, cost_diag)
+cand_nw = sadd(d_nw, cost_diag)
+cand_se = sadd(d_se, cost_diag)
+cand_sw = sadd(d_sw, cost_diag)
+
+next_dist = is_wall > 0 ? $INF : is_goal > 0 ? 0
+    : min(cand_n, cand_s, cand_e, cand_w, cand_ne, cand_nw, cand_se, cand_sw)
+
+// Direction code (B4): 0=N,1=S,2=E,3=W,4=NE,5=NW,6=SE,7=SW. arity 8 = max.
+dir = argmin(cand_n, cand_s, cand_e, cand_w, cand_ne, cand_nw, cand_se, cand_sw)
+
+out { next_dist, dir }

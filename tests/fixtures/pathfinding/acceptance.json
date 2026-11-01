@@ -1,0 +1,39 @@
+{
+  "schema": "cxpr-pathfinding-acceptance/v1",
+  "requirements": [
+    {
+      "id": "R6-basic-folds",
+      "fixture": "argmin_argmax.cxpr",
+      "cpu_test": "pathfinding_generated_parity",
+      "cuda_test": "cuda_pathfinding_parity"
+    },
+    {
+      "id": "R6-ties-fma",
+      "fixture": "ties.cxpr",
+      "cpu_test": "pathfinding_generated_parity",
+      "cuda_test": "cuda_pathfinding_parity"
+    },
+    {
+      "id": "R6-R7-grid-4",
+      "fixture": "grid_relax_4nabo.cxpr",
+      "cpu_test": "pathfinding_flow_e2e"
+    },
+    {
+      "id": "R6-R7-grid-8",
+      "fixture": "grid_relax_8nabo.cxpr",
+      "cpu_test": "pathfinding_flow_e2e"
+    },
+    {
+      "id": "R7-sentinel",
+      "fixture": "sentinel.cxpr",
+      "cpu_test": "pathfinding_sentinel"
+    }
+  ],
+  "deferred": [
+    {
+      "id": "R8-bulk-reduce",
+      "test": "bulk_reduce",
+      "status": "skipped"
+    }
+  ]
+}

@@ -25,6 +25,7 @@ struct cxpr_expr_ast {
     union {
         struct {
             double value;
+            char* lexeme;
         } number;
         struct {
             int64_t value;
@@ -39,6 +40,7 @@ struct cxpr_expr_ast {
         struct {
             char** field_names;
             struct cxpr_expr_ast** field_values;
+            char** field_metadata;
             size_t field_count;
         } record;
         struct {
@@ -109,7 +111,7 @@ struct cxpr_expr_ast {
             bool cached_lookup_valid;
             const struct cxpr_registry* cached_memoable_registry;
             unsigned long cached_memoable_registry_version;
-            unsigned long cached_hash;
+            uint64_t cached_hash;
             bool cached_memoable;
             bool cached_memoable_valid;
             bool cached_hash_valid;
@@ -136,6 +138,9 @@ void cxpr_expr_ast_set_source_span(cxpr_expr_ast* ast, cxpr_source_span span);
  * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_expr_ast* cxpr_expr_ast_number_new(double value);
+cxpr_expr_ast* cxpr_expr_ast_number_new_with_lexeme(double value,
+                                                    const char* lexeme,
+                                                    size_t length);
 /**
  * @brief Internal constructor for a boolean literal node.
  * @param value Literal boolean payload.
@@ -159,6 +164,9 @@ cxpr_expr_ast* cxpr_expr_ast_array_new(cxpr_expr_ast** elements, size_t count);
 cxpr_expr_ast* cxpr_expr_ast_record_new(const char* const* field_names,
                               cxpr_expr_ast** field_values,
                               size_t field_count);
+cxpr_expr_ast* cxpr_expr_ast_record_new_with_metadata(
+    const char* const* field_names, cxpr_expr_ast** field_values,
+    const char* const* field_metadata, size_t field_count);
 /**
  * @brief Internal constructor for a string literal node.
  * @param value Borrowed string payload to copy.

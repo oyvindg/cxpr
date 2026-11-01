@@ -87,6 +87,12 @@ const cxpr_expr_ast* cxpr_expr_ast_record_field_value(const cxpr_expr_ast* ast, 
     return ast->data.record.field_values[index];
 }
 
+const char* cxpr_expr_ast_record_field_metadata(const cxpr_expr_ast* ast, size_t index) {
+    if (!ast || ast->type != CXPR_NODE_RECORD || index >= ast->data.record.field_count ||
+        !ast->data.record.field_metadata) return NULL;
+    return ast->data.record.field_metadata[index];
+}
+
 const char* cxpr_expr_ast_identifier_name(const cxpr_expr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_IDENTIFIER) ? ast->data.identifier.name : NULL;
 }

@@ -775,6 +775,30 @@ static void test_implicit_multiplication_error(void) {
     printf("  ✓ test_implicit_multiplication_error\n");
 }
 
+static void test_unsupported_prefixed_numeric_literal_error(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+
+    parse_fail_message(
+        p, "0babc", "Binary numeric literals are not supported; use decimal notation");
+    parse_fail_message(
+        p, "0xabc", "Hexadecimal numeric literals are not supported; use decimal notation");
+
+    cxpr_expr_parser_free(p);
+    printf("  ✓ test_unsupported_prefixed_numeric_literal_error\n");
+}
+
+static void test_identifier_before_metadata_error(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+
+    parse_fail_message(
+        p,
+        "26 x{min=10, max=10}",
+        "Unexpected identifier before metadata block; metadata must follow the value directly");
+
+    cxpr_expr_parser_free(p);
+    printf("  ✓ test_identifier_before_metadata_error\n");
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Test: power right-associativity
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -867,6 +891,8 @@ int main(void) {
     /* Errors */
     test_syntax_errors();
     test_implicit_multiplication_error();
+    test_unsupported_prefixed_numeric_literal_error();
+    test_identifier_before_metadata_error();
 
     printf("All parser tests passed!\n");
     return 0;

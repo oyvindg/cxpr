@@ -1,0 +1,25 @@
+// PROPOSED SYNTAX -- does not parse with the current front end.
+// Design source: docs/shared_and_local_pass.md
+//
+// Minimal shared+local step, no peers. Every element relaxes toward the global
+// mean of `x`. Demonstrates the two-phase order: the shared pass reduces over
+// the previous snapshot, then the local pass reads the broadcast result.
+//
+// New surface exercised:
+//   - `shared { in { } ... }`  one block: nested inputs (bare) + collectives
+//   - `sum(expr)` in `shared`  whole-field reduction (no `reduce` keyword;
+//                              context overloads the R6 name), broadcast to all
+//   - `shared.<name>` reads    collective results in the local phase
+model mean_field
+
+shared {
+    in { rate, count }
+    total = sum(x)
+}
+
+in { x0 }
+
+avg = shared.total / count
+x := x + rate * (avg - x) initial x0
+
+out { x }

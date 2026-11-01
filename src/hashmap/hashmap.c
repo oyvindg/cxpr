@@ -143,6 +143,38 @@ bool cxpr_hashmap_set_prehashed(cxpr_hashmap* map, const char* key,
     return true;
 }
 
+bool cxpr_hashmap_remove(cxpr_hashmap* map, const char* key) {
+    unsigned long slot;
+    unsigned long next;
+
+    if (!map || !map->entries || !key || map->count == 0u) return false;
+    slot = cxpr_hash_string(key) % map->capacity;
+    while (map->entries[slot].key) {
+        if (strcmp(map->entries[slot].key, key) == 0) break;
+        slot = (slot + 1u) % map->capacity;
+    }
+    if (!map->entries[slot].key) return false;
+
+    free(map->entries[slot].key);
+    map->entries[slot].key = NULL;
+    map->entries[slot].value = 0.0;
+    map->count--;
+
+    /* Reinsert the remainder of the cluster so lookups still reach it. */
+    next = (slot + 1u) % map->capacity;
+    while (map->entries[next].key) {
+        char* moved_key = map->entries[next].key;
+        double moved_value = map->entries[next].value;
+        map->entries[next].key = NULL;
+        map->entries[next].value = 0.0;
+        map->count--;
+        (void)cxpr_hashmap_set(map, moved_key, moved_value);
+        free(moved_key);
+        next = (next + 1u) % map->capacity;
+    }
+    return true;
+}
+
 double cxpr_hashmap_get_prehashed(const cxpr_hashmap* map, const char* key,
                                   unsigned long hash, bool* found) {
     if (!map->entries || map->count == 0) {

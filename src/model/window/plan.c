@@ -83,6 +83,10 @@ static bool cxpr_model_window_plan_period_capacity(const cxpr_model_compiled* pr
             raw = program->constants[index].max_value;
             goto resolved;
         }
+        if (index != (size_t)-1 && program->constants[index].is_call_param) {
+            raw = 512.0;
+            goto resolved;
+        }
     }
     if (!cxpr_model_window_plan_constant_expr(program, period_ast, &raw)) raw = 512.0;
 resolved:
