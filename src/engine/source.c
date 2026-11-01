@@ -271,6 +271,15 @@ bool engine_resolve_source_call(cxpr_engine_session* session,
     int64_t cursor;
     if (!session || !src || !out) return false;
     if (!args) argc = 0u;
+    if (src->kind == ENGINE_SRC_COLUMN && argc == 0u) {
+        cursor = session->cursor - (int64_t)offset;
+        if (src->base && cursor >= 0 && (size_t)cursor < src->count) {
+            v = *(const double*)((const char*)src->base +
+                                (size_t)cursor * src->stride);
+        }
+        *out = v;
+        return true;
+    }
     if (engine_source_memo_get(session, src, args, argc, offset, out)) return true;
     cursor = session->cursor - (int64_t)offset;
     switch (src->kind) {

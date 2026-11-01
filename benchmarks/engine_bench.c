@@ -449,6 +449,7 @@ int main(int argc, char** argv) {
     unsigned i;
     uint64_t s = 0x9e3779b97f4a7c15ULL;
     int ok = 1;
+    int lookback_only = argc == 2 && strcmp(argv[1], "--lookback") == 0;
     if (argc == 2 && strcmp(argv[1], "--param-update") == 0) {
         return run_param_updates() ? 0 : 2;
     }
@@ -462,6 +463,7 @@ int main(int argc, char** argv) {
         high_[i] = (o > c ? o : c) + 0.75;
         low_[i]  = (o < c ? o : c) - 0.75;
     }
+    if (lookback_only) return run_lookback() ? 0 : 2;
     printf("bars=%u reps=%u  (%.0f ticks/scenario)\n", NBARS, REPS, (double)NBARS * REPS);
     ok &= run_basic();
     ok &= run_lookback();
