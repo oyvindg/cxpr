@@ -797,7 +797,17 @@ static void tooling_register_model_functions(cxpr_registry* registry,
     }
 }
 
-static void tooling_emit_defined_function_types(const cxpr_func_entry* entry) {
+static const char* tooling_function_param_role(const cxpr_model* model,
+                                               const char* name) {
+    for (size_t i = 0u; model && i < cxpr_model_input_count(model); ++i) {
+        const char* input = cxpr_model_input(model, i);
+        if (input && name && strcmp(input, name) == 0) return "input";
+    }
+    return "argument";
+}
+
+static void tooling_emit_defined_function_types(const cxpr_func_entry* entry,
+                                                const cxpr_model* model) {
     size_t param_count = 0u;
     const char* const* param_names = cxpr_registry_entry_param_names(entry, &param_count);
     fputs(",\"type\":", stdout);
@@ -813,6 +823,8 @@ static void tooling_emit_defined_function_types(const cxpr_func_entry* entry) {
         json_string(entry->arg_types && i < entry->arg_type_count
                         ? tooling_value_type_name(entry->arg_types[i])
                         : "unknown");
+        fputs(",\"role\":", stdout);
+        json_string(tooling_function_param_role(model, param_names[i]));
         fputc('}', stdout);
     }
     fputc(']', stdout);
@@ -1073,7 +1085,8 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
                         arity, arity);
             }
             json_string(declaration);
-            tooling_emit_defined_function_types(cxpr_registry_find(registry, function_name));
+            tooling_emit_defined_function_types(
+                cxpr_registry_find(registry, function_name), model);
             fputc('}', stdout);
             free(declaration);
         }
@@ -1094,7 +1107,8 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
                 fputs(record->params[j], stdout);
             }
             fputs(")\"", stdout);
-            tooling_emit_defined_function_types(cxpr_registry_find(registry, record->name));
+            tooling_emit_defined_function_types(
+                cxpr_registry_find(registry, record->name), model);
             fputc('}', stdout);
         }
         for (size_t i = 0u; i < function_count; ++i) {

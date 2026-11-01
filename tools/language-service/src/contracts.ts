@@ -11,7 +11,7 @@ export interface SemanticToken { line: number; start: number; length: number; ty
 export interface FunctionInfo {
   name: string; kind?: string; builtin: boolean; minArgs?: number; maxArgs?: number
   signature?: string; type?: string; documentation?: string
-  parameters?: Array<{ name: string; type: string }>
+  parameters?: Array<{ name: string; type: string; role?: "input" | "argument" }>
 }
 export interface Fold { startLine: number; startChar: number; endLine: number; endChar: number }
 export interface SourceRequirement {
