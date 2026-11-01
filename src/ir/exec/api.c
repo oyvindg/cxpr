@@ -20,7 +20,6 @@ static inline cxpr_ir_bindings* cxpr_ir_standalone_bindings(
     bindings = &g_standalone_bindings[slot];
     if (bindings->program_generation != program->binding_generation) {
         if (!cxpr_ir_bindings_prepare(bindings, program, err)) return NULL;
-        bindings->direct_enabled = false;
     }
     return bindings;
 }

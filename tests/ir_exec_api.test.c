@@ -42,9 +42,42 @@ static void test_ir_runtime_error_helper(void) {
     assert(err.message != NULL);
 }
 
+static void test_standalone_bindings_rebind_after_context_growth(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_context* context = cxpr_context_new();
+    cxpr_error error = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "x * 2 + $offset", &error);
+    cxpr_expr_compiled* program = cxpr_expr_compile(ast, registry, &error);
+    double result = NAN;
+    char name[32];
+
+    assert(parser && registry && context && ast && program);
+    cxpr_context_set(context, "x", 3.0);
+    cxpr_context_set_param(context, "offset", 1.0);
+    assert(cxpr_expr_compiled_eval_number(program, context, registry, &result, &error));
+    assert(result == 7.0);
+
+    for (size_t i = 0u; i < 128u; ++i) {
+        snprintf(name, sizeof(name), "growth_%zu", i);
+        cxpr_context_set(context, name, (double)i);
+    }
+    cxpr_context_set(context, "x", 5.0);
+    cxpr_context_set_param(context, "offset", 4.0);
+    assert(cxpr_expr_compiled_eval_number(program, context, registry, &result, &error));
+    assert(result == 14.0);
+
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(context);
+    cxpr_registry_free(registry);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     test_ir_exec_api_wrappers();
     test_ir_runtime_error_helper();
+    test_standalone_bindings_rebind_after_context_growth();
     printf("  \xE2\x9C\x93 ir_exec_api\n");
     return 0;
 }
