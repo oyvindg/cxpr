@@ -30,11 +30,20 @@ static int cxpr_cuda_append_bytes(
     cxpr_cuda_buf* b,
     const char* text,
     size_t n) {
+    size_t required;
     if (!b || !text) return 0;
-    if (b->len + n + 1u > b->cap) {
+    if (b->len == SIZE_MAX || n > SIZE_MAX - b->len - 1u) return 0;
+    required = b->len + n + 1u;
+    if (required > b->cap) {
         size_t cap = b->cap ? b->cap : 512u;
         char* next;
-        while (b->len + n + 1u > cap) cap *= 2u;
+        while (required > cap) {
+            if (cap > SIZE_MAX / 2u) {
+                cap = required;
+                break;
+            }
+            cap *= 2u;
+        }
         next = (char*)realloc(b->data, cap);
         if (!next) return 0;
         b->data = next;
