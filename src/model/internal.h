@@ -297,7 +297,6 @@ struct cxpr_model_session {
     size_t output_count;
     cxpr_model_history_entry* histories;
     size_t history_count;
-    cxpr_value* history_values;
     cxpr_model_history_entry* state_buffers;
     size_t state_buffer_count;
     double* fused_slots;

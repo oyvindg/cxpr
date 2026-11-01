@@ -504,14 +504,12 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
     }
     if (program->history_spec_count > 0u) {
         size_t value_count = 0u;
-        session->histories = (cxpr_model_history_entry*)calloc(
-            program->history_spec_count, sizeof(cxpr_model_history_entry));
-        if (!session->histories) {
-            cxpr_model_session_free(session);
-            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-            return NULL;
-        }
-        session->history_count = program->history_spec_count;
+        size_t entry_bytes;
+        size_t value_offset;
+        size_t value_bytes;
+        size_t allocation_bytes;
+        cxpr_value* history_values;
+
         for (size_t i = 0u; i < program->history_spec_count; ++i) {
             if (program->history_specs[i].depth > SIZE_MAX - value_count) {
                 cxpr_model_session_free(session);
@@ -520,22 +518,43 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
             }
             value_count += program->history_specs[i].depth;
         }
-        if (value_count > 0u) {
-            session->history_values = (cxpr_value*)calloc(value_count,
-                                                           sizeof(cxpr_value));
-            if (!session->history_values) {
+        if (program->history_spec_count > SIZE_MAX / sizeof(cxpr_model_history_entry) ||
+            value_count > SIZE_MAX / sizeof(cxpr_value)) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        entry_bytes = program->history_spec_count * sizeof(cxpr_model_history_entry);
+        value_offset = entry_bytes;
+        if (value_offset % _Alignof(cxpr_value) != 0u) {
+            size_t padding = _Alignof(cxpr_value) - value_offset % _Alignof(cxpr_value);
+            if (padding > SIZE_MAX - value_offset) {
                 cxpr_model_session_free(session);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
             }
+            value_offset += padding;
         }
+        value_bytes = value_count * sizeof(cxpr_value);
+        if (value_bytes > SIZE_MAX - value_offset) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        allocation_bytes = value_offset + value_bytes;
+        session->histories = (cxpr_model_history_entry*)calloc(1u, allocation_bytes);
+        if (!session->histories) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        session->history_count = program->history_spec_count;
+        history_values = (cxpr_value*)((unsigned char*)session->histories + value_offset);
         value_count = 0u;
         for (size_t i = 0; i < program->history_spec_count; ++i) {
             session->histories[i].name = program->history_specs[i].name;
             session->histories[i].capacity = program->history_specs[i].depth;
-            session->histories[i].values = session->history_values
-                                               ? &session->history_values[value_count]
-                                               : NULL;
+            session->histories[i].values = &history_values[value_count];
             value_count += session->histories[i].capacity;
         }
     }
@@ -725,7 +744,6 @@ void cxpr_model_session_free(cxpr_model_session* session) {
         cxpr_model_history_entry_free(&session->histories[i], false, false);
     }
     free(session->histories);
-    free(session->history_values);
     for (size_t i = 0; i < session->state_buffer_count; ++i) {
         cxpr_model_history_entry_free(&session->state_buffers[i], true, true);
     }
