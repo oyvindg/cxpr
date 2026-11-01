@@ -1586,25 +1586,20 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
         exit(1);
     }
     if (strcmp(c->name, "struct_call") == 0 || strcmp(c->name, "struct_binding") == 0) {
-        bool found_call_defined = false;
         const size_t instruction_count = cxpr_expr_compiled_ir_count(program);
         for (size_t i = 0u; i < instruction_count; ++i) {
             cxpr_ir_instruction instruction;
-            if (cxpr_expr_compiled_ir_instruction(program, i, &instruction) &&
-                instruction.op == CXPR_IR_OP_CALL_DEFINED) {
-                found_call_defined = true;
-                break;
+            if (!cxpr_expr_compiled_ir_instruction(program, i, &instruction)) {
+                fprintf(stderr, "Failed to inspect benchmark IR instruction\n");
+                exit(1);
             }
-        }
-        if (!found_call_defined) {
-            fprintf(stderr, "Benchmark '%s' does not contain CALL_DEFINED\n", c->name);
-            for (size_t i = 0u; i < instruction_count; ++i) {
-                cxpr_ir_instruction instruction;
-                if (cxpr_expr_compiled_ir_instruction(program, i, &instruction)) {
-                    fprintf(stderr, "  %s\n", cxpr_ir_opcode_name(instruction.op));
-                }
+            if (instruction.op == CXPR_IR_OP_CALL_DEFINED ||
+                instruction.op == CXPR_IR_OP_GET_FIELD ||
+                instruction.op == CXPR_IR_OP_CALL_AST) {
+                fprintf(stderr, "Benchmark '%s' retained %s\n", c->name,
+                        cxpr_ir_opcode_name(instruction.op));
+                exit(1);
             }
-            exit(1);
         }
     }
     if (strcmp(c->name, "struct_binding") == 0) {

@@ -5,6 +5,7 @@
 
 #include "internal.h"
 #include "../expression/internal.h"
+#include <stdio.h>
 #include <stdatomic.h>
 
 static _Atomic uint64_t g_binding_generation = 1u;
@@ -182,6 +183,7 @@ void cxpr_ir_bindings_refresh_slow(const cxpr_ir_program* program,
         const uint32_t input_index = program->code[ip].input_index;
         const cxpr_ir_input_descriptor* input;
         bindings->direct_typed_values[ip] = NULL;
+        bindings->direct_values[ip] = NULL;
         if (program->code[ip].op == CXPR_OP_LOAD_NAMED_FIELD &&
             !ctx->expression_scope) {
             const cxpr_struct_value* value =
@@ -194,9 +196,19 @@ void cxpr_ir_bindings_refresh_slow(const cxpr_ir_program* program,
                     }
                 }
             }
+            if (!bindings->direct_typed_values[ip]) {
+                char flat_key[256];
+                const int written = snprintf(flat_key, sizeof(flat_key), "%s.%s",
+                                             program->code[ip].name,
+                                             program->code[ip].aux_name);
+                if (written > 0 && (size_t)written < sizeof(flat_key)) {
+                    const cxpr_hashmap_entry* entry = cxpr_hashmap_find_prehashed_entry(
+                        &ctx->variables, flat_key, program->code[ip].hash);
+                    bindings->direct_values[ip] = entry ? &entry->value : NULL;
+                }
+            }
         }
         if (input_index == UINT32_MAX || input_index >= program->input_count) {
-            bindings->direct_values[ip] = NULL;
             continue;
         }
         input = &program->inputs[input_index];

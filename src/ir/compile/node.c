@@ -232,6 +232,12 @@ static bool cxpr_ir_is_literal_scalar(const cxpr_expr_ast* ast) {
     return ast && (ast->type == CXPR_NODE_NUMBER || ast->type == CXPR_NODE_INT64);
 }
 
+static unsigned long cxpr_ir_named_field_hash(const char* root, const char* field) {
+    char key[256];
+    const int written = snprintf(key, sizeof(key), "%s.%s", root, field);
+    return written > 0 && (size_t)written < sizeof(key) ? cxpr_hash_string(key) : 0u;
+}
+
 static bool cxpr_ir_can_compile_selected_field(const cxpr_expr_ast* ast,
                                                const char* field) {
     if (!ast || !field) return false;
@@ -274,6 +280,8 @@ static bool cxpr_ir_compile_selected_field(const cxpr_expr_ast* ast, const char*
                                 .op = CXPR_OP_LOAD_NAMED_FIELD,
                                 .name = ast->data.identifier.name,
                                 .aux_name = field,
+                                .hash = cxpr_ir_named_field_hash(ast->data.identifier.name,
+                                                                 field),
                             },
                             err);
     }
@@ -488,6 +496,23 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                 },
                                 err);
         }
+        if (subst && ast->data.field_access.object) {
+            const cxpr_ir_subst_frame* owner = NULL;
+            const cxpr_expr_ast* mapped =
+                cxpr_ir_subst_lookup(subst, ast->data.field_access.object, &owner);
+            if (mapped && mapped->type == CXPR_NODE_IDENTIFIER) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_LOAD_NAMED_FIELD,
+                                        .name = mapped->data.identifier.name,
+                                        .aux_name = ast->data.field_access.field,
+                                        .hash = cxpr_ir_named_field_hash(
+                                            mapped->data.identifier.name,
+                                            ast->data.field_access.field),
+                                    },
+                                    err);
+            }
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_FIELD,
@@ -538,6 +563,36 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             return false;
         }
         if (entry->defined_return_field_count > 0u && !entry->model_producer) {
+            size_t selected = entry->defined_return_field_count;
+            bool can_inline_selected = true;
+            for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
+                if (strcmp(entry->defined_return_field_names[i],
+                           ast->data.producer_access.field) == 0) {
+                    selected = i;
+                    break;
+                }
+            }
+            for (size_t i = 0u; i < entry->defined_param_count; ++i) {
+                if (entry->defined_param_fields && entry->defined_param_fields[i] &&
+                    entry->defined_param_field_counts[i] > 0u &&
+                    (!ordered_args[i] || ordered_args[i]->type != CXPR_NODE_IDENTIFIER)) {
+                    can_inline_selected = false;
+                    break;
+                }
+            }
+            if (selected < entry->defined_return_field_count &&
+                can_inline_selected &&
+                inline_depth < CXPR_IR_INLINE_DEPTH_LIMIT) {
+                cxpr_ir_subst_frame frame = {
+                    .names = (const char* const*)entry->defined_param_names,
+                    .args = (const cxpr_expr_ast* const*)ordered_args,
+                    .count = ast->data.producer_access.argc,
+                    .parent = subst,
+                };
+                return cxpr_ir_compile_node(entry->defined_return_field_bodies[selected],
+                                            program, reg, local_names, local_count,
+                                            &frame, inline_depth + 1u, err);
+            }
             for (size_t i = 0; i < ast->data.producer_access.argc; ++i) {
                 if (!cxpr_ir_compile_node(ordered_args[i], program, reg,
                                           local_names, local_count, subst, inline_depth, err)) {

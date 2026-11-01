@@ -529,7 +529,10 @@ cxpr_value cxpr_ir_exec_typed_bound(const cxpr_ir_program* program, const cxpr_c
             break;
         case CXPR_OP_LOAD_NAMED_FIELD:
             if (lookback_depth == 0u &&
-                cxpr_ir_bindings_direct_typed_value(program, bindings, ip, &result)) {
+                cxpr_ir_bindings_direct_named_number(program, bindings, ip, &result.d)) {
+                result.type = CXPR_VALUE_NUMBER;
+            } else if (lookback_depth == 0u &&
+                       cxpr_ir_bindings_direct_typed_value(program, bindings, ip, &result)) {
                 /* Evaluator-owned bindings are invalidated by context version changes. */
             } else if (lookback_depth > 0u) {
                 if (!cxpr_ir_resolve_lookback_instr(

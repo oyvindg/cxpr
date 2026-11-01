@@ -323,7 +323,9 @@ op_load_var_square: {
 }
 op_load_named_field: {
     cxpr_value field_value;
-    if (cxpr_ir_bindings_direct_typed_value(program, bindings, ip, &field_value)) {
+    if (cxpr_ir_bindings_direct_named_number(program, bindings, ip, &value)) {
+        field_value = cxpr_num(value);
+    } else if (cxpr_ir_bindings_direct_typed_value(program, bindings, ip, &field_value)) {
     } else {
         field_value = cxpr_ir_load_named_field_value(ctx, instr, err);
     }

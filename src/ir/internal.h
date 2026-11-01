@@ -289,6 +289,17 @@ static inline bool cxpr_ir_bindings_direct_typed_value(
     *out = cxpr_value_clone(value);
     return true;
 }
+static inline bool cxpr_ir_bindings_direct_named_number(
+    const cxpr_ir_program* program, const cxpr_ir_bindings* bindings,
+    size_t ip, double* out) {
+    const double* value;
+    if (!program || !bindings || !bindings->direct_ready || !out ||
+        ip >= program->count || !bindings->direct_values) return false;
+    value = bindings->direct_values[ip];
+    if (!value) return false;
+    *out = *value;
+    return true;
+}
 /** @brief Return the next instruction index for an IR program.
  * @param program Program to inspect.
  * @return Current instruction count, used as the next write index.
