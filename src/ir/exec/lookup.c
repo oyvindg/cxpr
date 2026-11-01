@@ -293,12 +293,23 @@ cxpr_value cxpr_ir_load_chain_value(const cxpr_context* ctx, const cxpr_ir_instr
 
 bool cxpr_ir_push_squared(cxpr_value* stack, size_t* sp, cxpr_value value,
                           cxpr_error* err) {
-    if (!cxpr_ir_require_type(value, CXPR_VALUE_NUMBER, err,
-                              "Square operation requires double operand")) {
+    cxpr_value squared;
+    int handled;
+    if (value.type == CXPR_VALUE_NUMBER) {
+        squared = cxpr_num(value.d * value.d);
+        handled = 1;
+    } else {
+        handled = cxpr_value_binary_op(
+            CXPR_VALOP_MUL, value, value, &squared, err);
+    }
+    if (handled != 1) {
+        if (handled == 0 && err) {
+            err->code = CXPR_ERR_TYPE_MISMATCH;
+            err->message = "Square operation requires numeric operand";
+        }
         return false;
     }
-    value.d *= value.d;
-    return cxpr_ir_stack_push(stack, sp, value, 64, err);
+    return cxpr_ir_stack_push(stack, sp, squared, 64, err);
 }
 
 bool cxpr_ir_pop1(cxpr_value* stack, size_t* sp, cxpr_value* out,

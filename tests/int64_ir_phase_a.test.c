@@ -53,6 +53,10 @@ static void test_int64_arithmetic_and_promotion(void) {
     assert(tree.type == CXPR_VALUE_INT64 && ir.type == CXPR_VALUE_INT64);
     assert(tree.i64 == INT64_C(9007199254740995) && ir.i64 == tree.i64);
 
+    eval_both("9i64 * 9i64", &tree, &ir, CXPR_OK, CXPR_IR_RESULT_INT64);
+    assert(tree.type == CXPR_VALUE_INT64 && ir.type == CXPR_VALUE_INT64);
+    assert(tree.i64 == 81 && ir.i64 == tree.i64);
+
     eval_both("5i64 / 2i64", &tree, &ir, CXPR_OK, CXPR_IR_RESULT_NUMBER);
     assert(tree.type == CXPR_VALUE_NUMBER && ir.type == CXPR_VALUE_NUMBER);
     assert(tree.d == 2.5 && ir.d == tree.d);

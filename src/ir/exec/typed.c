@@ -671,11 +671,7 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             break;
         case CXPR_OP_SQUARE:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
-            if (!cxpr_ir_require_type(a, CXPR_VALUE_NUMBER, err,
-                                      "Square operation requires double operand")) {
-                return cxpr_num(NAN);
-            }
-            CXPR_TYPED_PUSH(cxpr_num(a.d * a.d));
+            CXPR_TYPED_PUSH_SQUARED(a);
             break;
         case CXPR_OP_NOT:
             if (!cxpr_ir_pop1(stack, &sp, &a, err)) return cxpr_num(NAN);
