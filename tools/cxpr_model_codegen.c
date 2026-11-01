@@ -7,6 +7,12 @@
 static char* resolve_import_path_for_model(const char* dir, const char* use_name);
 static const char* import_dir_override;
 
+typedef struct import_trace {
+    const char** paths;
+    size_t count;
+    size_t capacity;
+} import_trace;
+
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
     long size;
@@ -68,6 +74,75 @@ static int keyword_line(const char* line, const char* keyword, const char** rest
         *rest = r;
     }
     return 1;
+}
+
+static int import_trace_push(import_trace* trace, const char* path) {
+    const char** grown;
+    if (trace->count == trace->capacity) {
+        size_t capacity = trace->capacity ? trace->capacity * 2u : 8u;
+        grown = (const char**)realloc(trace->paths, capacity * sizeof(*grown));
+        if (!grown) return 0;
+        trace->paths = grown;
+        trace->capacity = capacity;
+    }
+    trace->paths[trace->count++] = path;
+    return 1;
+}
+
+static void print_parse_diagnostic(const char* path,
+                                   const char* source,
+                                   const cxpr_error* err,
+                                   const import_trace* trace) {
+    const char* model_name = "(unnamed)";
+    const char* line_start = source;
+    const char* line_end;
+    size_t current_line = 1u;
+    size_t target_line = err && err->line ? err->line : 1u;
+    char* source_copy = xstrdup(source ? source : "");
+    char* cursor = source_copy;
+
+    while (cursor && *cursor) {
+        char* next = strchr(cursor, '\n');
+        const char* rest;
+        if (next) *next = '\0';
+        if (keyword_line(trim_in_place(cursor), "model", &rest) && *rest) {
+            model_name = rest;
+            break;
+        }
+        cursor = next ? next + 1 : NULL;
+    }
+
+    while (source && *line_start && current_line < target_line) {
+        const char* newline = strchr(line_start, '\n');
+        if (!newline) break;
+        line_start = newline + 1;
+        current_line++;
+    }
+    line_end = line_start ? strchr(line_start, '\n') : NULL;
+    if (!line_end && line_start) line_end = line_start + strlen(line_start);
+
+    fprintf(stderr, "cxpr_model_codegen: parse failed\n");
+    fprintf(stderr, "  URI: %s\n", path ? path : "(unknown)");
+    fprintf(stderr, "  Model: %s\n", model_name);
+    fprintf(stderr, "  Location: %zu:%zu\n", target_line,
+            err && err->column ? err->column : 1u);
+    fprintf(stderr, "  Error: %s\n", err && err->message ? err->message : "(null)");
+    fprintf(stderr, "  Source:\n    %zu | %.*s\n", target_line,
+            line_start && line_end ? (int)(line_end - line_start) : 0,
+            line_start ? line_start : "");
+    fprintf(stderr, "      | %*s^\n",
+            (int)(err && err->column > 0u ? err->column - 1u : 0u), "");
+    fprintf(stderr, "  Import chain:");
+    if (trace && trace->count) {
+        size_t i;
+        for (i = 0u; i < trace->count; ++i) {
+            fprintf(stderr, "%s%s", i == 0u ? " " : " -> ", trace->paths[i]);
+        }
+    } else {
+        fprintf(stderr, " %s", path ? path : "(unknown)");
+    }
+    fprintf(stderr, "\n");
+    free(source_copy);
 }
 
 static int brace_delta(const char* s) {
@@ -255,15 +330,15 @@ static int collect_import_functions(const char* model_path,
                                     size_t* visited_count,
                                     char** out,
                                     size_t* out_len,
-                                    size_t* out_cap) {
+                                    size_t* out_cap,
+                                    import_trace* trace) {
     cxpr_error err = {0};
     cxpr_model* model = cxpr_model_parse(source, &err);
     char* dir = NULL;
     int ok = 0;
 
     if (!model) {
-        fprintf(stderr, "cxpr_model_codegen: parse failed while resolving imports for %s: %s\n",
-                model_path, err.message ? err.message : "(null)");
+        print_parse_diagnostic(model_path, source, &err, trace);
         return 0;
     }
 
@@ -294,12 +369,20 @@ static int collect_import_functions(const char* model_path,
             goto cleanup;
         }
 
-        if (!collect_import_functions(import_path, import_source,
-                                      visited, visited_count, out, out_len, out_cap)) {
+        if (!import_trace_push(trace, import_path)) {
             free(import_source);
             free(import_path);
             goto cleanup;
         }
+        if (!collect_import_functions(import_path, import_source,
+                                      visited, visited_count, out, out_len, out_cap,
+                                      trace)) {
+            trace->count--;
+            free(import_source);
+            free(import_path);
+            goto cleanup;
+        }
+        trace->count--;
 
         import_functions = extract_function_sources(import_source);
         if (!import_functions) {
@@ -335,20 +418,26 @@ static char* build_source_with_imports(const char* model_path, const char* sourc
     char* combined = NULL;
     size_t combined_len = 0u;
     size_t combined_cap = 0u;
+    import_trace trace = {0};
 
-    if (!collect_import_functions(model_path, source,
+    if (!import_trace_push(&trace, model_path) ||
+        !collect_import_functions(model_path, source,
                                   &visited, &visited_count,
-                                  &combined, &combined_len, &combined_cap)) {
+                                  &combined, &combined_len, &combined_cap,
+                                  &trace)) {
         string_list_free(visited, visited_count);
         free(combined);
+        free(trace.paths);
         return NULL;
     }
     if (!append_cstr(&combined, &combined_len, &combined_cap, source)) {
         string_list_free(visited, visited_count);
         free(combined);
+        free(trace.paths);
         return NULL;
     }
     string_list_free(visited, visited_count);
+    free(trace.paths);
     return combined;
 }
 
@@ -632,8 +721,11 @@ static int emit_model_c(const char* model_path,
     }
     model = cxpr_model_parse(combined_source, &err);
     if (!model) {
-        fprintf(stderr, "cxpr_model_codegen: parse failed at %zu:%zu: %s\n",
-                err.line, err.column, err.message);
+        import_trace trace = {0};
+        if (import_trace_push(&trace, model_path)) {
+            print_parse_diagnostic(model_path, combined_source, &err, &trace);
+        }
+        free(trace.paths);
         goto cleanup;
     }
     import_bundle = cxpr_model_import_bundle_build(

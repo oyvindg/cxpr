@@ -1,0 +1,3 @@
+model diagnostic_root
+use child
+out value = child.value

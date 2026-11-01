@@ -1,0 +1,3 @@
+model child
+use broken
+out value = broken.value

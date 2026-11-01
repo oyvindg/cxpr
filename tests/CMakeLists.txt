@@ -109,6 +109,13 @@ add_dependencies(test_int64_generated_parity generate_cxpr_int64_parity)
 add_test(NAME int64_generated_parity COMMAND test_int64_generated_parity)
 
 if(TARGET cxpr_model_codegen)
+    add_test(NAME model_codegen_import_diagnostic
+        COMMAND ${CMAKE_COMMAND}
+            -DCODEGEN=$<TARGET_FILE:cxpr_model_codegen>
+            -DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_diagnostic
+            -DOUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/invalid_import.gen.c
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/model_codegen_import_diagnostic.cmake)
+
     set(CXPR_CODEGEN_REGRESSION_FIXTURE_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/codegen_regressions")
     set(CXPR_CODEGEN_REGRESSION_GENERATED_DIR
