@@ -263,6 +263,21 @@ static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
     cxpr_context_refresh_pointer_cache(map, ptr_cache, name, entry);
 }
 
+static void cxpr_context_set_cached(cxpr_context* ctx, cxpr_hashmap* map,
+                                    cxpr_context_entry_cache* cache,
+                                    cxpr_context_entry_cache* ptr_cache,
+                                    unsigned long* version, const char* name,
+                                    double value) {
+    cxpr_hashmap_entry* entry =
+        cxpr_context_lookup_pointer_cached_entry(map, ptr_cache, name);
+    if (entry) {
+        entry->value = value;
+        return;
+    }
+    cxpr_context_set_hashed(ctx, map, cache, ptr_cache, version, name,
+                            cxpr_hash_string(name), value);
+}
+
 void cxpr_context_set_prehashed(cxpr_context* ctx, const char* name,
                                 unsigned long hash, double value) {
     cxpr_context_clear_variable_bindings(ctx, name, CXPR_CONTEXT_KEEP_NUMBER);
@@ -340,13 +355,11 @@ void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries
             cxpr_context_remove_struct(&ctx->structs, name);
         }
     }
-    cxpr_context_clear_entry_cache(ctx->variable_cache);
-    cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
     for (i = 0; entries[i].name; ++i) {
         const char* name = entries[i].name;
-        cxpr_context_set_hashed(ctx, &ctx->variables, ctx->variable_cache,
+        cxpr_context_set_cached(ctx, &ctx->variables, ctx->variable_cache,
                                 ctx->variable_ptr_cache, &ctx->variables_version,
-                                name, cxpr_hash_string(name), entries[i].value);
+                                name, entries[i].value);
     }
 }
 
@@ -481,13 +494,11 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
             cxpr_context_remove_struct(&ctx->structs, name);
         }
     }
-    cxpr_context_clear_entry_cache(ctx->param_cache);
-    cxpr_context_clear_entry_cache(ctx->param_ptr_cache);
     for (i = 0; entries[i].name; ++i) {
         const char* name = entries[i].name;
-        cxpr_context_set_hashed(ctx, &ctx->params, ctx->param_cache,
+        cxpr_context_set_cached(ctx, &ctx->params, ctx->param_cache,
                                 ctx->param_ptr_cache, &ctx->params_version,
-                                name, cxpr_hash_string(name), entries[i].value);
+                                name, entries[i].value);
     }
 }
 
