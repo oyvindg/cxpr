@@ -64,6 +64,7 @@ static const char* cxpr_snapshot_kind(const cxpr_expr_ast* ast) {
         case CXPR_NODE_NUMBER: return "number";
         case CXPR_NODE_BOOL: return "bool";
         case CXPR_NODE_ARRAY: return "array";
+        case CXPR_NODE_RECORD: return "record";
         case CXPR_NODE_STRING: return "string";
         case CXPR_NODE_IDENTIFIER: return "identifier";
         case CXPR_NODE_VARIABLE: return "variable";
@@ -114,15 +115,15 @@ static char* cxpr_snapshot_label(const cxpr_expr_ast* ast) {
         case CXPR_NODE_FUNCTION_CALL:
             return cxpr_snapshot_strdup(cxpr_expr_ast_call_name(ast));
         case CXPR_NODE_PRODUCER_ACCESS:
-            snprintf(buf, sizeof(buf), "%s.%s",
-                     cxpr_expr_ast_producer_name(ast), cxpr_expr_ast_producer_field(ast));
-            return cxpr_snapshot_strdup(buf);
+            return cxpr_snapshot_strdup(cxpr_expr_ast_producer_name(ast));
         case CXPR_NODE_LOOKBACK:
             return cxpr_snapshot_strdup("lookback");
         case CXPR_NODE_TERNARY:
             return cxpr_snapshot_strdup("?:");
         case CXPR_NODE_ARRAY:
             return cxpr_snapshot_strdup("array");
+        case CXPR_NODE_RECORD:
+            return cxpr_snapshot_strdup("record");
         default:
             return cxpr_snapshot_strdup("?");
     }
@@ -187,9 +188,16 @@ static cxpr_snapshot_node* cxpr_snapshot_add_node(cxpr_snapshot_builder* b,
         }
         return NULL;
     }
-    if (strcmp(node->role, "index") == 0 ||
-        (strncmp(node->role, "arg", 3u) == 0 &&
-         node->role[3] >= '0' && node->role[3] <= '9')) {
+    if (strncmp(node->role, "arg", 3u) == 0 &&
+         node->role[3] >= '0' && node->role[3] <= '9' &&
+         strcmp(node->kind, "binary_op") != 0 &&
+         strcmp(node->kind, "unary_op") != 0 &&
+         strcmp(node->kind, "ternary") != 0 &&
+         strcmp(node->kind, "function_call") != 0 &&
+         strcmp(node->kind, "producer_access") != 0 &&
+         strcmp(node->kind, "field_access") != 0 &&
+         strcmp(node->kind, "chain_access") != 0 &&
+         strcmp(node->kind, "lookback") != 0) {
         char* role_label = cxpr_snapshot_strdup(node->role);
         char* role_display_label = cxpr_snapshot_strdup(node->role);
         if (!role_label || !role_display_label) {
@@ -227,6 +235,7 @@ void cxpr_snapshot_set_string(char** dst, char* value) {
 
 static bool cxpr_snapshot_role_is_display_prefix(const char* role);
 static bool cxpr_snapshot_role_is_positional_arg(const char* role);
+static bool cxpr_snapshot_role_uses_colon(const char* role);
 static void cxpr_snapshot_refresh_display_label(cxpr_snapshot_node* node);
 
 static char* cxpr_snapshot_display_label_for_node(const cxpr_snapshot_node* node) {
@@ -243,14 +252,40 @@ static char* cxpr_snapshot_display_label_for_node(const cxpr_snapshot_node* node
     final_value = node->value_text ? node->value_text : "";
     if (!value) value = "";
     if (value[0] == '\0') return cxpr_snapshot_strdup(title);
+    if (strcmp(node->kind ? node->kind : "", "record") == 0) {
+        return cxpr_snapshot_strdup(final_value[0] ? final_value : value);
+    }
+    if (strcmp(node->kind ? node->kind : "", "function_call") == 0) {
+        if (final_value[0] == '\0' || strcmp(title, final_value) == 0) {
+            return cxpr_snapshot_strdup(title);
+        }
+        len = strlen(title) + strlen(final_value) + 4u;
+        out = (char*)malloc(len);
+        if (!out) return NULL;
+        snprintf(out, len, "%s\n= %s", title, final_value);
+        return out;
+    }
+    if (strcmp(node->kind ? node->kind : "", "binary_op") == 0 ||
+        strcmp(node->kind ? node->kind : "", "unary_op") == 0 ||
+        strcmp(node->kind ? node->kind : "", "ternary") == 0) {
+        if (final_value[0] == '\0' || strcmp(title, final_value) == 0) {
+            return cxpr_snapshot_strdup(title);
+        }
+        len = strlen(title) + strlen(final_value) + 4u;
+        out = (char*)malloc(len);
+        if (!out) return NULL;
+        snprintf(out, len, "%s\n= %s", title, final_value);
+        return out;
+    }
+    if (strcmp(node->kind ? node->kind : "", "producer_access") == 0 &&
+        node->source && strcmp(value, node->source) == 0 && final_value[0] == '\0') {
+        return cxpr_snapshot_strdup(title);
+    }
     show_final_value = final_value[0] != '\0' && strcmp(value, final_value) != 0;
 
-    if (strcmp(node->kind ? node->kind : "", "binary_op") == 0 ||
-        strcmp(node->kind ? node->kind : "", "lookback") == 0 ||
-        strcmp(node->kind ? node->kind : "", "function_call") == 0 ||
+    if (strcmp(node->kind ? node->kind : "", "lookback") == 0 ||
         strcmp(node->kind ? node->kind : "", "field_access") == 0 ||
-        strcmp(node->kind ? node->kind : "", "chain_access") == 0 ||
-        strcmp(node->kind ? node->kind : "", "producer_access") == 0) {
+        strcmp(node->kind ? node->kind : "", "chain_access") == 0) {
         title = node->source && node->source[0] ? node->source : title;
     }
     if (cxpr_snapshot_role_is_positional_arg(node->role) &&
@@ -260,10 +295,14 @@ static char* cxpr_snapshot_display_label_for_node(const cxpr_snapshot_node* node
     if (strcmp(title, value) == 0) {
         if (cxpr_snapshot_role_is_display_prefix(node->role) &&
             strcmp(node->role ? node->role : "", title) != 0) {
-            len = strlen(node->role) + strlen(title) + 3u;
+            len = strlen(node->role) + strlen(title) + 4u;
             out = (char*)malloc(len);
             if (!out) return NULL;
-            snprintf(out, len, "%s: %s", node->role, title);
+            if (cxpr_snapshot_role_uses_colon(node->role)) {
+                snprintf(out, len, "%s: %s", node->role, title);
+            } else {
+                snprintf(out, len, "%s =\n%s", node->role, title);
+            }
             return out;
         }
         return cxpr_snapshot_strdup(title);
@@ -280,10 +319,14 @@ static char* cxpr_snapshot_display_label_for_node(const cxpr_snapshot_node* node
             } else {
                 snprintf(out, len, "%s =\n%s\n= %s", node->role, title, value);
             }
-        } else if (show_final_value) {
+        } else if (show_final_value && cxpr_snapshot_role_uses_colon(node->role)) {
             snprintf(out, len, "%s: %s\n= %s\n= %s", node->role, title, value, final_value);
-        } else {
+        } else if (show_final_value) {
+            snprintf(out, len, "%s =\n%s\n= %s\n= %s", node->role, title, value, final_value);
+        } else if (cxpr_snapshot_role_uses_colon(node->role)) {
             snprintf(out, len, "%s: %s\n= %s", node->role, title, value);
+        } else {
+            snprintf(out, len, "%s =\n%s\n= %s", node->role, title, value);
         }
         return out;
     }
@@ -302,16 +345,19 @@ static char* cxpr_snapshot_display_label_for_node(const cxpr_snapshot_node* node
 
 static bool cxpr_snapshot_role_is_display_prefix(const char* role) {
     if (!role || !role[0]) return false;
+    if (strncmp(role, "sample[", 7u) == 0) return false;
     if (strcmp(role, "root") == 0 ||
         strcmp(role, "left") == 0 ||
         strcmp(role, "right") == 0 ||
         strcmp(role, "operand") == 0 ||
+        strcmp(role, "condition") == 0 ||
+        strcmp(role, "true") == 0 ||
+        strcmp(role, "false") == 0 ||
         strcmp(role, "source") == 0 ||
         strcmp(role, "value") == 0 ||
         strcmp(role, "values") == 0 ||
         strcmp(role, "samples") == 0 ||
-        strcmp(role, "index") == 0 ||
-        strcmp(role, "period") == 0) {
+        strcmp(role, "index") == 0) {
         return false;
     }
     if (strncmp(role, "arg", 3u) == 0 && role[3] >= '0' && role[3] <= '9') {
@@ -329,6 +375,10 @@ static bool cxpr_snapshot_role_is_positional_arg(const char* role) {
         if (role[i] < '0' || role[i] > '9') return false;
     }
     return true;
+}
+
+static bool cxpr_snapshot_role_uses_colon(const char* role) {
+    return role && (strncmp(role, "item[", 5u) == 0 || strncmp(role, "sample[", 7u) == 0);
 }
 
 static const char* cxpr_snapshot_registered_function_arg_role(const cxpr_registry* reg,
@@ -395,6 +445,16 @@ static bool cxpr_snapshot_relabel_arg_node(cxpr_snapshot_builder* b,
     char* display_label;
 
     if (!node || !cxpr_snapshot_role_is_function_arg_label(role)) return true;
+    if (strcmp(node->kind ? node->kind : "", "binary_op") == 0 ||
+        strcmp(node->kind ? node->kind : "", "unary_op") == 0 ||
+        strcmp(node->kind ? node->kind : "", "ternary") == 0 ||
+        strcmp(node->kind ? node->kind : "", "function_call") == 0 ||
+        strcmp(node->kind ? node->kind : "", "producer_access") == 0 ||
+        strcmp(node->kind ? node->kind : "", "field_access") == 0 ||
+        strcmp(node->kind ? node->kind : "", "chain_access") == 0 ||
+        strcmp(node->kind ? node->kind : "", "lookback") == 0) {
+        return true;
+    }
     role_label = cxpr_snapshot_strdup(role);
     if (!role_label) {
         b->failed = 1;
@@ -498,7 +558,11 @@ static cxpr_snapshot_node* cxpr_snapshot_add_text_child(cxpr_snapshot_builder* b
         }
         return NULL;
     }
-    snprintf(display_label, display_len, "%s =\n%s", role ? role : "", text);
+    if (role && (strcmp(role, "object") == 0 || strcmp(role, "field") == 0)) {
+        snprintf(display_label, display_len, "%s", text);
+    } else {
+        snprintf(display_label, display_len, "%s =\n%s", role ? role : "", text);
+    }
     cxpr_snapshot_set_string(&node->display_label, display_label);
     return node;
 }
@@ -532,8 +596,33 @@ static bool cxpr_snapshot_eval_node(cxpr_snapshot_builder* b,
                                     cxpr_snapshot_node* node) {
     cxpr_value value;
     cxpr_error local_err = {0};
+    const char* references[1];
+    const char* parameters[1];
+
+    if (!b->ctx &&
+        (cxpr_expr_ast_references(ast, references, 1u) > 0u ||
+         cxpr_expr_ast_variables_used(ast, parameters, 1u) > 0u)) {
+        node->state = CXPR_SNAPSHOT_STATE_UNKNOWN;
+        cxpr_snapshot_set_string(&node->resolved, cxpr_expr_ast_to_string(ast));
+        cxpr_snapshot_refresh_display_label(node);
+        return true;
+    }
 
     if (!cxpr_eval_ast(ast, b->ctx, b->reg, &value, &local_err)) {
+        /* A context-free snapshot describes an expression symbolically. Missing
+         * document inputs, parameters, and imported functions are therefore
+         * unresolved; document analysis remains responsible for validation. */
+        if (!b->ctx && (local_err.code == CXPR_ERR_UNKNOWN_IDENTIFIER ||
+                        local_err.code == CXPR_ERR_UNKNOWN_FUNCTION ||
+                        (local_err.message &&
+                         strcmp(local_err.message,
+                                "Native lookback requires a registry lookback resolver") == 0))) {
+            char* source = cxpr_expr_ast_to_string(ast);
+            node->state = CXPR_SNAPSHOT_STATE_UNKNOWN;
+            cxpr_snapshot_set_string(&node->resolved, source);
+            cxpr_snapshot_refresh_display_label(node);
+            return true;
+        }
         node->state = CXPR_SNAPSHOT_STATE_ERROR;
         cxpr_snapshot_set_string(&node->resolved,
                                  cxpr_snapshot_strdup(local_err.message ? local_err.message : "error"));
@@ -608,56 +697,15 @@ static void cxpr_snapshot_add_timeseries_samples(cxpr_snapshot_builder* b,
             (void)cxpr_snapshot_set_value(sample_node, &value);
             cxpr_value_free(&value);
         } else {
-            sample_node->state = CXPR_SNAPSHOT_STATE_ERROR;
-            cxpr_snapshot_set_string(&sample_node->resolved,
-                                     cxpr_snapshot_strdup(value_err.message ? value_err.message : "error"));
+            sample_node->state = b->ctx ? CXPR_SNAPSHOT_STATE_ERROR : CXPR_SNAPSHOT_STATE_UNKNOWN;
+            cxpr_snapshot_set_string(&sample_node->resolved, b->ctx
+                ? cxpr_snapshot_strdup(value_err.message ? value_err.message : "error")
+                : cxpr_snapshot_strdup(source));
             cxpr_snapshot_refresh_display_label(sample_node);
         }
     }
 
     free(value_source);
-}
-
-static size_t cxpr_snapshot_add_function_name_node(cxpr_snapshot_builder* b,
-                                                   const cxpr_expr_ast* ast,
-                                                   cxpr_snapshot_node* node,
-                                                   int active) {
-    const char* name;
-    cxpr_snapshot_node* function_node;
-
-    if (!active || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL) return node->id;
-    name = cxpr_expr_ast_call_name(ast);
-    if (!name || !name[0]) return node->id;
-
-    function_node = cxpr_snapshot_add_node(b, ast, node->id, 1, "function", 1, NULL);
-    if (!function_node) return node->id;
-    cxpr_snapshot_set_string(&function_node->label, cxpr_snapshot_strdup(name));
-    cxpr_snapshot_set_string(&function_node->source, cxpr_snapshot_strdup(name));
-    cxpr_snapshot_set_string(&function_node->resolved, cxpr_snapshot_strdup(""));
-    function_node->state = CXPR_SNAPSHOT_STATE_VALUE;
-    cxpr_snapshot_refresh_display_label(function_node);
-    return function_node->id;
-}
-
-static size_t cxpr_snapshot_add_producer_name_node(cxpr_snapshot_builder* b,
-                                                   const cxpr_expr_ast* ast,
-                                                   cxpr_snapshot_node* node,
-                                                   int active) {
-    const char* name;
-    cxpr_snapshot_node* producer_node;
-
-    if (!active || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_PRODUCER_ACCESS) return node->id;
-    name = cxpr_expr_ast_producer_name(ast);
-    if (!name || !name[0]) return node->id;
-
-    producer_node = cxpr_snapshot_add_node(b, ast, node->id, 1, "function", 1, NULL);
-    if (!producer_node) return node->id;
-    cxpr_snapshot_set_string(&producer_node->label, cxpr_snapshot_strdup(name));
-    cxpr_snapshot_set_string(&producer_node->source, cxpr_snapshot_strdup(name));
-    cxpr_snapshot_set_string(&producer_node->resolved, cxpr_snapshot_strdup(""));
-    producer_node->state = CXPR_SNAPSHOT_STATE_VALUE;
-    cxpr_snapshot_refresh_display_label(producer_node);
-    return producer_node->id;
 }
 
 static void cxpr_snapshot_add_producer_field_node(cxpr_snapshot_builder* b,
@@ -675,6 +723,7 @@ static void cxpr_snapshot_add_producer_field_node(cxpr_snapshot_builder* b,
 
     field_node = cxpr_snapshot_add_node(b, ast, producer_parent_id, 1, "field", 1, NULL);
     if (!field_node) return;
+    cxpr_snapshot_set_string(&field_node->kind, cxpr_snapshot_strdup("field"));
     cxpr_snapshot_set_string(&field_node->label, cxpr_snapshot_strdup("field"));
     cxpr_snapshot_set_string(&field_node->source, cxpr_snapshot_strdup(field));
     cxpr_snapshot_set_string(&field_node->resolved, cxpr_snapshot_strdup(field));
@@ -690,7 +739,7 @@ static void cxpr_snapshot_add_producer_field_node(cxpr_snapshot_builder* b,
         }
         return;
     }
-    snprintf(display_label, display_len, "field =\n%s", field);
+    snprintf(display_label, display_len, "%s", field);
     cxpr_snapshot_set_string(&field_node->display_label, display_label);
 }
 
@@ -745,6 +794,58 @@ static size_t cxpr_snapshot_visit(cxpr_snapshot_builder* b,
                                   int active,
                                   const char* inactive_reason);
 
+static const char* cxpr_snapshot_window_reducer_name(const char* name) {
+    if (!name) return NULL;
+    if (strcmp(name, "__cxpr_window_highest") == 0) return "max";
+    if (strcmp(name, "__cxpr_window_lowest") == 0) return "min";
+    if (strcmp(name, "__cxpr_window_sum") == 0) return "sum";
+    if (strcmp(name, "__cxpr_window_mean") == 0) return "mean";
+    if (strcmp(name, "__cxpr_window_wma") == 0) return "wma";
+    if (strcmp(name, "__cxpr_window_stddev") == 0) return "stddev";
+    if (strcmp(name, "__cxpr_window_roc") == 0) return "roc";
+    if (strcmp(name, "__cxpr_window_mean_absdev") == 0) return "mean_absdev";
+    return NULL;
+}
+
+static void cxpr_snapshot_restore_window_call(cxpr_snapshot_builder* b,
+                                              const cxpr_expr_ast* ast,
+                                              size_t reducer_id) {
+    const char* reducer = cxpr_snapshot_window_reducer_name(cxpr_expr_ast_call_name(ast));
+    cxpr_snapshot_node* window;
+    size_t window_id;
+
+    if (!reducer) return;
+    window = cxpr_snapshot_add_node(b, ast, reducer_id, 1, "value", 1, NULL);
+    if (!window) return;
+    window_id = window->id;
+    cxpr_snapshot_set_string(&window->kind, cxpr_snapshot_strdup("function_call"));
+    cxpr_snapshot_set_string(&window->label, cxpr_snapshot_strdup("window"));
+    cxpr_snapshot_set_string(&window->display_label, cxpr_snapshot_strdup("window"));
+    cxpr_snapshot_set_string(&window->source, cxpr_snapshot_strdup("window"));
+    cxpr_snapshot_set_string(&window->resolved, cxpr_snapshot_strdup("window"));
+    window->state = CXPR_SNAPSHOT_STATE_UNKNOWN;
+
+    for (size_t i = 0u; i < window_id; ++i) {
+        cxpr_snapshot_node* child = &b->snapshot->nodes[i];
+        if (!child->has_parent || child->parent_id != reducer_id) continue;
+        if (strcmp(child->role ? child->role : "", "value") == 0) {
+            child->parent_id = window_id;
+            cxpr_snapshot_set_string(&child->role, cxpr_snapshot_strdup("expression"));
+        } else if (strcmp(child->role ? child->role : "", "samples") == 0) {
+            child->parent_id = window_id;
+            cxpr_snapshot_set_string(&child->role, cxpr_snapshot_strdup("period"));
+        }
+    }
+
+    {
+        cxpr_snapshot_node* node = &b->snapshot->nodes[reducer_id];
+        cxpr_snapshot_set_string(&node->label, cxpr_snapshot_strdup(reducer));
+        cxpr_snapshot_set_string(&node->source, cxpr_snapshot_strdup(reducer));
+        cxpr_snapshot_set_string(&node->resolved, cxpr_snapshot_strdup(reducer));
+        cxpr_snapshot_refresh_display_label(node);
+    }
+}
+
 static void cxpr_snapshot_mark_children_skipped(cxpr_snapshot_builder* b,
                                                 const cxpr_expr_ast* ast,
                                                 size_t parent_id,
@@ -760,8 +861,6 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
     size_t first_child = (size_t)-1;
     size_t child;
     size_t count;
-    size_t function_parent_id;
-    size_t producer_parent_id;
     size_t parent_id;
     char* inactive_reason = NULL;
     char role[32];
@@ -775,6 +874,16 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
         }
     }
     switch (cxpr_expr_ast_kind_of(ast)) {
+        case CXPR_NODE_RECORD:
+            count = cxpr_expr_ast_record_field_count(ast);
+            for (size_t i = 0; i < count; ++i) {
+                const char* field_name = cxpr_expr_ast_record_field_name(ast, i);
+                child = cxpr_snapshot_visit(
+                    b, cxpr_expr_ast_record_field_value(ast, i), parent_id, 1,
+                    field_name ? field_name : "field", active, inactive_reason);
+                if (first_child == (size_t)-1) first_child = child;
+            }
+            break;
         case CXPR_NODE_ARRAY:
             count = ast->data.array.count;
             for (size_t i = 0; i < count; ++i) {
@@ -835,7 +944,6 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
             if (first_child == (size_t)-1) first_child = child;
             break;
         case CXPR_NODE_FUNCTION_CALL:
-            function_parent_id = cxpr_snapshot_add_function_name_node(b, ast, node, active);
             count = cxpr_expr_ast_call_arg_count(ast);
             for (size_t i = 0; i < count; ++i) {
                 const char* name = cxpr_snapshot_function_arg_role(
@@ -848,7 +956,7 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
                 } else {
                     snprintf(role, sizeof(role), "arg%zu", i);
                 }
-                child = cxpr_snapshot_visit(b, cxpr_expr_ast_call_arg(ast, i), function_parent_id, 1,
+                child = cxpr_snapshot_visit(b, cxpr_expr_ast_call_arg(ast, i), parent_id, 1,
                                             role, active, inactive_reason);
                 if (!b->failed) {
                     (void)cxpr_snapshot_relabel_arg_node(b, &b->snapshot->nodes[child], role);
@@ -856,12 +964,11 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
                 if (first_child == (size_t)-1) first_child = child;
             }
             if (first_child != (size_t)-1) {
-                cxpr_snapshot_add_timeseries_samples(b, ast, function_parent_id, active);
+                cxpr_snapshot_add_timeseries_samples(b, ast, parent_id, active);
             }
             break;
         case CXPR_NODE_PRODUCER_ACCESS:
-            producer_parent_id = cxpr_snapshot_add_producer_name_node(b, ast, node, active);
-            cxpr_snapshot_add_producer_field_node(b, ast, producer_parent_id, active);
+            cxpr_snapshot_add_producer_field_node(b, ast, parent_id, active);
             count = cxpr_expr_ast_producer_arg_count(ast);
             for (size_t i = 0; i < count; ++i) {
                 const char* name = cxpr_expr_ast_producer_arg_name(ast, i);
@@ -870,7 +977,7 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
                 } else {
                     snprintf(role, sizeof(role), "arg%zu", i);
                 }
-                child = cxpr_snapshot_visit(b, cxpr_expr_ast_producer_arg(ast, i), producer_parent_id, 1,
+                child = cxpr_snapshot_visit(b, cxpr_expr_ast_producer_arg(ast, i), parent_id, 1,
                                             role, active, inactive_reason);
                 if (!b->failed) {
                     (void)cxpr_snapshot_relabel_arg_node(b, &b->snapshot->nodes[child], role);
@@ -991,6 +1098,17 @@ static size_t cxpr_snapshot_visit_ternary(cxpr_snapshot_builder* b,
     if (b->failed) return cond_id;
     cond = &b->snapshot->nodes[cond_id];
     if (!cond->has_value || cond->value.type != CXPR_VALUE_BOOL) {
+        if (!b->ctx) {
+            (void)cxpr_snapshot_visit(b, cxpr_expr_ast_ternary_true(ast), parent_id, 1,
+                                      "true", 1, NULL);
+            (void)cxpr_snapshot_visit(b, cxpr_expr_ast_ternary_false(ast), parent_id, 1,
+                                      "false", 1, NULL);
+            node = &b->snapshot->nodes[parent_id];
+            node->state = CXPR_SNAPSHOT_STATE_UNKNOWN;
+            cxpr_snapshot_set_string(&node->resolved, cxpr_expr_ast_to_string(ast));
+            cxpr_snapshot_refresh_display_label(node);
+            return cond_id;
+        }
         cxpr_snapshot_mark_children_skipped(
             b, cxpr_expr_ast_ternary_true(ast), parent_id, "true",
             "ternary branch not evaluated: condition is not boolean");
@@ -1096,6 +1214,21 @@ static size_t cxpr_snapshot_visit(cxpr_snapshot_builder* b,
             (void)cxpr_snapshot_visit_ternary(b, ast, node, 1);
             break;
         case CXPR_NODE_UNARY_OP:
+            if (cxpr_expr_ast_operator(ast) == CXPR_TOK_MINUS &&
+                cxpr_expr_ast_kind_of(cxpr_expr_ast_unary_operand(ast)) == CXPR_NODE_NUMBER) {
+                char* literal = cxpr_expr_ast_to_string(ast);
+                node = &b->snapshot->nodes[node_id];
+                cxpr_snapshot_set_string(&node->kind, cxpr_snapshot_strdup("number"));
+                cxpr_snapshot_set_string(&node->label, literal ? cxpr_snapshot_strdup(literal) : NULL);
+                if (!literal || !node->label) {
+                    free(literal);
+                    b->failed = 1;
+                    break;
+                }
+                free(literal);
+                (void)cxpr_snapshot_eval_node(b, ast, node);
+                break;
+            }
             first_child = cxpr_snapshot_visit(b, cxpr_expr_ast_unary_operand(ast), node_id, 1,
                                               "operand", 1, NULL);
             if (!b->failed) {
@@ -1117,6 +1250,9 @@ static size_t cxpr_snapshot_visit(cxpr_snapshot_builder* b,
             if (!b->failed) {
                 node = &b->snapshot->nodes[node_id];
                 (void)cxpr_snapshot_eval_node(b, ast, node);
+                if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
+                    cxpr_snapshot_restore_window_call(b, ast, node_id);
+                }
             }
             break;
     }

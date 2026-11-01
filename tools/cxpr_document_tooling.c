@@ -308,9 +308,12 @@ static int is_outline_node(cxpr_doc_ast_kind kind) {
     case CXPR_DOC_AST_HOST_BLOCK:
     case CXPR_DOC_AST_MODEL_DECL:
     case CXPR_DOC_AST_USE:
+    case CXPR_DOC_AST_INPUT_BLOCK:
     case CXPR_DOC_AST_INPUT_DECL:
     case CXPR_DOC_AST_PARAM_DECL:
     case CXPR_DOC_AST_FUNCTION_DECL:
+    case CXPR_DOC_AST_LOCAL_BINDING:
+    case CXPR_DOC_AST_RETURN:
     case CXPR_DOC_AST_STATE_DECL:
     case CXPR_DOC_AST_STATE_UPDATE:
     case CXPR_DOC_AST_BINDING:
@@ -330,14 +333,19 @@ static void emit_outline_node(const cxpr_doc_ast_node* node, int* comma) {
     const char* value = cxpr_doc_ast_node_value(node);
     cxpr_source_span span = cxpr_doc_ast_node_span(node);
     if (!is_outline_node(kind)) return;
+    if (kind == CXPR_DOC_AST_INPUT_BLOCK && (!name || !name[0])) return;
     if (*comma) fputc(',', stdout);
     *comma = 1;
     fputs("{\"kind\":", stdout);
-    json_string(node_kind_name(kind));
+    json_string(kind == CXPR_DOC_AST_INPUT_BLOCK ? "input" : node_kind_name(kind));
     fputs(",\"name\":", stdout);
     json_string(name ? name : (text ? text : node_kind_name(kind)));
     fputs(",\"value\":", stdout);
-    json_string(value ? value : "");
+    json_string(kind == CXPR_DOC_AST_INPUT_BLOCK ? "struct" : value ? value : "");
+    if (kind == CXPR_DOC_AST_LOCAL_BINDING || kind == CXPR_DOC_AST_RETURN) {
+        fputs(",\"expression\":", stdout);
+        json_string(text ? text : "");
+    }
     fputc(',', stdout);
     emit_range(span);
     fputc('}', stdout);
@@ -380,6 +388,10 @@ static void emit_token_node(const cxpr_doc_ast_node* node,
     if (!name || !*name ||
         !span_find_name(source, span, name, &line, &col, &len,
                         &prefixed_dollar, &offset)) return;
+    if (kind == CXPR_DOC_AST_FUNCTION_DECL) {
+        const char* params = strchr(name, '(');
+        if (params) len = (size_t)(params - name);
+    }
     if (kind == CXPR_DOC_AST_OUTPUT_DECL) {
         size_t cursor = offset + len;
         while (source[cursor] == ' ' || source[cursor] == '\t') cursor++;
@@ -635,12 +647,13 @@ static void emit_source_tokens(const char* source,
                     expect_flat_input = 1;
                 }
                 type = expect_flat_input && !(length == 2u &&
-                        strncmp(source + start, "in", 2u) == 0) ? "input" :
+                        strncmp(source + start, "in", 2u) == 0) ?
+                    (source[cursor] == '{' ? "reference" : "input") :
                     length == 8u && strncmp(source + start, "optimize", 8u) == 0 &&
                     (source[cursor] == '=' || source[cursor] == '{') ? "namedArgument" :
                     tooling_keyword(source + start, length) ? "keyword" :
                     source[cursor] == '(' ? "function" :
-                    source[cursor] == '=' ?
+                    source[cursor] == '=' && source[cursor + 1u] != '=' ?
                         (tooling_inside_metadata_block(source, start) ? "namedArgument" :
                          begins_line_assignment ? "assignment" : "namedArgument") :
                     tooling_is_exported_input(root, source, source + start, length) ? "input" :
@@ -665,6 +678,19 @@ static void emit_source_tokens(const char* source,
                 in_flat_input_list = 0;
                 expect_flat_input = 0;
             }
+        }
+        if ((ch == '>' && source[i + 1u] == '=') ||
+            (ch == '<' && source[i + 1u] == '=') ||
+            (ch == '=' && source[i + 1u] == '=') ||
+            (ch == '!' && source[i + 1u] == '=') ||
+            (ch == '&' && source[i + 1u] == '&') ||
+            (ch == '|' && source[i + 1u] == '|') ||
+            (ch == '|' && source[i + 1u] == '>') ||
+            (ch == '*' && source[i + 1u] == '*')) {
+            i += 2u;
+            col += 2u;
+            emit_source_token(line, start_col, 2u, "operator", comma);
+            continue;
         }
         i++; col++;
         emit_source_token(line, start_col, 1u,
@@ -1130,6 +1156,109 @@ static const cxpr_doc_ast_node* tooling_find_declaration(
     return NULL;
 }
 
+static void tooling_line_column_at(const char* source,
+                                   size_t offset,
+                                   size_t* out_line,
+                                   size_t* out_column) {
+    size_t line = 0u;
+    size_t column = 0u;
+    for (size_t i = 0u; i < offset; ++i) {
+        if (source[i] == '\n') {
+            line++;
+            column = 0u;
+        } else {
+            column++;
+        }
+    }
+    *out_line = line;
+    *out_column = column;
+}
+
+static int tooling_find_scoped_record_field(const char* source,
+                                            size_t use_start,
+                                            size_t name_start,
+                                            size_t name_end,
+                                            size_t* out_offset) {
+    size_t* brace_stack;
+    size_t brace_count = 0u;
+    size_t record_start;
+    size_t candidate = (size_t)-1;
+    size_t paren_depth = 0u;
+    size_t bracket_depth = 0u;
+    size_t nested_braces = 0u;
+    int quote = 0;
+    int escaped = 0;
+    int comment = 0;
+    if (!source || name_start == name_end || !out_offset) return 0;
+    brace_stack = (size_t*)malloc((use_start + 1u) * sizeof(*brace_stack));
+    if (!brace_stack) return 0;
+    for (size_t i = 0u; i < use_start; ++i) {
+        int ch = (unsigned char)source[i];
+        if (comment) {
+            if (ch == '\n') comment = 0;
+            continue;
+        }
+        if (quote) {
+            if (escaped) escaped = 0;
+            else if (ch == '\\') escaped = 1;
+            else if (ch == quote) quote = 0;
+            continue;
+        }
+        if (ch == '#') { comment = 1; continue; }
+        if (ch == '\'' || ch == '"') { quote = ch; continue; }
+        if (ch == '{') brace_stack[brace_count++] = i;
+        else if (ch == '}' && brace_count > 0u) brace_count--;
+    }
+    if (brace_count == 0u) {
+        free(brace_stack);
+        return 0;
+    }
+    record_start = brace_stack[brace_count - 1u];
+    free(brace_stack);
+    for (size_t i = record_start + 1u; i < use_start;) {
+        int ch = (unsigned char)source[i];
+        if (comment) {
+            if (ch == '\n') comment = 0;
+            i++;
+            continue;
+        }
+        if (quote) {
+            if (escaped) escaped = 0;
+            else if (ch == '\\') escaped = 1;
+            else if (ch == quote) quote = 0;
+            i++;
+            continue;
+        }
+        if (ch == '#') { comment = 1; i++; continue; }
+        if (ch == '\'' || ch == '"') { quote = ch; i++; continue; }
+        if (ch == '{') { nested_braces++; i++; continue; }
+        if (ch == '}' && nested_braces > 0u) { nested_braces--; i++; continue; }
+        if (ch == '(') { paren_depth++; i++; continue; }
+        if (ch == ')' && paren_depth > 0u) { paren_depth--; i++; continue; }
+        if (ch == '[') { bracket_depth++; i++; continue; }
+        if (ch == ']' && bracket_depth > 0u) { bracket_depth--; i++; continue; }
+        if (nested_braces == 0u && paren_depth == 0u && bracket_depth == 0u &&
+            (isalpha((unsigned char)ch) || ch == '_')) {
+            size_t identifier_start = i;
+            size_t cursor;
+            while (tooling_word_char((unsigned char)source[i])) i++;
+            cursor = i;
+            while (source[cursor] == ' ' || source[cursor] == '\t') cursor++;
+            if (i - identifier_start == name_end - name_start &&
+                strncmp(source + identifier_start, source + name_start,
+                        name_end - name_start) == 0 &&
+                source[cursor] == '=' && source[cursor + 1u] != '=') {
+                candidate = identifier_start;
+            }
+            continue;
+        }
+        i++;
+    }
+    if (candidate == (size_t)-1) return 0;
+    *out_offset = candidate;
+    return 1;
+}
+
 static const char* tooling_symbol_kind(cxpr_doc_ast_kind kind) {
     switch (kind) {
     case CXPR_DOC_AST_INPUT_DECL: return "input";
@@ -1278,6 +1407,8 @@ char* cxpr_document_resolve_with_builtins_json(
     size_t offset;
     size_t start;
     size_t end;
+    size_t record_field_offset = 0u;
+    int has_record_field = 0;
     char* result;
     if (!input) input = "";
     if (!source_name) source_name = "<memory>";
@@ -1299,6 +1430,10 @@ char* cxpr_document_resolve_with_builtins_json(
             cxpr_error model_err = {0};
             parsed_model = cxpr_model_parse(input, &model_err);
         }
+    }
+    if (!declaration) {
+        has_record_field = tooling_find_scoped_record_field(
+            input, start, start, end, &record_field_offset);
     }
     {
         size_t call_cursor = end;
@@ -1328,6 +1463,7 @@ char* cxpr_document_resolve_with_builtins_json(
         fputs(",\"kind\":", stdout);
         json_string(entry || builtin || parsed_model ? "function" : declaration
             ? tooling_symbol_kind(cxpr_doc_ast_node_kind(declaration))
+            : has_record_field ? "variable"
             : "unresolved");
         fprintf(stdout,
                 ",\"range\":{\"start\":%zu,\"end\":%zu}", start, end);
@@ -1376,8 +1512,7 @@ char* cxpr_document_resolve_with_builtins_json(
                 fputs(",\"signature\":", stdout);
                 json_string(cxpr_doc_ast_node_name(declaration));
             } else if (cxpr_doc_ast_node_expr(declaration) && declaration_name) {
-                char* expression = cxpr_expr_ast_to_string(
-                    cxpr_doc_ast_node_expr(declaration));
+                const char* expression = cxpr_doc_ast_node_text(declaration);
                 if (expression) {
                     const char* parameter_prefix = input[start] == '$' ? "$" : "";
                     size_t signature_length = strlen(parameter_prefix) +
@@ -1392,7 +1527,6 @@ char* cxpr_document_resolve_with_builtins_json(
                         json_string(signature);
                         free(signature);
                     }
-                    free(expression);
                 }
             }
             fputs(",\"builtin\":false,\"definition\":{", stdout);
@@ -1400,6 +1534,17 @@ char* cxpr_document_resolve_with_builtins_json(
                     "\"startLine\":%zu,\"startChar\":%zu,\"endLine\":%zu,\"endChar\":%zu",
                     definition_line, definition_col,
                     definition_line, definition_col + definition_len);
+            fputc('}', stdout);
+        } else if (has_record_field) {
+            size_t definition_line;
+            size_t definition_col;
+            tooling_line_column_at(input, record_field_offset,
+                                   &definition_line, &definition_col);
+            fputs(",\"type\":\"unknown\",\"builtin\":false,\"definition\":{", stdout);
+            fprintf(stdout,
+                    "\"startLine\":%zu,\"startChar\":%zu,\"endLine\":%zu,\"endChar\":%zu",
+                    definition_line, definition_col, definition_line,
+                    definition_col + (end - start));
             fputc('}', stdout);
         } else {
             fputs(",\"type\":\"unknown\",\"builtin\":false", stdout);

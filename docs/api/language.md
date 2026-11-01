@@ -250,10 +250,10 @@ host tick.
 ## Model documents
 
 A model file is a sequence of top-level statements. A statement normally ends
-at the next non-indented top-level line; braces allow multiline blocks, and
-indented lines continue the current statement. Commas or newlines separate
-entries in declaration and host blocks. Optional trailing semicolons are
-trimmed.
+at the next non-indented top-level line; balanced braces or parentheses allow
+multiline declarations, and indented lines continue the current statement.
+Commas or newlines separate entries in declaration and host blocks. Optional
+trailing semicolons are trimmed.
 
 A representative model is:
 
@@ -276,12 +276,24 @@ out bars
 
 ```cxpr
 model name
+model name(key = value, flag)
 model name { key = value, flag, nested { key = value } }
+model name(key = value) { other = value }
 ```
 
-A non-empty model name is required by validation. The braced body is model
-metadata represented as a host block. Bare host fields mean `true`. Host block
-syntax uses `=`, not YAML `:` mappings.
+A non-empty model name is required by validation. Parentheses provide the
+compact form for model metadata, while braces remain useful for larger or
+nested metadata. Both forms may be combined and are lowered to one metadata
+collection. If the same key occurs in both places, the braced value overrides
+the parenthesized value. Bare host fields mean `true`. Metadata syntax uses
+`=`, not YAML `:` mappings.
+
+```cxpr
+model strategy(timeframe = "30m", type = "strategy") {
+    description = "30-minute breakout strategy"
+    enabled = true
+}
+```
 
 Metadata values are stored as source text and can be strings, numbers, arrays,
 flags, or nested blocks. A newline or comma must separate adjacent assignments;

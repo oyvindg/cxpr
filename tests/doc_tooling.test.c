@@ -140,6 +140,24 @@ static void test_binding_resolution_includes_expression(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_record_field_resolution_stays_in_enclosing_record(void) {
+    const char* source =
+        "model demo\n"
+        "$ltf = { curve_min_return_pct = 0.001 }\n"
+        "other = { momentum_curve_accel = false }\n"
+        "ltf = {\n"
+        "  momentum_curve_accel = true,\n"
+        "  buy_pressure = momentum_curve_accel\n"
+        "}\n";
+    char* json = cxpr_document_resolve_json(source, "record-field.cxpr", 5u, 19u);
+    assert(json != NULL);
+    assert(strstr(json, "\"name\":\"momentum_curve_accel\"") != NULL);
+    assert(strstr(json, "\"kind\":\"variable\"") != NULL);
+    assert(strstr(json,
+                  "\"startLine\":4,\"startChar\":2,\"endLine\":4,\"endChar\":22") != NULL);
+    cxpr_document_json_free(json);
+}
+
 static void test_parameter_resolution_preserves_dollar_prefix(void) {
     const char* source =
         "model demo\n"
@@ -242,6 +260,17 @@ static void test_model_name_semantic_token(void) {
                   "{\"line\":1,\"start\":9,\"length\":1,\"type\":\"namedArgument\"}") != NULL);
     assert(strstr(json,
                   "{\"line\":0,\"start\":26,\"length\":8,\"type\":\"property\"}") == NULL);
+    cxpr_document_json_free(json);
+
+    source =
+        "model bkadx_breakaway_ltf_base(timeframe = \"30m\",type = \"strategy\")\n";
+    json = cxpr_document_analyze_json(source, "model-header.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "\"kind\":\"model\",\"name\":\"bkadx_breakaway_ltf_base\"") != NULL);
+    assert(strstr(json, "\"name\":\"bkadx_breakaway_ltf_base(timeframe") == NULL);
+    assert(strstr(json,
+                  "{\"line\":0,\"start\":6,\"length\":24,\"type\":\"assignment\"}") != NULL);
     cxpr_document_json_free(json);
 }
 
@@ -368,6 +397,21 @@ static void test_window_syntax_hover_metadata(void) {
     assert(strstr(window, "\"documentation\":\"Creates a compile-time trailing expression window") != NULL);
     cxpr_document_json_free(stddev);
     cxpr_document_json_free(window);
+}
+
+static void test_window_binding_hover_preserves_source_syntax(void) {
+    const char* source =
+        "model demo\n"
+        "in source\n"
+        "$period = 20\n"
+        "middle = mean(window(source, $period))\n";
+    char* json = cxpr_document_resolve_json(
+        source, "window-binding-hover.cxpr", 3u, 2u);
+    assert(json != NULL);
+    assert(strstr(json,
+                  "\"signature\":\"middle = mean(window(source, $period))\"") != NULL);
+    assert(strstr(json, "__cxpr_window_mean") == NULL);
+    cxpr_document_json_free(json);
 }
 
 static void test_variadic_max_hover_metadata(void) {
@@ -520,6 +564,17 @@ static void test_comma_separated_inputs_are_source_input_tokens(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_struct_input_producer_is_typed_in_outline(void) {
+    const char* source = "in position { entry_price, bars_in_position }\n";
+    char* json = cxpr_document_analyze_json(source, "struct-input.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "\"kind\":\"input\",\"name\":\"position\",\"value\":\"struct\"") != NULL);
+    assert(strstr(json,
+                  "\"kind\":\"input\",\"name\":\"entry_price\",\"value\":\"\"") != NULL);
+    cxpr_document_json_free(json);
+}
+
 static void test_optimize_block_is_named_argument(void) {
     const char* source =
         "model demo\n"
@@ -531,6 +586,43 @@ static void test_optimize_block_is_named_argument(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_function_body_outline_exposes_native_expressions(void) {
+    const char* source =
+        "model demo\n"
+        "fn risk(value) {\n"
+        "  floor = max(0 - value, 0)\n"
+        "  return floor\n"
+        "}\n";
+    char* json = cxpr_document_analyze_json(source, "function-flow.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "\"kind\":\"local\",\"name\":\"floor\",\"value\":\"\","
+                  "\"expression\":\"max(0 - value, 0)\"") != NULL);
+    assert(strstr(json,
+                  "\"kind\":\"return\",\"name\":\"floor\",\"value\":\"\","
+                  "\"expression\":\"floor\"") != NULL);
+    cxpr_document_json_free(json);
+}
+
+static void test_function_parameters_preserve_origin_token_types(void) {
+    const char* source =
+        "model demo\n"
+        "in close, high\n"
+        "in session { open, bar_index }\n"
+        "fn risk(close, high, session, bars) { return close + high }\n";
+    char* json = cxpr_document_analyze_json(source, "function-params.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":3,\"length\":4,\"type\":\"function\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":8,\"length\":5,\"type\":\"input\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":15,\"length\":4,\"type\":\"input\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":21,\"length\":7,\"type\":\"reference\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
 
 int main(void) {
     test_analysis_baseline();
@@ -538,6 +630,7 @@ int main(void) {
     test_marker_resolution();
     test_model_resolution_has_callable_metadata();
     test_binding_resolution_includes_expression();
+    test_record_field_resolution_stays_in_enclosing_record();
     test_parameter_resolution_preserves_dollar_prefix();
     test_marker_completion();
     test_registry_catalog();
@@ -552,6 +645,7 @@ int main(void) {
     test_unknown_symbol_location_ignores_identifier_prefixes();
     test_runtime_symbol_in_parameter_reports_source_location();
     test_window_syntax_hover_metadata();
+    test_window_binding_hover_preserves_source_syntax();
     test_variadic_max_hover_metadata();
     test_cross_below_hover_metadata();
     test_stacked_builtin_and_anchor_token_boundary();
@@ -561,7 +655,10 @@ int main(void) {
     test_operator_token_does_not_match_identifier_substring();
     test_multiline_boolean_operators_are_keywords();
     test_comma_separated_inputs_are_source_input_tokens();
+    test_struct_input_producer_is_typed_in_outline();
     test_optimize_block_is_named_argument();
+    test_function_body_outline_exposes_native_expressions();
+    test_function_parameters_preserve_origin_token_types();
     puts("doc tooling tests passed");
     return 0;
 }

@@ -202,10 +202,9 @@ static void test_snapshot_labels_lookback_index_role(void) {
             assert(node->label);
             assert(node->source);
             assert(node->display_label);
-            assert(strcmp(node->label, "index") == 0);
+            assert(strcmp(node->label, "3") == 0);
             assert(strcmp(node->source, "3") == 0);
-            assert(strstr(node->display_label, "index") != NULL);
-            assert(strstr(node->display_label, "3") != NULL);
+            assert(strcmp(node->display_label, "3") == 0);
             saw_index = 1;
         }
     }
@@ -259,8 +258,7 @@ static void test_snapshot_labels_registered_function_arg_name(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
     cxpr_error err = {0};
-    size_t function_id = (size_t)-1;
-    int saw_function = 0;
+    size_t function_id = 0u;
     int saw_period = 0;
 
     assert(ctx);
@@ -272,12 +270,7 @@ static void test_snapshot_labels_registered_function_arg_name(void) {
 
     for (size_t i = 0; i < snapshot.node_count; ++i) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
-        if (node->role && strcmp(node->role, "function") == 0) {
-            assert(node->source);
-            assert(strcmp(node->source, "rsi") == 0);
-            function_id = node->id;
-            saw_function = 1;
-        } else if (node->role && strcmp(node->role, "period") == 0) {
+        if (node->role && strcmp(node->role, "period") == 0) {
             assert(node->label);
             assert(node->source);
             assert(node->display_label);
@@ -289,7 +282,6 @@ static void test_snapshot_labels_registered_function_arg_name(void) {
             saw_period = 1;
         }
     }
-    assert(saw_function);
     assert(saw_period);
 
     cxpr_eval_snapshot_free(&snapshot);
@@ -314,7 +306,7 @@ static void test_snapshot_display_includes_resolved_and_final_value(void) {
     assert(snapshot.node_count > 0);
     root = &snapshot.nodes[0];
     assert(root->display_label);
-    assert(strstr(root->display_label, "= 19617 > 0\n= true") != NULL);
+    assert(strcmp(root->display_label, ">\n= true") == 0);
 
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
@@ -328,12 +320,11 @@ static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
     cxpr_error err = {0};
-    int saw_function_role = 0;
     int saw_value_close = 0;
     int saw_samples = 0;
     int saw_sample0 = 0;
-    int saw_sample1_under_function = 0;
-    size_t function_id = (size_t)-1;
+    int saw_sample1_under_call = 0;
+    size_t function_id = 0u;
 
     assert(ctx);
     assert(reg);
@@ -343,12 +334,7 @@ static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
 
     for (size_t i = 0; i < snapshot.node_count; ++i) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
-        if (node->role && strcmp(node->role, "function") == 0) {
-            assert(node->source);
-            assert(strcmp(node->source, "falling") == 0);
-            function_id = node->id;
-            saw_function_role = 1;
-        } else if (node->role && strcmp(node->role, "value") == 0) {
+        if (node->role && strcmp(node->role, "value") == 0) {
             assert(node->source);
             assert(strcmp(node->source, "close") == 0);
             assert(node->has_parent);
@@ -365,17 +351,17 @@ static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
         } else if (node->role && strcmp(node->role, "sample[1]") == 0) {
             assert(node->source);
             assert(strcmp(node->source, "close[1]") == 0);
+            assert(strncmp(node->display_label, "sample[1]", 9u) != 0);
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            saw_sample1_under_function = 1;
+            saw_sample1_under_call = 1;
         }
     }
 
-    assert(saw_function_role);
     assert(saw_value_close);
     assert(saw_samples);
     assert(!saw_sample0);
-    assert(saw_sample1_under_function);
+    assert(saw_sample1_under_call);
 
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
@@ -415,14 +401,13 @@ static void test_snapshot_positional_identifier_arg_displays_source(void) {
     cxpr_expr_ast_free(ast);
 }
 
-static void test_snapshot_named_function_args_attach_to_function_node(void) {
+static void test_snapshot_named_function_args_attach_to_call_node(void) {
     cxpr_expr_ast* ast = parse_required("within(close, 100, 110)");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
     cxpr_error err = {0};
-    size_t function_id = (size_t)-1;
-    int saw_function = 0;
+    size_t function_id = 0u;
     int saw_source = 0;
     int saw_min = 0;
     int saw_max = 0;
@@ -433,14 +418,12 @@ static void test_snapshot_named_function_args_attach_to_function_node(void) {
     cxpr_context_set(ctx, "close", 104.1);
     assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
 
+    assert(strcmp(snapshot.nodes[0].label, "within") == 0);
+    assert(strncmp(snapshot.nodes[0].display_label, "within\n= ", 9u) == 0);
+
     for (size_t i = 0; i < snapshot.node_count; ++i) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
-        if (node->role && strcmp(node->role, "function") == 0) {
-            assert(node->source);
-            assert(strcmp(node->source, "within") == 0);
-            function_id = node->id;
-            saw_function = 1;
-        } else if (node->role && strcmp(node->role, "source") == 0 &&
+        if (node->role && strcmp(node->role, "source") == 0 &&
                    node->source && strcmp(node->source, "close") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
@@ -459,7 +442,6 @@ static void test_snapshot_named_function_args_attach_to_function_node(void) {
         }
     }
 
-    assert(saw_function);
     assert(saw_source);
     assert(saw_min);
     assert(saw_max);
@@ -470,7 +452,117 @@ static void test_snapshot_named_function_args_attach_to_function_node(void) {
     cxpr_expr_ast_free(ast);
 }
 
-static void test_snapshot_nested_function_args_attach_to_function_node(void) {
+static void test_context_free_function_snapshot_keeps_call_and_args_separate(void) {
+    cxpr_expr_ast* ast = parse_required(
+        "bollinger(source=close, period=$bb_params.period, stddev_mult=$bb_params.stddev)");
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+
+    assert(cxpr_eval_snapshot_build(ast, NULL, NULL, &snapshot, &err));
+    assert(snapshot.node_count == 4u);
+    assert(strcmp(snapshot.nodes[0].label, "bollinger") == 0);
+    assert(strcmp(snapshot.nodes[0].display_label, "bollinger") == 0);
+    assert(strcmp(snapshot.nodes[1].role, "source") == 0);
+    assert(strcmp(snapshot.nodes[2].role, "period") == 0);
+    assert(strcmp(snapshot.nodes[3].role, "stddev_mult") == 0);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_expr_ast_free(ast);
+}
+
+static void test_snapshot_restores_public_window_nodes(void) {
+    cxpr_expr_ast* ast = parse_required("max(window(high, peak_bars))");
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    size_t window_id = (size_t)-1;
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, NULL, reg, &snapshot, &err));
+    assert(strcmp(snapshot.nodes[0].label, "max") == 0);
+    for (size_t i = 0u; i < snapshot.node_count; ++i) {
+        assert(strncmp(snapshot.nodes[i].label, "__cxpr_", 7u) != 0);
+        if (strcmp(snapshot.nodes[i].label, "window") == 0) window_id = snapshot.nodes[i].id;
+    }
+    assert(window_id != (size_t)-1);
+    assert(snapshot.nodes[window_id].has_parent);
+    assert(snapshot.nodes[window_id].parent_id == snapshot.nodes[0].id);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_expr_ast_free(ast);
+}
+
+static void test_context_free_lookback_is_symbolic_without_resolver(void) {
+    cxpr_expr_ast* ast = parse_required("k.histogram[1]");
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, NULL, reg, &snapshot, &err));
+    assert(snapshot.node_count > 0u);
+    assert(snapshot.nodes[0].state == CXPR_SNAPSHOT_STATE_UNKNOWN);
+    assert(snapshot.nodes[0].resolved);
+    assert(strcmp(snapshot.nodes[0].resolved, "k.histogram[1]") == 0);
+    assert(!strstr(snapshot.nodes[0].display_label, "lookback resolver"));
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_expr_ast_free(ast);
+}
+
+static void test_context_free_ternary_keeps_both_branches_symbolic(void) {
+    cxpr_expr_ast* ast = parse_required("session.bar_index == 0 ? close[1] : close[2]");
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    int saw_true = 0;
+    int saw_false = 0;
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, NULL, reg, &snapshot, &err));
+    for (size_t i = 0u; i < snapshot.node_count; ++i) {
+        const cxpr_snapshot_node* node = &snapshot.nodes[i];
+        assert(node->state != CXPR_SNAPSHOT_STATE_ERROR);
+        if (node->role && strcmp(node->role, "true") == 0) {
+            assert(strncmp(node->display_label, "true", 4u) != 0);
+            saw_true = 1;
+        }
+        if (node->role && strcmp(node->role, "false") == 0) {
+            assert(strncmp(node->display_label, "false", 5u) != 0);
+            saw_false = 1;
+        }
+    }
+    assert(saw_true);
+    assert(saw_false);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_expr_ast_free(ast);
+}
+
+static void test_context_free_operator_node_only_displays_operator(void) {
+    cxpr_expr_ast* ast = parse_required("1 - gap_pct");
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, NULL, reg, &snapshot, &err));
+    assert(strcmp(snapshot.nodes[0].kind, "binary_op") == 0);
+    assert(strcmp(snapshot.nodes[0].display_label, "-") == 0);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_expr_ast_free(ast);
+}
+
+static void test_snapshot_nested_function_args_attach_to_call_node(void) {
     static const char* const rsi_params[] = { "period" };
     cxpr_expr_ast* ast = parse_required("close < close[1] or rsi(14) > 70");
     cxpr_context* ctx = cxpr_context_new();
@@ -478,8 +570,7 @@ static void test_snapshot_nested_function_args_attach_to_function_node(void) {
     cxpr_eval_snapshot snapshot;
     cxpr_error err = {0};
     size_t rsi_call_id = (size_t)-1;
-    size_t rsi_function_id = (size_t)-1;
-    int saw_period_under_function = 0;
+    int saw_period_under_call = 0;
 
     assert(ctx);
     assert(reg);
@@ -494,28 +585,22 @@ static void test_snapshot_nested_function_args_attach_to_function_node(void) {
         if (node->role && strcmp(node->role, "left") == 0 &&
             node->source && strcmp(node->source, "rsi(14)") == 0) {
             rsi_call_id = node->id;
-        } else if (node->role && strcmp(node->role, "function") == 0 &&
-                   node->source && strcmp(node->source, "rsi") == 0) {
-            rsi_function_id = node->id;
         }
     }
 
     assert(rsi_call_id != (size_t)-1);
-    assert(rsi_function_id != (size_t)-1);
-    assert(rsi_function_id != rsi_call_id);
 
     for (size_t i = 0; i < snapshot.node_count; ++i) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
         if (node->role && strcmp(node->role, "period") == 0) {
             assert(node->has_parent);
-            assert(node->parent_id == rsi_function_id);
-            assert(node->parent_id != rsi_call_id);
+            assert(node->parent_id == rsi_call_id);
             assert(strcmp(node->display_label, "period =\n14") == 0);
-            saw_period_under_function = 1;
+            saw_period_under_call = 1;
         }
     }
 
-    assert(saw_period_under_function);
+    assert(saw_period_under_call);
 
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
@@ -523,14 +608,13 @@ static void test_snapshot_nested_function_args_attach_to_function_node(void) {
     cxpr_expr_ast_free(ast);
 }
 
-static void test_snapshot_contains_args_attach_to_function_node(void) {
+static void test_snapshot_contains_args_attach_to_call_node(void) {
     cxpr_expr_ast* ast = parse_required("contains(citizenship_code, [100, 101])");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
     cxpr_error err = {0};
-    size_t function_id = (size_t)-1;
-    int saw_function = 0;
+    size_t function_id = 0u;
     int saw_source = 0;
     int saw_values = 0;
 
@@ -542,12 +626,7 @@ static void test_snapshot_contains_args_attach_to_function_node(void) {
 
     for (size_t i = 0; i < snapshot.node_count; ++i) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
-        if (node->role && strcmp(node->role, "function") == 0) {
-            assert(node->source);
-            assert(strcmp(node->source, "contains") == 0);
-            function_id = node->id;
-            saw_function = 1;
-        } else if (node->role && strcmp(node->role, "source") == 0 &&
+        if (node->role && strcmp(node->role, "source") == 0 &&
                    node->source && strcmp(node->source, "citizenship_code") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
@@ -561,7 +640,6 @@ static void test_snapshot_contains_args_attach_to_function_node(void) {
         }
     }
 
-    assert(saw_function);
     assert(saw_source);
     assert(saw_values);
 
@@ -571,14 +649,13 @@ static void test_snapshot_contains_args_attach_to_function_node(void) {
     cxpr_expr_ast_free(ast);
 }
 
-static void test_snapshot_producer_args_attach_to_function_node(void) {
+static void test_snapshot_producer_args_attach_to_call_node(void) {
     cxpr_expr_ast* ast = parse_required("macd(fast=12, slow=26, signal=9).line");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_eval_snapshot snapshot;
     cxpr_error err = {0};
-    size_t function_id = (size_t)-1;
-    int saw_function = 0;
+    size_t function_id = 0u;
     int saw_field = 0;
     int saw_fast = 0;
     int saw_slow = 0;
@@ -588,18 +665,16 @@ static void test_snapshot_producer_args_attach_to_function_node(void) {
     assert(reg);
     cxpr_register_defaults(reg);
     assert(cxpr_eval_snapshot_build(ast, ctx, reg, &snapshot, &err));
+    assert(strcmp(snapshot.nodes[0].kind, "producer_access") == 0);
+    assert(strcmp(snapshot.nodes[0].label, "macd") == 0);
 
     for (size_t i = 0; i < snapshot.node_count; ++i) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
-        if (node->role && strcmp(node->role, "function") == 0) {
-            assert(node->source);
-            assert(strcmp(node->source, "macd") == 0);
-            function_id = node->id;
-            saw_function = 1;
-        } else if (node->role && strcmp(node->role, "field") == 0) {
+        if (node->role && strcmp(node->role, "field") == 0) {
+            assert(strcmp(node->kind, "field") == 0);
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "field =\nline") == 0);
+            assert(strcmp(node->display_label, "line") == 0);
             saw_field = 1;
         } else if (node->role && strcmp(node->role, "fast") == 0) {
             assert(node->has_parent);
@@ -619,7 +694,6 @@ static void test_snapshot_producer_args_attach_to_function_node(void) {
         }
     }
 
-    assert(saw_function);
     assert(saw_field);
     assert(saw_fast);
     assert(saw_slow);
@@ -650,11 +724,11 @@ static void test_snapshot_field_access_has_object_and_field_children(void) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
         if (node->role && strcmp(node->role, "object") == 0) {
             assert(node->parent_id == 0u);
-            assert(strcmp(node->display_label, "object =\naccount") == 0);
+            assert(strcmp(node->display_label, "account") == 0);
             saw_object = 1;
         } else if (node->role && strcmp(node->role, "field") == 0) {
             assert(node->parent_id == 0u);
-            assert(strcmp(node->display_label, "field =\nbalance") == 0);
+            assert(strcmp(node->display_label, "balance") == 0);
             saw_field = 1;
         }
     }
@@ -784,11 +858,11 @@ static void test_snapshot_complex_lookback_preserves_target_structure(void) {
         const cxpr_snapshot_node* node = &snapshot.nodes[i];
         if (node->parent_id == source_id &&
             node->role && strcmp(node->role, "object") == 0) {
-            assert(strcmp(node->display_label, "object =\naccount") == 0);
+            assert(strcmp(node->display_label, "account") == 0);
             saw_object = 1;
         } else if (node->parent_id == source_id &&
                    node->role && strcmp(node->role, "field") == 0) {
-            assert(strcmp(node->display_label, "field =\nbalance") == 0);
+            assert(strcmp(node->display_label, "balance") == 0);
             saw_field = 1;
         }
     }
@@ -1033,6 +1107,42 @@ static void test_snapshot_preserves_int64_type_and_value(void) {
     cxpr_expr_parser_free(parser);
 }
 
+static void test_snapshot_record_literal_has_named_field_children(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_error err = {0};
+    cxpr_eval_snapshot snapshot = {0};
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(
+        parser,
+        "{ entry_extension_atr = (close - trend_ema) / safe_atr, "
+        "extension_ok = entry_extension_atr < $max_entry_extension_atr }",
+        &err);
+    int saw_extension_value = 0;
+    int saw_extension_gate = 0;
+
+    assert(ast);
+    assert(cxpr_eval_snapshot_build(ast, NULL, reg, &snapshot, &err));
+    assert(strcmp(snapshot.nodes[0].kind, "record") == 0);
+    assert(snapshot.node_count > 2u);
+    for (size_t i = 0u; i < snapshot.node_count; ++i) {
+        if (strcmp(snapshot.nodes[i].role, "entry_extension_atr") == 0) {
+            assert(strcmp(snapshot.nodes[i].display_label, "/") == 0);
+            saw_extension_value = 1;
+        }
+        if (strcmp(snapshot.nodes[i].role, "extension_ok") == 0) {
+            assert(strcmp(snapshot.nodes[i].display_label, "<") == 0);
+            saw_extension_gate = 1;
+        }
+    }
+    assert(saw_extension_value);
+    assert(saw_extension_gate);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(reg);
+    cxpr_expr_parser_free(parser);
+}
+
 int main(void) {
     test_snapshot_marks_short_circuit_branch_skipped();
     test_snapshot_writes_host_metadata();
@@ -1043,10 +1153,15 @@ int main(void) {
     test_snapshot_display_includes_resolved_and_final_value();
     test_snapshot_trend_call_folds_function_and_current_sample();
     test_snapshot_positional_identifier_arg_displays_source();
-    test_snapshot_named_function_args_attach_to_function_node();
-    test_snapshot_nested_function_args_attach_to_function_node();
-    test_snapshot_contains_args_attach_to_function_node();
-    test_snapshot_producer_args_attach_to_function_node();
+    test_snapshot_named_function_args_attach_to_call_node();
+    test_context_free_function_snapshot_keeps_call_and_args_separate();
+    test_snapshot_restores_public_window_nodes();
+    test_context_free_lookback_is_symbolic_without_resolver();
+    test_context_free_ternary_keeps_both_branches_symbolic();
+    test_context_free_operator_node_only_displays_operator();
+    test_snapshot_nested_function_args_attach_to_call_node();
+    test_snapshot_contains_args_attach_to_call_node();
+    test_snapshot_producer_args_attach_to_call_node();
     test_snapshot_field_access_has_object_and_field_children();
     test_snapshot_chain_access_has_segment_children();
     test_snapshot_array_literal_has_item_children();
@@ -1056,6 +1171,7 @@ int main(void) {
     test_flow_snapshot_writes_host_metadata();
     test_engine_flow_snapshot_uses_current_tick_state();
     test_snapshot_preserves_int64_type_and_value();
+    test_snapshot_record_literal_has_named_field_children();
     printf("  \xE2\x9C\x93 eval_snapshot\n");
     return 0;
 }

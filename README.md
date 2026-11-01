@@ -236,7 +236,7 @@ user data, and cleanup callbacks.
 A `.cxpr` model groups its public contract and calculations in one file:
 
 ```cxpr
-model accumulator
+model accumulator(type = "indicator")
 
 in { sample, enabled }
 $scale = 1.0
@@ -251,6 +251,10 @@ total := next_total
 
 out { scaled, total }
 ```
+
+Model metadata accepts `model name(...)`, `model name { ... }`, or both forms
+together. When combined, braced metadata overrides duplicate keys from the
+compact parenthesized form. See [Language](docs/api/language.md#model-declaration-and-metadata).
 
 State updates are atomic: expressions in a tick see the old state, and staged
 updates become visible on the next tick. This makes results independent of

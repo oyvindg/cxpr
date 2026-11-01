@@ -238,7 +238,7 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     assert(out);
     cxpr_expr_ast_free(ast);
 
-    ast = parse_or_die(parser, "rising(value=close, bars=3)");
+    ast = parse_or_die(parser, "rising(value=close, samples=3)");
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out);
@@ -278,7 +278,7 @@ static void test_builtin_rising_and_falling_use_native_timeseries_eval(void) {
     printf("  \xE2\x9C\x93 test_builtin_rising_and_falling_use_native_timeseries_eval\n");
 }
 
-static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
+static void test_builtin_repeat_accepts_named_args(void) {
     static const double close_series[] = {10.0, 11.0, 12.0, 11.0, 10.0};
     static const double base_series[] = {9.0, 10.0, 11.0, 10.5, 10.5};
     test_series_env env = {
@@ -299,7 +299,7 @@ static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
     cxpr_context_set(ctx, "close", close_series[env.current_index]);
     cxpr_context_set(ctx, "base", base_series[env.current_index]);
 
-    cxpr_expr_ast* ast = parse_or_die(parser, "repeat(condition=close > base, bars=3)");
+    cxpr_expr_ast* ast = parse_or_die(parser, "repeat(condition=close > base, samples=3)");
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(out);
@@ -308,7 +308,7 @@ static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
     env.current_index = 4;
     cxpr_context_set(ctx, "close", close_series[env.current_index]);
     cxpr_context_set(ctx, "base", base_series[env.current_index]);
-    ast = parse_or_die(parser, "repeat(condition=close > base, bars=3)");
+    ast = parse_or_die(parser, "repeat(condition=close > base, samples=3)");
     assert(cxpr_eval_ast_bool(ast, ctx, reg, &out, &err));
     assert(err.code == CXPR_OK);
     assert(!out);
@@ -317,7 +317,7 @@ static void test_builtin_repeat_accepts_condition_and_bars_named_args(void) {
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_expr_parser_free(parser);
-    printf("  \xE2\x9C\x93 test_builtin_repeat_accepts_condition_and_bars_named_args\n");
+    printf("  \xE2\x9C\x93 test_builtin_repeat_accepts_named_args\n");
 }
 
 static void test_timeseries_builtin_reports_bad_arity(void) {
@@ -729,7 +729,7 @@ int main(void) {
     printf("Running timeseries tests...\n");
     test_eval_ast_at_offset_reuses_lookback_resolver();
     test_builtin_rising_and_falling_use_native_timeseries_eval();
-    test_builtin_repeat_accepts_condition_and_bars_named_args();
+    test_builtin_repeat_accepts_named_args();
     test_timeseries_builtin_reports_bad_arity();
     test_timeseries_builtin_rejects_non_call_ast_directly();
     test_registered_timeseries_function_uses_same_api();

@@ -315,6 +315,28 @@ static int cxpr_doc_ast_brace_delta(const char* text) {
     return delta;
 }
 
+static int cxpr_doc_ast_paren_delta(const char* text) {
+    int delta = 0;
+    char quote = '\0';
+    while (text && *text) {
+        if (quote) {
+            if (*text == '\\' && text[1]) {
+                text += 2;
+                continue;
+            }
+            if (*text == quote) quote = '\0';
+        } else if (*text == '"' || *text == '\'') {
+            quote = *text;
+        } else if (*text == '(') {
+            delta++;
+        } else if (*text == ')') {
+            delta--;
+        }
+        text++;
+    }
+    return delta;
+}
+
 static bool cxpr_doc_ast_has_top_level_comma(const char* text) {
     int paren = 0;
     int brace = 0;
@@ -453,6 +475,29 @@ static char* cxpr_doc_ast_top_level_char(char* text, char wanted) {
         else if (*p == '[') bracket++;
         else if (*p == ']' && bracket) bracket--;
         else if (*p == wanted && !angle && !brace && !paren && !bracket) return p;
+    }
+    return NULL;
+}
+
+static char* cxpr_doc_ast_matching_delimiter(char* open,
+                                             char open_char,
+                                             char close_char) {
+    int depth = 0;
+    char quote = '\0';
+    for (char* cursor = open; cursor && *cursor; ++cursor) {
+        if (quote) {
+            if (*cursor == '\\' && cursor[1]) {
+                cursor++;
+                continue;
+            }
+            if (*cursor == quote) quote = '\0';
+        } else if (*cursor == '"' || *cursor == '\'') {
+            quote = *cursor;
+        } else if (*cursor == open_char) {
+            depth++;
+        } else if (*cursor == close_char && --depth == 0) {
+            return cursor;
+        }
     }
     return NULL;
 }
@@ -1187,28 +1232,65 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
         if (!node) goto oom;
         {
             char* body = strchr((char*)rest, '{');
-            char* close = body ? strrchr(body, '}') : NULL;
-            if (body) *body = '\0';
+            char* args = strchr((char*)rest, '(');
+            bool parenthesized = args && (!body || args < body);
+            char* metadata_start = parenthesized ? args : body;
+            char* args_close = parenthesized
+                                   ? cxpr_doc_ast_matching_delimiter(args, '(', ')')
+                                   : NULL;
+            char* body_open = parenthesized && args_close
+                                  ? cxpr_doc_ast_trim_in_place(args_close + 1)
+                                  : body;
+            if (parenthesized && body_open && *body_open == '\0') body_open = NULL;
+            char* body_close = body_open && *body_open == '{'
+                                   ? cxpr_doc_ast_matching_delimiter(body_open, '{', '}')
+                                   : NULL;
+            char* close = body_close ? body_close :
+                          (parenthesized ? args_close : body_close);
+            if (metadata_start) *metadata_start = '\0';
             node->name = cxpr_strdup(cxpr_doc_ast_trim_in_place((char*)rest));
-            if (body) {
+            if (metadata_start) {
                 cxpr_doc_ast_node* metadata;
-                if (!close || close < body) goto syntax;
-                *close = '\0';
+                if (!close || close < metadata_start ||
+                    *cxpr_doc_ast_trim_in_place(close + 1) != '\0') goto syntax;
+                if (parenthesized && body_open && *body_open != '{') goto syntax;
+                if (args_close) *args_close = '\0';
+                if (body_open) *body_open = '\0';
+                if (body_close) *body_close = '\0';
                 metadata = cxpr_doc_ast_node_new(
                     CXPR_DOC_AST_METADATA,
                     cxpr_doc_ast_span(parser,
-                                           start_offset + (size_t)(body - statement),
+                                           start_offset + (size_t)(metadata_start - statement),
                                            start_offset + (size_t)(close - statement) + 1u));
                 if (!metadata) goto oom;
                 metadata->name = cxpr_strdup("metadata");
-                metadata->text = cxpr_strdup(cxpr_doc_ast_trim_in_place(body + 1));
-                ok = node->name && metadata->name && metadata->text &&
-                     cxpr_doc_ast_parse_host_fields(
-                         parser,
-                         metadata,
-                         metadata->text,
-                         start_offset + (size_t)(body - statement) + 1u) &&
-                     cxpr_doc_ast_append_child(node, metadata);
+                {
+                    char* args_text = parenthesized
+                                          ? cxpr_doc_ast_trim_in_place(args + 1)
+                                          : NULL;
+                    char* body_text = body_open
+                                          ? cxpr_doc_ast_trim_in_place(body_open + 1)
+                                          : (!parenthesized
+                                                 ? cxpr_doc_ast_trim_in_place(body + 1)
+                                                 : NULL);
+                    size_t args_len = args_text ? strlen(args_text) : 0u;
+                    size_t body_len = body_text ? strlen(body_text) : 0u;
+                    metadata->text = (char*)malloc(body_len + args_len + 2u);
+                    if (metadata->text) {
+                        metadata->text[0] = '\0';
+                        if (body_len) memcpy(metadata->text, body_text, body_len + 1u);
+                        if (body_len && args_len) strcat(metadata->text, "\n");
+                        if (args_len) strcat(metadata->text, args_text);
+                    }
+                    ok = node->name && metadata->name && metadata->text &&
+                         (!body_len || cxpr_doc_ast_parse_host_fields(
+                             parser, metadata, body_text,
+                             start_offset + (size_t)(body_open - statement) + 1u)) &&
+                         (!args_len || cxpr_doc_ast_parse_host_fields(
+                             parser, metadata, args_text,
+                             start_offset + (size_t)(args - statement) + 1u)) &&
+                         cxpr_doc_ast_append_child(node, metadata);
+                }
                 if (!ok) cxpr_doc_ast_node_free(metadata);
             } else {
                 ok = node->name != NULL;
@@ -1539,6 +1621,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
     size_t line_start = 0u;
     size_t statement_start = 0u;
     int brace_depth = 0;
+    int paren_depth = 0;
     bool has_current = false;
 
     if (err) *err = (cxpr_error){0};
@@ -1592,7 +1675,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
             }
             blank = line[0] == '\0' || line[0] == '#' || (line[0] == '/' && line[1] == '/');
             if (blank) {
-                if (has_current && brace_depth <= 0) {
+                if (has_current && brace_depth <= 0 && paren_depth <= 0) {
                     if (!cxpr_doc_ast_parse_host_statement(
                             &parser, ast->root, parse_source + statement_start,
                             statement_start, line_start > 0u ? line_start - 1u : line_start)) {
@@ -1605,7 +1688,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
                 }
             } else {
                 bool indented = isspace((unsigned char)parse_source[line_start]) != 0;
-                if (has_current && brace_depth <= 0 && !indented) {
+                if (has_current && brace_depth <= 0 && paren_depth <= 0 && !indented) {
                     if (!cxpr_doc_ast_parse_host_statement(
                             &parser, ast->root, parse_source + statement_start,
                             statement_start, line_start > 0u ? line_start - 1u : line_start)) {
@@ -1621,6 +1704,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
                     has_current = true;
                 }
                 brace_depth += cxpr_doc_ast_brace_delta(line);
+                paren_depth += cxpr_doc_ast_paren_delta(line);
             }
             free(line);
         }

@@ -468,6 +468,27 @@ const char* cxpr_model_import_namespace_name(const cxpr_model* model,
     return import_name;
 }
 
+static bool cxpr_model_child_accepts_named_arg(const cxpr_model_compiled* child,
+                                               const char* name) {
+    size_t explicit_param_count = 0u;
+
+    if (!child || !name) return false;
+    if (child->source_arg && cxpr_model_names_match(child->source_arg, name)) return true;
+    for (size_t i = 0u; i < child->input_count; ++i) {
+        if (cxpr_model_names_match(child->inputs[i], name)) return true;
+    }
+    for (size_t i = 0u; i < child->constant_count; ++i) {
+        if (child->constants[i].is_call_param) ++explicit_param_count;
+    }
+    for (size_t i = 0u; i < child->constant_count; ++i) {
+        if ((explicit_param_count == 0u || child->constants[i].is_call_param) &&
+            cxpr_model_names_match(child->constants[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                                                    const cxpr_model* model,
                                                    const cxpr_model_import* imports,
@@ -515,6 +536,15 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                                                    ast->data.producer_access.name);
             if (child) {
                 bool call_supplies_source = false;
+                for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
+                    const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
+                    if (arg_name && !cxpr_model_child_accepts_named_arg(child, arg_name)) {
+                        cxpr_model_set_error(
+                            err, CXPR_ERR_SYNTAX,
+                            "Unknown named argument for imported model", 0, 0);
+                        return false;
+                    }
+                }
                 if (child->source_arg) {
                     if (ast->data.producer_access.argc == child->constant_count + 1u &&
                         !cxpr_expr_ast_producer_has_named_args(ast)) {

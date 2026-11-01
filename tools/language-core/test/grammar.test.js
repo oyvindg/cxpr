@@ -39,6 +39,7 @@ test("C and editor assets use the canonical language specification", () => {
 test("Monarch assigns model names the legacy assignment class", () => {
   const rule = monarch.tokenizer.root.find(([pattern]) => pattern.includes("(name|model)"));
   assert.deepEqual(rule?.[1], ["keyword", "white", "assignment"]);
+  assert.ok(rule?.[0].includes("\\("));
 });
 
 test("Monarch preserves legacy input and output declaration classes", () => {

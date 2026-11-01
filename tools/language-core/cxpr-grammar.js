@@ -29,7 +29,7 @@ const CXPR_GRAMMAR = Object.freeze({
     importDirect: "\\b(use)(\\s+)([A-Za-z0-9_./-]*\\/[A-Za-z0-9_./-]+)",
     importFlat: "\\b(use)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*)*)(\\s+)(from)(\\s+)([A-Za-z0-9_./-]+)",
     importGrouped: "\\b(use)(\\s*\\{)([^}]*)(\\})(\\s+)(from)(\\s+)([A-Za-z0-9_./-]+)",
-    namedBlock: "\\b(name|model)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*\\{)",
+    namedBlock: "\\b(name|model)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*(?:\\{|\\())",
     inputBlockBegin: "\\b(in)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(\\s*)(\\{)",
     inputListBegin: "\\b(in)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*,)",
     inputDeclaration: "\\b(in)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?:,|\\{|$))",

@@ -2978,15 +2978,10 @@ static void test_imported_producer_explicit_call_params_hide_internal_params(voi
         "value = configurable(source=close, epsilon=2).value\n"
         "out value\n");
     parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
-    assert(parent_program != NULL);
-    session = cxpr_model_session_new(parent_program, NULL, &err);
-    assert(session != NULL);
-    ctx = cxpr_model_session_context(session);
-    cxpr_context_set(ctx, "close", 10.0);
-    assert(!cxpr_model_session_tick(parent_program, session, NULL, &err));
-    assert(err.code != CXPR_OK);
-    cxpr_model_session_free(session);
-    cxpr_model_compiled_free(parent_program);
+    assert(parent_program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Unknown named argument") != NULL);
     cxpr_model_free(parent);
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
@@ -3039,6 +3034,21 @@ static void test_imported_producer_implicit_market_inputs_precede_no_params(void
     cxpr_model_session_free(session);
     cxpr_model_compiled_free(parent_program);
     cxpr_model_free(parent);
+
+    err = (cxpr_error){0};
+    parent = parse_model_ok(
+        "model invalid_market_parent\n"
+        "use market_indicator\n"
+        "in high, low, close\n"
+        "value = market_indicator(periodx=7).value\n"
+        "out value\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
+    assert(parent_program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message != NULL);
+    assert(strstr(err.message, "Unknown named argument") != NULL);
+    cxpr_model_free(parent);
+
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_implicit_market_inputs_precede_no_params\n");

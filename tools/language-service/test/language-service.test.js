@@ -83,7 +83,8 @@ test("definition searches exported symbols inside imported modules", async () =>
   assert.deepEqual(await service.getDefinitions("", { line: 20, column: 12 },
     "/workspace/trendline.cxpr"), [{
     uri: "/workspace/ts/window.cxpr",
-    range: { start: { line: 5, character: 3 }, end: { line: 5, character: 17 } }
+    range: { start: { line: 5, character: 3 }, end: { line: 5, character: 17 } },
+    source: "fn ts_window_span(left, right) = left + right"
   }])
   assert.deepEqual(requested, ["ts/pivots", "ts/window"])
 })

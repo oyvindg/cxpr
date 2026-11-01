@@ -4,7 +4,7 @@ export interface LanguageRange { start: LanguagePosition; end: LanguagePosition 
 
 export interface Diagnostic { severity?: number; message: string; line?: number; column?: number }
 export interface OutlineItem {
-  kind: string; name: string; value?: string
+  kind: string; name: string; value?: string; expression?: string
   startLine: number; startChar: number; endLine: number; endChar: number
 }
 export interface SemanticToken { line: number; start: number; length: number; type: string }
@@ -50,7 +50,7 @@ export interface LanguageCompletion {
 }
 export interface LanguageHover { markdown: string; range?: LanguageRange }
 export interface LanguageSemanticToken extends SemanticToken {}
-export interface LanguageDefinition { uri: string; range: LanguageRange }
+export interface LanguageDefinition { uri: string; range: LanguageRange; source?: string }
 export interface LanguageDocumentSymbol { name: string; detail: string; kind: string; range: LanguageRange; selectionRange: LanguageRange }
 export interface LanguageFoldingRange { startLine: number; startCharacter: number; endLine: number; endCharacter: number; kind: "region" }
 

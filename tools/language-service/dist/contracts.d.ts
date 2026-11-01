@@ -20,6 +20,7 @@ export interface OutlineItem {
     kind: string;
     name: string;
     value?: string;
+    expression?: string;
     startLine: number;
     startChar: number;
     endLine: number;
@@ -133,6 +134,7 @@ export interface LanguageSemanticToken extends SemanticToken {
 export interface LanguageDefinition {
     uri: string;
     range: LanguageRange;
+    source?: string;
 }
 export interface LanguageDocumentSymbol {
     name: string;

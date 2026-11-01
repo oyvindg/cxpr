@@ -132,7 +132,7 @@ class LanguageService {
             return [];
         const imported = await this.resolveImported(name, resolution);
         return imported?.resolution.definition
-            ? [{ uri: imported.uri, range: range(imported.resolution.definition) }]
+            ? [{ uri: imported.uri, range: range(imported.resolution.definition), source: imported.source }]
             : [];
     }
     async getDocumentSymbols(source, name) {
@@ -165,7 +165,7 @@ class LanguageService {
             const declaration = await this.analyzer.resolveAt(probedSource, target.path, { line: probeLine, column: probePrefix.length });
             if (!declaration?.definition || declaration.name !== unresolved.name || declaration.kind === "unresolved")
                 continue;
-            return { uri: target.path, resolution: declaration };
+            return { uri: target.path, source: importedSource, resolution: declaration };
         }
         return null;
     }

@@ -254,8 +254,7 @@ static void engine_scan_ast_with_offset(const cxpr_expr_ast* ast,
                         strcmp(arg_name, "value") == 0) {
                         if (!condition) condition = cxpr_expr_ast_call_arg(ast, i);
                     }
-                    if ((arg_name && (strcmp(arg_name, "bars") == 0 ||
-                                      strcmp(arg_name, "samples") == 0)) ||
+                    if ((arg_name && strcmp(arg_name, "samples") == 0) ||
                         (!arg_name && i == 1u)) {
                         samples = cxpr_expr_ast_call_arg(ast, i);
                     }

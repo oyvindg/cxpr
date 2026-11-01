@@ -294,7 +294,8 @@ static cxpr_expr_ast* cxpr_parse_record_literal(cxpr_expr_parser* p) {
                 if (!metadata[count]) goto fail;
             }
             count++;
-        } while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA));
+            if (!cxpr_expr_parser_match(p, CXPR_TOK_COMMA)) break;
+        } while (!cxpr_expr_parser_check(p, CXPR_TOK_RBRACE));
     }
 
     if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACE, "Expected '}' to close record")) goto fail;

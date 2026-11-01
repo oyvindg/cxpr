@@ -461,6 +461,7 @@ static void test_document_ast_lowering_handles_use_aliases_and_groups(void) {
         "out high, close\n";
     cxpr_error err = {0};
     cxpr_doc* document = cxpr_doc_parse_model(source, &err);
+    cxpr_doc_ast* syntax;
     const cxpr_model* model;
     cxpr_source_span span;
 
@@ -819,6 +820,60 @@ static void test_document_ast_represents_advanced_existing_syntax(void) {
     printf("  ✓ test_document_ast_represents_advanced_existing_syntax\n");
 }
 
+static void test_model_declaration_accepts_parenthesized_metadata(void) {
+    cxpr_doc_ast* syntax;
+    const char* source =
+        "model bkadx_breakaway_ltf_base(\n"
+        "    timeframe = \"30m\",\n"
+        "    type = \"strategy\"\n"
+        ")\n"
+        "in close\n"
+        "out close\n";
+    cxpr_error err = {0};
+    cxpr_doc* document = cxpr_doc_parse_model(source, &err);
+    const cxpr_model* model;
+
+    assert(document != NULL);
+    assert(err.code == CXPR_OK);
+    model = cxpr_doc_model(document);
+    assert(model != NULL);
+    assert(strcmp(cxpr_model_name(model), "bkadx_breakaway_ltf_base") == 0);
+    assert(cxpr_model_metadata_count(model) == 1u);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "timeframe"),
+                   "\"30m\"", 5u) == 0);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "type"),
+                   "\"strategy\"", 10u) == 0);
+
+    cxpr_doc_free(document);
+
+    syntax = cxpr_doc_ast_parse(
+        "model brace_metadata { custom = max(1, 2) }\nout 1\n",
+        "brace-metadata.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    cxpr_doc_ast_free(syntax);
+
+    document = cxpr_doc_parse_model(
+        "model combined(something = 123, shared = 1) "
+        "{ other = 345, shared = 2 }\n"
+        "value = 1\nout value\n",
+        &err);
+    assert(document != NULL);
+    assert(err.code == CXPR_OK);
+    model = cxpr_doc_model(document);
+    assert(model != NULL);
+    assert(cxpr_model_metadata_count(model) == 1u);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "something"),
+                   "123", 3u) == 0);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "other"),
+                   "345", 3u) == 0);
+    assert(strncmp(cxpr_model_metadata_field_value(model, 0u, "shared"),
+                   "2", 1u) == 0);
+    cxpr_doc_free(document);
+
+    printf("  ✓ test_model_declaration_accepts_parenthesized_metadata\n");
+}
+
 static void test_document_ast_represents_struct_input_blocks(void) {
     const char* source =
         "model struct_input_shape\n"
@@ -1018,6 +1073,7 @@ int main(void) {
     test_document_model_exposes_semantic_source_spans();
     test_document_ast_function_body_host_fields_and_visitor();
     test_document_ast_represents_advanced_existing_syntax();
+    test_model_declaration_accepts_parenthesized_metadata();
     test_document_ast_represents_struct_input_blocks();
     test_document_ast_represents_assert_conditions();
     test_load_document_file_is_primary_entrypoint();

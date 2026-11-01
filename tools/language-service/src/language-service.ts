@@ -135,7 +135,7 @@ export class LanguageService implements ICxprLanguageService {
     if (resolution.kind !== "unresolved") return []
     const imported = await this.resolveImported(name, resolution)
     return imported?.resolution.definition
-      ? [{ uri: imported.uri, range: range(imported.resolution.definition) }]
+      ? [{ uri: imported.uri, range: range(imported.resolution.definition), source: imported.source }]
       : []
   }
 
@@ -162,7 +162,7 @@ export class LanguageService implements ICxprLanguageService {
   }
 
   private async resolveImported(from: string, unresolved: SymbolResolution): Promise<{
-    uri: string; resolution: SymbolResolution
+    uri: string; source: string; resolution: SymbolResolution
   } | null> {
     for (const spec of unresolved.imports || []) {
       const target = await this.workspace.resolveImport(spec, from)
@@ -174,7 +174,7 @@ export class LanguageService implements ICxprLanguageService {
       const declaration = await this.analyzer.resolveAt(
         probedSource, target.path, { line: probeLine, column: probePrefix.length })
       if (!declaration?.definition || declaration.name !== unresolved.name || declaration.kind === "unresolved") continue
-      return { uri: target.path, resolution: declaration }
+      return { uri: target.path, source: importedSource, resolution: declaration }
     }
     return null
   }

@@ -143,7 +143,7 @@ static int cxpr_cg_emit_trend_call(const cxpr_expr_ast* ast, unsigned lookback_o
         const char* arg_name = cxpr_expr_ast_call_arg_name(ast, i);
         if (arg_name && strcmp(arg_name, "value") == 0) {
             value_ast = cxpr_expr_ast_call_arg(ast, i);
-        } else if (arg_name && (strcmp(arg_name, "bars") == 0 || strcmp(arg_name, "samples") == 0)) {
+        } else if (arg_name && strcmp(arg_name, "samples") == 0) {
             bars_ast = cxpr_expr_ast_call_arg(ast, i);
         }
     }
@@ -191,7 +191,7 @@ static int cxpr_cg_emit_repeat_call(const cxpr_expr_ast* ast, unsigned lookback_
         const char* arg_name = cxpr_expr_ast_call_arg_name(ast, i);
         if (arg_name && strcmp(arg_name, "condition") == 0) {
             condition_ast = cxpr_expr_ast_call_arg(ast, i);
-        } else if (arg_name && (strcmp(arg_name, "bars") == 0 || strcmp(arg_name, "samples") == 0)) {
+        } else if (arg_name && strcmp(arg_name, "samples") == 0) {
             bars_ast = cxpr_expr_ast_call_arg(ast, i);
         }
     }
