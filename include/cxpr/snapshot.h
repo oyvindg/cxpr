@@ -37,6 +37,8 @@ typedef struct {
     char* value_text;
     cxpr_value value;
     int has_value;
+    cxpr_value_type inferred_type;
+    int has_inferred_type;
     int active;
     cxpr_snapshot_state state;
 } cxpr_snapshot_node;

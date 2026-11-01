@@ -494,6 +494,30 @@ static void test_snapshot_restores_public_window_nodes(void) {
     cxpr_expr_ast_free(ast);
 }
 
+static void test_context_free_nested_max_calls_keep_number_type(void) {
+    cxpr_expr_ast* ast = parse_required(
+        "max(high - low, max(abs(high - close[1]), abs(low - close[1])))");
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_eval_snapshot snapshot;
+    cxpr_error err = {0};
+    size_t typed_max_count = 0u;
+
+    assert(reg);
+    cxpr_register_defaults(reg);
+    assert(cxpr_eval_snapshot_build(ast, NULL, reg, &snapshot, &err));
+    for (size_t i = 0u; i < snapshot.node_count; ++i) {
+        if (strcmp(snapshot.nodes[i].label, "max") != 0) continue;
+        assert(snapshot.nodes[i].has_inferred_type);
+        assert(snapshot.nodes[i].inferred_type == CXPR_VALUE_NUMBER);
+        typed_max_count++;
+    }
+    assert(typed_max_count == 2u);
+
+    cxpr_eval_snapshot_free(&snapshot);
+    cxpr_registry_free(reg);
+    cxpr_expr_ast_free(ast);
+}
+
 static void test_context_free_lookback_is_symbolic_without_resolver(void) {
     cxpr_expr_ast* ast = parse_required("k.histogram[1]");
     cxpr_registry* reg = cxpr_registry_new();
@@ -1156,6 +1180,7 @@ int main(void) {
     test_snapshot_named_function_args_attach_to_call_node();
     test_context_free_function_snapshot_keeps_call_and_args_separate();
     test_snapshot_restores_public_window_nodes();
+    test_context_free_nested_max_calls_keep_number_type();
     test_context_free_lookback_is_symbolic_without_resolver();
     test_context_free_ternary_keeps_both_branches_symbolic();
     test_context_free_operator_node_only_displays_operator();

@@ -9,6 +9,7 @@
 #include <cxpr/snapshot.h>
 #include <cxpr/registry.h>
 #include <cxpr/token.h>
+#include <cxpr/typecheck.h>
 
 #include "ast/internal.h"
 #include "context/state.h"
@@ -177,6 +178,11 @@ static cxpr_snapshot_node* cxpr_snapshot_add_node(cxpr_snapshot_builder* b,
         (inactive_reason ? inactive_reason : "not evaluated"));
     node->active = active;
     node->state = active ? CXPR_SNAPSHOT_STATE_UNKNOWN : CXPR_SNAPSHOT_STATE_SKIPPED;
+    if (b->reg) {
+        cxpr_error type_err = {0};
+        node->has_inferred_type = cxpr_typecheck(
+            ast, b->reg, &node->inferred_type, &type_err) ? 1 : 0;
+    }
 
     if (!node->role || !node->kind || !node->label || !node->display_label ||
         !node->source || !node->resolved) {
