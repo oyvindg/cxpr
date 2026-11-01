@@ -215,8 +215,10 @@ void cxpr_context_clear_variable_bindings(cxpr_context* ctx, const char* name,
     if (keep != CXPR_CONTEXT_KEEP_STRING) cxpr_string_map_remove(&ctx->strings, name);
     if (keep != CXPR_CONTEXT_KEEP_ARRAY) cxpr_context_remove_array(&ctx->arrays, name);
     if (keep != CXPR_CONTEXT_KEEP_STRUCT) cxpr_context_remove_struct(&ctx->structs, name);
-    cxpr_context_clear_entry_cache(ctx->variable_cache);
-    cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
+    if (keep != CXPR_CONTEXT_KEEP_NUMBER) {
+        cxpr_context_clear_entry_cache(ctx->variable_cache);
+        cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
+    }
 }
 
 void cxpr_context_clear_param_bindings(cxpr_context* ctx, const char* name,
@@ -228,8 +230,10 @@ void cxpr_context_clear_param_bindings(cxpr_context* ctx, const char* name,
     if (keep != CXPR_CONTEXT_KEEP_STRING) cxpr_string_map_remove(&ctx->string_params, name);
     if (keep != CXPR_CONTEXT_KEEP_ARRAY) cxpr_context_remove_array(&ctx->array_params, name);
     if (keep != CXPR_CONTEXT_KEEP_STRUCT) cxpr_context_remove_struct(&ctx->structs, name);
-    cxpr_context_clear_entry_cache(ctx->param_cache);
-    cxpr_context_clear_entry_cache(ctx->param_ptr_cache);
+    if (keep != CXPR_CONTEXT_KEEP_NUMBER) {
+        cxpr_context_clear_entry_cache(ctx->param_cache);
+        cxpr_context_clear_entry_cache(ctx->param_ptr_cache);
+    }
 }
 
 static void cxpr_context_set_hashed(cxpr_context* ctx, cxpr_hashmap* map,
