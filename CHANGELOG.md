@@ -21,7 +21,42 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2] - Unreleased
+## [0.3.3] - 2026-11-01
+
+Public pre-1.0 release. Consumers should apply normal `0.x` compatibility
+expectations: source/API adjustments may arrive in later minor releases.
+
+### Added
+
+- Model `assert` invariants, optimizer search dimensions and objectives,
+  lexicographic ranking, candidate pruning, and public optimizer APIs with an
+  optional host accelerator backend.
+- A standalone CXCU optimizer adapter plus CPU/CUDA parity coverage for
+  optimizer constraints and candidate execution.
+- Exact `int64` values across arithmetic, contexts, history, resampling,
+  generated C, debug metadata, and managed host bindings.
+- Public document-tooling and evaluation-flow snapshot metadata used by the
+  language service, portable WASM analyzer, and VS Code integration.
+- Generic bulk-grid and flow-field/pathfinding primitives, including host
+  optimizer orchestration and device-safe value helpers.
+
+### Changed
+
+- Imported-model named arguments are validated during compilation instead of
+  allowing unknown names to reach runtime.
+- Sample-count named arguments use the single canonical name `samples` across
+  evaluation, generated C, engine lookback analysis, and CUDA lowering.
+- Runtime, tooling, editor metadata, and generated language assets now share
+  the same parser-backed contracts.
+
+### Fixed
+
+- Composite-value ownership, sanitizer findings, AST/IR parity gaps, and stale
+  host-visible argument-range expectations.
+- NVRTC resident optimizer kernels now compile with the required device-visible
+  value helpers.
+
+## [0.3.2]
 
 The project is pre-1.0. The public library version has been reset to `0.3.2`;
 historical release headings and tags were renumbered without changing their
@@ -392,7 +427,8 @@ associated commits.
 Initial tagged releases. Detailed per-version history predates this changelog;
 see the Git tags `v0.0.1`–`v0.0.5` for the corresponding commits.
 
-[0.3.2]: https://github.com/oyvindg/cxpr/compare/v0.3.1...HEAD
+[0.3.3]: https://github.com/oyvindg/cxpr/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/oyvindg/cxpr/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/oyvindg/cxpr/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/oyvindg/cxpr/compare/v0.2.9...v0.3.0
 [0.2.9]: https://github.com/oyvindg/cxpr/compare/v0.2.8...v0.2.9

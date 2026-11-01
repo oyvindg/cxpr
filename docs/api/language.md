@@ -376,6 +376,33 @@ Constant/parameter initializers may refer to previously declared parameters,
 but validation rejects unknown `$` names and ordinary runtime symbols in a
 constant expression.
 
+### Invariants and optimization metadata
+
+`assert` declares a load-time invariant over model parameters. The condition
+must be boolean and may only depend on `$` parameters and parameter-only
+defined functions. A failed invariant rejects session creation with
+`CXPR_ERR_ASSERTION_FAILED`; the optional description becomes the diagnostic.
+
+```cxpr
+assert $fast > 0 { description = "Fast period must be positive" }
+assert $fast < $slow { description = "Fast period must precede slow" }
+```
+
+Optimization dimensions belong to parameter metadata. Use either a bounded
+range or an explicit value list. Objectives belong to bindings or outputs and
+declare one direction:
+
+```cxpr
+$fast = 12 { optimize { min = 5, max = 30, step = 1 } }
+$slow = 26 { optimize { values = [20, 30, 50] } }
+error = abs(target - prediction) { optimize { minimize } }
+out score { optimize { maximize } }
+```
+
+The compiler validates ranges, value lists, objective directions, and
+parameter-only invariants. Normal model evaluation enforces `assert`; candidate
+enumeration and objective ranking are performed through the optimizer API.
+
 ### Bindings
 
 An unprefixed assignment creates an immutable expression binding:
