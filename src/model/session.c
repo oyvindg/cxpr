@@ -497,12 +497,7 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         }
         session->output_count = program->output_count;
         for (size_t i = 0; i < program->output_count; ++i) {
-            session->outputs[i].name = cxpr_strdup(program->outputs[i]);
-            if (!session->outputs[i].name) {
-                cxpr_model_session_free(session);
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
-                return NULL;
-            }
+            session->outputs[i].name = program->outputs[i];
         }
     }
     if (program->history_spec_count > 0u) {
@@ -708,7 +703,6 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
 void cxpr_model_session_free(cxpr_model_session* session) {
     if (!session) return;
     cxpr_context_free(session->ctx);
-    for (size_t i = 0; i < session->output_count; ++i) free(session->outputs[i].name);
     free(session->outputs);
     for (size_t i = 0; i < session->history_count; ++i) {
         cxpr_model_history_entry_free(&session->histories[i]);

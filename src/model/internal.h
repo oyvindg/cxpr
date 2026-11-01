@@ -165,7 +165,7 @@ typedef struct {
 
 /** @brief Required history depth for one model expression target. */
 typedef struct {
-    char* name;
+    const char* name;
     double number_current;
     double number_previous;
     bool previous;
