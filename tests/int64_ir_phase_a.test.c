@@ -106,6 +106,9 @@ static void test_fuzz_regression_mixed_modulo_expression(void) {
               CXPR_OK, CXPR_IR_RESULT_NUMBER);
     assert(tree.type == CXPR_VALUE_NUMBER && ir.type == CXPR_VALUE_NUMBER);
     assert(tree.d == ir.d);
+
+    eval_both("\n9>=701^5i64 / cross_1", &tree, &ir,
+              CXPR_ERR_UNKNOWN_IDENTIFIER, CXPR_IR_RESULT_BOOL);
 }
 
 int main(void) {

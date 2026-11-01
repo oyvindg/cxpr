@@ -30,7 +30,7 @@ typedef struct {
 static bool cxpr_def_numeric_param_name(const char* name) {
     static const char* names[] = {
         "value", "values", "expression", "source", "left", "right",
-        "period", "periodx", "samples", "bars", "length", "offset",
+        "period", "samples", "length", "offset",
         "index", "window", "threshold", "limit", "start", "end",
         "center", "factor", "multiplier", "pct", "percent"
     };
@@ -38,7 +38,7 @@ static bool cxpr_def_numeric_param_name(const char* name) {
     for (size_t i = 0; i < CXPR_ARRAY_COUNT(names); ++i) {
         if (strcmp(name, names[i]) == 0) return true;
     }
-    return strstr(name, "_period") || strstr(name, "_bars") ||
+    return strstr(name, "_period") || strstr(name, "_samples") ||
            strstr(name, "_pct") || strstr(name, "_length");
 }
 

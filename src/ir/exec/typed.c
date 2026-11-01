@@ -530,6 +530,23 @@ cxpr_value cxpr_ir_exec_typed(const cxpr_ir_program* program, const cxpr_context
             case CXPR_OP_DIV:
             case CXPR_OP_MOD:
             case CXPR_OP_POW:
+                if ((instr->op == CXPR_OP_MOD || instr->op == CXPR_OP_POW) &&
+                    (a.type == CXPR_VALUE_NUMBER || a.type == CXPR_VALUE_INT64) &&
+                    (b.type == CXPR_VALUE_NUMBER || b.type == CXPR_VALUE_INT64)) {
+                    const double left = a.type == CXPR_VALUE_INT64 ? (double)a.i64 : a.d;
+                    const double right = b.type == CXPR_VALUE_INT64 ? (double)b.i64 : b.d;
+                    if (instr->op == CXPR_OP_MOD && right == 0.0) {
+                        if (err) {
+                            err->code = CXPR_ERR_DIVISION_BY_ZERO;
+                            err->message = "Modulo by zero";
+                        }
+                        return cxpr_num(NAN);
+                    }
+                    result = cxpr_num(instr->op == CXPR_OP_MOD
+                                          ? fmod(left, right)
+                                          : pow(left, right));
+                    break;
+                }
                 if (a.type != CXPR_VALUE_NUMBER || b.type != CXPR_VALUE_NUMBER) {
                     cxpr_valop vop;
                     bool mappable = true;

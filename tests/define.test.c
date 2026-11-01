@@ -347,7 +347,7 @@ static void test_infers_types_from_fields_lookbacks_and_builtin_roles(void) {
     cxpr_expr_parser* parser = cxpr_expr_parser_new();
     cxpr_expr_ast* bodies[3];
     const cxpr_expr_ast* body_refs[3];
-    const char* params[] = {"close", "high", "session", "bars", "peak_bars"};
+    const char* params[] = {"close", "high", "session", "samples", "peak_samples"};
     const char* fields[] = {"reclaim", "peak", "session_ready"};
     cxpr_func_entry* entry;
     cxpr_error err = {0};
@@ -356,9 +356,9 @@ static void test_infers_types_from_fields_lookbacks_and_builtin_roles(void) {
     bodies[0] = cxpr_expr_ast_parse(parser, "close[1] > 0", &err);
     assert(bodies[0] && err.code == CXPR_OK);
     bodies[1] = cxpr_expr_ast_parse(
-        parser, "max(window(period=peak_bars, expression=high))", &err);
+        parser, "max(window(period=peak_samples, expression=high))", &err);
     assert(bodies[1] && err.code == CXPR_OK);
-    bodies[2] = cxpr_expr_ast_parse(parser, "session.bar_index < bars", &err);
+    bodies[2] = cxpr_expr_ast_parse(parser, "session.bar_index < samples", &err);
     assert(bodies[2] && err.code == CXPR_OK);
     for (size_t i = 0; i < 3u; ++i) body_refs[i] = bodies[i];
 
