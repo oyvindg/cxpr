@@ -75,8 +75,7 @@ static void test_function_only_import(void) {
     imports = cxpr_model_import_bundle_root_imports(bundle, &import_count);
     assert(imports);
     assert(import_count == 1u);
-    program = cxpr_model_compile_with_imports(
-        root, NULL, imports, import_count, &err);
+    program = cxpr_model_compile_with_imports(root, NULL, imports, import_count, &err);
     assert(program);
 
     cxpr_model_compiled_free(program);
@@ -103,9 +102,52 @@ static void test_imported_function_preserves_resample(void) {
     assert(bundle);
     imports = cxpr_model_import_bundle_root_imports(bundle, &import_count);
     assert(imports && import_count == 1u);
-    program = cxpr_model_compile_with_imports(root, NULL, imports, import_count, &err);
+    program = cxpr_model_compile_with_imports(
+        root, NULL, imports, import_count, &err);
     if (!program) fprintf(stderr, "imported resample compile failed: %s\n", err.message);
     assert(program);
+    cxpr_model_compiled_free(program);
+    cxpr_model_import_bundle_free(bundle);
+    cxpr_model_free(root);
+}
+
+static void test_imported_structured_output_field(void) {
+    static const test_source sources[] = {
+        {"producer",
+         "model producer\n"
+         "in value\n"
+         "out metrics = {\n"
+         "  age = value + 1,\n"
+         "  active = value > 0,\n"
+         "  current = 55,\n"
+         "  weight = 0.8\n"
+         "}\n"},
+    };
+    const char root_source[] =
+        "model root\n"
+        "use producer\n"
+        "in value\n"
+        "result = producer(value)\n"
+        "out current = result.metrics.current\n"
+        "out active = result.metrics.active\n";
+    test_loader loader = {sources, 1u};
+    cxpr_error err = {0};
+    cxpr_model* root = cxpr_model_parse(root_source, &err);
+    cxpr_model_import_bundle* bundle;
+    const cxpr_model_import* imports;
+    cxpr_model_compiled* program;
+    size_t import_count = 0u;
+
+    assert(root);
+    bundle = cxpr_model_import_bundle_build("root", root, load_source, &loader, &err);
+    assert(bundle);
+    imports = cxpr_model_import_bundle_root_imports(bundle, &import_count);
+    assert(imports && import_count == 1u);
+    program = cxpr_model_compile_with_imports(
+        root, NULL, imports, import_count, &err);
+    if (!program) fprintf(stderr, "structured output compile failed: %s\n", err.message);
+    assert(program);
+
     cxpr_model_compiled_free(program);
     cxpr_model_import_bundle_free(bundle);
     cxpr_model_free(root);
@@ -154,6 +196,7 @@ static void test_duplicate_namespace_is_rejected(void) {
 int main(void) {
     test_function_only_import();
     test_imported_function_preserves_resample();
+    test_imported_structured_output_field();
     test_cycle_is_rejected();
     test_duplicate_namespace_is_rejected();
     return 0;

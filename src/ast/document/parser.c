@@ -1379,6 +1379,12 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
             node->expression = cxpr_doc_ast_parse_expr(
                 rest, span.start.line, span.start.column + 1u, parser->err);
             ok = node->text && node->expression;
+        } else if (cxpr_doc_ast_top_level_char((char*)rest, '=')) {
+            node = cxpr_doc_ast_node_new(CXPR_DOC_AST_OUTPUT_DECL, span);
+            if (!node) goto oom;
+            ok = cxpr_doc_ast_assign_name_expr(
+                node, parser, (char*)rest, false, start_offset + (size_t)(rest - statement),
+                span.start.line, span.start.column + 1u, parser->err);
         } else if (strchr(rest, '{') && *rest != '{') {
             char* open = strchr((char*)rest, '{');
             char* close = strrchr((char*)rest, '}');
@@ -1418,12 +1424,6 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
             ok = cxpr_doc_ast_parse_comma_or_line_decls(
                 parser, node, CXPR_DOC_AST_OUTPUT_DECL, open + 1,
                 start_offset + (size_t)(open + 1 - statement), false);
-        } else if (strchr(rest, '=')) {
-            node = cxpr_doc_ast_node_new(CXPR_DOC_AST_OUTPUT_DECL, span);
-            if (!node) goto oom;
-            ok = cxpr_doc_ast_assign_name_expr(
-                node, parser, (char*)rest, false, start_offset + (size_t)(rest - statement),
-                span.start.line, span.start.column + 1u, parser->err);
         } else {
             char* output_name;
             char* output_role;

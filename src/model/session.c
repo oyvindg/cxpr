@@ -1302,6 +1302,32 @@ static bool cxpr_model_session_tick_fused(const cxpr_model_compiled* program,
                 }
             }
         }
+        for (size_t i = 0u; i < program->fused_record_count; ++i) {
+            const cxpr_model_fused_record* record = &program->fused_records[i];
+            cxpr_value* values = (cxpr_value*)calloc(
+                record->field_count, sizeof(*values));
+            if (!values && record->field_count > 0u) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            for (size_t field = 0u; field < record->field_count; ++field) {
+                double value = session->fused_slots[record->field_slots[field]];
+                values[field] = record->field_kinds[field] == CXPR_MODEL_RESULT_BOOL
+                                    ? cxpr_bool(value != 0.0)
+                                    : record->field_kinds[field] == CXPR_MODEL_RESULT_INT64
+                                          ? cxpr_int64((int64_t)value)
+                                          : cxpr_num(value);
+            }
+            cxpr_struct_value* value = cxpr_struct_value_new(
+                (const char* const*)record->field_names, values, record->field_count);
+            free(values);
+            if (!value) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                return false;
+            }
+            cxpr_context_set_struct(session->ctx, record->name, value);
+            cxpr_struct_value_free(value);
+        }
     }
     if (!cxpr_model_session_refresh_outputs_fused(program, session)) {
         cxpr_model_session_refresh_outputs(program, session);

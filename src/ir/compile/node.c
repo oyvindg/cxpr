@@ -468,6 +468,24 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_FIELD_ACCESS:
         if (ast->data.field_access.base) {
             const cxpr_expr_ast* base = ast->data.field_access.base;
+            if (base->type == CXPR_NODE_IDENTIFIER) {
+                char local_field[512];
+                int written = snprintf(local_field, sizeof(local_field), "%s.%s",
+                                       base->data.identifier.name,
+                                       ast->data.field_access.field);
+                if (written > 0 && (size_t)written < sizeof(local_field)) {
+                    size_t local_index = cxpr_ir_local_index(
+                        local_field, local_names, local_count);
+                    if (local_index != (size_t)-1) {
+                        return cxpr_ir_emit(program,
+                                            (cxpr_ir_instr){
+                                                .op = CXPR_OP_LOAD_LOCAL,
+                                                .index = local_index,
+                                            },
+                                            err);
+                    }
+                }
+            }
             if (base->type == CXPR_NODE_FUNCTION_CALL && reg) {
                 cxpr_func_entry* entry =
                     cxpr_registry_find(reg, base->data.function_call.name);

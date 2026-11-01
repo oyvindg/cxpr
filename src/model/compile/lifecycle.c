@@ -64,6 +64,16 @@ void cxpr_model_fused_program_clear(cxpr_model_compiled* program) {
     }
     free(program->fused_outputs);
     free(program->fused_commits);
+    for (size_t i = 0u; i < program->fused_record_count; ++i) {
+        free(program->fused_records[i].name);
+        for (size_t field = 0u; field < program->fused_records[i].field_count; ++field) {
+            free(program->fused_records[i].field_names[field]);
+        }
+        free(program->fused_records[i].field_names);
+        free(program->fused_records[i].field_slots);
+        free(program->fused_records[i].field_kinds);
+    }
+    free(program->fused_records);
     program->has_fused_ir = false;
     program->has_fused_layout = false;
     program->fused_disabled_opcode = NULL;
@@ -78,6 +88,8 @@ void cxpr_model_fused_program_clear(cxpr_model_compiled* program) {
     program->fused_output_count = 0u;
     program->fused_commits = NULL;
     program->fused_commit_count = 0u;
+    program->fused_records = NULL;
+    program->fused_record_count = 0u;
 }
 
 bool cxpr_model_names_match(const char* a, const char* b) {

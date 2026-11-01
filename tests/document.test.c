@@ -374,6 +374,38 @@ static void test_output_role_sugar_lowers_to_metadata(void) {
     printf("  ✓ test_output_role_sugar_lowers_to_metadata\n");
 }
 
+static void test_structured_output_sugar_lowers_to_record(void) {
+    const char* source =
+        "model producer\n"
+        "in value\n"
+        "out metrics = {\n"
+        "  age = value + 1,\n"
+        "  active = value > 0,\n"
+        "  current = 55,\n"
+        "  weight = 0.8\n"
+        "}\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* syntax = cxpr_doc_ast_parse(
+        source, "producer.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* output;
+    cxpr_model* model;
+
+    assert(syntax != NULL && err.code == CXPR_OK);
+    output = cxpr_doc_ast_node_child(cxpr_doc_ast_root(syntax), 2u);
+    assert(cxpr_doc_ast_node_kind(output) == CXPR_DOC_AST_OUTPUT_DECL);
+    assert(strcmp(cxpr_doc_ast_node_name(output), "metrics") == 0);
+    assert(cxpr_doc_ast_node_expr(output) != NULL);
+    assert(cxpr_doc_ast_node_child_count(output) == 0u);
+
+    model = cxpr_model_parse(source, &err);
+    assert(model != NULL && err.code == CXPR_OK);
+    assert(cxpr_model_output_count(model) == 1u);
+    assert(strcmp(cxpr_model_output(model, 0u), "metrics") == 0);
+    cxpr_model_free(model);
+    cxpr_doc_ast_free(syntax);
+    printf("  ✓ test_structured_output_sugar_lowers_to_record\n");
+}
+
 static void test_document_ast_lowers_to_independent_document(void) {
     const char* source =
         "model strategy\n"
@@ -1061,6 +1093,7 @@ int main(void) {
     test_document_ast_exposes_compact_initial_state_update();
     test_parse_document_ast_preserves_block_shapes();
     test_output_role_sugar_lowers_to_metadata();
+    test_structured_output_sugar_lowers_to_record();
     test_document_ast_lowers_to_independent_document();
     test_document_ast_lowering_equivalent_block_and_shorthand_forms();
     test_document_ast_lowering_rejects_state_output_assignment();

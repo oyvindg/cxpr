@@ -157,6 +157,14 @@ typedef struct {
     size_t buffer_samples;
 } cxpr_model_compiled_binding;
 
+typedef struct {
+    char* name;
+    char** field_names;
+    size_t* field_slots;
+    cxpr_model_result_kind* field_kinds;
+    size_t field_count;
+} cxpr_model_fused_record;
+
 /** @brief Current and previous values tracked for one model output. */
 typedef struct {
     char* name;
@@ -259,6 +267,8 @@ struct cxpr_model_compiled {
     size_t fused_output_count;
     cxpr_model_state_commit* fused_commits;
     size_t fused_commit_count;
+    cxpr_model_fused_record* fused_records;
+    size_t fused_record_count;
     cxpr_model_compiled_binding* constants;
     size_t constant_count;
     cxpr_model_assert* asserts;

@@ -1775,21 +1775,38 @@ static void test_compile_model_backend_options(void) {
     printf("  ✓ test_compile_model_backend_options\n");
 }
 
-static void test_compile_model_ir_backend_rejects_unsupported_model(void) {
+static void test_compile_model_ir_backend_supports_record_output(void) {
     cxpr_error err = {0};
     cxpr_model_compile_options options = {CXPR_MODEL_BACKEND_IR, true, false};
     cxpr_model* model = parse_model_ok(
-        "model backend_ir_unsupported\n"
+        "model backend_ir_record\n"
         "in { close }\n"
-        "point = { x = close, y = close + 1 }\n"
-        "out point\n");
+        "out point = { x = close, y = x + 1, positive = y > 0 }\n");
     cxpr_model_compiled* program = cxpr_model_compile_with_options(model, NULL, &options, &err);
+    cxpr_model_session* session;
+    cxpr_context* context;
+    cxpr_value y;
+    cxpr_value positive;
+    bool found = false;
 
-    assert(program == NULL);
-    assert(err.code != CXPR_OK);
+    assert(program != NULL);
+    assert(cxpr_model_compiled_backend(program) == CXPR_MODEL_BACKEND_IR);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    context = cxpr_model_session_context(session);
+    cxpr_context_set(context, "close", 4.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    y = cxpr_context_get_field(context, "point", "y", &found);
+    assert(found && y.type == CXPR_VALUE_NUMBER && y.d == 5.0);
+    cxpr_value_free(&y);
+    positive = cxpr_context_get_field(context, "point", "positive", &found);
+    assert(found && positive.type == CXPR_VALUE_BOOL && positive.b);
+    cxpr_value_free(&positive);
 
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
-    printf("  ✓ test_compile_model_ir_backend_rejects_unsupported_model\n");
+    printf("  ✓ test_compile_model_ir_backend_supports_record_output\n");
 }
 
 static void test_compile_series_aware_defined_function(void) {
@@ -4908,7 +4925,7 @@ int main(void) {
     test_compile_and_eval_struct_param_and_shorthand_record();
     test_compile_model_backend_options();
     test_compile_series_aware_defined_function();
-    test_compile_model_ir_backend_rejects_unsupported_model();
+    test_compile_model_ir_backend_supports_record_output();
     test_compile_model_c_backend_rejects_unsupported_model();
     test_compile_model_defined_function_without_host_registration();
     test_compile_rejects_known_value_type_mismatch();
