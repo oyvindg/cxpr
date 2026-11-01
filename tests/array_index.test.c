@@ -293,6 +293,13 @@ static void expect_compiled_index_error(const char* source, cxpr_error_code expe
     cxpr_value_free(&result);
 }
 
+static void expect_compiled_error(const char* source, cxpr_error_code expected) {
+    cxpr_error error = {0};
+    cxpr_value result = eval_compiled(source, NULL, &error);
+    assert(error.code == expected);
+    cxpr_value_free(&result);
+}
+
 int main(void) {
     test_array_fixture_parses();
     test_literal_and_nested_array_index();
@@ -310,6 +317,8 @@ int main(void) {
     expect_compiled_index_error("missing[5]", CXPR_ERR_UNKNOWN_IDENTIFIER);
     expect_index_error("__cxprow_mea[3]", CXPR_ERR_UNKNOWN_IDENTIFIER);
     expect_compiled_index_error("__cxprow_mea[3]", CXPR_ERR_UNKNOWN_IDENTIFIER);
+    expect_index_error("90071[4] + 2i64", CXPR_ERR_TYPE_MISMATCH);
+    expect_compiled_error("90071[4] + 2i64", CXPR_ERR_TYPE_MISMATCH);
     expect_dynamic_index_error(NAN, CXPR_ERR_INVALID_INDEX,
                                "Array index must be a finite non-negative integer");
     expect_dynamic_index_error(INFINITY, CXPR_ERR_INVALID_INDEX,

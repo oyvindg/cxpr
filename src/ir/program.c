@@ -191,6 +191,7 @@ bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry*
 
     case CXPR_NODE_INDEX:
     {
+        const cxpr_expr_ast* base = ast->data.index.target;
         const cxpr_expr_ast* target =
             cxpr_ir_constant_array_value_ast(ast->data.index.target, reg);
         cxpr_value selected;
@@ -210,6 +211,11 @@ bool cxpr_ir_constant_typed_value(const cxpr_expr_ast* ast, const cxpr_registry*
             return true;
         }
         if (!cxpr_lookback_literal_offset(ast->data.index.index, NULL, NULL, NULL)) {
+            return false;
+        }
+        while (base && base->type == CXPR_NODE_INDEX) base = base->data.index.target;
+        if (base && (base->type == CXPR_NODE_NUMBER || base->type == CXPR_NODE_INT64 ||
+                     base->type == CXPR_NODE_BOOL || base->type == CXPR_NODE_STRING)) {
             return false;
         }
         return cxpr_ir_constant_typed_value(ast->data.index.target, reg, out);

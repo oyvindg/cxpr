@@ -24,6 +24,15 @@ static bool cxpr_ir_index_has_literal_array_base(const cxpr_expr_ast* target) {
     return target && target->type == CXPR_NODE_ARRAY;
 }
 
+static bool cxpr_ir_index_has_scalar_literal_base(const cxpr_expr_ast* target) {
+    while (target && target->type == CXPR_NODE_INDEX) {
+        target = target->data.index.target;
+    }
+    if (!target) return false;
+    return target->type == CXPR_NODE_NUMBER || target->type == CXPR_NODE_INT64 ||
+           target->type == CXPR_NODE_BOOL || target->type == CXPR_NODE_STRING;
+}
+
 static cxpr_ir_lookback_payload* cxpr_ir_lookback_payload_new(
     const cxpr_expr_ast* target, const cxpr_registry* reg) {
     cxpr_ir_lookback_payload* payload =
@@ -518,7 +527,8 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             }
             return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_INDEX }, err);
         }
-        if (cxpr_lookback_literal_offset(
+        if (!cxpr_ir_index_has_scalar_literal_base(target) &&
+            cxpr_lookback_literal_offset(
                 ast->data.index.index, &offset, NULL, NULL)) {
             cxpr_ir_lookback_payload* payload;
             while (target && target->type == CXPR_NODE_INDEX) {
