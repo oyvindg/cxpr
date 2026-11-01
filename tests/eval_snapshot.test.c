@@ -314,7 +314,7 @@ static void test_snapshot_display_includes_resolved_and_final_value(void) {
     cxpr_expr_ast_free(ast);
 }
 
-static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
+static void test_snapshot_trend_call_omits_synthetic_history_samples(void) {
     cxpr_expr_ast* ast = parse_required("falling(close, 2)");
     cxpr_context* ctx = cxpr_context_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -323,7 +323,7 @@ static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
     int saw_value_close = 0;
     int saw_samples = 0;
     int saw_sample0 = 0;
-    int saw_sample1_under_call = 0;
+    int saw_synthetic_sample = 0;
     size_t function_id = 0u;
 
     assert(ctx);
@@ -348,20 +348,15 @@ static void test_snapshot_trend_call_folds_function_and_current_sample(void) {
             saw_samples = 1;
         } else if (node->role && strcmp(node->role, "sample[0]") == 0) {
             saw_sample0 = 1;
-        } else if (node->role && strcmp(node->role, "sample[1]") == 0) {
-            assert(node->source);
-            assert(strcmp(node->source, "close[1]") == 0);
-            assert(strncmp(node->display_label, "sample[1]", 9u) != 0);
-            assert(node->has_parent);
-            assert(node->parent_id == function_id);
-            saw_sample1_under_call = 1;
+        } else if (node->role && strncmp(node->role, "sample[", 7u) == 0) {
+            saw_synthetic_sample = 1;
         }
     }
 
     assert(saw_value_close);
     assert(saw_samples);
     assert(!saw_sample0);
-    assert(saw_sample1_under_call);
+    assert(!saw_synthetic_sample);
 
     cxpr_eval_snapshot_free(&snapshot);
     cxpr_registry_free(reg);
@@ -1175,7 +1170,7 @@ int main(void) {
     test_snapshot_labels_rsi_positional_arg0();
     test_snapshot_labels_registered_function_arg_name();
     test_snapshot_display_includes_resolved_and_final_value();
-    test_snapshot_trend_call_folds_function_and_current_sample();
+    test_snapshot_trend_call_omits_synthetic_history_samples();
     test_snapshot_positional_identifier_arg_displays_source();
     test_snapshot_named_function_args_attach_to_call_node();
     test_context_free_function_snapshot_keeps_call_and_args_separate();

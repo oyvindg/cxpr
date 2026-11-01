@@ -509,14 +509,6 @@ static bool cxpr_snapshot_relabel_arg_node(cxpr_snapshot_builder* b,
     return true;
 }
 
-static bool cxpr_snapshot_trend_function(const char* name) {
-    return name &&
-           (strcmp(name, "falling") == 0 ||
-            strcmp(name, "rising") == 0 ||
-            strcmp(name, "net_up") == 0 ||
-            strcmp(name, "net_down") == 0);
-}
-
 static void cxpr_snapshot_refresh_display_label(cxpr_snapshot_node* node) {
     char* display_label = cxpr_snapshot_display_label_for_node(node);
     if (!display_label) return;
@@ -650,68 +642,6 @@ static bool cxpr_snapshot_eval_node(cxpr_snapshot_builder* b,
      */
     if (cxpr_expr_ast_kind_of(ast) != CXPR_NODE_STRING) cxpr_value_free(&value);
     return true;
-}
-
-static void cxpr_snapshot_add_timeseries_samples(cxpr_snapshot_builder* b,
-                                                 const cxpr_expr_ast* ast,
-                                                 size_t function_parent_id,
-                                                 int active) {
-    const cxpr_expr_ast* value_ast;
-    const cxpr_expr_ast* samples_ast;
-    cxpr_value samples_value;
-    cxpr_error local_err = {0};
-    long long sample_count;
-    char* value_source;
-
-    if (!active || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_FUNCTION_CALL) return;
-    if (!cxpr_snapshot_trend_function(cxpr_expr_ast_call_name(ast))) return;
-    if (cxpr_expr_ast_call_arg_count(ast) < 2u) return;
-
-    value_ast = cxpr_expr_ast_call_arg(ast, 0u);
-    samples_ast = cxpr_expr_ast_call_arg(ast, 1u);
-    if (!cxpr_eval_ast(samples_ast, b->ctx, b->reg, &samples_value, &local_err)) return;
-    if (samples_value.type != CXPR_VALUE_NUMBER || !isfinite(samples_value.d)) {
-        cxpr_value_free(&samples_value);
-        return;
-    }
-    sample_count = (long long)floor(samples_value.d);
-    cxpr_value_free(&samples_value);
-    if (sample_count < 1) return;
-    if (sample_count > 8) sample_count = 8;
-
-    value_source = cxpr_expr_ast_to_string(value_ast);
-    if (!value_source) {
-        b->failed = 1;
-        return;
-    }
-
-    for (long long i = 1; i < sample_count; ++i) {
-        char role[32];
-        char source[512];
-        cxpr_snapshot_node* sample_node;
-        cxpr_value value;
-        cxpr_error value_err = {0};
-
-        snprintf(role, sizeof(role), "sample[%lld]", i);
-        snprintf(source, sizeof(source), "%s[%lld]", value_source, i);
-
-        sample_node = cxpr_snapshot_add_node(b, value_ast, function_parent_id, 1, role, 1, NULL);
-        if (!sample_node) break;
-        cxpr_snapshot_set_string(&sample_node->label, cxpr_snapshot_strdup(source));
-        cxpr_snapshot_set_string(&sample_node->source, cxpr_snapshot_strdup(source));
-        if (cxpr_eval_ast_at_offset(value_ast, (double)i, b->ctx, b->reg, &value, &value_err)) {
-            (void)cxpr_snapshot_set_value(sample_node, &value);
-            cxpr_value_free(&value);
-        } else {
-            sample_node->state = b->ctx ? CXPR_SNAPSHOT_STATE_ERROR : CXPR_SNAPSHOT_STATE_UNKNOWN;
-            cxpr_snapshot_set_string(&sample_node->resolved, b->ctx
-                ? cxpr_snapshot_strdup(value_err.message ? value_err.message : "error")
-                : cxpr_snapshot_strdup(source));
-            cxpr_snapshot_refresh_display_label(sample_node);
-        }
-    }
-
-    free(value_source);
 }
 
 static void cxpr_snapshot_add_producer_field_node(cxpr_snapshot_builder* b,
@@ -968,9 +898,6 @@ static size_t cxpr_snapshot_visit_children(cxpr_snapshot_builder* b,
                     (void)cxpr_snapshot_relabel_arg_node(b, &b->snapshot->nodes[child], role);
                 }
                 if (first_child == (size_t)-1) first_child = child;
-            }
-            if (first_child != (size_t)-1) {
-                cxpr_snapshot_add_timeseries_samples(b, ast, parent_id, active);
             }
             break;
         case CXPR_NODE_PRODUCER_ACCESS:
