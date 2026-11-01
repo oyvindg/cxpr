@@ -110,11 +110,54 @@ static void test_long_unknown_field_has_eval_parity(void) {
     cxpr_expr_parser_free(p);
 }
 
+static void test_known_struct_arithmetic_lowers_selected_fields(void) {
+    cxpr_expr_parser* p = cxpr_expr_parser_new();
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
+    const char* fields[] = {"x", "y", "z"};
+    cxpr_value values[] = {cxpr_num(2.0), cxpr_num(4.0), cxpr_num(8.0)};
+    cxpr_struct_value* vector = cxpr_struct_value_new(fields, values, 3u);
+    cxpr_value result = {0};
+    size_t named_field_loads = 0u;
+
+    assert(p && reg && ctx && vector);
+    ast = cxpr_expr_ast_parse(
+        p, "(vector * 2).x + (vector * 2).y + (vector * 2).z", &err);
+    assert(ast);
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program);
+    assert(cxpr_expr_compiled_ir_result_kind(program) == CXPR_IR_RESULT_NUMBER);
+    for (size_t i = 0u; i < cxpr_expr_compiled_ir_count(program); ++i) {
+        cxpr_ir_instruction instruction;
+        assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
+        assert(instruction.op != CXPR_IR_OP_GET_FIELD);
+        assert(instruction.op != CXPR_IR_OP_CALL_AST);
+        named_field_loads += instruction.op == CXPR_IR_OP_LOAD_NAMED_FIELD;
+    }
+    assert(named_field_loads == 3u);
+
+    cxpr_context_set_struct(ctx, "vector", vector);
+    assert(cxpr_expr_compiled_eval(program, ctx, reg, &result, &err));
+    assert(result.type == CXPR_VALUE_NUMBER && result.d == 28.0);
+
+    cxpr_value_free(&result);
+    cxpr_struct_value_free(vector);
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+    cxpr_expr_parser_free(p);
+}
+
 int main(void) {
     test_ir_compile_with_locals_and_fast_kind();
     test_ir_compile_array_literal_builds_array_ir();
     test_ir_compile_rejects_wrong_builtin_arity();
     test_long_unknown_field_has_eval_parity();
+    test_known_struct_arithmetic_lowers_selected_fields();
     printf("  \xE2\x9C\x93 ir_compile\n");
     return 0;
 }

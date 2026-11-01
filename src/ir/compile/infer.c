@@ -5,6 +5,34 @@
 
 #include "internal.h"
 
+static bool cxpr_ir_infer_numeric_selected_field(const cxpr_expr_ast* ast,
+                                                 const char* field) {
+    if (!ast || !field) return false;
+    if (ast->type == CXPR_NODE_IDENTIFIER) return true;
+    if (ast->type == CXPR_NODE_RECORD) {
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            if (strcmp(ast->data.record.field_names[i], field) == 0) return true;
+        }
+        return false;
+    }
+    if (ast->type != CXPR_NODE_BINARY_OP ||
+        (ast->data.binary_op.op != CXPR_TOK_PLUS &&
+         ast->data.binary_op.op != CXPR_TOK_MINUS &&
+         ast->data.binary_op.op != CXPR_TOK_STAR &&
+         ast->data.binary_op.op != CXPR_TOK_SLASH)) {
+        return false;
+    }
+    const cxpr_expr_ast* left = ast->data.binary_op.left;
+    const cxpr_expr_ast* right = ast->data.binary_op.right;
+    const bool left_literal = left && (left->type == CXPR_NODE_NUMBER ||
+                                       left->type == CXPR_NODE_INT64);
+    const bool right_literal = right && (right->type == CXPR_NODE_NUMBER ||
+                                         right->type == CXPR_NODE_INT64);
+    if (left_literal && right_literal) return false;
+    return (left_literal || cxpr_ir_infer_numeric_selected_field(left, field)) &&
+           (right_literal || cxpr_ir_infer_numeric_selected_field(right, field));
+}
+
 unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxpr_registry* reg,
                                              size_t depth) {
     unsigned char left_kind;
@@ -27,6 +55,10 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxp
         return CXPR_IR_RESULT_BOOL;
 
     case CXPR_NODE_FIELD_ACCESS:
+        return ast->data.field_access.base &&
+                       cxpr_ir_infer_numeric_selected_field(ast->data.field_access.base,
+                                                            ast->data.field_access.field)
+                   ? CXPR_IR_RESULT_DOUBLE : CXPR_IR_RESULT_UNKNOWN;
     case CXPR_NODE_CHAIN_ACCESS:
     case CXPR_NODE_PRODUCER_ACCESS:
     case CXPR_NODE_INDEX:

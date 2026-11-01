@@ -212,6 +212,111 @@ static bool cxpr_ir_defined_call_can_inline(const cxpr_func_entry* entry,
     return true;
 }
 
+static bool cxpr_ir_emit_field_binary_op(int op, cxpr_ir_program* program,
+                                         cxpr_error* err) {
+    switch (op) {
+    case CXPR_TOK_PLUS:
+        return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_ADD }, err);
+    case CXPR_TOK_MINUS:
+        return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_SUB }, err);
+    case CXPR_TOK_STAR:
+        return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_MUL }, err);
+    case CXPR_TOK_SLASH:
+        return cxpr_ir_emit(program, (cxpr_ir_instr){ .op = CXPR_OP_DIV }, err);
+    default:
+        return false;
+    }
+}
+
+static bool cxpr_ir_is_literal_scalar(const cxpr_expr_ast* ast) {
+    return ast && (ast->type == CXPR_NODE_NUMBER || ast->type == CXPR_NODE_INT64);
+}
+
+static bool cxpr_ir_can_compile_selected_field(const cxpr_expr_ast* ast,
+                                               const char* field) {
+    if (!ast || !field) return false;
+    if (ast->type == CXPR_NODE_IDENTIFIER) return true;
+    if (ast->type == CXPR_NODE_RECORD) {
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            if (strcmp(ast->data.record.field_names[i], field) == 0) return true;
+        }
+        return false;
+    }
+    if (ast->type == CXPR_NODE_BINARY_OP &&
+        (ast->data.binary_op.op == CXPR_TOK_PLUS ||
+         ast->data.binary_op.op == CXPR_TOK_MINUS ||
+         ast->data.binary_op.op == CXPR_TOK_STAR ||
+         ast->data.binary_op.op == CXPR_TOK_SLASH)) {
+        const cxpr_expr_ast* left = ast->data.binary_op.left;
+        const cxpr_expr_ast* right = ast->data.binary_op.right;
+        const bool left_scalar = cxpr_ir_is_literal_scalar(left);
+        const bool right_scalar = cxpr_ir_is_literal_scalar(right);
+        if (left_scalar == right_scalar && left_scalar) return false;
+        return (left_scalar || cxpr_ir_can_compile_selected_field(left, field)) &&
+               (right_scalar || cxpr_ir_can_compile_selected_field(right, field));
+    }
+    return false;
+}
+
+static bool cxpr_ir_compile_selected_field(const cxpr_expr_ast* ast, const char* field,
+                                           cxpr_ir_program* program,
+                                           const cxpr_registry* reg,
+                                           const char* const* local_names,
+                                           size_t local_count,
+                                           const cxpr_ir_subst_frame* subst,
+                                           size_t inline_depth,
+                                           cxpr_error* err) {
+    if (!ast || !field) return false;
+
+    if (ast->type == CXPR_NODE_IDENTIFIER) {
+        return cxpr_ir_emit(program,
+                            (cxpr_ir_instr){
+                                .op = CXPR_OP_LOAD_NAMED_FIELD,
+                                .name = ast->data.identifier.name,
+                                .aux_name = field,
+                            },
+                            err);
+    }
+
+    if (ast->type == CXPR_NODE_RECORD) {
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            if (strcmp(ast->data.record.field_names[i], field) == 0) {
+                return cxpr_ir_compile_node(ast->data.record.field_values[i], program, reg,
+                                            local_names, local_count, subst, inline_depth, err);
+            }
+        }
+        return false;
+    }
+
+    if (ast->type == CXPR_NODE_BINARY_OP &&
+        (ast->data.binary_op.op == CXPR_TOK_PLUS ||
+         ast->data.binary_op.op == CXPR_TOK_MINUS ||
+         ast->data.binary_op.op == CXPR_TOK_STAR ||
+         ast->data.binary_op.op == CXPR_TOK_SLASH)) {
+        const cxpr_expr_ast* left = ast->data.binary_op.left;
+        const cxpr_expr_ast* right = ast->data.binary_op.right;
+        const bool left_scalar = cxpr_ir_is_literal_scalar(left);
+        const bool right_scalar = cxpr_ir_is_literal_scalar(right);
+
+        if (left_scalar == right_scalar && left_scalar) return false;
+        if (!(left_scalar ? cxpr_ir_compile_node(left, program, reg, local_names, local_count,
+                                                 subst, inline_depth, err)
+                          : cxpr_ir_compile_selected_field(left, field, program, reg, local_names,
+                                                           local_count, subst, inline_depth, err))) {
+            return false;
+        }
+        if (!(right_scalar ? cxpr_ir_compile_node(right, program, reg, local_names, local_count,
+                                                   subst, inline_depth, err)
+                           : cxpr_ir_compile_selected_field(right, field, program, reg, local_names,
+                                                            local_count, subst, inline_depth, err))) {
+            return false;
+        }
+        return cxpr_ir_emit_field_binary_op(ast->data.binary_op.op, program, err);
+    }
+
+    return false;
+}
+
 bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                           const cxpr_registry* reg,
                           const char* const* local_names, size_t local_count,
@@ -366,6 +471,11 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                         },
                                         err);
                 }
+            }
+            if (cxpr_ir_can_compile_selected_field(base, ast->data.field_access.field)) {
+                return cxpr_ir_compile_selected_field(base, ast->data.field_access.field,
+                                                      program, reg, local_names, local_count,
+                                                      subst, inline_depth, err);
             }
             if (!cxpr_ir_compile_node(ast->data.field_access.base, program, reg,
                                       local_names, local_count, subst, inline_depth, err)) {

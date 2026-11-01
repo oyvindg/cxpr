@@ -195,7 +195,7 @@ double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
         [CXPR_OP_LOAD_PARAM_SQUARE] = &&op_load_param_square,
         [CXPR_OP_LOAD_FIELD] = &&op_unsupported,
         [CXPR_OP_LOAD_FIELD_SQUARE] = &&op_unsupported,
-        [CXPR_OP_LOAD_NAMED_FIELD] = &&op_unsupported,
+        [CXPR_OP_LOAD_NAMED_FIELD] = &&op_load_named_field,
         [CXPR_OP_LOAD_CHAIN] = &&op_unsupported,
         [CXPR_OP_ADD] = &&op_add,
         [CXPR_OP_SUB] = &&op_sub,
@@ -319,6 +319,18 @@ op_load_var_square: {
         if (!found) return cxpr_ir_make_not_found(err, cxpr_ir_unknown_identifier_message(instr)).d;
     }
     stack[sp++] = value * value;
+    CXPR_FAST_NEXT();
+}
+op_load_named_field: {
+    cxpr_value field_value = cxpr_ir_load_named_field_value(ctx, instr, err);
+    if (err && err->code != CXPR_OK) return NAN;
+    if (field_value.type != CXPR_VALUE_NUMBER) {
+        cxpr_value_free(&field_value);
+        return cxpr_ir_runtime_error(err, "Struct field did not evaluate to double").d;
+    }
+    value = field_value.d;
+    cxpr_value_free(&field_value);
+    stack[sp++] = value;
     CXPR_FAST_NEXT();
 }
 op_load_param: {
