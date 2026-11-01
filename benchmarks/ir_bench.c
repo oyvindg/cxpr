@@ -140,6 +140,31 @@ typedef struct {
 
 static volatile double g_sink = 0.0;
 
+static size_t ir_fallback_count(const cxpr_expr_compiled* program) {
+    const size_t count = cxpr_expr_compiled_ir_count(program);
+    size_t fallbacks = 0u;
+
+    for (size_t i = 0; i < count; ++i) {
+        cxpr_ir_instruction instruction;
+        if (cxpr_expr_compiled_ir_instruction(program, i, &instruction) &&
+            instruction.op == CXPR_IR_OP_CALL_AST) {
+            ++fallbacks;
+        }
+    }
+    return fallbacks;
+}
+
+static void print_ir_metadata(const cxpr_expr_compiled* program, long long compile_ns) {
+    const cxpr_ir_result_kind kind = cxpr_expr_compiled_ir_result_kind(program);
+    const char* kind_name = "unknown/typed";
+    if (kind == CXPR_IR_RESULT_NUMBER) kind_name = "number-fast";
+    else if (kind == CXPR_IR_RESULT_BOOL) kind_name = "bool-fast";
+    else if (kind == CXPR_IR_RESULT_INT64) kind_name = "int64-fast";
+    printf("  IR metadata: compile_ns=%lld instructions=%zu ast_fallbacks=%zu executor=%s\n",
+           compile_ns, cxpr_expr_compiled_ir_count(program), ir_fallback_count(program),
+           kind_name);
+}
+
 #ifndef CXPR_BENCH_FIXTURE_DIR
 #error "CXPR_BENCH_FIXTURE_DIR must name the benchmark fixture directory"
 #endif
@@ -1530,7 +1555,7 @@ static void validate_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_expr_compile
 
 static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                       const bench_case* c) {
-    long long ast_start, ast_end, ir_start, ir_end;
+    long long ast_start, ast_end, ir_start, ir_end, compile_start, compile_end;
     double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
     bench_model_source source = load_bench_model(c->fixture);
@@ -1539,7 +1564,9 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
 
     (void)parser;
 
+    compile_start = now_ns();
     program = cxpr_expr_compile(ast, reg, &err);
+    compile_end = now_ns();
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
         free_bench_model(&source);
@@ -1635,13 +1662,14 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
                ir_ns / c_ns);
     }
 
+    print_ir_metadata(program, compile_end - compile_start);
     cxpr_expr_compiled_free(program);
     free_bench_model(&source);
 }
 
 static void bench_one_typed(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                             const typed_bench_case* c) {
-    long long ast_start, ast_end, ir_start, ir_end;
+    long long ast_start, ast_end, ir_start, ir_end, compile_start, compile_end;
     double ast_total, ir_total, c_total = 0.0, ast_ns, ir_ns, c_ns = NAN;
     cxpr_error err = {0};
     bench_model_source source = load_bench_model(c->fixture);
@@ -1650,7 +1678,9 @@ static void bench_one_typed(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_re
 
     (void)parser;
 
+    compile_start = now_ns();
     program = cxpr_expr_compile(ast, reg, &err);
+    compile_end = now_ns();
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
         free_bench_model(&source);
@@ -1706,6 +1736,7 @@ static void bench_one_typed(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_re
                "-");
     }
 
+    print_ir_metadata(program, compile_end - compile_start);
     cxpr_expr_compiled_free(program);
     free_bench_model(&source);
 }
@@ -1789,7 +1820,7 @@ static void validate_lookback_ast_vs_ir(const cxpr_expr_ast* ast, const cxpr_exp
 
 static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry* reg,
                                const lookback_bench_case* c) {
-    long long ast_start, ast_end, ir_start, ir_end;
+    long long ast_start, ast_end, ir_start, ir_end, compile_start, compile_end;
     double ast_total, ir_total, c_total, ast_ns, ir_ns, c_ns;
     cxpr_error err = {0};
     bench_model_source source = load_bench_model(c->fixture);
@@ -1797,7 +1828,9 @@ static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr
     cxpr_expr_compiled* program;
 
     (void)parser;
+    compile_start = now_ns();
     program = cxpr_expr_compile(ast, reg, &err);
+    compile_end = now_ns();
     if (!program) {
         fprintf(stderr, "Compile failed for lookback '%s': %s\n", c->name, err.message);
         free_bench_model(&source);
@@ -1847,6 +1880,7 @@ static void bench_one_lookback(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr
                ir_ns / c_ns);
     }
 
+    print_ir_metadata(program, compile_end - compile_start);
     cxpr_expr_compiled_free(program);
     free_bench_model(&source);
 }
@@ -2138,7 +2172,8 @@ static int print_generated_c(const bench_case* cases, size_t case_count,
 }
 
 static void print_usage(const char* argv0) {
-    printf("usage: %s [--print-c [case]]\n", argv0);
+    printf("usage: %s [--case NAME] [--print-c [case]]\n", argv0);
+    printf("  --case NAME        run one measured benchmark case\n");
     printf("  --print-c [case]   print generated .cxpr C include files and exit\n");
 }
 
@@ -2183,14 +2218,23 @@ int main(int argc, char** argv) {
     cxpr_expr_parser* parser;
     cxpr_context* ctx;
     cxpr_registry* reg;
+    const char* case_filter = NULL;
+    bool case_matched = false;
 
-    if (argc > 3 || (argc >= 2 && strcmp(argv[1], "--print-c") != 0 && strcmp(argv[1], "--help") != 0)) {
-        print_usage(argv[0]);
-        return 2;
-    }
     if (argc >= 2 && strcmp(argv[1], "--help") == 0) {
         print_usage(argv[0]);
         return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "--case") == 0) {
+        if (argc != 3) {
+            print_usage(argv[0]);
+            return 2;
+        }
+        case_filter = argv[2];
+    } else if (argc > 3 ||
+               (argc >= 2 && strcmp(argv[1], "--print-c") != 0)) {
+        print_usage(argv[0]);
+        return 2;
     }
     if (argc >= 2 && strcmp(argv[1], "--print-c") == 0) {
         return print_generated_c(cases, case_count, typed_cases, typed_case_count,
@@ -2369,31 +2413,47 @@ int main(int argc, char** argv) {
 
     print_bench_header("Scalar");
     for (i = 0; i < case_count; ++i) {
+        if (case_filter && strcmp(case_filter, cases[i].name) != 0) continue;
+        case_matched = true;
         bench_one(parser, ctx, reg, &cases[i]);
     }
 
     print_bench_header("Typed Struct");
     for (i = 0; i < typed_case_count; ++i) {
+        if (case_filter && strcmp(case_filter, typed_cases[i].name) != 0) continue;
+        case_matched = true;
         bench_one_typed(parser, ctx, reg, &typed_cases[i]);
     }
 
     print_bench_header("Lookback");
     for (i = 0; i < lookback_case_count; ++i) {
+        if (case_filter && strcmp(case_filter, lookback_cases[i].name) != 0) continue;
+        case_matched = true;
         bench_one_lookback(parser, ctx, reg, &lookback_cases[i]);
     }
 
-    print_bench_header("IR-only");
-    bench_slot_churn(parser, ctx, reg);
+    if (case_filter && !case_matched) {
+        fprintf(stderr, "Unknown benchmark case '%s'\n", case_filter);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_expr_parser_free(parser);
+        return 2;
+    }
 
-    printf("\nContext Update Paths\n");
-    bench_context_update_paths(ctx);
+    if (!case_filter) {
+        print_bench_header("IR-only");
+        bench_slot_churn(parser, ctx, reg);
 
-    printf("\nParam Update Paths\n");
-    bench_param_update_paths(ctx);
+        printf("\nContext Update Paths\n");
+        bench_context_update_paths(ctx);
 
-    printf("\nOverlay Paths\n");
-    bench_context_overlay_paths();
-    bench_defined_overlay_prefix(parser, reg);
+        printf("\nParam Update Paths\n");
+        bench_param_update_paths(ctx);
+
+        printf("\nOverlay Paths\n");
+        bench_context_overlay_paths();
+        bench_defined_overlay_prefix(parser, reg);
+    }
 
     printf("sink=%.6f\n", g_sink);
 
