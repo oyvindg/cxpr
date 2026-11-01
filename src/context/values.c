@@ -329,13 +329,16 @@ void cxpr_context_set_array(cxpr_context* ctx, const cxpr_context_entry* entries
 
     if (!ctx || !entries) return;
 
-    for (i = 0; entries[i].name; ++i) {
-        const char* name = entries[i].name;
-        cxpr_bool_map_remove(&ctx->bools, name);
-        cxpr_int64_map_remove(&ctx->int64s, name);
-        cxpr_string_map_remove(&ctx->strings, name);
-        cxpr_context_remove_array(&ctx->arrays, name);
-        cxpr_context_remove_struct(&ctx->structs, name);
+    if (ctx->bools.count || ctx->int64s.count || ctx->strings.count ||
+        ctx->arrays.count || ctx->structs.count) {
+        for (i = 0; entries[i].name; ++i) {
+            const char* name = entries[i].name;
+            cxpr_bool_map_remove(&ctx->bools, name);
+            cxpr_int64_map_remove(&ctx->int64s, name);
+            cxpr_string_map_remove(&ctx->strings, name);
+            cxpr_context_remove_array(&ctx->arrays, name);
+            cxpr_context_remove_struct(&ctx->structs, name);
+        }
     }
     cxpr_context_clear_entry_cache(ctx->variable_cache);
     cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);
@@ -466,13 +469,17 @@ void cxpr_context_set_param_array(cxpr_context* ctx, const cxpr_context_entry* e
 
     if (!ctx || !entries) return;
 
-    for (i = 0; entries[i].name; ++i) {
-        const char* name = entries[i].name;
-        cxpr_bool_map_remove(&ctx->bool_params, name);
-        cxpr_int64_map_remove(&ctx->int64_params, name);
-        cxpr_string_map_remove(&ctx->string_params, name);
-        cxpr_context_remove_array(&ctx->array_params, name);
-        cxpr_context_remove_struct(&ctx->structs, name);
+    if (ctx->bool_params.count || ctx->int64_params.count ||
+        ctx->string_params.count || ctx->array_params.count ||
+        ctx->structs.count) {
+        for (i = 0; entries[i].name; ++i) {
+            const char* name = entries[i].name;
+            cxpr_bool_map_remove(&ctx->bool_params, name);
+            cxpr_int64_map_remove(&ctx->int64_params, name);
+            cxpr_string_map_remove(&ctx->string_params, name);
+            cxpr_context_remove_array(&ctx->array_params, name);
+            cxpr_context_remove_struct(&ctx->structs, name);
+        }
     }
     cxpr_context_clear_entry_cache(ctx->param_cache);
     cxpr_context_clear_entry_cache(ctx->param_ptr_cache);

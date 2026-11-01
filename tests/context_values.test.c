@@ -79,6 +79,30 @@ static void test_type_replacement_matrix(void) {
     }
 }
 
+static void test_numeric_batch_replaces_typed_values(void) {
+    const cxpr_value_type types[] = {CXPR_VALUE_BOOL, CXPR_VALUE_INT64, CXPR_VALUE_STRING,
+                                     CXPR_VALUE_ARRAY, CXPR_VALUE_STRUCT};
+    const cxpr_context_entry entries[] = {{"value", 7.5}, {NULL, 0.0}};
+
+    for (size_t param = 0u; param < 2u; ++param) {
+        for (size_t first = 0u; first < 5u; ++first) {
+            cxpr_context* ctx = cxpr_context_new();
+            bool found = false;
+            cxpr_value loaded;
+            assert(ctx);
+            set_test_value(ctx, "value", types[first], param != 0u);
+            if (param) cxpr_context_set_param_array(ctx, entries);
+            else cxpr_context_set_array(ctx, entries);
+            loaded = param ? cxpr_context_get_param_typed(ctx, "value", &found)
+                           : cxpr_context_get_typed(ctx, "value", &found);
+            assert(found);
+            assert(loaded.type == CXPR_VALUE_NUMBER);
+            assert(loaded.d == 7.5);
+            cxpr_context_free(ctx);
+        }
+    }
+}
+
 static void test_numeric_get_without_found(void) {
     cxpr_context* ctx = cxpr_context_new();
     cxpr_value element = cxpr_num(3.0);
@@ -318,6 +342,7 @@ int main(void) {
     test_int64_public_getters_and_parent_fallback();
     test_borrowed_array_element();
     test_type_replacement_matrix();
+    test_numeric_batch_replaces_typed_values();
     test_context_value_paths();
     test_extended_value_clone_paths();
     test_struct_param_value_paths();
