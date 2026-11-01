@@ -21,6 +21,13 @@
 #include <stdio.h>
 #include "cxpr_test_internal.h"
 
+cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
+                                          const char* const* param_names,
+                                          size_t param_count,
+                                          const char* const* field_names,
+                                          const cxpr_expr_ast* const* field_bodies,
+                                          size_t field_count);
+
 #define EPSILON 1e-9
 #define ASSERT_APPROX(a, b) assert(fabs((a) - (b)) < EPSILON)
 
@@ -315,6 +322,63 @@ static void test_registry_lookup_arity(void) {
     cxpr_registry_free(reg);
 }
 
+static void test_infers_scalar_parameter_and_return_types(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_func_entry* entry;
+    cxpr_register_defaults(reg);
+
+    cxpr_error err = cxpr_registry_define_fn(
+        reg, "gate(value, limit) => value > limit and limit > 0");
+    assert(err.code == CXPR_OK);
+
+    entry = cxpr_registry_find(reg, "gate");
+    assert(entry);
+    assert(entry->arg_type_count == 2u);
+    assert(entry->arg_types[0] == CXPR_VALUE_NUMBER);
+    assert(entry->arg_types[1] == CXPR_VALUE_NUMBER);
+    assert(entry->has_return_type);
+    assert(entry->return_type == CXPR_VALUE_BOOL);
+
+    cxpr_registry_free(reg);
+}
+
+static void test_infers_types_from_fields_lookbacks_and_builtin_roles(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* bodies[3];
+    const cxpr_expr_ast* body_refs[3];
+    const char* params[] = {"close", "high", "session", "bars", "peak_bars"};
+    const char* fields[] = {"reclaim", "peak", "session_ready"};
+    cxpr_func_entry* entry;
+    cxpr_error err = {0};
+    cxpr_register_defaults(reg);
+
+    bodies[0] = cxpr_expr_ast_parse(parser, "close[1] > 0", &err);
+    assert(bodies[0] && err.code == CXPR_OK);
+    bodies[1] = cxpr_expr_ast_parse(
+        parser, "max(window(period=peak_bars, expression=high))", &err);
+    assert(bodies[1] && err.code == CXPR_OK);
+    bodies[2] = cxpr_expr_ast_parse(parser, "session.bar_index < bars", &err);
+    assert(bodies[2] && err.code == CXPR_OK);
+    for (size_t i = 0; i < 3u; ++i) body_refs[i] = bodies[i];
+
+    err = cxpr_registry_define_record_fn(reg, "risk", params, 5u,
+                                         fields, body_refs, 3u);
+    assert(err.code == CXPR_OK);
+    entry = cxpr_registry_find(reg, "risk");
+    assert(entry);
+    assert(entry->arg_type_count == 5u);
+    assert(entry->arg_types[0] == CXPR_VALUE_NUMBER);
+    assert(entry->arg_types[1] == CXPR_VALUE_NUMBER);
+    assert(entry->arg_types[2] == CXPR_VALUE_STRUCT);
+    assert(entry->arg_types[3] == CXPR_VALUE_NUMBER);
+    assert(entry->arg_types[4] == CXPR_VALUE_NUMBER);
+
+    for (size_t i = 0; i < 3u; ++i) cxpr_expr_ast_free(bodies[i]);
+    cxpr_expr_parser_free(parser);
+    cxpr_registry_free(reg);
+}
+
 /* ─── main ───────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -332,6 +396,8 @@ int main(void) {
     test_error_struct_arg_not_identifier();
     test_error_missing_field_in_context();
     test_registry_lookup_arity();
+    test_infers_scalar_parameter_and_return_types();
+    test_infers_types_from_fields_lookbacks_and_builtin_roles();
 
     printf("All define tests passed.\n");
     return 0;

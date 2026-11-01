@@ -263,6 +263,13 @@ static bool cxpr_model_register_imported_defined_function(cxpr_model_compiled* p
     free(qualified);
     entry->min_args = src->min_args;
     entry->max_args = src->max_args;
+    entry->arg_types = cxpr_registry_clone_arg_types(src->arg_types,
+                                                     src->arg_type_count);
+    entry->arg_type_count = src->arg_type_count;
+    if (src->arg_type_count > 0u && !entry->arg_types) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
     entry->return_type = src->return_type;
     entry->has_return_type = src->has_return_type;
     entry->defined_body = cxpr_expr_ast_clone(src->defined_body);

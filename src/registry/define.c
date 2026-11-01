@@ -7,7 +7,9 @@
 #include "ir/internal.h"
 #include "core.h"
 #include "ast/internal.h"
+#include <cxpr/builtin.h>
 #include <cxpr/codegen.h>
+#include <cxpr/token.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,6 +20,270 @@ typedef struct {
     size_t count;
     size_t capacity;
 } cxpr_def_field_set;
+
+typedef struct {
+    cxpr_value_type type;
+    bool known;
+    bool conflict;
+} cxpr_def_inferred_type;
+
+static bool cxpr_def_numeric_param_name(const char* name) {
+    static const char* names[] = {
+        "value", "values", "expression", "source", "left", "right",
+        "period", "periodx", "samples", "bars", "length", "offset",
+        "index", "window", "threshold", "limit", "start", "end",
+        "center", "factor", "multiplier", "pct", "percent"
+    };
+    if (!name) return false;
+    for (size_t i = 0; i < CXPR_ARRAY_COUNT(names); ++i) {
+        if (strcmp(name, names[i]) == 0) return true;
+    }
+    return strstr(name, "_period") || strstr(name, "_bars") ||
+           strstr(name, "_pct") || strstr(name, "_length");
+}
+
+static bool cxpr_def_bool_param_name(const char* name) {
+    return name && (strcmp(name, "condition") == 0 ||
+                    strcmp(name, "inclusive_start") == 0 ||
+                    strcmp(name, "inclusive_end") == 0);
+}
+
+static void cxpr_def_constrain(cxpr_def_inferred_type* type,
+                               cxpr_value_type expected) {
+    if (!type || type->conflict) return;
+    if (!type->known) {
+        type->type = expected;
+        type->known = true;
+    } else if (type->type != expected) {
+        type->conflict = true;
+    }
+}
+
+static size_t cxpr_def_param_index(const cxpr_expr_ast* node,
+                                   const char* const* param_names,
+                                   size_t param_count) {
+    if (!node || node->type != CXPR_NODE_IDENTIFIER) return param_count;
+    for (size_t i = 0; i < param_count; ++i) {
+        if (strcmp(node->data.identifier.name, param_names[i]) == 0) return i;
+    }
+    return param_count;
+}
+
+static size_t cxpr_def_call_param_index(const char* arg_name, size_t arg_index,
+                                        const char* const* formal_names,
+                                        size_t formal_count) {
+    if (!arg_name) return arg_index;
+    for (size_t i = 0; i < formal_count; ++i) {
+        if (strcmp(arg_name, formal_names[i]) == 0) return i;
+    }
+    return arg_index;
+}
+
+static void cxpr_def_infer_ast(const cxpr_expr_ast* node, const cxpr_registry* reg,
+                               const char* const* param_names, size_t param_count,
+                               cxpr_def_inferred_type* inferred,
+                               const cxpr_value_type* expected) {
+    size_t param_index;
+    if (!node) return;
+
+    param_index = cxpr_def_param_index(node, param_names, param_count);
+    if (param_index < param_count) {
+        if (expected) cxpr_def_constrain(&inferred[param_index], *expected);
+        return;
+    }
+
+    switch (node->type) {
+    case CXPR_NODE_FIELD_ACCESS:
+        param_index = cxpr_def_param_index(node->data.field_access.base,
+                                           param_names, param_count);
+        if (param_index < param_count) {
+            cxpr_def_constrain(&inferred[param_index], CXPR_VALUE_STRUCT);
+        } else if (!node->data.field_access.base && node->data.field_access.object) {
+            for (size_t i = 0; i < param_count; ++i) {
+                if (strcmp(node->data.field_access.object, param_names[i]) == 0) {
+                    cxpr_def_constrain(&inferred[i], CXPR_VALUE_STRUCT);
+                    break;
+                }
+            }
+        }
+        cxpr_def_infer_ast(node->data.field_access.base, reg, param_names,
+                          param_count, inferred, NULL);
+        break;
+    case CXPR_NODE_CHAIN_ACCESS:
+        if (node->data.chain_access.depth > 1u) {
+            for (size_t i = 0; i < param_count; ++i) {
+                if (strcmp(node->data.chain_access.path[0], param_names[i]) == 0) {
+                    cxpr_def_constrain(&inferred[i], CXPR_VALUE_STRUCT);
+                    break;
+                }
+            }
+        }
+        break;
+    case CXPR_NODE_BINARY_OP: {
+        int op = node->data.binary_op.op;
+        cxpr_value_type operand_type = CXPR_VALUE_NUMBER;
+        if (op == CXPR_TOK_AND || op == CXPR_TOK_OR) operand_type = CXPR_VALUE_BOOL;
+        if (op != CXPR_TOK_EQ && op != CXPR_TOK_NEQ && op != CXPR_TOK_IN) {
+            cxpr_def_infer_ast(node->data.binary_op.left, reg, param_names,
+                               param_count, inferred, &operand_type);
+            cxpr_def_infer_ast(node->data.binary_op.right, reg, param_names,
+                               param_count, inferred, &operand_type);
+        } else {
+            cxpr_def_infer_ast(node->data.binary_op.left, reg, param_names,
+                               param_count, inferred, NULL);
+            cxpr_def_infer_ast(node->data.binary_op.right, reg, param_names,
+                               param_count, inferred, NULL);
+        }
+        break;
+    }
+    case CXPR_NODE_UNARY_OP: {
+        cxpr_value_type operand_type = node->data.unary_op.op == CXPR_TOK_NOT
+            ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER;
+        cxpr_def_infer_ast(node->data.unary_op.operand, reg, param_names,
+                           param_count, inferred, &operand_type);
+        break;
+    }
+    case CXPR_NODE_INDEX: {
+        cxpr_value_type number = CXPR_VALUE_NUMBER;
+        cxpr_def_infer_ast(node->data.index.target, reg, param_names,
+                           param_count, inferred, &number);
+        cxpr_def_infer_ast(node->data.index.index, reg, param_names,
+                           param_count, inferred, &number);
+        break;
+    }
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_func_entry* entry = cxpr_registry_find(reg, node->data.function_call.name);
+        const cxpr_function_info* builtin = cxpr_builtin_find(node->data.function_call.name);
+        const char* const* formal_names = NULL;
+        size_t formal_count = 0u;
+        if (entry) formal_names = cxpr_registry_entry_param_names(entry, &formal_count);
+        if ((!formal_names || formal_count == 0u) && builtin) {
+            formal_names = builtin->param_names;
+            formal_count = builtin->param_count;
+        }
+        for (size_t i = 0; i < node->data.function_call.argc; ++i) {
+            const char* arg_name = node->data.function_call.arg_names
+                ? node->data.function_call.arg_names[i] : NULL;
+            size_t formal = cxpr_def_call_param_index(arg_name, i,
+                                                      formal_names, formal_count);
+            const cxpr_value_type* arg_expected = NULL;
+            cxpr_value_type semantic_type;
+            if (entry && entry->arg_types && formal < entry->arg_type_count) {
+                arg_expected = &entry->arg_types[formal];
+            } else if (formal_names && formal < formal_count &&
+                       cxpr_def_bool_param_name(formal_names[formal])) {
+                semantic_type = CXPR_VALUE_BOOL;
+                arg_expected = &semantic_type;
+            } else if (formal_names && formal < formal_count &&
+                       cxpr_def_numeric_param_name(formal_names[formal])) {
+                semantic_type = CXPR_VALUE_NUMBER;
+                arg_expected = &semantic_type;
+            }
+            cxpr_def_infer_ast(node->data.function_call.args[i], reg, param_names,
+                               param_count, inferred, arg_expected);
+        }
+        break;
+    }
+    case CXPR_NODE_TERNARY: {
+        cxpr_value_type boolean = CXPR_VALUE_BOOL;
+        cxpr_def_infer_ast(node->data.ternary.condition, reg, param_names,
+                           param_count, inferred, &boolean);
+        cxpr_def_infer_ast(node->data.ternary.true_branch, reg, param_names,
+                           param_count, inferred, expected);
+        cxpr_def_infer_ast(node->data.ternary.false_branch, reg, param_names,
+                           param_count, inferred, expected);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static bool cxpr_def_ast_type(const cxpr_expr_ast* node, const cxpr_registry* reg,
+                              const char* const* param_names, size_t param_count,
+                              const cxpr_def_inferred_type* inferred,
+                              cxpr_value_type* out) {
+    size_t index;
+    if (!node || !out) return false;
+    switch (node->type) {
+    case CXPR_NODE_NUMBER: *out = CXPR_VALUE_NUMBER; return true;
+    case CXPR_NODE_INT64: *out = CXPR_VALUE_INT64; return true;
+    case CXPR_NODE_BOOL: *out = CXPR_VALUE_BOOL; return true;
+    case CXPR_NODE_STRING: *out = CXPR_VALUE_STRING; return true;
+    case CXPR_NODE_ARRAY: *out = CXPR_VALUE_ARRAY; return true;
+    case CXPR_NODE_RECORD: *out = CXPR_VALUE_STRUCT; return true;
+    case CXPR_NODE_IDENTIFIER:
+        index = cxpr_def_param_index(node, param_names, param_count);
+        if (index < param_count && inferred[index].known && !inferred[index].conflict) {
+            *out = inferred[index].type;
+            return true;
+        }
+        return false;
+    case CXPR_NODE_BINARY_OP:
+        if (node->data.binary_op.op == CXPR_TOK_AND ||
+            node->data.binary_op.op == CXPR_TOK_OR ||
+            (node->data.binary_op.op >= CXPR_TOK_EQ &&
+             node->data.binary_op.op <= CXPR_TOK_GTE) ||
+            node->data.binary_op.op == CXPR_TOK_IN) {
+            *out = CXPR_VALUE_BOOL;
+        } else {
+            *out = CXPR_VALUE_NUMBER;
+        }
+        return true;
+    case CXPR_NODE_UNARY_OP:
+        *out = node->data.unary_op.op == CXPR_TOK_NOT
+            ? CXPR_VALUE_BOOL : CXPR_VALUE_NUMBER;
+        return true;
+    case CXPR_NODE_INDEX:
+    case CXPR_NODE_FIELD_ACCESS:
+    case CXPR_NODE_CHAIN_ACCESS:
+        *out = CXPR_VALUE_NUMBER;
+        return true;
+    case CXPR_NODE_FUNCTION_CALL: {
+        cxpr_func_entry* entry = cxpr_registry_find(reg, node->data.function_call.name);
+        const cxpr_function_info* builtin = cxpr_builtin_find(node->data.function_call.name);
+        if (entry && entry->has_return_type) {
+            *out = entry->return_type;
+            return true;
+        }
+        if (builtin) {
+            *out = builtin->return_type;
+            return builtin->return_type != CXPR_VALUE_NULL;
+        }
+        return false;
+    }
+    case CXPR_NODE_TERNARY: {
+        cxpr_value_type left;
+        cxpr_value_type right;
+        if (!cxpr_def_ast_type(node->data.ternary.true_branch, reg, param_names,
+                               param_count, inferred, &left) ||
+            !cxpr_def_ast_type(node->data.ternary.false_branch, reg, param_names,
+                               param_count, inferred, &right) || left != right) return false;
+        *out = left;
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+static cxpr_value_type* cxpr_def_infer_param_types(
+    const cxpr_registry* reg, const char* const* param_names, size_t param_count,
+    const cxpr_expr_ast* const* bodies, size_t body_count,
+    cxpr_def_inferred_type* inferred) {
+    cxpr_value_type* types;
+    memset(inferred, 0, sizeof(*inferred) * param_count);
+    for (size_t i = 0; i < body_count; ++i) {
+        cxpr_def_infer_ast(bodies[i], reg, param_names, param_count, inferred, NULL);
+    }
+    for (size_t i = 0; i < param_count; ++i) {
+        if (!inferred[i].known || inferred[i].conflict) return NULL;
+    }
+    types = (cxpr_value_type*)malloc(sizeof(*types) * param_count);
+    if (!types && param_count > 0u) return NULL;
+    for (size_t i = 0; i < param_count; ++i) types[i] = inferred[i].type;
+    return types;
+}
 
 static void cxpr_def_field_set_destroy(cxpr_def_field_set* set) {
     if (!set) return;
@@ -191,6 +457,10 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
     char** owned_names = NULL;
     char*** owned_fields = NULL;
     size_t* owned_counts = NULL;
+    cxpr_value_type* inferred_types = NULL;
+    cxpr_def_inferred_type inferred[CXPR_DEF_MAX_PARAMS];
+    cxpr_value_type inferred_return = CXPR_VALUE_NUMBER;
+    bool has_inferred_return = false;
 
     if (!reg || !def) {
         err.code = CXPR_ERR_SYNTAX;
@@ -308,6 +578,13 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         !collect_transitive_fields_in_ast(body_ast, reg, pnames, param_count, sets)) {
         goto oom;
     }
+    {
+        const cxpr_expr_ast* bodies[] = {body_ast};
+        inferred_types = cxpr_def_infer_param_types(reg, pnames, param_count,
+                                                    bodies, 1u, inferred);
+        has_inferred_return = cxpr_def_ast_type(body_ast, reg, pnames, param_count,
+                                                inferred, &inferred_return);
+    }
 
     owned_names = (char**)calloc(param_count ? param_count : 1, sizeof(char*));
     owned_fields = (char***)calloc(param_count ? param_count : 1, sizeof(char**));
@@ -340,10 +617,10 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
             memset(&existing->native_scalar, 0, sizeof(existing->native_scalar));
             existing->min_args = param_count;
             existing->max_args = param_count;
-            existing->arg_types = NULL;
-            existing->arg_type_count = 0;
-            existing->return_type = CXPR_VALUE_NUMBER;
-            existing->has_return_type = false;
+            existing->arg_types = inferred_types;
+            existing->arg_type_count = inferred_types ? param_count : 0u;
+            existing->return_type = inferred_return;
+            existing->has_return_type = has_inferred_return;
             existing->userdata = NULL;
             existing->userdata_free = NULL;
             existing->defined_body = body_ast;
@@ -369,8 +646,10 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
         cxpr_registry_prepare_entry(entry, fname);
         entry->min_args = param_count;
         entry->max_args = param_count;
-        entry->return_type = CXPR_VALUE_NUMBER;
-        entry->has_return_type = false;
+        entry->arg_types = inferred_types;
+        entry->arg_type_count = inferred_types ? param_count : 0u;
+        entry->return_type = inferred_return;
+        entry->has_return_type = has_inferred_return;
         entry->defined_body = body_ast;
         entry->defined_program = NULL;
         entry->defined_program_failed = false;
@@ -387,6 +666,7 @@ cxpr_error cxpr_registry_define_fn(cxpr_registry* reg, const char* def) {
 
 oom:
     cxpr_expr_ast_free(body_ast);
+    free(inferred_types);
     if (owned_names) {
         for (size_t i = 0; i < param_count; i++) free(owned_names[i]);
         free(owned_names);
@@ -486,6 +766,8 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
     size_t* owned_counts = NULL;
     char** owned_return_names = NULL;
     cxpr_expr_ast** owned_return_bodies = NULL;
+    cxpr_value_type* inferred_types = NULL;
+    cxpr_def_inferred_type inferred[CXPR_DEF_MAX_PARAMS];
 
     memset(sets, 0, sizeof(sets));
     if (!reg || !name || (!param_names && param_count > 0u) ||
@@ -508,6 +790,8 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
             goto oom;
         }
     }
+    inferred_types = cxpr_def_infer_param_types(reg, param_names, param_count,
+                                                field_bodies, field_count, inferred);
 
     owned_params = (char**)calloc(param_count ? param_count : 1u, sizeof(char*));
     owned_fields = (char***)calloc(param_count ? param_count : 1u, sizeof(char**));
@@ -561,6 +845,8 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
         memset(&entry->native_scalar, 0, sizeof(entry->native_scalar));
         entry->min_args = param_count;
         entry->max_args = param_count;
+        entry->arg_types = inferred_types;
+        entry->arg_type_count = inferred_types ? param_count : 0u;
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
         entry->defined_body = NULL;
@@ -582,6 +868,7 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
     }
 
 oom:
+    free(inferred_types);
     if (owned_params) {
         for (size_t i = 0; i < param_count; ++i) free(owned_params[i]);
         free(owned_params);
