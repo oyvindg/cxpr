@@ -26,7 +26,10 @@ cxpr_expr_ast* cxpr_expr_parser_clone_ast(const cxpr_expr_ast* ast) {
 
     switch (ast->type) {
     case CXPR_NODE_NUMBER:
-        return cxpr_expr_ast_number_new(ast->data.number.value);
+        return ast->data.number.lexeme
+            ? cxpr_expr_ast_number_new_with_lexeme(ast->data.number.value,
+                ast->data.number.lexeme, strlen(ast->data.number.lexeme))
+            : cxpr_expr_ast_number_new(ast->data.number.value);
     case CXPR_NODE_INT64:
         return cxpr_expr_ast_int64_new(ast->data.integer.value);
     case CXPR_NODE_BOOL:

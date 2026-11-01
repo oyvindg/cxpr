@@ -437,7 +437,8 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
         cxpr_expr_parser_advance(p);
         node = token.is_int64
             ? cxpr_expr_ast_int64_new(token.int64_value)
-            : cxpr_expr_ast_number_new(token.number_value);
+            : cxpr_expr_ast_number_new_with_lexeme(
+                token.number_value, token.start, token.length);
     } else if (cxpr_expr_parser_check(p, CXPR_TOK_TRUE) || cxpr_expr_parser_check(p, CXPR_TOK_FALSE)) {
         const bool value = (p->current.type == CXPR_TOK_TRUE);
         cxpr_expr_parser_advance(p);

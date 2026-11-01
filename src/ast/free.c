@@ -18,6 +18,8 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
 
     switch (ast->type) {
         case CXPR_NODE_NUMBER:
+            free(ast->data.number.lexeme);
+            break;
         case CXPR_NODE_INT64:
         case CXPR_NODE_BOOL:
             break;

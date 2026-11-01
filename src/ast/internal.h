@@ -25,6 +25,7 @@ struct cxpr_expr_ast {
     union {
         struct {
             double value;
+            char* lexeme;
         } number;
         struct {
             int64_t value;
@@ -137,6 +138,9 @@ void cxpr_expr_ast_set_source_span(cxpr_expr_ast* ast, cxpr_source_span span);
  * @return Newly allocated AST node, or NULL on allocation failure.
  */
 cxpr_expr_ast* cxpr_expr_ast_number_new(double value);
+cxpr_expr_ast* cxpr_expr_ast_number_new_with_lexeme(double value,
+                                                    const char* lexeme,
+                                                    size_t length);
 /**
  * @brief Internal constructor for a boolean literal node.
  * @param value Literal boolean payload.
