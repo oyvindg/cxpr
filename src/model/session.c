@@ -634,15 +634,30 @@ cxpr_model_session* cxpr_model_session_new(const cxpr_model_compiled* program,
         }
     }
     if (program->binding_count > 0u) {
-        session->pending_values =
-            (cxpr_value*)calloc(program->binding_count, sizeof(cxpr_value));
-        session->pending_binding_indices =
-            (size_t*)calloc(program->binding_count, sizeof(size_t));
-        if (!session->pending_values || !session->pending_binding_indices) {
+        size_t storage_size = 0u;
+        size_t values_offset;
+        size_t indices_offset;
+        void* storage;
+
+        if (!cxpr_model_storage_append(&storage_size, program->binding_count,
+                                       sizeof(cxpr_value), _Alignof(cxpr_value),
+                                       &values_offset) ||
+            !cxpr_model_storage_append(&storage_size, program->binding_count,
+                                       sizeof(size_t), _Alignof(size_t),
+                                       &indices_offset)) {
             cxpr_model_session_free(session);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
+        storage = calloc(1u, storage_size);
+        if (!storage) {
+            cxpr_model_session_free(session);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return NULL;
+        }
+        session->pending_values = (cxpr_value*)((unsigned char*)storage + values_offset);
+        session->pending_binding_indices = (size_t*)((unsigned char*)storage +
+                                                     indices_offset);
         session->pending_capacity = program->binding_count;
     }
     if (program->has_fused_ir && program->fused_slot_count > 0u) {
@@ -818,7 +833,6 @@ void cxpr_model_session_free(cxpr_model_session* session) {
         cxpr_value_free(&session->pending_values[i]);
     }
     free(session->pending_values);
-    free(session->pending_binding_indices);
     free(session);
 }
 
