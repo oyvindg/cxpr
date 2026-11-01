@@ -2236,8 +2236,9 @@ static int print_generated_c(const bench_case* cases, size_t case_count,
 }
 
 static void print_usage(const char* argv0) {
-    printf("usage: %s [--case NAME] [--print-c [case]]\n", argv0);
+    printf("usage: %s [--case NAME] [--param-update-paths] [--print-c [case]]\n", argv0);
     printf("  --case NAME        run one measured benchmark case\n");
+    printf("  --param-update-paths  run only parameter update benchmarks\n");
     printf("  --print-c [case]   print generated .cxpr C include files and exit\n");
 }
 
@@ -2285,6 +2286,7 @@ int main(int argc, char** argv) {
     cxpr_registry* reg;
     const char* case_filter = NULL;
     bool case_matched = false;
+    bool param_update_only = false;
 
     if (argc >= 2 && strcmp(argv[1], "--help") == 0) {
         print_usage(argv[0]);
@@ -2296,6 +2298,8 @@ int main(int argc, char** argv) {
             return 2;
         }
         case_filter = argv[2];
+    } else if (argc == 2 && strcmp(argv[1], "--param-update-paths") == 0) {
+        param_update_only = true;
     } else if (argc > 3 ||
                (argc >= 2 && strcmp(argv[1], "--print-c") != 0)) {
         print_usage(argv[0]);
@@ -2313,6 +2317,13 @@ int main(int argc, char** argv) {
     if (!parser || !ctx || !reg) {
         fprintf(stderr, "Failed to initialize benchmark state\n");
         return 1;
+    }
+    if (param_update_only) {
+        bench_param_update_paths(ctx);
+        cxpr_registry_free(reg);
+        cxpr_context_free(ctx);
+        cxpr_expr_parser_free(parser);
+        return 0;
     }
     cxpr_register_defaults(reg);
     cxpr_registry_add_unary(reg, "native_sq", native_sq);
