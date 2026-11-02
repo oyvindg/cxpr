@@ -25,3 +25,18 @@ and fails if native lowering regresses to `CALL_AST`:
 ```sh
 build/benchmarks/cxpr_bench_ir --case static_predicates
 ```
+
+Nine independent runs of that case, with 200,000 evaluations per backend in
+each run, produced:
+
+| Metric | Median | Slowest / largest run |
+| --- | ---: | ---: |
+| Tree evaluation | 4,881.55 ns/eval | 5,051.78 ns/eval |
+| Native IR evaluation | 527.95 ns/eval | 566.94 ns/eval |
+| Tree/IR ratio | approximately 9.25x | — |
+| IR compile time | 23.396 us | 58.317 us |
+| Process peak RSS | 2,688 KiB | 2,688 KiB |
+
+Every run produced 144 IR instructions and zero AST fallbacks. Peak RSS is the
+whole short-lived benchmark process, not an allocation attributed solely to
+the predicate expression.
