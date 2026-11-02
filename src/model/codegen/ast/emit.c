@@ -339,7 +339,55 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
             target ? target->child_call_count : 0u,
             err);
     }
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_CHAIN_ACCESS) {
+        const char* full_key = cxpr_expr_ast_full_reference(ast);
+        const char* dot = full_key ? strchr(full_key, '.') : NULL;
+        if (target && full_key) {
+            for (size_t i = 0u; i < target->param_count; ++i) {
+                if (target->param_names[i] && target->param_exprs &&
+                    target->param_exprs[i] &&
+                    cxpr_model_names_match(target->param_names[i], full_key)) {
+                    return cxpr_strdup(target->param_exprs[i]);
+                }
+            }
+        }
+        if (dot && dot > full_key && dot[1] != '\0') {
+            size_t root_len = (size_t)(dot - full_key);
+            char* root = (char*)malloc(root_len + 1u);
+            const cxpr_model_compiled_binding* binding;
+            cxpr_c_target field_target = {
+                .api_version = CXPR_C_TARGET_API_VERSION,
+                .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+                .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
+                .userdata = target,
+            };
+            if (!root) return NULL;
+            memcpy(root, full_key, root_len);
+            root[root_len] = '\0';
+            binding = cxpr_model_c_binding_for_name(program, root);
+            free(root);
+            if (binding) {
+                if (cxpr_expr_ast_kind_of(binding->ast) == CXPR_NODE_RECORD) {
+                    return cxpr_model_c_safe_name(full_key);
+                }
+                char* expr = cxpr_model_ast_field_expr_to_c(
+                    program, binding->ast, dot + 1, &field_target, err, 0u);
+                if (expr) return expr;
+            }
+        }
+    }
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
+        const char* full_key = cxpr_expr_ast_full_reference(ast);
+        if (target && full_key) {
+            for (size_t i = 0u; i < target->param_count; ++i) {
+                if (target->param_names[i] && target->param_exprs &&
+                    target->param_exprs[i] &&
+                    cxpr_model_names_match(target->param_names[i], full_key)) {
+                    return cxpr_strdup(target->param_exprs[i]);
+                }
+            }
+        }
         cxpr_c_target field_target = {
             .api_version = CXPR_C_TARGET_API_VERSION,
             .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
@@ -355,6 +403,9 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
         const cxpr_model_compiled_binding* binding =
             cxpr_model_c_binding_for_name(program, ast->data.field_access.object);
         if (binding) {
+            if (cxpr_expr_ast_kind_of(binding->ast) == CXPR_NODE_RECORD && full_key) {
+                return cxpr_model_c_safe_name(full_key);
+            }
             char* expr = cxpr_model_ast_field_expr_to_c(
                 program, binding->ast, ast->data.field_access.field, &field_target, err, 0u);
             if (expr) return expr;

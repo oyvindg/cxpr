@@ -245,6 +245,7 @@ static char* extract_function_sources(const char* source) {
         char* line = xstrndup(line_start, line_len);
         char* trimmed;
         int continuation;
+        int line_brace_delta;
         const char* rest = NULL;
 
         if (!line) goto oom;
@@ -295,12 +296,14 @@ static char* extract_function_sources(const char* source) {
         }
 
         if (!current) current_is_fn = keyword_line(trimmed, "fn", NULL);
+        line_brace_delta = brace_delta(trimmed);
         if (!append_cstr(&current, &current_len, &current_cap, trimmed) ||
-            !append_cstr(&current, &current_len, &current_cap, " ")) {
+            !append_cstr(&current, &current_len, &current_cap,
+                         current_brace_depth > 0 || line_brace_delta > 0 ? "\n" : " ")) {
             free(line);
             goto oom;
         }
-        current_brace_depth += brace_delta(trimmed);
+        current_brace_depth += line_brace_delta;
 
         free(line);
         p = line_end ? line_end + 1 : line_start + line_len;

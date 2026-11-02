@@ -7,7 +7,7 @@ const { TextDocument } = require("vscode-languageserver-textdocument");
 const { LanguageService } = require("../language-service/dist/index.js");
 
 const TOKEN_TYPES = [
-  "function", "type", "import", "importPath", "parameter", "namedArgument", "assignment",
+  "function", "type", "model", "import", "importPath", "parameter", "namedArgument", "assignment",
   "block", "plotBlock", "property", "reference", "input", "state", "variable", "string",
   "number", "operator", "keyword", "punctuation", "comment"
 ];
@@ -32,7 +32,8 @@ class NodeWorkspace {
       path.resolve(path.dirname(from), name),
       ...this.roots.flatMap((root) => [
         path.resolve(root, name),
-        path.resolve(root, "libs/dyn/cxpr", name)
+        path.resolve(root, "libs/dyn/cxpr", name),
+        path.resolve(root, "libs/cxpr/examples/audio", name)
       ])
     ];
     for (const candidate of candidates) {
@@ -85,7 +86,7 @@ async function loadWasmAnalyzer(configured, analyzerModule, factoryModule, wasmP
     const loadedFactory = require(path.resolve(factoryModule));
     const factory = loadedFactory.default || loadedFactory;
     const options = wasmPath
-      ? { locateFile: (name) => name.endsWith(".wasm") ? path.resolve(wasmPath) : name }
+      ? { wasmBinary: await fs.readFile(path.resolve(wasmPath)) }
       : undefined;
     return WasmAnalyzer.create(factory, options);
   }

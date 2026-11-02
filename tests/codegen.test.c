@@ -278,11 +278,17 @@ static void test_membership_desugar(void) {
 
     err = (cxpr_error){0};
     out = cxpr_expr_ast_to_c(ast, NULL, &err);
-    assert(out == NULL && err.code != CXPR_OK);
+    assert(out && err.code == CXPR_OK);
+    assert(strcmp(out, "((s == 1.0) || (s == 2.0))") == 0);
+    free(out);
 
     cxpr_expr_ast_free(ast);
     cxpr_expr_parser_free(p);
-    printf("  membership desugar OK\n");
+    out = to_c("contains(value=x, values=[10, 20, 30])");
+    assert(strcmp(out, "((x == 10.0) || (x == 20.0) || (x == 30.0))") == 0);
+    free(out);
+
+    printf("  membership native C codegen OK\n");
 }
 
 static void test_unsupported(void) {

@@ -4,6 +4,10 @@ model drums(lifecycle = "scoped")
 in age, trigger
 $sample_rate = 44100
 $seed = 19391
+$snare_attack = 0.0015
+$clap_attack = 0.0008
+$hat_attack = 0.0007
+$open_hat_attack = 0.0012
 state { seed = 0, noise_low = 0, metal_phase = 0 }
 note_age = trigger > 0 ? 0 : max(0, age)
 current_seed = trigger > 0 or seed == 0 ? $seed : seed
@@ -17,17 +21,18 @@ kick_phase = 48 * note_age + 125 * (1 - exp(-34 * note_age)) / 34
 kick_sample = sin(2 * pi() * kick_phase) * (1 - exp(-note_age / 0.003)) * exp(-9 * note_age)
 snare_body = sin(2 * pi() * 185 * note_age) * exp(-35 * note_age)
 snare_sample = (0.78 * bright_noise * exp(-19 * note_age) + 0.22 * snare_body) *
-    (1 - exp(-note_age / 0.0015))
+    (1 - exp(-note_age / max(0.0001, $snare_attack)))
 clap_burst = exp(-42 * note_age) +
     (note_age > 0.018 ? 0.72 * exp(-55 * (note_age - 0.018)) : 0) +
     (note_age > 0.036 ? 0.48 * exp(-65 * (note_age - 0.036)) : 0)
-clap_sample = bright_noise * clap_burst * (1 - exp(-note_age / 0.0008))
+clap_sample = bright_noise * clap_burst *
+    (1 - exp(-note_age / max(0.0001, $clap_attack)))
 metal_now = trigger > 0 ? 0 : metal_phase
 metal = sin(2 * pi() * metal_now) + 0.55 * sin(2 * pi() * 1.414 * metal_now)
 hat_sample = tanh(0.8 * bright_noise + 0.18 * metal) * exp(-48 * note_age) *
-    (1 - exp(-note_age / 0.0007))
+    (1 - exp(-note_age / max(0.0001, $hat_attack)))
 open_hat_sample = tanh(0.72 * bright_noise + 0.22 * metal) * exp(-12 * note_age) *
-    (1 - exp(-note_age / 0.0012))
+    (1 - exp(-note_age / max(0.0001, $open_hat_attack)))
 seed := next_seed
 noise_low := next_low
 metal_phase := metal_now + 6100 / $sample_rate

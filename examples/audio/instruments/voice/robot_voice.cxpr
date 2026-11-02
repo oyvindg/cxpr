@@ -1,0 +1,81 @@
+# Phoneme-driven three-formant synthesizer for mechanical vocal sounds.
+model robot_voice(lifecycle = "scoped")
+
+use oscillator from oscillators
+use state_variable_filter from filters
+use saturation from effects
+
+in t, pitch, gate, phoneme, motion
+$sample_rate = 44100
+
+state noise_seed = 18347
+state noise_low = 0
+
+# Stable phoneme IDs let arrangements define words without repeating acoustic
+# parameters: 0=silence, 1=H, 2=EH, 3=L, 4=OW, 5=Y, 6=UW, 7=M, 8=AH,
+# 9=N, 10=AY, 11=AE, 12=R, 13=B, 14=AA, 15=T, 16=S, 17=IY,
+# 18=K, 19=P, 20=G, 21=V.
+# Each sound returns one complete profile. Generated C projects the fields.
+fn sound_silence(position) { return { f1 = 300, f2 = 1200, f3 = 2200, voiced = 0, noise = 0, nasal = 0, gain = 0 } }
+fn sound_h(position) { return { f1 = 510, f2 = 1720, f3 = 2400, voiced = position < 0.70 ? 0 : 0.30 * (position - 0.70) / 0.30, noise = 0.20 - 0.12 * position, nasal = 0, gain = 0.32 + 0.18 * position } }
+fn sound_eh(position) { return { f1 = 500 + 35 * position, f2 = 1720 + 140 * position, f3 = 2400 + 90 * position, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_l(position) { return { f1 = 360, f2 = 1080, f3 = 2550, voiced = 1, noise = 0.012, nasal = 0, gain = 0.58 } }
+fn sound_ow(position) { return { f1 = 510 - 170 * position, f2 = 1100 - 300 * position, f3 = 2450 - 170 * position, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_y(position) { return { f1 = 330 - 30 * position, f2 = 2250 - 850 * position, f3 = 2700 - 300 * position, voiced = 1, noise = 0.04, nasal = 0, gain = 1 } }
+fn sound_uw(position) { return { f1 = 320 - 20 * position, f2 = 1200 - 330 * position, f3 = 2350 - 110 * position, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_m(position) { return { f1 = 250, f2 = 900, f3 = 2100, voiced = 0.68, noise = 0.012, nasal = 1, gain = 0.50 } }
+fn sound_ah(position) { return { f1 = 690, f2 = 1240, f3 = 2450, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_n(position) { return { f1 = 310 - 40 * position, f2 = 1600 - 250 * position, f3 = 2400 - 180 * position, voiced = 0.68, noise = 0.012, nasal = 1, gain = 0.50 } }
+fn sound_ay(position) { return { f1 = 690 - 360 * position, f2 = 1200 + 850 * position, f3 = 2450 + 180 * position, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_ae(position) { return { f1 = 660, f2 = 1720, f3 = 2410, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_r(position) { return { f1 = 410 - 35 * position, f2 = 1180 - 110 * position, f3 = 1780 - 130 * position, voiced = 0.96, noise = 0.008, nasal = 0, gain = 0.86 } }
+fn sound_b(position) { return { f1 = 380, f2 = 980, f3 = 2050, voiced = position < 0.42 ? 0.42 : 0.82, noise = position < 0.42 ? 0.01 : 0.10, nasal = 0, gain = position < 0.42 ? 0.18 : 0.78 } }
+fn sound_aa(position) { return { f1 = 730, f2 = 1090, f3 = 2440, voiced = 1, noise = 0.012, nasal = 0, gain = 1 } }
+fn sound_t(position) { return { f1 = 390, f2 = 1420, f3 = 2380, voiced = position < 0.38 ? 0 : 0.08, noise = position < 0.38 ? 0 : 0.24, nasal = 0, gain = position < 0.38 ? 0.05 : 0.48 } }
+fn sound_s(position) { return { f1 = 420, f2 = 1750, f3 = 2600, voiced = 0, noise = 0.30, nasal = 0, gain = 0.42 } }
+fn sound_iy(position) { return { f1 = 300, f2 = 2250, f3 = 2700, voiced = 1, noise = 0.008, nasal = 0, gain = 0.92 } }
+fn sound_k(position) { return { f1 = 410, f2 = 1500, f3 = 2400, voiced = position < 0.48 ? 0 : 0.06, noise = position < 0.48 ? 0 : 0.22, nasal = 0, gain = position < 0.48 ? 0.04 : 0.46 } }
+fn sound_p(position) { return { f1 = 350, f2 = 1050, f3 = 2050, voiced = position < 0.48 ? 0 : 0.08, noise = position < 0.48 ? 0 : 0.16, nasal = 0, gain = position < 0.48 ? 0.04 : 0.52 } }
+fn sound_g(position) { return { f1 = 430, f2 = 1350, f3 = 2250, voiced = position < 0.44 ? 0.38 : 0.82, noise = position < 0.44 ? 0.01 : 0.08, nasal = 0, gain = position < 0.44 ? 0.16 : 0.72 } }
+fn sound_v(position) { return { f1 = 360, f2 = 1280, f3 = 2150, voiced = 0.52, noise = 0.20, nasal = 0, gain = 0.72 } }
+p = clamp(motion, 0, 1)
+f1 = phoneme == 1 ? sound_h(p).f1 : phoneme == 2 ? sound_eh(p).f1 : phoneme == 3 ? sound_l(p).f1 : phoneme == 4 ? sound_ow(p).f1 : phoneme == 5 ? sound_y(p).f1 : phoneme == 6 ? sound_uw(p).f1 : phoneme == 7 ? sound_m(p).f1 : phoneme == 8 ? sound_ah(p).f1 : phoneme == 9 ? sound_n(p).f1 : phoneme == 10 ? sound_ay(p).f1 : phoneme == 11 ? sound_ae(p).f1 : phoneme == 12 ? sound_r(p).f1 : phoneme == 13 ? sound_b(p).f1 : phoneme == 14 ? sound_aa(p).f1 : phoneme == 15 ? sound_t(p).f1 : phoneme == 16 ? sound_s(p).f1 : phoneme == 17 ? sound_iy(p).f1 : phoneme == 18 ? sound_k(p).f1 : phoneme == 19 ? sound_p(p).f1 : phoneme == 20 ? sound_g(p).f1 : phoneme == 21 ? sound_v(p).f1 : sound_silence(p).f1
+f2 = phoneme == 1 ? sound_h(p).f2 : phoneme == 2 ? sound_eh(p).f2 : phoneme == 3 ? sound_l(p).f2 : phoneme == 4 ? sound_ow(p).f2 : phoneme == 5 ? sound_y(p).f2 : phoneme == 6 ? sound_uw(p).f2 : phoneme == 7 ? sound_m(p).f2 : phoneme == 8 ? sound_ah(p).f2 : phoneme == 9 ? sound_n(p).f2 : phoneme == 10 ? sound_ay(p).f2 : phoneme == 11 ? sound_ae(p).f2 : phoneme == 12 ? sound_r(p).f2 : phoneme == 13 ? sound_b(p).f2 : phoneme == 14 ? sound_aa(p).f2 : phoneme == 15 ? sound_t(p).f2 : phoneme == 16 ? sound_s(p).f2 : phoneme == 17 ? sound_iy(p).f2 : phoneme == 18 ? sound_k(p).f2 : phoneme == 19 ? sound_p(p).f2 : phoneme == 20 ? sound_g(p).f2 : phoneme == 21 ? sound_v(p).f2 : sound_silence(p).f2
+f3 = phoneme == 1 ? sound_h(p).f3 : phoneme == 2 ? sound_eh(p).f3 : phoneme == 3 ? sound_l(p).f3 : phoneme == 4 ? sound_ow(p).f3 : phoneme == 5 ? sound_y(p).f3 : phoneme == 6 ? sound_uw(p).f3 : phoneme == 7 ? sound_m(p).f3 : phoneme == 8 ? sound_ah(p).f3 : phoneme == 9 ? sound_n(p).f3 : phoneme == 10 ? sound_ay(p).f3 : phoneme == 11 ? sound_ae(p).f3 : phoneme == 12 ? sound_r(p).f3 : phoneme == 13 ? sound_b(p).f3 : phoneme == 14 ? sound_aa(p).f3 : phoneme == 15 ? sound_t(p).f3 : phoneme == 16 ? sound_s(p).f3 : phoneme == 17 ? sound_iy(p).f3 : phoneme == 18 ? sound_k(p).f3 : phoneme == 19 ? sound_p(p).f3 : phoneme == 20 ? sound_g(p).f3 : phoneme == 21 ? sound_v(p).f3 : sound_silence(p).f3
+voiced = phoneme == 1 ? sound_h(p).voiced : phoneme == 2 ? sound_eh(p).voiced : phoneme == 3 ? sound_l(p).voiced : phoneme == 4 ? sound_ow(p).voiced : phoneme == 5 ? sound_y(p).voiced : phoneme == 6 ? sound_uw(p).voiced : phoneme == 7 ? sound_m(p).voiced : phoneme == 8 ? sound_ah(p).voiced : phoneme == 9 ? sound_n(p).voiced : phoneme == 10 ? sound_ay(p).voiced : phoneme == 11 ? sound_ae(p).voiced : phoneme == 12 ? sound_r(p).voiced : phoneme == 13 ? sound_b(p).voiced : phoneme == 14 ? sound_aa(p).voiced : phoneme == 15 ? sound_t(p).voiced : phoneme == 16 ? sound_s(p).voiced : phoneme == 17 ? sound_iy(p).voiced : phoneme == 18 ? sound_k(p).voiced : phoneme == 19 ? sound_p(p).voiced : phoneme == 20 ? sound_g(p).voiced : phoneme == 21 ? sound_v(p).voiced : 0
+noise = phoneme == 1 ? sound_h(p).noise : phoneme == 2 ? sound_eh(p).noise : phoneme == 3 ? sound_l(p).noise : phoneme == 4 ? sound_ow(p).noise : phoneme == 5 ? sound_y(p).noise : phoneme == 6 ? sound_uw(p).noise : phoneme == 7 ? sound_m(p).noise : phoneme == 8 ? sound_ah(p).noise : phoneme == 9 ? sound_n(p).noise : phoneme == 10 ? sound_ay(p).noise : phoneme == 11 ? sound_ae(p).noise : phoneme == 12 ? sound_r(p).noise : phoneme == 13 ? sound_b(p).noise : phoneme == 14 ? sound_aa(p).noise : phoneme == 15 ? sound_t(p).noise : phoneme == 16 ? sound_s(p).noise : phoneme == 17 ? sound_iy(p).noise : phoneme == 18 ? sound_k(p).noise : phoneme == 19 ? sound_p(p).noise : phoneme == 20 ? sound_g(p).noise : phoneme == 21 ? sound_v(p).noise : 0
+nasal = phoneme == 7 ? sound_m(p).nasal : phoneme == 9 ? sound_n(p).nasal : 0
+gain = phoneme == 1 ? sound_h(p).gain : phoneme == 2 ? sound_eh(p).gain : phoneme == 3 ? sound_l(p).gain : phoneme == 4 ? sound_ow(p).gain : phoneme == 5 ? sound_y(p).gain : phoneme == 6 ? sound_uw(p).gain : phoneme == 7 ? sound_m(p).gain : phoneme == 8 ? sound_ah(p).gain : phoneme == 9 ? sound_n(p).gain : phoneme == 10 ? sound_ay(p).gain : phoneme == 11 ? sound_ae(p).gain : phoneme == 12 ? sound_r(p).gain : phoneme == 13 ? sound_b(p).gain : phoneme == 14 ? sound_aa(p).gain : phoneme == 15 ? sound_t(p).gain : phoneme == 16 ? sound_s(p).gain : phoneme == 17 ? sound_iy(p).gain : phoneme == 18 ? sound_k(p).gain : phoneme == 19 ? sound_p(p).gain : phoneme == 20 ? sound_g(p).gain : phoneme == 21 ? sound_v(p).gain : 0
+shaped_gate = gate * gain
+
+glottis = oscillator(frequency=pitch, reset=0, sample_rate=$sample_rate,
+    waveform=1, pulse_width=0.31, drift=0)
+octave = oscillator(frequency=2 * pitch, reset=0, sample_rate=$sample_rate,
+    waveform=1, pulse_width=0.22, drift=0)
+buzz = saturation(source=0.82 * glottis + 0.18 * octave, drive=1.8)
+
+# A deterministic LCG provides broadband frication without fixed pitches that
+# can ring like a bell through the formants and long reverb tail.
+next_noise_seed = (48271 * noise_seed) % 2147483647
+white_noise = 2 * next_noise_seed / 2147483647 - 1
+colored_noise = noise_low + 0.24 * (white_noise - noise_low)
+noise_seed := next_noise_seed
+noise_low := colored_noise
+hiss = 0.58 * white_noise + 0.42 * colored_noise
+excitation = shaped_gate * (voiced * buzz + noise * hiss)
+
+first = state_variable_filter(source=excitation, sample_rate=$sample_rate,
+    cutoff=f1, resonance=0.72, smoothing_seconds=0.020)
+second = state_variable_filter(source=excitation, sample_rate=$sample_rate,
+    cutoff=f2, resonance=0.76, smoothing_seconds=0.020)
+third = state_variable_filter(source=excitation, sample_rate=$sample_rate,
+    cutoff=f3, resonance=0.56, smoothing_seconds=0.020)
+nasal_body = state_variable_filter(source=shaped_gate * buzz,
+    sample_rate=$sample_rate, cutoff=260, resonance=0.64,
+    smoothing_seconds=0.018)
+
+sample = tanh(1.8 * ((1 - 0.42 * nasal) * (0.10 * excitation +
+    1.10 * first.band + 0.70 * second.band + 0.14 * third.band) +
+    0.72 * nasal * nasal_body.low))
+
+out sample

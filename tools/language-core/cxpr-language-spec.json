@@ -1,6 +1,6 @@
 {
   "tokenTypes": [
-    "type", "function", "import", "importPath", "parameter", "namedArgument",
+    "type", "function", "model", "import", "importPath", "parameter", "namedArgument",
     "assignment", "block", "plotBlock", "property", "reference", "input",
     "state", "variable", "string", "number", "operator", "keyword",
     "punctuation", "comment"

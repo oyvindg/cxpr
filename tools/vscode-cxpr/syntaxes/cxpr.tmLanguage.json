@@ -141,7 +141,18 @@
       }
     },
     {
-      "match": "\\b(name|model)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*(?:\\{|\\())",
+      "match": "\\b(model)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*(?:\\{|\\())",
+      "captures": {
+        "1": {
+          "name": "keyword.control.cxpr"
+        },
+        "3": {
+          "name": "entity.name.model.cxpr"
+        }
+      }
+    },
+    {
+      "match": "\\b(name)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*(?:\\{|\\())",
       "captures": {
         "1": {
           "name": "keyword.control.cxpr"

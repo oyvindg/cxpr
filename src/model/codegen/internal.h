@@ -27,6 +27,19 @@ char* cxpr_model_c_child_tick_name(const char* function_prefix, size_t child_ind
 char* cxpr_model_c_child_field_name(const char* function_prefix,
                                     size_t child_index,
                                     size_t field_index);
+bool cxpr_model_c_flatten_outputs(const cxpr_model_compiled* program,
+                                  cxpr_model_slot_ref** out_outputs,
+                                  size_t* out_count,
+                                  cxpr_error* err);
+void cxpr_model_c_flatten_outputs_free(cxpr_model_slot_ref* outputs,
+                                       size_t count);
+bool cxpr_model_c_used_child_outputs(const cxpr_model_compiled* program,
+                                     size_t child_index,
+                                     const cxpr_model_slot_ref* flat_outputs,
+                                     size_t flat_output_count,
+                                     size_t** out_indices,
+                                     size_t* out_count,
+                                     cxpr_error* err);
 bool cxpr_model_c_is_power_of_two(size_t value);
 bool cxpr_model_c_history_use_shift(size_t depth);
 size_t cxpr_model_c_history_capacity(size_t depth);

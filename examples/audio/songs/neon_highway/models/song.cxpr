@@ -1,0 +1,259 @@
+# Neon Highway: sixteen bars of deterministic A-Aeolian retrowave.
+model song(type = "dsp")
+
+use sequencer from arrangement
+use arp, atmospheric_pad, drums, stacked_bass, tom from instruments/retrowave
+use pulse_saw_lead from instruments/lead
+use track_eq, state_variable_filter from filters
+use kick_sidechain, gated_hall_reverb, portamento from effects
+use chorus, pan, reverb, master from effects
+
+in t
+$sample_rate = 44100
+$bpm = 110
+$rhythm_gain = 1
+$music_gain = 1
+$drum_gain = 1
+$bass_gain = 1
+$pad_gain = 1
+$lead_gain = 1
+$background_gain = 1
+$arp_gain = 1
+
+# The sequencer is the only source of notes and triggers. The host supplies
+# sample time but owns no musical event data.
+seq = sequencer(t=t, bpm=$bpm, sample_rate=$sample_rate)
+
+# Drum voices share one deterministic noise generator; per-track EQ and level
+# routing below turn its outputs into separate mix buses.
+drum = drums(age=seq.rhythm_age, trigger=seq.rhythm_trigger,
+             sample_rate=$sample_rate, seed=seq.drum_seed,
+             snare_attack=0.0030, hat_attack=0.0025,
+             open_hat_attack=0.0030)
+kick_raw = seq.kick_level * drum.kick
+kick = track_eq(source=kick_raw, sample_rate=$sample_rate,
+                high_pass_hz=30, high_pass_stages=4,
+                bell_hz=60, bell_gain_db=3, bell_q=1)
+snare_raw = seq.snare_level * drum.snare
+snare = track_eq(source=snare_raw, sample_rate=$sample_rate,
+                 high_pass_hz=120, high_pass_stages=2,
+                 bell_hz=1350, bell_gain_db=3, bell_q=0.7)
+# The required presence EQ runs first; this post-EQ low-pass removes only the
+# top octave of random noise that measured as backbeat crackle.
+snare_tone = state_variable_filter(source=snare.sample,
+                                   sample_rate=$sample_rate, cutoff=6500,
+                                   resonance=0.08, smoothing_seconds=0.002)
+snare_soft = 0.78 * snare_tone.low
+# The raw metallic noise is intentionally bright; a dedicated low-pass removes
+# digital fizz without changing the hat pattern or its short transient.
+hat_tone = state_variable_filter(source=seq.hat_level * drum.hat,
+                                 sample_rate=$sample_rate, cutoff=9000,
+                                 resonance=0.05, smoothing_seconds=0.002)
+hat_raw = hat_tone.low
+transition_tom = tom(age=seq.transition_main_age,
+                     frequency=seq.transition_frequency,
+                     trigger=seq.transition_main_trigger, sample_rate=$sample_rate,
+                     gain=0.55, attack=0.006)
+transition_tone = track_eq(source=transition_tom.sample,
+                           sample_rate=$sample_rate, high_pass_hz=75,
+                           high_pass_stages=2, bell_hz=180,
+                           bell_gain_db=-2.5, bell_q=1.2)
+transition_stereo = pan(source=transition_tone.sample,
+                        position=seq.transition_pan)
+# A second, lower shell mirrors the main fill from the opposite side. Separate
+# scoped calls preserve independent resonant tails even on simultaneous hits.
+transition_low_tom = tom(age=seq.transition_low_age,
+                         frequency=seq.transition_low_frequency,
+                         trigger=seq.transition_low_trigger,
+                         sample_rate=$sample_rate, gain=0.42, attack=0.006)
+transition_low_tone = track_eq(
+    source=0.68 * transition_low_tom.sample,
+    sample_rate=$sample_rate, high_pass_hz=65, high_pass_stages=2,
+    bell_hz=140, bell_gain_db=-3, bell_q=1.3)
+transition_low_stereo = pan(
+    source=transition_low_tone.sample,
+    position=seq.transition_low_pan)
+
+bass_voice = stacked_bass(age=seq.bass_age, frequency=seq.bass_frequency,
+                          trigger=seq.bass_trigger, sample_rate=$sample_rate,
+                          cutoff=350)
+bass_filtered = track_eq(source=seq.bass_level * bass_voice.sample,
+                         sample_rate=$sample_rate, high_pass_hz=40,
+                         high_pass_stages=2, bell_hz=250,
+                         bell_gain_db=-3, bell_q=2)
+bass_ducked = kick_sidechain(source=bass_filtered.sample, trigger=seq.kick_trigger,
+                             sample_rate=$sample_rate, reduction_db=-9,
+                             attack_ms=0.5, release_ms=75)
+
+# Four independently stateful pad calls voice the current chord. Their mono sum
+# is high-passed before chorus, gentle pan motion, and room sends.
+p1 = atmospheric_pad(age=seq.chord_age, frequency=seq.chord_one, trigger=seq.chord_trigger,
+         sample_rate=$sample_rate, hold=seq.chord_hold, release=seq.chord_release)
+p2 = atmospheric_pad(age=seq.chord_age, frequency=seq.chord_two, trigger=seq.chord_trigger,
+         sample_rate=$sample_rate, hold=seq.chord_hold, release=seq.chord_release)
+p3 = atmospheric_pad(age=seq.chord_age, frequency=seq.chord_three, trigger=seq.chord_trigger,
+         sample_rate=$sample_rate, hold=seq.chord_hold, release=seq.chord_release)
+p4 = atmospheric_pad(age=seq.chord_age, frequency=seq.chord_four, trigger=seq.chord_trigger,
+         sample_rate=$sample_rate, hold=seq.chord_hold, release=seq.chord_release)
+pad_bus = 0.76 * (p1.sample + p2.sample + p3.sample + p4.sample)
+pad_eq = track_eq(source=pad_bus, sample_rate=$sample_rate,
+                  high_pass_hz=200, high_pass_stages=3,
+                  bell_hz=1000, bell_gain_db=0, bell_q=1)
+pad_stereo = chorus(source=pad_eq.sample, sample_rate=$sample_rate,
+                    rate=0.14, depth=0.86, mix=0.64)
+pad_pan_position = 0.20 * sin(2 * pi() * 0.035 * t)
+pad_left = sqrt(1 - pad_pan_position) * pad_stereo.left
+pad_right = sqrt(1 + pad_pan_position) * pad_stereo.right
+
+# Two lower-register pad voices form a darker bed behind the main chord. Their
+# independent chorus and slower opposing pan keep the added layer spacious.
+p5 = atmospheric_pad(age=seq.chord_age, frequency=0.5 * seq.chord_one,
+         trigger=seq.chord_trigger, sample_rate=$sample_rate,
+         hold=seq.chord_hold, release=seq.chord_release, gain=0.10)
+p6 = atmospheric_pad(age=seq.chord_age, frequency=0.5 * seq.chord_three,
+         trigger=seq.chord_trigger, sample_rate=$sample_rate,
+         hold=seq.chord_hold, release=seq.chord_release, gain=0.09)
+shadow_pad_bus = 0.58 * (p5.sample + p6.sample)
+shadow_pad_eq = track_eq(source=shadow_pad_bus, sample_rate=$sample_rate,
+                         high_pass_hz=105, high_pass_stages=2,
+                         bell_hz=320, bell_gain_db=-2, bell_q=1.1)
+shadow_pad_stereo = chorus(source=shadow_pad_eq.sample,
+                           sample_rate=$sample_rate,
+                           rate=0.08, depth=0.72, mix=0.54)
+shadow_pad_pan = -0.26 * sin(2 * pi() * 0.024 * t)
+shadow_pad_left = sqrt(1 - shadow_pad_pan) * shadow_pad_stereo.left
+shadow_pad_right = sqrt(1 + shadow_pad_pan) * shadow_pad_stereo.right
+# This dark, long room carries most of the shadow layer. A very small dry path
+# remains below so the harmony stays intelligible while sounding far away.
+shadow_pad_room = reverb(source_left=0.76 * shadow_pad_left,
+                         source_right=0.76 * shadow_pad_right,
+                         sample_rate=$sample_rate,
+                         feedback=0.92, damping=1550)
+
+# Main lead: short portamento connects phrase notes, delayed vibrato animates
+# sustained notes, and direct equal-power pan replaces chorus coloration. Its
+# three oscillator layers use tight static tuning; PWM modulation is disabled
+# to avoid a repetitive flanger-like sweep.
+lead_glide = portamento(frequency=seq.lead_frequency, trigger=seq.lead_trigger,
+                        sample_rate=$sample_rate, seconds=0.075)
+lead_vibrato = 0.0012 * clamp((seq.lead_age - 0.22) / 0.26, 0, 1) *
+    sin(2 * pi() * 5.1 * t)
+lead_voice = pulse_saw_lead(frequency=lead_glide.value * (1 + lead_vibrato),
+                            gate=seq.lead_gate, trigger=seq.lead_trigger,
+                            sample_rate=$sample_rate, detune_ratio=1.0022,
+                            cutoff_base=400 + 180 * seq.lead_brightness,
+                            cutoff_envelope=2500 + 700 * seq.lead_brightness,
+                            resonance=0.32, attack=0.035, release=0.90,
+                            amp_decay=0.18, amp_sustain=0.82,
+                            filter_attack=0.012, filter_decay=0.34,
+                            filter_sustain=0.62, filter_release=0.70,
+                            pulse_mix=0.36, drive=1.08,
+                            pwm_lfo_hz=0, pwm_depth=0,
+                            unison_mix=0.22, sub_mix=0.05, phase_reset=0)
+lead_pan = pan(source=0.31 * seq.lead_level * lead_voice.sample,
+               position=0.24 * sin(2 * pi() * 0.09 * t))
+# The oscillator release, rather than reverb, carries the audible tail. During
+# its 0.9-second fade the side component narrows smoothly toward the center.
+lead_release_progress = clamp((seq.lead_age - seq.lead_duration) / 0.90, 0, 1)
+lead_tail_width = 1 - 0.78 * lead_release_progress
+lead_mid = 0.5 * (lead_pan.left + lead_pan.right)
+lead_side = 0.5 * (lead_pan.left - lead_pan.right)
+lead_left = lead_mid + lead_tail_width * lead_side
+lead_right = lead_mid - lead_tail_width * lead_side
+background_voice = pulse_saw_lead(
+    frequency=seq.background_frequency, gate=seq.background_gate,
+    trigger=seq.background_trigger, sample_rate=$sample_rate,
+    detune_ratio=1.003, cutoff_base=260, cutoff_envelope=2800,
+    resonance=0.44, attack=0.055, release=0.42,
+    pulse_mix=0.36, drive=1.10, pwm_lfo_hz=4.4, pwm_depth=0.08,
+    phase_reset=0)
+background_pan = pan(
+    source=0.18 * seq.background_level * background_voice.sample,
+    position=0.72 * sin(2 * pi() * 0.065 * t))
+
+# The sectioned arp is deliberately lean: high-pass removes bass overlap,
+# kick ducking preserves the groove, and its slow pan sits outside the lead.
+arp_voice = arp(age=seq.arp_age, frequency=seq.arp_frequency,
+                trigger=seq.arp_trigger, sample_rate=$sample_rate, gain=0.13)
+arp_eq = track_eq(source=seq.arp_level * arp_voice.sample,
+                  sample_rate=$sample_rate, high_pass_hz=320,
+                  high_pass_stages=3, bell_hz=2200,
+                  bell_gain_db=-1.5, bell_q=0.9)
+# A smoothed low-pass rounds off the pulse transient and keeps the arp behind
+# the lead without changing its rhythmic definition.
+arp_soft = state_variable_filter(source=arp_eq.sample,
+                                 sample_rate=$sample_rate, cutoff=4300,
+                                 resonance=0.08, smoothing_seconds=0.004)
+arp_ducked = kick_sidechain(source=arp_soft.low, trigger=seq.kick_trigger,
+                            sample_rate=$sample_rate, reduction_db=-5,
+                            attack_ms=0.8, release_ms=90)
+arp_stereo = pan(source=arp_ducked.sample,
+                 position=0.46 * sin(2 * pi() * 0.055 * t))
+arp_room = reverb(source_left=0.48 * arp_stereo.left,
+                  source_right=0.48 * arp_stereo.right,
+                  sample_rate=$sample_rate, decay_seconds=0.85, damping=2900)
+hat_stereo = pan(source=hat_raw, position=0.24)
+
+# Snare uses two distinct spaces: a contract-specific post-reverb gate for the
+# 80s hit, plus a long dark room that continues after the gate closes.
+hall = gated_hall_reverb(source=snare_soft, trigger=seq.snare_trigger,
+                         sample_rate=$sample_rate, decay_seconds=3.2,
+                         gate_seconds=seq.eighth_seconds)
+snare_room = reverb(source_left=0.30 * snare_soft,
+                    source_right=0.30 * snare_soft,
+                    sample_rate=$sample_rate, feedback=0.90, damping=3200)
+# Reverb now supplies only subtle depth; the long audible fade belongs to the
+# oscillator envelope and its narrowing stereo image above.
+lead_room = reverb(source_left=0.35 * lead_left,
+                   source_right=0.35 * lead_right,
+                   sample_rate=$sample_rate, decay_seconds=0.75, damping=3200)
+# The shared music room glues pads and leads together. Rhythm ambience stays on
+# dedicated snare/hall buses so diagnostic gain controls isolate cleanly.
+room = reverb(
+    source_left=$pad_gain * 0.52 * pad_left +
+        $lead_gain * 0.04 * lead_left +
+        $background_gain * 0.48 * background_pan.left,
+    source_right=$pad_gain * 0.52 * pad_right +
+        $lead_gain * 0.04 * lead_right +
+        $background_gain * 0.48 * background_pan.right,
+    sample_rate=$sample_rate, feedback=0.88, damping=2400)
+
+drum_center = 0.7071067811865476 *
+    (0.92 * kick.sample + 0.62 * snare_soft)
+bass_center = 0.7071067811865476 * 1.05 * bass_ducked.sample
+# Separate buses support rhythm-only and music-only renders without changing
+# sequencing or DSP topology. Both gains default to unity for the final mix.
+percussion_left = drum_center + 0.66 * hat_stereo.left + 0.74 * hall.left +
+    0.72 * transition_stereo.left + 0.46 * transition_low_stereo.left +
+    0.65 * snare_room.left
+percussion_right = drum_center + 0.66 * hat_stereo.right + 0.74 * hall.right +
+    0.72 * transition_stereo.right + 0.46 * transition_low_stereo.right +
+    0.65 * snare_room.right
+rhythm_left = $drum_gain * seq.drum_section_level * percussion_left +
+    $bass_gain * seq.bass_section_level * bass_center
+rhythm_right = $drum_gain * seq.drum_section_level * percussion_right +
+    $bass_gain * seq.bass_section_level * bass_center
+music_left = seq.music_section_level *
+    ($pad_gain * (0.42 * pad_left + 0.06 * shadow_pad_left +
+        0.90 * shadow_pad_room.left) +
+    $lead_gain * (0.38 * lead_left + 0.46 * lead_room.left) +
+    $arp_gain * (0.22 * arp_stereo.left + 0.68 * arp_room.left) +
+    $background_gain * 0.16 * background_pan.left + 0.92 * room.left)
+music_right = seq.music_section_level *
+    ($pad_gain * (0.42 * pad_right + 0.06 * shadow_pad_right +
+        0.90 * shadow_pad_room.right) +
+    $lead_gain * (0.38 * lead_right + 0.46 * lead_room.right) +
+    $arp_gain * (0.22 * arp_stereo.right + 0.68 * arp_room.right) +
+    $background_gain * 0.16 * background_pan.right + 0.92 * room.right)
+left_mix = $rhythm_gain * rhythm_left + $music_gain * music_left
+right_mix = $rhythm_gain * rhythm_right + $music_gain * music_right
+
+finished = master(source_left=left_mix, source_right=right_mix,
+                  t=t, sample_rate=$sample_rate, gain=1.05,
+                  duration=seq.duration, fade_seconds=1.2, ceiling=0.86)
+
+out {
+    left = finished.left,
+    right = finished.right,
+    duration = seq.duration
+}

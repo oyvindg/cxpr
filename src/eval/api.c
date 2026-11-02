@@ -4,6 +4,7 @@
  */
 
 #include "internal.h"
+#include "../model/internal.h"
 #include "context/state.h"
 #include "ir/exec/internal.h"
 #include "ir/internal.h"
@@ -840,6 +841,19 @@ bool cxpr_eval_ast_at_lookback(const cxpr_expr_ast* ast,
         *out_value = cxpr_num(NAN);
         if (reg->lookback_resolver(ast, resolver_index_ast, ctx, reg, reg->lookback_userdata,
                                    out_value, err)) {
+            return !(err && err->code != CXPR_OK);
+        }
+        if (err && err->code != CXPR_OK) return false;
+    }
+
+    /* Imported producer callbacks may evaluate with their registration
+       registry rather than the compiled model registry. The active model
+       session still owns the relevant history, so route the lookup through
+       the model resolver before reporting a missing registry resolver. */
+    if (cxpr_model_active_session()) {
+        *out_value = cxpr_num(NAN);
+        if (cxpr_model_lookback_resolver(
+                ast, resolver_index_ast, ctx, reg, NULL, out_value, err)) {
             return !(err && err->code != CXPR_OK);
         }
         if (err && err->code != CXPR_OK) return false;

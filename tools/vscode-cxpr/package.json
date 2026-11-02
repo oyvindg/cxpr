@@ -2,7 +2,7 @@
   "name": "cxpr-language",
   "displayName": "CXPR Language",
   "description": "VS Code client for the standalone CXPR language server.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "publisher": "local",
   "engines": { "vscode": "^1.85.0" },
@@ -25,6 +25,7 @@
       "editor.tokenColorCustomizations": {
         "textMateRules": [
           { "scope": "entity.name.function.cxpr", "settings": { "foreground": "#DCDCAA" } },
+          { "scope": "entity.name.model.cxpr", "settings": { "foreground": "#DCDCAA" } },
           { "scope": "entity.name.type.cxpr", "settings": { "foreground": "#4EC9B0" } },
           { "scope": "variable.parameter.cxpr", "settings": { "foreground": "#4FC1FF" } },
           { "scope": "variable.other.named-argument.cxpr", "settings": { "foreground": "#9D9D9D" } },
@@ -47,6 +48,7 @@
         "enabled": true,
         "rules": {
           "function:cxpr": "#DCDCAA",
+          "model:cxpr": "#DCDCAA",
           "type:cxpr": "#4EC9B0",
           "import:cxpr": "#DCDCAA",
           "importPath:cxpr": "#D7BA7D",
@@ -100,6 +102,7 @@
       "language": "cxpr",
       "scopes": {
         "function": ["entity.name.function.cxpr"],
+        "model": ["entity.name.model.cxpr"],
         "type": ["entity.name.type.cxpr"],
         "import": ["entity.name.function.cxpr"],
         "importPath": ["string.unquoted.import-path.cxpr"],

@@ -36,10 +36,11 @@ test("C and editor assets use the canonical language specification", () => {
   assert.deepEqual(cKeywords, languageSpec.keywords);
 });
 
-test("Monarch assigns model names the legacy assignment class", () => {
-  const rule = monarch.tokenizer.root.find(([pattern]) => pattern.includes("(name|model)"));
-  assert.deepEqual(rule?.[1], ["keyword", "white", "assignment"]);
+test("Monarch assigns model names the yellow model class", () => {
+  const rule = monarch.tokenizer.root.find(([pattern]) => pattern.includes("(model)"));
+  assert.deepEqual(rule?.[1], ["keyword", "white", "model"]);
   assert.ok(rule?.[0].includes("\\("));
+  assert.equal(colors.tokens.model, colors.tokens.function);
 });
 
 test("Monarch preserves legacy input and output declaration classes", () => {

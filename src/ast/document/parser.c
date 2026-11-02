@@ -1347,6 +1347,12 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
             ok = cxpr_doc_ast_parse_comma_or_line_decls(
                 parser, node, CXPR_DOC_AST_STATE_DECL, open + 1,
                 start_offset + (size_t)(open + 1 - statement), false);
+        } else if (cxpr_doc_ast_top_level_char((char*)rest, ',')) {
+            node = cxpr_doc_ast_node_new(CXPR_DOC_AST_STATE_BLOCK, span);
+            if (!node) goto oom;
+            ok = cxpr_doc_ast_parse_comma_or_line_decls(
+                parser, node, CXPR_DOC_AST_STATE_DECL, rest,
+                start_offset + (size_t)(rest - statement), false);
         } else {
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_STATE_DECL, span);
             if (!node) goto oom;

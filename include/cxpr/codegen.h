@@ -105,7 +105,8 @@ typedef struct cxpr_c_program_arg {
  *
  * Supported nodes: numbers, booleans, string literals, identifiers, `$params`
  * (emitted as the bare name), arithmetic/comparison/logical binary operators,
- * unary `-`/`!`, ternary `?:`, and function calls resolved through @p target.
+ * unary `-`/`!`, ternary `?:`, scalar membership in array literals through
+ * `contains()`/`in`, and function calls resolved through @p target.
  * `^`/`**` map to `pow()`, `%` to `fmod()`, `and`/`or`/`not` to `&&`/`||`/`!`.
  * Lookback nodes are supported only when @p target supplies
  * `emit_leaf_at_offset`; field/chain/producer nodes are rejected unless the

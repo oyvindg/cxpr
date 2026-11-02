@@ -19,7 +19,7 @@ extern "C" {
 /** @brief Maximum number of inputs represented by a descriptor. */
 #define CXPR_GENERATED_MODEL_MAX_INPUTS 64u
 /** @brief Maximum number of outputs represented by a descriptor. */
-#define CXPR_GENERATED_MODEL_MAX_OUTPUTS 64u
+#define CXPR_GENERATED_MODEL_MAX_OUTPUTS 128u
 /** @brief Maximum number of parameters represented by a descriptor. */
 #define CXPR_GENERATED_MODEL_MAX_PARAMS 64u
 

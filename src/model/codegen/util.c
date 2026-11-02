@@ -5,6 +5,153 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool cxpr_model_c_append_output_leaf(cxpr_model_slot_ref** outputs,
+                                            size_t* count,
+                                            const char* name,
+                                            cxpr_model_result_kind kind,
+                                            cxpr_error* err) {
+    cxpr_model_slot_ref* grown = (cxpr_model_slot_ref*)realloc(
+        *outputs, (*count + 1u) * sizeof(**outputs));
+    if (!grown) goto oom;
+    *outputs = grown;
+    memset(&grown[*count], 0, sizeof(grown[*count]));
+    grown[*count].name = cxpr_strdup(name);
+    grown[*count].hash = cxpr_hash_string(name);
+    grown[*count].result_kind = kind == CXPR_MODEL_RESULT_UNKNOWN
+        ? CXPR_MODEL_RESULT_NUMBER : kind;
+    if (!grown[*count].name) goto oom;
+    (*count)++;
+    return true;
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+    return false;
+}
+
+static bool cxpr_model_c_flatten_record(const cxpr_expr_ast* record,
+                                        const char* prefix,
+                                        cxpr_model_slot_ref** outputs,
+                                        size_t* count,
+                                        cxpr_error* err) {
+    for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i) {
+        const char* field = cxpr_expr_ast_record_field_name(record, i);
+        const cxpr_expr_ast* value = cxpr_expr_ast_record_field_value(record, i);
+        char name[512];
+        if (!field || snprintf(name, sizeof(name), "%s.%s", prefix, field) < 0 ||
+            strlen(name) >= sizeof(name) - 1u) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Record output path is too long", 0, 0);
+            return false;
+        }
+        if (cxpr_expr_ast_kind_of(value) == CXPR_NODE_RECORD) {
+            if (!cxpr_model_c_flatten_record(value, name, outputs, count, err)) return false;
+        } else if (!cxpr_model_c_append_output_leaf(
+                       outputs, count, name,
+                       cxpr_expr_ast_kind_of(value) == CXPR_NODE_BOOL
+                           ? CXPR_MODEL_RESULT_BOOL
+                           : cxpr_expr_ast_kind_of(value) == CXPR_NODE_INT64
+                                 ? CXPR_MODEL_RESULT_INT64
+                                 : CXPR_MODEL_RESULT_NUMBER,
+                       err)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool cxpr_model_c_flatten_outputs(const cxpr_model_compiled* program,
+                                  cxpr_model_slot_ref** out_outputs,
+                                  size_t* out_count,
+                                  cxpr_error* err) {
+    cxpr_model_slot_ref* outputs = NULL;
+    size_t count = 0u;
+    if (!program || !out_outputs || !out_count) return false;
+    for (size_t i = 0u; i < program->output_count; ++i) {
+        const cxpr_model_compiled_binding* binding = NULL;
+        for (size_t b = 0u; b < program->binding_count; ++b) {
+            if (cxpr_model_names_match(program->bindings[b].name, program->outputs[i])) {
+                binding = &program->bindings[b];
+                break;
+            }
+        }
+        if (binding && cxpr_expr_ast_kind_of(binding->ast) == CXPR_NODE_RECORD) {
+            if (!cxpr_model_c_flatten_record(
+                    binding->ast, program->outputs[i], &outputs, &count, err)) goto fail;
+        } else {
+            cxpr_model_result_kind kind = cxpr_model_compiled_output_result_kind(program, i);
+            if (!cxpr_model_c_append_output_leaf(
+                    &outputs, &count, program->outputs[i], kind, err)) goto fail;
+        }
+    }
+    *out_outputs = outputs;
+    *out_count = count;
+    return true;
+fail:
+    cxpr_model_c_flatten_outputs_free(outputs, count);
+    return false;
+}
+
+void cxpr_model_c_flatten_outputs_free(cxpr_model_slot_ref* outputs, size_t count) {
+    if (!outputs) return;
+    for (size_t i = 0u; i < count; ++i) free(outputs[i].name);
+    free(outputs);
+}
+
+bool cxpr_model_c_used_child_outputs(const cxpr_model_compiled* program,
+                                     size_t child_index,
+                                     const cxpr_model_slot_ref* flat_outputs,
+                                     size_t flat_output_count,
+                                     size_t** out_indices,
+                                     size_t* out_count,
+                                     cxpr_error* err) {
+    size_t* indices = NULL;
+    size_t count = 0u;
+    bool found_child_binding = false;
+    if (!program || child_index >= program->child_count || !out_indices || !out_count) {
+        return false;
+    }
+    indices = (size_t*)calloc(flat_output_count ? flat_output_count : 1u, sizeof(*indices));
+    if (!indices) goto oom;
+    for (size_t root_i = 0u; root_i < program->binding_count; ++root_i) {
+        const cxpr_model_compiled_binding* root = &program->bindings[root_i];
+        if (!root->ast || cxpr_expr_ast_kind_of(root->ast) != CXPR_NODE_FUNCTION_CALL ||
+            !cxpr_model_names_match(cxpr_expr_ast_call_name(root->ast),
+                                    program->children[child_index].name)) {
+            continue;
+        }
+        found_child_binding = true;
+        for (size_t field_i = 0u; field_i < flat_output_count; ++field_i) {
+            char needle[768];
+            bool used = false;
+            if (!flat_outputs[field_i].name ||
+                snprintf(needle, sizeof(needle), "%s.%s", root->name,
+                         flat_outputs[field_i].name) < 0) {
+                continue;
+            }
+            for (size_t binding_i = 0u; binding_i < program->binding_count; ++binding_i) {
+                char* source = cxpr_expr_ast_to_string(program->bindings[binding_i].ast);
+                used = source && strstr(source, needle) != NULL;
+                free(source);
+                if (used) break;
+            }
+            if (!used) continue;
+            bool duplicate = false;
+            for (size_t i = 0u; i < count; ++i) {
+                if (indices[i] == field_i) duplicate = true;
+            }
+            if (!duplicate) indices[count++] = field_i;
+        }
+    }
+    if (!found_child_binding || count == 0u) {
+        for (size_t i = 0u; i < flat_output_count; ++i) indices[count++] = i;
+    }
+    *out_indices = indices;
+    *out_count = count;
+    return true;
+oom:
+    free(indices);
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+    return false;
+}
+
 void cxpr_model_c_reserve(cxpr_model_c_buf* b, size_t extra) {
     if (!b || b->oom) return;
     if (b->len + extra + 1u > b->cap) {

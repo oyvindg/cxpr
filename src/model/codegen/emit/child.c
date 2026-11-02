@@ -34,6 +34,11 @@ bool cxpr_model_c_emit_child_model_helpers(
     if (!program || !function_prefix || !b) return true;
     for (size_t i = 0u; i < program->child_count; ++i) {
         const cxpr_model_compiled* child = program->children[i].program;
+        cxpr_model_compiled codegen_child;
+        cxpr_model_slot_ref* flat_outputs = NULL;
+        size_t flat_output_count = 0u;
+        size_t* used_outputs = NULL;
+        size_t used_output_count = 0u;
         char* tick_name;
         char* tick_source;
         const char* nested_source;
@@ -42,6 +47,17 @@ bool cxpr_model_c_emit_child_model_helpers(
             continue;
         }
         if (!child) continue;
+        if (!cxpr_model_c_flatten_outputs(
+                child, &flat_outputs, &flat_output_count, err)) return false;
+        codegen_child = *child;
+        codegen_child.fused_outputs = flat_outputs;
+        codegen_child.fused_output_count = flat_output_count;
+        if (!cxpr_model_c_used_child_outputs(
+                program, i, flat_outputs, flat_output_count,
+                &used_outputs, &used_output_count, err)) {
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
+            return false;
+        }
         tick_name = cxpr_model_c_child_tick_name(function_prefix, i);
         if (!tick_name) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -49,9 +65,11 @@ bool cxpr_model_c_emit_child_model_helpers(
         }
         cxpr_model_c_printf(b, "/* Source model tick: %s */\n",
                             program->children[i].name ? program->children[i].name : "(unnamed)");
-        tick_source = cxpr_model_compiled_generate_c_outputs(
-            child, "static inline", tick_name, NULL, 0u, err);
-        if (!tick_source) {
+        if (!cxpr_model_compiled_generate_c_ast(
+                &codegen_child, "static inline", tick_name, NULL, 0u,
+                used_outputs, used_output_count, &tick_source, err)) {
+            free(used_outputs);
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
             free(tick_name);
             return false;
         }
@@ -65,7 +83,8 @@ bool cxpr_model_c_emit_child_model_helpers(
         cxpr_model_c_puts(b, "\n");
         free(tick_source);
 
-        for (size_t field_i = 0u; field_i < child->output_count; ++field_i) {
+        for (size_t used_i = 0u; used_i < used_output_count; ++used_i) {
+            const size_t field_i = used_outputs[used_i];
             char* helper_name;
             helper_name = cxpr_model_c_child_field_name(function_prefix, i, field_i);
             if (!helper_name) {
@@ -75,11 +94,11 @@ bool cxpr_model_c_emit_child_model_helpers(
             }
             cxpr_model_c_printf(b, "/* Source model field: %s.%s */\n",
                                 program->children[i].name ? program->children[i].name : "(unnamed)",
-                                child->outputs[field_i] ? child->outputs[field_i] : "(unnamed)");
+                                flat_outputs[field_i].name ? flat_outputs[field_i].name : "(unnamed)");
             cxpr_model_c_printf(b,
                                 "static inline %s %s(uint8_t* restrict _cx_child_initialized, cxpr_value* restrict _cx_child_outputs, %s_state* restrict _cx_child_state",
-                                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_BOOL ? "bool" :
-                                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
+                                flat_outputs[field_i].result_kind == CXPR_MODEL_RESULT_BOOL ? "bool" :
+                                flat_outputs[field_i].result_kind == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
                                 helper_name,
                                 tick_name);
             for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
@@ -143,12 +162,14 @@ bool cxpr_model_c_emit_child_model_helpers(
                                 tick_name);
             cxpr_model_c_puts(b, "        *_cx_child_initialized = 1u;\n");
             cxpr_model_c_puts(b, "    }\n");
-            cxpr_model_c_printf(b, "    return _cx_child_outputs[%zu].%s;\n", field_i,
-                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_BOOL ? "b" :
-                cxpr_model_compiled_output_result_kind(child, field_i) == CXPR_MODEL_RESULT_INT64 ? "i64" : "d");
+            cxpr_model_c_printf(b, "    return _cx_child_outputs[%zu].%s;\n", used_i,
+                flat_outputs[field_i].result_kind == CXPR_MODEL_RESULT_BOOL ? "b" :
+                flat_outputs[field_i].result_kind == CXPR_MODEL_RESULT_INT64 ? "i64" : "d");
             cxpr_model_c_puts(b, "}\n\n");
             free(helper_name);
         }
+        free(used_outputs);
+        cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
         free(tick_name);
         if (b->oom) {
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);

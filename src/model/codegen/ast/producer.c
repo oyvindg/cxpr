@@ -32,6 +32,8 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
     size_t selected_field = (size_t)-1;
     char** arg_exprs = NULL;
     char** field_exprs = NULL;
+    cxpr_model_slot_ref* flat_outputs = NULL;
+    size_t flat_output_count = 0u;
     cxpr_model_ast_c_target target_data;
     cxpr_c_target target;
 
@@ -71,7 +73,24 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         }
         return NULL;
     }
-    for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
+    if (entry->model_producer) {
+        const cxpr_model_child_program* child_ref =
+            (const cxpr_model_child_program*)entry->model_producer_userdata;
+        if (!child_ref || !child_ref->program ||
+            !cxpr_model_c_flatten_outputs(
+                child_ref->program, &flat_outputs, &flat_output_count, err)) {
+            return NULL;
+        }
+        for (size_t i = 0u; i < flat_output_count; ++i) {
+            if (field && flat_outputs[i].name &&
+                cxpr_model_names_match(flat_outputs[i].name, field)) {
+                selected_field = i;
+                break;
+            }
+        }
+    }
+    for (size_t i = 0u;
+         selected_field == (size_t)-1 && i < entry->defined_return_field_count; ++i) {
         if (entry->defined_return_field_names[i] &&
             field &&
             strcmp(entry->defined_return_field_names[i], field) == 0) {
@@ -111,6 +130,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                      producer ? producer : "?", field ? field : "?");
             err->message = message;
         }
+        cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
         return NULL;
     }
 
@@ -164,11 +184,13 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         char* helper_name;
         cxpr_model_c_buf call = {0};
         if (!child) {
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Unknown child model producer", 0, 0);
             return NULL;
         }
         child_call_key = cxpr_model_c_child_call_key(ast);
         if (!child_call_key) {
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
@@ -180,12 +202,14 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
             child_call_key);
         free(child_call_key);
         if (child_call_index == (size_t)-1) {
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Unknown child model callsite", 0, 0);
             return NULL;
         }
         (void)producer;
         helper_name = cxpr_model_c_child_field_name(function_prefix, child_index, selected_field);
         if (!helper_name) {
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
@@ -239,6 +263,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                 source_expr = cxpr_expr_ast_to_c_at_offset(source_arg, 0u, &target, err);
                 if (!source_expr) {
                     free(call.data);
+                    cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
                     return NULL;
                 }
                 cxpr_model_c_printf(&call, ", %s", source_expr);
@@ -247,6 +272,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
             }
             if (!cxpr_model_c_symbol_is_input(program, child->inputs[i], &input_index)) {
                 free(call.data);
+                cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
                 {
                     static CXPR_THREAD_LOCAL char message[256];
                     snprintf(message, sizeof(message),
@@ -284,12 +310,14 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
             }
             if (!arg) {
                 free(call.data);
+                cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Missing producer argument", 0, 0);
                 return NULL;
             }
             arg_expr = cxpr_expr_ast_to_c_at_offset(arg, 0u, &target, err);
             if (!arg_expr) {
                 free(call.data);
+                cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
                 return NULL;
             }
             cxpr_model_c_printf(&call, ", %s", arg_expr);
@@ -298,9 +326,11 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         cxpr_model_c_puts(&call, ")");
         if (call.oom) {
             free(call.data);
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
+        cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
         return call.data;
     }
 
@@ -601,6 +631,79 @@ static char* cxpr_model_ast_record_field_to_c(
         }
     }
     if (selected_field == (size_t)-1) return NULL;
+
+    for (size_t prior = 0u; prior < selected_field; ++prior) {
+        if (cxpr_expr_ast_kind_of(cxpr_expr_ast_record_field_value(ast, prior)) ==
+            CXPR_NODE_RECORD) {
+            size_t base_count = target_data ? target_data->param_count : 0u;
+            size_t nested_count = 0u;
+            char** names = NULL;
+            char** exprs = NULL;
+            char* result = NULL;
+            for (size_t i = 0u; i < selected_field; ++i) {
+                const cxpr_expr_ast* value = cxpr_expr_ast_record_field_value(ast, i);
+                nested_count += cxpr_expr_ast_kind_of(value) == CXPR_NODE_RECORD
+                    ? cxpr_expr_ast_record_field_count(value) : 1u;
+            }
+            names = (char**)calloc(base_count + nested_count, sizeof(*names));
+            exprs = (char**)calloc(base_count + nested_count, sizeof(*exprs));
+            if (!names || !exprs) goto nested_cleanup;
+            for (size_t i = 0u; i < base_count; ++i) {
+                names[i] = target_data->param_names[i];
+                exprs[i] = target_data->param_exprs ? target_data->param_exprs[i] : NULL;
+            }
+            inline_data = target_data ? *target_data : (cxpr_model_ast_c_target){0};
+            inline_data.param_names = names;
+            inline_data.param_exprs = exprs;
+            inline_data.param_count = base_count;
+            inline_target = *target;
+            inline_target.userdata = &inline_data;
+            nested_count = 0u;
+            for (size_t i = 0u; i < selected_field; ++i) {
+                const char* prior_name = cxpr_expr_ast_record_field_name(ast, i);
+                const cxpr_expr_ast* value = cxpr_expr_ast_record_field_value(ast, i);
+                if (cxpr_expr_ast_kind_of(value) == CXPR_NODE_RECORD) {
+                    for (size_t f = 0u; f < cxpr_expr_ast_record_field_count(value); ++f) {
+                        const char* nested_name = cxpr_expr_ast_record_field_name(value, f);
+                        size_t len = strlen(prior_name) + strlen(nested_name) + 2u;
+                        names[base_count + nested_count] = (char*)malloc(len);
+                        if (!names[base_count + nested_count]) goto nested_cleanup;
+                        snprintf(names[base_count + nested_count], len, "%s.%s",
+                                 prior_name, nested_name);
+                        exprs[base_count + nested_count] = cxpr_model_ast_field_expr_to_c(
+                            program, value, nested_name, &inline_target, err, depth + 1u);
+                        if (!exprs[base_count + nested_count]) goto nested_cleanup;
+                        nested_count++;
+                        inline_data.param_count = base_count + nested_count;
+                    }
+                } else {
+                    names[base_count + nested_count] = (char*)prior_name;
+                    exprs[base_count + nested_count] = cxpr_model_ast_field_expr_to_c(
+                        program, ast, prior_name, &inline_target, err, depth + 1u);
+                    if (!exprs[base_count + nested_count]) goto nested_cleanup;
+                    nested_count++;
+                    inline_data.param_count = base_count + nested_count;
+                }
+            }
+            result = rest
+                ? cxpr_model_ast_field_expr_to_c(
+                      program, cxpr_expr_ast_record_field_value(ast, selected_field),
+                      rest, &inline_target, err, depth + 1u)
+                : cxpr_expr_ast_to_c(
+                      cxpr_expr_ast_record_field_value(ast, selected_field),
+                      &inline_target, err);
+nested_cleanup:
+            if (names && exprs) {
+                for (size_t i = 0u; i < nested_count; ++i) {
+                    if (strchr(names[base_count + i], '.')) free(names[base_count + i]);
+                    free(exprs[base_count + i]);
+                }
+            }
+            free(names);
+            free(exprs);
+            return result;
+        }
+    }
 
     field_exprs = (char**)calloc(field_count ? field_count : 1u, sizeof(char*));
     if (!field_exprs) {

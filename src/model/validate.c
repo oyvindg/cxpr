@@ -386,8 +386,12 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
             (constant_expr ||
              !cxpr_model_external_reference_exists(
                  external_refs, external_ref_count, params[i]))) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "Expression references unknown constant", 0, 0);
+            static CXPR_THREAD_LOCAL char message[256];
+            snprintf(message, sizeof(message),
+                     "Expression references unknown constant '$%s'",
+                     params[i] ? params[i] : "");
+            cxpr_model_set_error(
+                err, CXPR_ERR_UNKNOWN_IDENTIFIER, message, 0, 0);
             return false;
         }
     }
@@ -454,8 +458,12 @@ static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
     nparams = cxpr_expr_ast_variables_used(expr, params, CXPR_ARRAY_COUNT(params));
     for (size_t i = 0; i < nparams && i < CXPR_ARRAY_COUNT(params); ++i) {
         if (!cxpr_model_constant_exists(model, params[i])) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "Expression references unknown constant", 0, 0);
+            static CXPR_THREAD_LOCAL char message[256];
+            snprintf(message, sizeof(message),
+                     "Expression references unknown constant '$%s'",
+                     params[i] ? params[i] : "");
+            cxpr_model_set_error(
+                err, CXPR_ERR_UNKNOWN_IDENTIFIER, message, 0, 0);
             return false;
         }
     }

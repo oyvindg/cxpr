@@ -8,6 +8,10 @@ in source_left, source_right
 $sample_rate = 44100
 $feedback = 0.78
 $damping = 3600
+# Optional T60 contract. Zero preserves the legacy direct-feedback behavior;
+# positive values derive feedback so the wet tail falls by 60 dB in the
+# requested number of seconds.
+$decay_seconds = 0
 
 assert $sample_rate >= 8000 and $sample_rate <= 44100 {
     description = "Reverb buffers support sample rates from 8000 through 44100 Hz"
@@ -47,8 +51,13 @@ damp_one := filtered_one
 damp_two := filtered_two
 damp_three := filtered_three
 
-# Hadamard-matrisen / 2 bevarer energien. Feedback under 1 demper halen.
-feedback = clamp($feedback, 0, 0.90)
+# Hadamard-matrisen / 2 bevarer energien. Use the mean line length to turn an
+# explicit T60 into stable per-pass feedback rather than an arbitrary amount.
+mean_delay_seconds = ((1423 + 1789 + 2131 + 2521) / 4) / 44100
+decay_feedback = pow(10, -3 * mean_delay_seconds /
+    max(0.10, $decay_seconds))
+feedback = $decay_seconds > 0 ? clamp(decay_feedback, 0, 0.98) :
+    clamp($feedback, 0, 0.90)
 return_zero = (filtered_zero + filtered_one + filtered_two + filtered_three) / 2
 return_one = (filtered_zero - filtered_one + filtered_two - filtered_three) / 2
 return_two = (filtered_zero + filtered_one - filtered_two - filtered_three) / 2

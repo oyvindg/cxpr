@@ -223,6 +223,19 @@ bool cxpr_expr_ast_bool_value(const cxpr_expr_ast* ast);
  */
 const char* cxpr_expr_ast_string_value(const cxpr_expr_ast* ast);
 /**
+ * @brief Return the number of elements in an array literal node.
+ * @param ast Array node to inspect.
+ * @return Element count, or 0 when not an array.
+ */
+size_t cxpr_expr_ast_array_count(const cxpr_expr_ast* ast);
+/**
+ * @brief Return an array literal element expression.
+ * @param ast Array node to inspect.
+ * @param index Zero-based element index.
+ * @return Borrowed element expression, or NULL when out of range.
+ */
+const cxpr_expr_ast* cxpr_expr_ast_array_element(const cxpr_expr_ast* ast, size_t index);
+/**
  * @brief Return the number of fields in a record literal node.
  * @param ast Record node to inspect.
  * @return Field count, or 0 when not a record.

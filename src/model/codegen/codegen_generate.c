@@ -3,6 +3,52 @@
 
 #include "model/codegen/ast/internal.h"
 
+static bool cxpr_model_c_emit_record_leaves(
+    cxpr_model_c_buf* b,
+    const cxpr_model_compiled* program,
+    const cxpr_expr_ast* root_record,
+    const cxpr_expr_ast* record,
+    const char* root_name,
+    const char* relative_prefix,
+    const cxpr_c_target* target,
+    cxpr_error* err) {
+    for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i) {
+        const char* field = cxpr_expr_ast_record_field_name(record, i);
+        const cxpr_expr_ast* value = cxpr_expr_ast_record_field_value(record, i);
+        char relative[512];
+        char qualified[768];
+        char* safe_name;
+        char* expression;
+        int relative_len = relative_prefix && relative_prefix[0]
+            ? snprintf(relative, sizeof(relative), "%s.%s", relative_prefix, field)
+            : snprintf(relative, sizeof(relative), "%s", field);
+        if (relative_len < 0 || (size_t)relative_len >= sizeof(relative)) return false;
+        if (cxpr_expr_ast_kind_of(value) == CXPR_NODE_RECORD) {
+            if (!cxpr_model_c_emit_record_leaves(
+                    b, program, root_record, value, root_name, relative, target, err)) {
+                return false;
+            }
+            continue;
+        }
+        if (snprintf(qualified, sizeof(qualified), "%s.%s", root_name, relative) < 0) {
+            return false;
+        }
+        safe_name = cxpr_model_c_safe_name(qualified);
+        expression = cxpr_model_ast_field_expr_to_c(
+            program, root_record, relative, target, err, 0u);
+        if (!safe_name || !expression) {
+            free(safe_name);
+            free(expression);
+            return false;
+        }
+        cxpr_model_c_printf(b, "    const double %s = (double)(%s);\n",
+                            safe_name, expression);
+        free(safe_name);
+        free(expression);
+    }
+    return !b->oom;
+}
+
 bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                                                const char* qualifiers,
                                                const char* function_name,
@@ -359,6 +405,14 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         char* name;
         bool owns_name = false;
         if (!needed_bindings[i] || skip_bindings[i]) continue;
+        if (cxpr_expr_ast_kind_of(program->bindings[i].ast) == CXPR_NODE_RECORD) {
+            if (!cxpr_model_c_emit_record_leaves(
+                    &b, program, program->bindings[i].ast, program->bindings[i].ast,
+                    program->bindings[i].name, "", &ast_target, err)) {
+                goto fail;
+            }
+            continue;
+        }
         if (cxpr_model_ast_is_record_like(program, program->bindings[i].ast, 0u)) continue;
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
             size_t slot = cxpr_model_fused_slot_find(program->fused_slot_names,
@@ -563,8 +617,20 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                                 field_name);
             free(field_name);
         } else {
-            char* local_name = cxpr_model_c_safe_name(name);
-            if (!local_name) goto oom;
+            char* local_name = NULL;
+            const char* dot = name ? strchr(name, '.') : NULL;
+            local_name = cxpr_model_c_safe_name(name);
+            if (!local_name) {
+                static CXPR_THREAD_LOCAL char output_error[512];
+                snprintf(output_error, sizeof(output_error),
+                         "Failed to emit model C output '%s': %s",
+                         name ? name : "?", err && err->message ? err->message : "unknown error");
+                if (err) {
+                    err->code = CXPR_ERR_SYNTAX;
+                    err->message = output_error;
+                }
+                goto fail;
+            }
             cxpr_model_c_emit_source_comment(&b, ".cxpr", cxpr_model_c_source_for_name(program, name));
             cxpr_model_c_printf(&b, "    _cx_outputs[%zu] = %s(%s);\n", out_i,
                                 program->fused_outputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "cxpr_bool" :

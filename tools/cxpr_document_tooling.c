@@ -222,7 +222,7 @@ static const char* node_kind_name(cxpr_doc_ast_kind kind) {
 static const char* token_type(cxpr_doc_ast_kind kind) {
     switch (kind) {
     case CXPR_DOC_AST_HOST_BLOCK: return "block";
-    case CXPR_DOC_AST_MODEL_DECL: return "assignment";
+    case CXPR_DOC_AST_MODEL_DECL: return "model";
     case CXPR_DOC_AST_USE: return "import";
     case CXPR_DOC_AST_INPUT_DECL: return "input";
     case CXPR_DOC_AST_PARAM_DECL: return "parameter";
@@ -535,6 +535,98 @@ static int tooling_is_exported_input(const cxpr_doc_ast_node* node,
     return 0;
 }
 
+static int tooling_is_input_block_root(const cxpr_doc_ast_node* node,
+                                       const char* word,
+                                       size_t length) {
+    size_t count;
+    const char* name;
+    if (!node) return 0;
+    name = cxpr_doc_ast_node_name(node);
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_INPUT_BLOCK &&
+        name && strlen(name) == length && strncmp(name, word, length) == 0) {
+        return 1;
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i) {
+        if (tooling_is_input_block_root(
+                cxpr_doc_ast_node_child(node, i), word, length)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int tooling_span_contains(cxpr_source_span span, size_t line, size_t column) {
+    size_t start_line = line_zero(span.start);
+    size_t end_line = line_zero(span.end);
+    if (line < start_line || line > end_line) return 0;
+    if (line == start_line && column < span.start.column) return 0;
+    if (line == end_line && column >= span.end.column) return 0;
+    return 1;
+}
+
+static int tooling_is_function_parameter(const cxpr_doc_ast_node* node,
+                                         const char* word,
+                                         size_t length,
+                                         size_t line,
+                                         size_t column) {
+    size_t count;
+    if (!node) return 0;
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_FUNCTION_DECL &&
+        tooling_span_contains(cxpr_doc_ast_node_span(node), line, column)) {
+        const char* name = cxpr_doc_ast_node_name(node);
+        const char* cursor = name ? strchr(name, '(') : NULL;
+        const char* end = cursor ? strrchr(cursor, ')') : NULL;
+        if (cursor && end) {
+            cursor++;
+            while (cursor < end) {
+                while (cursor < end &&
+                       (isspace((unsigned char)*cursor) || *cursor == ',')) cursor++;
+                const char* start = cursor;
+                while (cursor < end && tooling_identifier_char(*cursor)) cursor++;
+                if ((size_t)(cursor - start) == length &&
+                    strncmp(start, word, length) == 0) return 1;
+                while (cursor < end && *cursor != ',') cursor++;
+            }
+        }
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i) {
+        if (tooling_is_function_parameter(
+                cxpr_doc_ast_node_child(node, i), word, length, line, column)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static const char* tooling_declared_reference_type(const cxpr_doc_ast_node* node,
+                                                   const char* word,
+                                                   size_t length) {
+    size_t count;
+    const char* name;
+    cxpr_doc_ast_kind kind;
+    if (!node) return NULL;
+    name = cxpr_doc_ast_node_name(node);
+    kind = cxpr_doc_ast_node_kind(node);
+    if (name && strlen(name) == length && strncmp(name, word, length) == 0) {
+        if (kind == CXPR_DOC_AST_STATE_DECL ||
+            kind == CXPR_DOC_AST_STATE_UPDATE ||
+            kind == CXPR_DOC_AST_INITIAL_STATE_UPDATE ||
+            kind == CXPR_DOC_AST_OUTPUT_STATE_UPDATE) return "state";
+        if (kind == CXPR_DOC_AST_PARAM_DECL) return "parameter";
+        if (kind == CXPR_DOC_AST_LOCAL_BINDING || kind == CXPR_DOC_AST_BINDING ||
+            kind == CXPR_DOC_AST_OUTPUT_DECL) return "variable";
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i) {
+        const char* type = tooling_declared_reference_type(
+            cxpr_doc_ast_node_child(node, i), word, length);
+        if (type) return type;
+    }
+    return NULL;
+}
+
 static void emit_source_token(size_t line, size_t col, size_t length,
                               const char* type, int* comma) {
     if (!length) return;
@@ -590,6 +682,9 @@ static void emit_source_tokens(const char* source,
     int after_from = 0;
     int in_flat_input_list = 0;
     int expect_flat_input = 0;
+    int expect_function_name = 0;
+    int expect_function_params = 0;
+    int in_function_params = 0;
     while (source && source[i]) {
         size_t start = i;
         size_t start_col = col;
@@ -691,7 +786,15 @@ static void emit_source_tokens(const char* source,
                     in_flat_input_list = 1;
                     expect_flat_input = 1;
                 }
-                type = expect_flat_input && !(length == 2u &&
+                if (length == 2u && strncmp(source + start, "fn", 2u) == 0) {
+                    expect_function_name = 1;
+                }
+                type = in_function_params ?
+                    (tooling_is_exported_input(root, source, source + start, length)
+                        ? "input" :
+                     tooling_is_input_block_root(root, source + start, length)
+                        ? "reference" : "parameter") :
+                    expect_flat_input && !(length == 2u &&
                         strncmp(source + start, "in", 2u) == 0) ?
                     (source[cursor] == '{' ? "reference" : "input") :
                     length == 8u && strncmp(source + start, "optimize", 8u) == 0 &&
@@ -702,8 +805,17 @@ static void emit_source_tokens(const char* source,
                         (tooling_inside_metadata_block(source, start) ? "namedArgument" :
                          begins_line_assignment ? "assignment" : "namedArgument") :
                     tooling_is_exported_input(root, source, source + start, length) ? "input" :
+                    tooling_is_function_parameter(
+                        root, source + start, length, line, start_col) ? "parameter" :
                     source[start] == '$' ? "parameter" :
-                    "reference";
+                    tooling_declared_reference_type(
+                        root, source + start, length) ?
+                        tooling_declared_reference_type(root, source + start, length) :
+                        "reference";
+                if (expect_function_name && strcmp(type, "function") == 0) {
+                    expect_function_name = 0;
+                    expect_function_params = 1;
+                }
                 if (expect_flat_input && strcmp(type, "input") == 0) {
                     expect_flat_input = 0;
                 }
@@ -716,6 +828,12 @@ static void emit_source_tokens(const char* source,
             while (isalnum((unsigned char)source[i]) || source[i] == '.' || source[i] == '_') { i++; col++; }
             emit_source_token(line, start_col, i - start, "number", comma);
             continue;
+        }
+        if (ch == '(' && expect_function_params) {
+            expect_function_params = 0;
+            in_function_params = 1;
+        } else if (ch == ')' && in_function_params) {
+            in_function_params = 0;
         }
         if (in_flat_input_list) {
             if (ch == ',') expect_flat_input = 1;
@@ -1309,7 +1427,8 @@ static int tooling_find_scoped_record_field(const char* source,
                                             size_t use_start,
                                             size_t name_start,
                                             size_t name_end,
-                                            size_t* out_offset) {
+                                            size_t* out_offset,
+                                            char** out_path) {
     size_t* brace_stack;
     size_t brace_count = 0u;
     size_t record_start;
@@ -1321,6 +1440,7 @@ static int tooling_find_scoped_record_field(const char* source,
     int escaped = 0;
     int comment = 0;
     if (!source || name_start == name_end || !out_offset) return 0;
+    if (out_path) *out_path = NULL;
     brace_stack = (size_t*)malloc((use_start + 1u) * sizeof(*brace_stack));
     if (!brace_stack) return 0;
     for (size_t i = 0u; i < use_start; ++i) {
@@ -1345,7 +1465,42 @@ static int tooling_find_scoped_record_field(const char* source,
         return 0;
     }
     record_start = brace_stack[brace_count - 1u];
+    if (out_path) {
+        char* path = (char*)calloc(use_start + (name_end - name_start) + 2u, 1u);
+        size_t path_length = 0u;
+        if (path) {
+            for (size_t brace_i = 0u; brace_i < brace_count; ++brace_i) {
+                size_t cursor = brace_stack[brace_i];
+                size_t identifier_end;
+                size_t identifier_start;
+                while (cursor > 0u && isspace((unsigned char)source[cursor - 1u])) cursor--;
+                if (cursor == 0u || source[cursor - 1u] != '=') continue;
+                cursor--;
+                while (cursor > 0u && isspace((unsigned char)source[cursor - 1u])) cursor--;
+                identifier_end = cursor;
+                while (cursor > 0u && tooling_word_char((unsigned char)source[cursor - 1u])) cursor--;
+                identifier_start = cursor;
+                if (identifier_start == identifier_end ||
+                    !(isalpha((unsigned char)source[identifier_start]) ||
+                      source[identifier_start] == '_')) continue;
+                if (path_length > 0u) path[path_length++] = '.';
+                memcpy(path + path_length, source + identifier_start,
+                       identifier_end - identifier_start);
+                path_length += identifier_end - identifier_start;
+            }
+            if (path_length > 0u) path[path_length++] = '.';
+            memcpy(path + path_length, source + name_start, name_end - name_start);
+            path_length += name_end - name_start;
+            path[path_length] = '\0';
+            *out_path = path;
+        }
+    }
     free(brace_stack);
+    {
+        size_t cursor = name_end;
+        while (source[cursor] == ' ' || source[cursor] == '\t') cursor++;
+        if (source[cursor] == '=' && source[cursor + 1u] != '=') candidate = name_start;
+    }
     for (size_t i = record_start + 1u; i < use_start;) {
         int ch = (unsigned char)source[i];
         if (comment) {
@@ -1539,6 +1694,7 @@ char* cxpr_document_resolve_with_builtins_json(
     size_t start;
     size_t end;
     size_t record_field_offset = 0u;
+    char* record_field_path = NULL;
     int has_record_field = 0;
     char* result;
     if (!input) input = "";
@@ -1562,10 +1718,8 @@ char* cxpr_document_resolve_with_builtins_json(
             parsed_model = cxpr_model_parse(input, &model_err);
         }
     }
-    if (!declaration) {
-        has_record_field = tooling_find_scoped_record_field(
-            input, start, start, end, &record_field_offset);
-    }
+    has_record_field = tooling_find_scoped_record_field(
+        input, start, start, end, &record_field_offset, &record_field_path);
     {
         size_t call_cursor = end;
         while (input[call_cursor] == ' ' || input[call_cursor] == '\t') call_cursor++;
@@ -1587,7 +1741,8 @@ char* cxpr_document_resolve_with_builtins_json(
             else {
                 memcpy(name, input + start, end - start);
                 name[end - start] = '\0';
-                json_string(name);
+                json_string(has_record_field && record_field_path
+                    ? record_field_path : name);
                 free(name);
             }
         }
@@ -1702,6 +1857,7 @@ char* cxpr_document_resolve_with_builtins_json(
     fputs("}\n", stdout);
     cxpr_registry_free(registry);
     cxpr_model_free(parsed_model);
+    free(record_field_path);
     cxpr_doc_ast_free(ast);
     tooling_output = NULL;
     result = cxpr_json_take(&writer);

@@ -21,17 +21,21 @@ Shared modules:
 - `envelopes/adsr`: exponential attack, decay, sustain, and release;
 - `envelopes/rounded_ar`: sine-squared attack/release for smooth acoustic phrasing;
 - `filters/state_variable_filter`: smoothed resonant low/band/high-pass;
-- `effects/pan`, `effects/master`, `effects/reverb`, and two deliberately
-  distinct delay designs;
+- `effects/pan`, `effects/master`, `effects/reverb` with optional explicit T60
+  decay time, and two deliberately distinct delay designs;
 - `effects/lfo`, `effects/chorus`, `effects/phaser`, chamber processing, gated
-  reverb, stereo compression, tape coloration, and delayed pitch vibrato;
+  reverb, gated hall, kick sidechain, tempo delay, stereo compression, tape
+  coloration, and delayed pitch vibrato;
 - `effects/portamento`: sample-continuous pitch transitions for legato voices;
 - `effects/saturation`: normalized soft clipping;
 - `sequencing/lane`: reusable trigger/age state for song arrangements.
+- `filters/track_eq`: cascaded high-pass slopes and parametric bell EQ.
 - `instruments/classical`, `instruments/drum`, `instruments/native`, and
   `instruments/retrowave`: reusable voice families independent of songs.
 - `instruments/lead`: reusable melodic voices, including the dual-oscillator
   `pulse_saw_lead`.
+- `instruments/voice`: source-free vocal synthesis, including the three-formant
+  `robot_voice` used by the pure-CXPR robot speech example.
 
 Complete compositions live below `songs/`. Their depth does not affect import
 resolution: `audio/` remains the import root, so a model under

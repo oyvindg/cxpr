@@ -59,7 +59,7 @@ test("isolated VSIX serves diagnostics, completion, hover and definition through
   const factoryModule = require(path.join(runtime, "cxpr_wasm.js"));
   const { LanguageService } = require(path.join(runtime, "language-service.js"));
   const analyzer = await WasmAnalyzer.create(factoryModule.default || factoryModule, {
-    locateFile: () => path.join(runtime, "cxpr_wasm.wasm")
+    wasmBinary: fs.readFileSync(path.join(runtime, "cxpr_wasm.wasm"))
   });
   const service = new LanguageService(analyzer, new IsolatedWorkspace());
   const source = "model smoke\nin close\nout x = sqrt(close)\n";
@@ -76,6 +76,10 @@ out { phoneme, motion }
     .some((item) => item.label === "sqrt"));
   assert.match((await service.getHover(source, { line: 2, column: 10 }, "smoke.cxpr")).markdown,
     /sqrt/);
+  const recordSource = "model smoke\ntoms = {\n  shape = { width = 10 }\n}\n";
+  assert.match((await service.getHover(
+    recordSource, { line: 2, column: 4 }, "record-smoke.cxpr")).markdown,
+    /toms\.shape/);
   assert.deepEqual(await service.getDefinitions(source, { line: 2, column: 16 }, "smoke.cxpr"), [{
     uri: "smoke.cxpr",
     range: { start: { line: 1, character: 3 }, end: { line: 1, character: 8 } }

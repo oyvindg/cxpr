@@ -44,6 +44,7 @@ export interface FunctionInfo {
     parameters?: Array<{
         name: string;
         type: string;
+        role?: "input" | "argument";
     }>;
 }
 export interface Fold {
@@ -74,6 +75,7 @@ export interface Analysis {
     requirements?: SourceRequirement[];
     functions?: FunctionInfo[];
     folds?: Fold[];
+    modelType?: string;
     error?: string;
     line?: number;
     column?: number;

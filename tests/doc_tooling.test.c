@@ -12,7 +12,7 @@ static const char baseline_json[] =
     "\"endChar\":8},{\"kind\":\"output\",\"name\":\"result\",\"value\":\"\","
     "\"startLine\":2,\"startChar\":0,\"endLine\":2,\"endChar\":18}],\"modelType\":\"\",\"folds\":[{"
     "\"startLine\":0,\"startChar\":0,\"endLine\":3,\"endChar\":0}],\"requirements\":[],\"tokens\":[{\"line\":0,"
-    "\"start\":6,\"length\":4,\"type\":\"assignment\"},{\"line\":1,\"start\":3,\"length\":5,"
+    "\"start\":6,\"length\":4,\"type\":\"model\"},{\"line\":1,\"start\":3,\"length\":5,"
     "\"type\":\"input\"},{\"line\":2,\"start\":4,\"length\":6,\"type\":\"assignment\"}],"
     "\"sourceTokens\":[{\"line\":0,\"start\":0,\"length\":5,\"type\":\"keyword\"},{"
     "\"line\":0,\"start\":6,\"length\":4,\"type\":\"reference\"},{\"line\":1,\"start\":0,"
@@ -181,10 +181,39 @@ static void test_record_field_resolution_stays_in_enclosing_record(void) {
         "}\n";
     char* json = cxpr_document_resolve_json(source, "record-field.cxpr", 5u, 19u);
     assert(json != NULL);
-    assert(strstr(json, "\"name\":\"momentum_curve_accel\"") != NULL);
+    assert(strstr(json, "\"name\":\"ltf.momentum_curve_accel\"") != NULL);
     assert(strstr(json, "\"kind\":\"variable\"") != NULL);
     assert(strstr(json,
                   "\"startLine\":4,\"startChar\":2,\"endLine\":4,\"endChar\":22") != NULL);
+    cxpr_document_json_free(json);
+}
+
+static void test_record_field_resolution_includes_full_parent_path(void) {
+    const char* source =
+        "model demo\n"
+        "clap = {\n"
+        "  pattern = true,\n"
+        "  nested = { enabled = pattern }\n"
+        "}\n";
+    char* pattern = cxpr_document_resolve_json(source, "record-path.cxpr", 2u, 4u);
+    char* enabled = cxpr_document_resolve_json(source, "record-path.cxpr", 3u, 13u);
+    assert(pattern != NULL);
+    assert(enabled != NULL);
+    assert(strstr(pattern, "\"name\":\"clap.pattern\"") != NULL);
+    assert(strstr(enabled, "\"name\":\"clap.nested.enabled\"") != NULL);
+    cxpr_document_json_free(pattern);
+    cxpr_document_json_free(enabled);
+}
+
+static void test_record_object_field_resolution_includes_parent_path(void) {
+    const char* source =
+        "model demo\n"
+        "toms = {\n"
+        "  shape = { width = 10 }\n"
+        "}\n";
+    char* json = cxpr_document_resolve_json(source, "record-object-path.cxpr", 2u, 4u);
+    assert(json != NULL);
+    assert(strstr(json, "\"name\":\"toms.shape\"") != NULL);
     cxpr_document_json_free(json);
 }
 
@@ -275,6 +304,46 @@ static void test_source_tokens_and_completion_contract(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_function_declaration_parameters_are_semantic_parameters(void) {
+    const char* source =
+        "fn hz(note) = 440 * pow(2, (note - 69) / 12)\n"
+        "fn blend(left, right) = left + right\n";
+    char* json = cxpr_document_analyze_json(source, "function-parameters.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":0,\"start\":6,\"length\":4,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":9,\"length\":4,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":15,\"length\":5,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":0,\"start\":28,\"length\":4,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":24,\"length\":4,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":31,\"length\":5,\"type\":\"parameter\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
+static void test_declared_symbol_references_keep_semantic_colors(void) {
+    const char* source =
+        "value = 1\n"
+        "state previous = 0\n"
+        "previous := value\n"
+        "out result = previous + value\n";
+    char* json = cxpr_document_analyze_json(source, "symbol-colors.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":2,\"start\":0,\"length\":8,\"type\":\"state\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":2,\"start\":12,\"length\":5,\"type\":\"variable\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":13,\"length\":8,\"type\":\"state\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":24,\"length\":5,\"type\":\"variable\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
 static void test_model_name_semantic_token(void) {
     const char* source =
         "model moving_average_demo {\n"
@@ -283,7 +352,7 @@ static void test_model_name_semantic_token(void) {
     char* json = cxpr_document_analyze_json(source, "model-token.cxpr");
     assert(json != NULL);
     assert(strstr(json,
-                  "{\"line\":0,\"start\":6,\"length\":19,\"type\":\"assignment\"}") != NULL);
+                  "{\"line\":0,\"start\":6,\"length\":19,\"type\":\"model\"}") != NULL);
     assert(strstr(json,
                   "{\"line\":1,\"start\":4,\"length\":4,\"type\":\"namedArgument\"}") != NULL);
     assert(strstr(json,
@@ -300,7 +369,7 @@ static void test_model_name_semantic_token(void) {
                   "\"kind\":\"model\",\"name\":\"bkadx_breakaway_ltf_base\"") != NULL);
     assert(strstr(json, "\"name\":\"bkadx_breakaway_ltf_base(timeframe") == NULL);
     assert(strstr(json,
-                  "{\"line\":0,\"start\":6,\"length\":24,\"type\":\"assignment\"}") != NULL);
+                  "{\"line\":0,\"start\":6,\"length\":24,\"type\":\"model\"}") != NULL);
     cxpr_document_json_free(json);
 }
 
@@ -362,7 +431,7 @@ static void test_exported_and_internal_parameter_tokens(void) {
     assert(strstr(json,
                   "{\"line\":3,\"start\":18,\"length\":9,\"type\":\"input\"}") != NULL);
     assert(strstr(json,
-                  "{\"line\":4,\"start\":12,\"length\":8,\"type\":\"reference\"}") != NULL);
+                  "{\"line\":4,\"start\":12,\"length\":8,\"type\":\"variable\"}") != NULL);
     assert(strstr(json,
                   "{\"line\":4,\"start\":23,\"length\":9,\"type\":\"input\"}") != NULL);
     assert(strstr(json,
@@ -682,11 +751,15 @@ int main(void) {
     test_model_resolution_has_callable_metadata();
     test_binding_resolution_includes_expression();
     test_record_field_resolution_stays_in_enclosing_record();
+    test_record_field_resolution_includes_full_parent_path();
+    test_record_object_field_resolution_includes_parent_path();
     test_parameter_resolution_preserves_dollar_prefix();
     test_marker_completion();
     test_registry_catalog();
     test_host_builtin_catalog_merge();
     test_source_tokens_and_completion_contract();
+    test_function_declaration_parameters_are_semantic_parameters();
+    test_declared_symbol_references_keep_semantic_colors();
     test_model_name_semantic_token();
     test_output_metadata_is_named_argument();
     test_import_tokens_are_individual();

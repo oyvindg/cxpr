@@ -71,6 +71,15 @@ const char* cxpr_expr_ast_string_value(const cxpr_expr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_STRING) ? ast->data.string.value : NULL;
 }
 
+size_t cxpr_expr_ast_array_count(const cxpr_expr_ast* ast) {
+    return (ast && ast->type == CXPR_NODE_ARRAY) ? ast->data.array.count : 0u;
+}
+
+const cxpr_expr_ast* cxpr_expr_ast_array_element(const cxpr_expr_ast* ast, size_t index) {
+    if (!ast || ast->type != CXPR_NODE_ARRAY || index >= ast->data.array.count) return NULL;
+    return ast->data.array.elements[index];
+}
+
 size_t cxpr_expr_ast_record_field_count(const cxpr_expr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_RECORD) ? ast->data.record.field_count : 0u;
 }

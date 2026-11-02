@@ -1,0 +1,32 @@
+# Trigger-keyed gain envelope for true external kick sidechain ducking.
+model kick_sidechain(lifecycle = "scoped")
+
+in source, trigger
+$sample_rate = 44100
+$reduction_db = -9
+$attack_ms = 0.5
+$release_ms = 75
+
+state current_gain = 1
+state key_age = 10
+
+# A one-sample kick trigger starts a timed attack window. This makes the module
+# an external sidechain rather than a compressor that listens to its own input.
+attack_seconds = max(0.00001, $attack_ms / 1000)
+release_seconds = max(0.00001, $release_ms / 1000)
+next_key_age = trigger > 0 ? 0 : key_age + 1 / $sample_rate
+target = next_key_age <= attack_seconds ?
+    pow(10, clamp($reduction_db, -48, 0) / 20) : 1
+coefficient = target < current_gain ?
+    1 - exp(-4.605170186 / (attack_seconds * $sample_rate)) :
+    1 - exp(-1 / (release_seconds * $sample_rate))
+# Attack reaches roughly 99% of the requested reduction in attack_ms; release
+# uses the slower exponential recovery expected from musical ducking.
+next_gain = current_gain + coefficient * (target - current_gain)
+current_gain := next_gain
+key_age := next_key_age
+
+out {
+    sample = source * next_gain,
+    gain = next_gain
+}

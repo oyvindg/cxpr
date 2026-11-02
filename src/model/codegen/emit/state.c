@@ -61,6 +61,10 @@ bool cxpr_model_c_emit_runtime_state_typedef(
     for (size_t i = 0u; i < child_call_count; ++i) {
         size_t child_index = child_call_child_indices ? child_call_child_indices[i] : (size_t)-1;
         char* child_tick_name;
+        cxpr_model_slot_ref* flat_outputs = NULL;
+        size_t flat_output_count = 0u;
+        size_t* used_outputs = NULL;
+        size_t used_output_count = 0u;
         if (child_index >= program->child_count) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Invalid child model callsite", 0, 0);
             return false;
@@ -72,12 +76,24 @@ bool cxpr_model_c_emit_runtime_state_typedef(
         }
         cxpr_model_c_printf(b, "    %s_state child_call_%zu_state;\n", child_tick_name, i);
         cxpr_model_c_printf(b, "    uint8_t child_call_%zu_initialized;\n", i);
+        if (!cxpr_model_c_flatten_outputs(
+                program->children[child_index].program,
+                &flat_outputs, &flat_output_count, err)) {
+            free(child_tick_name);
+            return false;
+        }
+        if (!cxpr_model_c_used_child_outputs(
+                program, child_index, flat_outputs, flat_output_count,
+                &used_outputs, &used_output_count, err)) {
+            cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
+            free(child_tick_name);
+            return false;
+        }
         cxpr_model_c_printf(b, "    cxpr_value child_call_%zu_outputs[%zu];\n",
                             i,
-                            program->children[child_index].program &&
-                                    program->children[child_index].program->output_count
-                                ? program->children[child_index].program->output_count
-                                : 1u);
+                            used_output_count ? used_output_count : 1u);
+        free(used_outputs);
+        cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
         free(child_tick_name);
     }
     cxpr_model_c_printf(b, "} %s_state;\n\n", safe_name);

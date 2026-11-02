@@ -41,6 +41,31 @@ test("workspace resolves canonical Dynasty cxpr library imports", async () => {
   assert.match(target.source, /model adx/);
 });
 
+test("workspace resolves nested audio modules from the shared audio root", async () => {
+  const root = path.resolve(__dirname, "../../../../..");
+  const workspace = new NodeWorkspace([root]);
+  const song = path.join(root,
+    "libs/cxpr/examples/audio/songs/modular_synth/models/song.cxpr");
+  const target = await workspace.resolveImport(
+    "instruments/subtractive/subtractive_voice", song);
+  assert.equal(target.path, path.join(root,
+    "libs/cxpr/examples/audio/instruments/subtractive/subtractive_voice.cxpr"));
+  assert.match(target.source, /model subtractive_voice/);
+});
+
+test("language service resolves the complete nested modular synth graph", async () => {
+  const root = path.resolve(__dirname, "../../../../..");
+  const file = path.join(root,
+    "libs/cxpr/examples/audio/songs/modular_synth/models/song.cxpr");
+  const analyzer = await selectAnalyzer({
+    transport: "native",
+    cxprNodeModule: path.join(root, "libs/cxpr-node/dist/index.js")
+  });
+  const { LanguageService } = require("../../language-service/dist/index.js");
+  const service = new LanguageService(analyzer, new NodeWorkspace([root]));
+  assert.deepEqual(await service.getDiagnostics(fs.readFileSync(file, "utf8"), file), []);
+});
+
 test("bundled WASM transport accepts explicit isolated artifact paths", async () => {
   const cxprNode = path.resolve(__dirname, "../../../../cxpr-node");
   const analyzer = await selectAnalyzer({

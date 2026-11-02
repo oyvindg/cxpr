@@ -4,9 +4,10 @@ model tom(lifecycle = "scoped")
 in age, frequency, trigger
 $sample_rate = 44100
 $gain = 0.42
+$attack = 0.0025
 note_age = trigger > 0 ? 0 : max(0, age)
 phase = frequency * note_age + 65 * (1 - exp(-28 * note_age)) / 28
 body = sin(2 * pi() * phase)
 click = sin(2 * pi() * 920 * note_age) * exp(-85 * note_age)
-envelope = (1 - exp(-note_age / 0.0025)) * exp(-9.5 * note_age)
+envelope = (1 - exp(-note_age / max(0.0001, $attack))) * exp(-9.5 * note_age)
 out sample = $gain * envelope * tanh(1.15 * (body + 0.06 * click))

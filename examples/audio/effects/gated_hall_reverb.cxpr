@@ -1,0 +1,67 @@
+# Long stereo hall whose wet return is gated after an explicit note trigger.
+model gated_hall_reverb(lifecycle = "scoped")
+
+in source, trigger
+$sample_rate = 44100
+$decay_seconds = 3.2
+$gate_seconds = 0.2727272727
+
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Gated hall buffers support sample rates from 8000 through 44100 Hz"
+}
+
+# Four unequal delay lines spread resonances so the tail does not collapse into
+# a pitched echo. Every scoped call site owns an independent hall state.
+state line_one: buffer<number, samples = 2791>
+state line_two: buffer<number, samples = 3253>
+state line_three: buffer<number, samples = 3907>
+state line_four: buffer<number, samples = 4451>
+state gate_age = 10
+state damp_one = 0
+state damp_two = 0
+state damp_three = 0
+state damp_four = 0
+
+# Tap positions scale down with sample rate while the buffers retain 44.1 kHz
+# capacity. NaN history is converted to silence during startup.
+index_one = max(0, floor(2791 * $sample_rate / 44100) - 1)
+index_two = max(0, floor(3253 * $sample_rate / 44100) - 1)
+index_three = max(0, floor(3907 * $sample_rate / 44100) - 1)
+index_four = max(0, floor(4451 * $sample_rate / 44100) - 1)
+raw_one = line_one[index_one]
+raw_two = line_two[index_two]
+raw_three = line_three[index_three]
+raw_four = line_four[index_four]
+one = isnan(raw_one) ? 0 : raw_one
+two = isnan(raw_two) ? 0 : raw_two
+three = isnan(raw_three) ? 0 : raw_three
+four = isnan(raw_four) ? 0 : raw_four
+
+# The feedback is derived from the requested T60 instead of being a vague room size.
+mean_delay_seconds = ((2791 + 3253 + 3907 + 4451) / 4) / 44100
+feedback = pow(10, -3 * mean_delay_seconds / max(3, $decay_seconds))
+damping = 1 - exp(-2 * pi() * 5200 / $sample_rate)
+next_one = damp_one + damping * (one - damp_one)
+next_two = damp_two + damping * (two - damp_two)
+next_three = damp_three + damping * (three - damp_three)
+next_four = damp_four + damping * (four - damp_four)
+
+# A Hadamard feedback matrix produces a dense, stable hall tail.
+line_one := 0.30 * source + feedback * (next_one + next_two + next_three + next_four) / 2
+line_two := 0.26 * source + feedback * (next_one - next_two + next_three - next_four) / 2
+line_three := 0.22 * source + feedback * (next_one + next_two - next_three - next_four) / 2
+line_four := 0.18 * source + feedback * (next_one - next_two - next_three + next_four) / 2
+damp_one := next_one
+damp_two := next_two
+damp_three := next_three
+damp_four := next_four
+
+next_gate_age = trigger > 0 ? 0 : gate_age + 1 / $sample_rate
+# Gate is strictly after the reverb network; a 10 ms close ramp avoids a click.
+gate = clamp(($gate_seconds - next_gate_age) / 0.010, 0, 1)
+gate_age := next_gate_age
+
+out {
+    left = gate * (0.60 * one + 0.40 * three),
+    right = gate * (0.60 * two + 0.40 * four)
+}

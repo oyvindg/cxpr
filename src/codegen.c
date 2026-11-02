@@ -126,6 +126,81 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
                                   cxpr_cg_buf* b, const cxpr_c_target* target,
                                   cxpr_error* err);
 
+static int cxpr_cg_contains_arg_index(const char* name) {
+    if (!name) return -1;
+    if (strcmp(name, "source") == 0 || strcmp(name, "value") == 0) return 0;
+    if (strcmp(name, "values") == 0 || strcmp(name, "array") == 0 ||
+        strcmp(name, "set") == 0) return 1;
+    return -1;
+}
+
+/** Emit scalar membership in an array literal as allocation-free comparisons. */
+static int cxpr_cg_emit_contains_call(const cxpr_expr_ast* ast,
+                                      unsigned lookback_offset,
+                                      cxpr_cg_buf* b,
+                                      const cxpr_c_target* target,
+                                      cxpr_error* err) {
+    const cxpr_expr_ast* ordered[2] = {NULL, NULL};
+    bool used[2] = {false, false};
+    bool seen_named = false;
+    size_t positional = 0u;
+    size_t argc = cxpr_expr_ast_call_arg_count(ast);
+    size_t count;
+
+    if (argc != 2u) {
+        return cxpr_cg_err(err, CXPR_ERR_WRONG_ARITY,
+                           "contains() expects source and values");
+    }
+    for (size_t i = 0u; i < argc; ++i) {
+        const char* name = cxpr_expr_ast_call_arg_name(ast, i);
+        int index;
+        if (!name) {
+            if (seen_named || positional >= 2u) {
+                return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                                   "Invalid positional argument for contains()");
+            }
+            ordered[positional] = cxpr_expr_ast_call_arg(ast, i);
+            used[positional++] = true;
+            continue;
+        }
+        seen_named = true;
+        index = cxpr_cg_contains_arg_index(name);
+        if (index < 0 || used[index]) {
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "Invalid named argument for contains()");
+        }
+        ordered[index] = cxpr_expr_ast_call_arg(ast, i);
+        used[index] = true;
+    }
+    if (!ordered[0] || !ordered[1]) {
+        return cxpr_cg_err(err, CXPR_ERR_WRONG_ARITY,
+                           "contains() requires source and values");
+    }
+    if (cxpr_expr_ast_kind_of(ordered[1]) != CXPR_NODE_ARRAY) {
+        return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH,
+                           "C codegen contains() values must be an array literal");
+    }
+
+    count = cxpr_expr_ast_array_count(ordered[1]);
+    if (count == 0u) {
+        cxpr_cg_puts(b, "false");
+        return 1;
+    }
+    cxpr_cg_putc(b, '(');
+    for (size_t i = 0u; i < count; ++i) {
+        if (i) cxpr_cg_puts(b, " || ");
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_at_offset(ordered[0], lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " == ");
+        if (!cxpr_cg_emit_at_offset(
+                cxpr_expr_ast_array_element(ordered[1], i),
+                lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+    }
+    cxpr_cg_putc(b, ')');
+    return 1;
+}
+
 static int cxpr_cg_emit_trend_call(const cxpr_expr_ast* ast, unsigned lookback_offset,
                                    cxpr_cg_buf* b, const cxpr_c_target* target,
                                    cxpr_error* err, int rising) {
@@ -262,6 +337,9 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
     }
     if (strcmp(name, "repeat") == 0) {
         return cxpr_cg_emit_repeat_call(ast, lookback_offset, b, target, err);
+    }
+    if (strcmp(name, "contains") == 0) {
+        return cxpr_cg_emit_contains_call(ast, lookback_offset, b, target, err);
     }
     if (strcmp(name, "within") == 0 && argc >= 3u && argc <= 5u) {
         cxpr_cg_putc(b, '(');
@@ -538,7 +616,12 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
         return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
                       "field/chain/producer nodes have no standalone C form");
     default:
-        return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "unsupported AST node in C codegen");
+        {
+            static CXPR_THREAD_LOCAL char message[96];
+            snprintf(message, sizeof(message),
+                     "unsupported AST node %d in C codegen", (int)cxpr_expr_ast_kind_of(ast));
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, message);
+        }
     }
 }
 

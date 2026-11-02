@@ -1160,6 +1160,24 @@ static void test_parse_state_init_and_update_state(void) {
     printf("  ✓ test_parse_state_init_and_update_state\n");
 }
 
+static void test_parse_comma_separated_state_declarations(void) {
+    cxpr_model* model = parse_model_ok(
+        "model oscillator\n"
+        "state phase = 0, frequency: number = 440, samples: buffer<number, samples = 8>\n"
+        "out phase\n");
+
+    assert(cxpr_model_binding_count(model) == 3u);
+    assert(strcmp(cxpr_model_binding_name(model, 0u), "phase") == 0);
+    assert(strcmp(cxpr_model_binding_name(model, 1u), "frequency") == 0);
+    assert(strcmp(cxpr_model_binding_name(model, 2u), "samples") == 0);
+    assert(cxpr_model_binding_kind_at(model, 0u) == CXPR_MODEL_BINDING_STATE);
+    assert(cxpr_model_binding_kind_at(model, 1u) == CXPR_MODEL_BINDING_STATE);
+    assert(cxpr_model_binding_kind_at(model, 2u) == CXPR_MODEL_BINDING_STATE);
+
+    cxpr_model_free(model);
+    printf("  ✓ test_parse_comma_separated_state_declarations\n");
+}
+
 static void test_parse_compact_initial_state_update(void) {
     cxpr_error err = {0};
     double value = 0.0;
@@ -1529,7 +1547,8 @@ static void test_validate_rejects_unknown_constants(void) {
 
     assert(!cxpr_model_validate(model, &err));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Expression references unknown constant") == 0);
+    assert(strcmp(err.message,
+                  "Expression references unknown constant '$threshold'") == 0);
 
     cxpr_model_free(model);
     printf("  ✓ test_validate_rejects_unknown_constants\n");
@@ -2609,6 +2628,7 @@ static void test_model_c_history_ring_layout_and_initialization(void) {
 
 static void test_compile_imported_producer_infers_missing_child_inputs(void) {
     cxpr_error err = {0};
+    char* code;
     cxpr_model* child = parse_model_ok(
         "model child\n"
         "in high, low, close\n"
@@ -2630,7 +2650,8 @@ static void test_compile_imported_producer_infers_missing_child_inputs(void) {
         "model parent\n"
         "use child\n"
         "in close\n"
-        "value = child().value + close\n"
+        "child_value = child(high=close, low=close, close=close)\n"
+        "value = child().value + child_value + close\n"
         "out value\n");
     parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
     if (!parent_program) {
@@ -2641,6 +2662,17 @@ static void test_compile_imported_producer_infers_missing_child_inputs(void) {
     assert(strcmp(cxpr_model_compiled_input_name(parent_program, 0u), "close") == 0);
     assert(strcmp(cxpr_model_compiled_input_name(parent_program, 1u), "high") == 0);
     assert(strcmp(cxpr_model_compiled_input_name(parent_program, 2u), "low") == 0);
+
+    code = cxpr_model_compiled_generate_c(
+        parent_program, "static inline", "parent_tick", &err);
+    if (!code) {
+        fprintf(stderr, "single-output child C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "child_call_") != NULL);
+    assert(strstr(code, "const double child_value") != NULL);
+    free(code);
 
     cxpr_model_compiled_free(parent_program);
     cxpr_model_free(parent);
@@ -4917,6 +4949,7 @@ int main(void) {
     test_parse_model_rejects_meta_as_host_block();
     test_model_plan_bind_sources_exports_scoped_timeframes();
     test_parse_state_init_and_update_state();
+    test_parse_comma_separated_state_declarations();
     test_parse_compact_initial_state_update();
     test_parse_inline_state_assignment_and_output();
     test_parse_out_expr_assignment_adds_output();
