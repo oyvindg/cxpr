@@ -1,4 +1,4 @@
-# Pure-CXPR robot voice: phoneme timeline -> formant voice -> room -> master.
+# Pure-CXPR robot voice with moving stereo voices and a wide room.
 model song(type = "dsp")
 
 use sequencer from arrangement
@@ -9,24 +9,92 @@ use pan, phaser, reverb, master from effects
 in t
 $sample_rate = 44100
 
-seq = sequencer(t=t)
-voice = robot_voice(t=t, pitch=seq.pitch, gate=seq.gate,
-    phoneme=seq.phoneme, motion=seq.motion, sample_rate=$sample_rate)
+repeat_spacing = 4.25
+seq_bright = sequencer(t=t)
+seq_radio = sequencer(t=t - repeat_spacing)
+seq_dark = sequencer(t=t - 2 * repeat_spacing)
+seq_sides = sequencer(t=t - 3 * repeat_spacing)
+seq_pitch = sequencer(t=t - 4 * repeat_spacing)
 
-# Remove the synthetic top end before spatial processing. The low-pass remains
-# high enough for H articulation, but rejects the brittle oscillator harmonics.
-voice_tone = state_variable_filter(source=voice, sample_rate=$sample_rate,
-    cutoff=2800, resonance=0.12, smoothing_seconds=0.020)
+voice_bright = robot_voice(t=t, pitch=seq_bright.pitch,
+    gate=seq_bright.gate, phoneme=seq_bright.phoneme,
+    motion=seq_bright.motion, sample_rate=$sample_rate)
+voice_radio = robot_voice(t=t, pitch=seq_radio.pitch,
+    gate=seq_radio.gate, phoneme=seq_radio.phoneme,
+    motion=seq_radio.motion, sample_rate=$sample_rate)
+voice_dark = robot_voice(t=t, pitch=seq_dark.pitch,
+    gate=seq_dark.gate, phoneme=seq_dark.phoneme,
+    motion=seq_dark.motion, sample_rate=$sample_rate)
+voice_side_left = robot_voice(t=t, pitch=seq_sides.pitch,
+    gate=seq_sides.gate, phoneme=seq_sides.phoneme,
+    motion=seq_sides.motion, sample_rate=$sample_rate)
+voice_side_right = robot_voice(t=t, pitch=seq_sides.pitch,
+    gate=seq_sides.gate, phoneme=seq_sides.phoneme,
+    motion=seq_sides.motion, sample_rate=$sample_rate)
+voice_pitch_left = robot_voice(t=t, pitch=0.82 * seq_pitch.pitch,
+    gate=seq_pitch.gate, phoneme=seq_pitch.phoneme,
+    motion=seq_pitch.motion, sample_rate=$sample_rate)
+voice_pitch_right = robot_voice(t=t, pitch=1.20 * seq_pitch.pitch,
+    gate=seq_pitch.gate, phoneme=seq_pitch.phoneme,
+    motion=seq_pitch.motion, sample_rate=$sample_rate)
 
-# Keep the dry voice centered so the words remain intelligible.
-dry = pan(source=0.88 * voice_tone.low, position=0)
-# The room return is deliberately more obvious than a production speech mix.
-# Different phaser rates create width; a slow wet-only pan demonstrates motion
-# without moving the centered dry voice.
-room_send = seq.phoneme == 21 ? 0.14 : 0.36
+bright_filter = state_variable_filter(source=voice_bright,
+    sample_rate=$sample_rate, cutoff=3600, resonance=0.12,
+    smoothing_seconds=0.020)
+radio_filter = state_variable_filter(source=voice_radio,
+    sample_rate=$sample_rate, cutoff=1350, resonance=0.42,
+    smoothing_seconds=0.020)
+dark_filter = state_variable_filter(source=voice_dark,
+    sample_rate=$sample_rate, cutoff=1850, resonance=0.18,
+    smoothing_seconds=0.020)
+side_left_filter = state_variable_filter(source=voice_side_left,
+    sample_rate=$sample_rate, cutoff=2800, resonance=0.16,
+    smoothing_seconds=0.020)
+side_right_filter = state_variable_filter(source=voice_side_right,
+    sample_rate=$sample_rate, cutoff=3300, resonance=0.12,
+    smoothing_seconds=0.020)
+pitch_left_filter = state_variable_filter(source=voice_pitch_left,
+    sample_rate=$sample_rate, cutoff=2400, resonance=0.18,
+    smoothing_seconds=0.020)
+pitch_right_filter = state_variable_filter(source=voice_pitch_right,
+    sample_rate=$sample_rate, cutoff=3600, resonance=0.12,
+    smoothing_seconds=0.020)
+
+voice_mix = 0.84 * bright_filter.low +
+    0.72 * radio_filter.band + 0.18 * radio_filter.low +
+    0.92 * dark_filter.low
+active_phoneme = seq_bright.phoneme + seq_radio.phoneme +
+    seq_dark.phoneme + seq_sides.phoneme + seq_pitch.phoneme
+local_voice_time = seq_bright.phoneme != 0 ? t - 2.0 :
+    seq_radio.phoneme != 0 ? t - repeat_spacing - 2.0 :
+    seq_dark.phoneme != 0 ? t - 2 * repeat_spacing - 2.0 :
+    seq_sides.phoneme != 0 ? t - 3 * repeat_spacing - 2.0 :
+    t - 4 * repeat_spacing - 2.0
+orbit_position = 0.86 * sin(2 * pi() * 0.31 * local_voice_time)
+rear_depth = 0.5 - 0.5 * cos(2 * pi() * 0.31 * local_voice_time)
+solo_dry = pan(source=(0.92 - 0.20 * rear_depth) * voice_mix,
+    position=orbit_position)
+side_left = pan(source=0.56 * side_left_filter.low, position=-0.88)
+side_right = pan(source=0.56 * side_right_filter.low, position=0.88)
+pitch_round_time = t - 4 * repeat_spacing - 2.0
+dark_outer_position = 0.98 * sin(2 * pi() * 0.18 * pitch_round_time - pi() / 2)
+bright_inner_position = 0.26 * sin(2 * pi() * 0.32 * pitch_round_time)
+pitch_left = pan(source=0.54 * pitch_left_filter.low,
+    position=dark_outer_position)
+pitch_right = pan(source=0.54 * pitch_right_filter.low,
+    position=bright_inner_position)
+dry = {
+    left = solo_dry.left + side_left.left + side_right.left +
+        pitch_left.left + pitch_right.left,
+    right = solo_dry.right + side_left.right + side_right.right +
+        pitch_left.right + pitch_right.right
+}
+articulation_send = active_phoneme == 1 ? 0.07 :
+    active_phoneme == 21 ? 0.16 : 0.44
+room_send = articulation_send * (0.80 + 0.45 * rear_depth)
 room = reverb(source_left=room_send * dry.left,
     source_right=room_send * dry.right,
-    sample_rate=$sample_rate, decay_seconds=2.20, damping=3600)
+    sample_rate=$sample_rate, decay_seconds=2.50, damping=4200)
 room_left = phaser(source=room.left, sample_rate=$sample_rate,
     rate=0.10, depth=0.62, mix=0.36)
 room_right = phaser(source=room.right, sample_rate=$sample_rate,
@@ -34,20 +102,17 @@ room_right = phaser(source=room.right, sample_rate=$sample_rate,
 wide_left = pan(source=room_left, position=-0.78)
 wide_right = pan(source=room_right, position=0.78)
 room_motion = 0.82 * sin(2 * pi() * 0.12 * t)
-moving_room = pan(source=0.5 * (room_left + room_right),
-    position=room_motion)
+moving_room = pan(source=0.5 * (room_left + room_right), position=room_motion)
 space_left = wide_left.left + 0.28 * wide_right.left
 space_right = wide_right.right + 0.28 * wide_left.right
-finished = master(source_left=dry.left + 0.36 * room.left +
-        0.42 * space_left + 0.28 * moving_room.left,
-    source_right=dry.right + 0.36 * room.right +
-        0.42 * space_right + 0.28 * moving_room.right,
-    t=t, sample_rate=$sample_rate, gain=1.55, duration=seq.duration,
+duration = 25.00
+finished = master(source_left=dry.left + 0.44 * room.left +
+        0.52 * space_left + 0.34 * moving_room.left,
+    source_right=dry.right + 0.44 * room.right +
+        0.52 * space_right + 0.34 * moving_room.right,
+    t=t, sample_rate=$sample_rate, gain=1.40, duration=duration,
     fade_seconds=1.20, fade_in_seconds=0.08, ceiling=0.90)
 
 left = finished.left
 right = finished.right
-duration = seq.duration
-
-out left, right, duration
-
+out { left, right, duration }

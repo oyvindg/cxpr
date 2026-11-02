@@ -1,39 +1,28 @@
-# Pure CXPR robot voice
+# Robot voice
 
-This example waits for two seconds, then synthesizes **HELLO HUMAN, I AM
-ALIVE** entirely inside CXPR. It
-uses no recording, sample asset, MIDI data, host-side note stream, or runtime
-expression parsing. The host only advances sample time and writes the generated
-stereo values to a WAV file.
+This example says **HELLO UMAN, I AM ALIVE** in five rounds, beginning after
+two seconds of silence.
 
-The graph combines a fixed-pitch pulse excitation, deterministic consonant
-hiss, three resonant formants, quantized prosody, a phased moving room return,
-and final master limiting. The dry voice stays centered while the wet signal
-moves across the stereo field. The result is intentionally a musical robot
-impression rather than a general text-to-speech engine.
+The timeline uses short vowels, a single sustained L in HELLO, a 70 ms gap into
+HUMAN, emphasis on AM and IVE, a soft final V, and mapped segment reductions.
+Each pass has an independent voice and filter state: an open 3.6 kHz low-pass,
+a narrow 1.35 kHz radio band, and a dark 1.85 kHz low-pass. The moving dry
+voices feed a wide phased stereo room with a 2.5 second T60. During each spoken
+pass, equal-power panning traces a left/right orbit while inverse dry level and
+reverb send create a headphone-oriented front/back pseudo-surround movement.
+The fourth round places two independently rendered voices on opposite sides at
+the same pitch. In the fifth, the dark 0.82x voice travels from the far left to
+the far right while the bright 1.20x voice moves simultaneously in a narrow
+field around the center.
 
-The sequencer exercises CXPR's generic bounded collection support. Phoneme
-records are reduced through selector-based `sum` expressions for the active
-phoneme ID and local phase, with no audio-specific primitive, runtime loop, or
-allocation in generated C.
-
-Source layout:
-
-- `models/arrangement/sequencer.cxpr` defines words as phoneme IDs, timing and pitch;
-- `models/song.cxpr` wires the reusable voice, stereo room and master stage;
-- `../../instruments/voice/robot_voice.cxpr` provides one reusable function per
-  phoneme and owns all acoustic formant parameters.
-
-## Render
-
-From `libs/cxpr`:
+Render from `libs/cxpr`:
 
 ```sh
 node examples/audio/songs/robot_voice/render.mjs /tmp/robot-voice.wav
 ```
 
-Quick generated-C smoke render:
+Smoke render:
 
 ```sh
-node examples/audio/songs/robot_voice/render.mjs /tmp/robot-voice-smoke.wav --frames=65536
+node examples/audio/songs/robot_voice/render.mjs /tmp/robot-voice-smoke.wav --frames=131072
 ```
