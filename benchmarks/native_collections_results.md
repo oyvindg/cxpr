@@ -130,3 +130,22 @@ The pure named-map delta is +0.01 ns (+0.3%), within nanobenchmark noise, with
 identical output totals, no state-size increase, and no `CALL_AST`. The model
 test additionally forces the scalar form through fused IR and covers nested
 record results through the session runtime and generated C.
+
+The dedicated fused-model IR benchmark runs one million ticks per trial and
+1,000 compile/free cycles per trial, reporting nine-trial medians:
+
+```sh
+cmake --build build --target cxpr_bench_named_map_ir -j1
+./build/benchmarks/cxpr_bench_named_map_ir
+```
+
+| Case | IR ns/tick | Compile ns | IR instructions |
+|---|---:|---:|---:|
+| Four explicit scalar bindings | 64.73 | 14,734 | 24 |
+| Pure named map | 75.13 | 23,757 | 30 |
+
+Named map is therefore +10.40 ns/tick (+16.1%) in the model IR session and
+9,023 ns (+61.2%) to compile, with six additional instructions. This is a
+real IR materialization cost even though generated C optimizes the same graph
+to parity. Both cases are forced through `CXPR_MODEL_BACKEND_IR`; the benchmark
+aborts if the fused fast path is unavailable or outputs differ.
