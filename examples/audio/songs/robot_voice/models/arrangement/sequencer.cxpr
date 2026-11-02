@@ -43,10 +43,8 @@ alive_v = phoneme_segment((speech_time + 0.13), 3.05, 3.23, 21)
 
 # Bounded max reductions select the active member of the four-segment ALIVE
 # group. Other words keep the selector sum that scales well for the full list.
-alive_phoneme = max([alive_ah.phoneme, alive_l.phoneme,
-    alive_ay.phoneme, alive_v.phoneme])
-alive_motion = max([alive_ah.motion, alive_l.motion,
-    alive_ay.motion, alive_v.motion])
+alive_phoneme = max([alive_ah, alive_l, alive_ay, alive_v], x => x.phoneme)
+alive_motion = max([alive_ah, alive_l, alive_ay, alive_v], x => x.motion)
 phoneme = sum([hello_h, hello_eh, hello_l, hello_ow,
     human_h, human_y, human_uw, human_m, human_ah, human_n,
     i_ay, am_ae, am_m], x => x.phoneme) + alive_phoneme
