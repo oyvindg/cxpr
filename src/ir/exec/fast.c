@@ -158,7 +158,10 @@ double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
                                       double* locals, size_t local_count,
                                       cxpr_ir_bindings* bindings, cxpr_error* err) {
     double stack[CXPR_IR_STACK_CAPACITY];
-    double temps[CXPR_IR_STACK_CAPACITY] = {0};
+    /* Compiler temporaries are definition-dominated: every LOAD_TEMP follows
+       its STORE_TEMP. Avoid clearing the full scratch array on every scalar
+       evaluation, including programs whose temp_count is zero. */
+    double temps[CXPR_IR_STACK_CAPACITY];
     size_t sp = 0;
     size_t ip = 0;
     const bool fast_var_ctx = ctx && !ctx->parent && !ctx->expression_scope &&

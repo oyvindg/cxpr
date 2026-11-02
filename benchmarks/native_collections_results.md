@@ -70,3 +70,35 @@ Median compile time also fell from 3,909 to 3,458 ns for map (-11.5%) and from
 3,375 to 3,095 ns for reduce (-8.3%). Generated C remains the same lowering;
 its measured changes (+2.5% map, -1.0% reduce) are within nanobenchmark noise,
 and all cases retain zero `CALL_AST` fallback.
+
+### Fixed cost and collection scaling
+
+`cxpr_bench_collection_scaling` measures complete folds, not individual IR
+instructions or individual elements. It uses one million evaluations per trial
+and reports the median of nine trials:
+
+```sh
+cmake --build build --target cxpr_bench_collection_scaling -j1
+./build/benchmarks/cxpr_bench_collection_scaling
+```
+
+| Elements | Manual ns/fold | Reduce ns/fold | Map/reduce ns/fold | Instructions |
+|---:|---:|---:|---:|---:|
+| 1 | 14.04 | 14.44 | 15.08 | 6 |
+| 2 | 21.47 | 21.19 | 21.20 | 10 |
+| 4 | 34.97 | 35.05 | 34.94 | 18 |
+| 8 | 62.12 | 62.02 | 62.25 | 34 |
+| 16 | 139.33 | 141.20 | 139.03 | 66 |
+
+The three forms lower to the same instruction stream at every size. Up to eight
+elements the shared evaluator cost is approximately 7 ns fixed plus 7 ns per
+element on this host; the 16-element row also includes the larger dispatch and
+instruction-cache footprint. There is no remaining collection-specific
+per-element overhead.
+
+The scalar executor previously cleared its entire compiler-temporary scratch
+array on every call, including programs with no temporaries. Removing that
+definition-dominated initialization reduced the four-element model benchmarks
+again: map from 45.21 to 29.50 ns/fold (-34.7%) and reduce from 45.67 to
+29.47 ns/fold (-35.5%). Relative to the original `a0924f2` baseline, the total
+improvement is -50.0% for map and -50.6% for reduce. Generated C is unaffected.
