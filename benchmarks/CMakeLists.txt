@@ -24,6 +24,10 @@ set(CXPR_BENCH_IR_MODELS
     static_map_records
     static_reduce_records_manual
     static_reduce_records
+    named_map_records_manual
+    named_map_records
+    named_map_pure_manual
+    named_map_pure
     static_instantiate_manual
     static_instantiate
     struct_scalar_mul

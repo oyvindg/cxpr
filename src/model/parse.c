@@ -768,7 +768,6 @@ static bool cxpr_model_collect_ast_functions(const cxpr_model* model, const cxpr
     for (size_t i = 0; i < used_count && i < CXPR_ARRAY_COUNT(used); ++i) {
         if (strcmp(used[i], "resample") == 0 || strcmp(used[i], "map") == 0 ||
             strcmp(used[i], "reduce") == 0 ||
-            strcmp(used[i], "instantiate") == 0 ||
             strcmp(used[i], "__cxpr_lambda") == 0) continue;
         if (cxpr_model_has_function_def(model, used[i])) continue;
         if (!cxpr_model_string_set_add(names, count, used[i])) return false;

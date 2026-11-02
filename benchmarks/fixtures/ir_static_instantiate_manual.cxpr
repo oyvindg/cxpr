@@ -1,6 +1,6 @@
 model ir_static_instantiate_manual
 use bench_voice from instantiate
 in increment
-left = bench_voice@left(increment=increment).sample
-right = bench_voice@right(increment=increment).sample
+left = bench_voice(increment=increment).sample
+right = bench_voice(increment=increment).sample
 out result = left + right

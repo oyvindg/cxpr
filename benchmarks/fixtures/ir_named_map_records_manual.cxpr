@@ -1,0 +1,8 @@
+model ir_named_map_records_manual
+use bench_voice from instantiate
+in increment
+main = bench_voice(increment=increment).sample
+back = bench_voice(increment=increment + 1).sample
+left = bench_voice(increment=increment + 2).sample
+right = bench_voice(increment=increment + 3).sample
+out result = main + back + left + right

@@ -1,0 +1,10 @@
+model ir_named_map_records
+use bench_voice from instantiate
+in increment
+voices = map({
+    main = increment,
+    back = increment + 1,
+    left = increment + 2,
+    right = increment + 3
+}, voice => bench_voice(increment=voice))
+out result = voices.main + voices.back + voices.left + voices.right

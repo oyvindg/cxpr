@@ -80,6 +80,18 @@ out { phoneme, motion }
   assert.match((await service.getHover(
     recordSource, { line: 2, column: 4 }, "record-smoke.cxpr")).markdown,
     /toms\.shape/);
+  const namedMapSource = `model named_map
+voices = map({
+  main = { frequency = 440, gain = 0.8 },
+  back = { frequency = 550, gain = 0.5 },
+  third = { frequency = 660, gain = 0.4 }
+}, voice => voice.frequency)
+out sample = voices.main + voices.back + voices.third
+`;
+  const namedMapHover = (await service.getHover(
+    namedMapSource, { line: 6, column: 15 }, "named-map.cxpr")).markdown;
+  assert.match(namedMapHover, /voices = \{ main, back, third \}/);
+  assert.doesNotMatch(namedMapHover, /frequency = 440|gain = 0\.8/);
   assert.deepEqual(await service.getDefinitions(source, { line: 2, column: 16 }, "smoke.cxpr"), [{
     uri: "smoke.cxpr",
     range: { start: { line: 1, character: 3 }, end: { line: 1, character: 8 } }

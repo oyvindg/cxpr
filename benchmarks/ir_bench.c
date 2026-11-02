@@ -68,6 +68,18 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
 #ifdef CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE
 #include CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE
 #endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_RECORDS_MANUAL_INLINE
+#include CXPR_BENCH_IR_NAMED_MAP_RECORDS_MANUAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_RECORDS_INLINE
+#include CXPR_BENCH_IR_NAMED_MAP_RECORDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_PURE_MANUAL_INLINE
+#include CXPR_BENCH_IR_NAMED_MAP_PURE_MANUAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_PURE_INLINE
+#include CXPR_BENCH_IR_NAMED_MAP_PURE_INLINE
+#endif
 #ifdef CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE
 #include CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE
 #endif
@@ -125,6 +137,10 @@ typedef enum {
     BENCH_C_STATIC_MAP_RECORDS,
     BENCH_C_STATIC_REDUCE_RECORDS_MANUAL,
     BENCH_C_STATIC_REDUCE_RECORDS,
+    BENCH_C_NAMED_MAP_RECORDS_MANUAL,
+    BENCH_C_NAMED_MAP_RECORDS,
+    BENCH_C_NAMED_MAP_PURE_MANUAL,
+    BENCH_C_NAMED_MAP_PURE,
     BENCH_C_STATIC_INSTANTIATE_MANUAL,
     BENCH_C_STATIC_INSTANTIATE,
     BENCH_C_STRUCT_SCALAR_MUL,
@@ -344,6 +360,18 @@ static const char* bench_c_model_inline_path(bench_c_model model) {
 #endif
 #ifdef CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE
     case BENCH_C_STATIC_REDUCE_RECORDS: return CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_RECORDS_MANUAL_INLINE
+    case BENCH_C_NAMED_MAP_RECORDS_MANUAL: return CXPR_BENCH_IR_NAMED_MAP_RECORDS_MANUAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_RECORDS_INLINE
+    case BENCH_C_NAMED_MAP_RECORDS: return CXPR_BENCH_IR_NAMED_MAP_RECORDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_PURE_MANUAL_INLINE
+    case BENCH_C_NAMED_MAP_PURE_MANUAL: return CXPR_BENCH_IR_NAMED_MAP_PURE_MANUAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_NAMED_MAP_PURE_INLINE
+    case BENCH_C_NAMED_MAP_PURE: return CXPR_BENCH_IR_NAMED_MAP_PURE_INLINE;
 #endif
 #ifdef CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE
     case BENCH_C_STATIC_INSTANTIATE_MANUAL: return CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE;
@@ -1508,6 +1536,10 @@ DEFINE_STATIC_COLLECTION_C_TIMER(static_map_records_manual)
 DEFINE_STATIC_COLLECTION_C_TIMER(static_map_records)
 DEFINE_STATIC_COLLECTION_C_TIMER(static_reduce_records_manual)
 DEFINE_STATIC_COLLECTION_C_TIMER(static_reduce_records)
+DEFINE_STATIC_COLLECTION_C_TIMER(named_map_records_manual)
+DEFINE_STATIC_COLLECTION_C_TIMER(named_map_records)
+DEFINE_STATIC_COLLECTION_C_TIMER(named_map_pure_manual)
+DEFINE_STATIC_COLLECTION_C_TIMER(named_map_pure)
 DEFINE_STATIC_COLLECTION_C_TIMER(static_instantiate_manual)
 DEFINE_STATIC_COLLECTION_C_TIMER(static_instantiate)
 
@@ -1577,6 +1609,10 @@ static double time_c_model(bench_c_model model, size_t iterations, double* out_t
     case BENCH_C_STATIC_MAP_RECORDS: return time_c_static_map_records(iterations, out_total);
     case BENCH_C_STATIC_REDUCE_RECORDS_MANUAL: return time_c_static_reduce_records_manual(iterations, out_total);
     case BENCH_C_STATIC_REDUCE_RECORDS: return time_c_static_reduce_records(iterations, out_total);
+    case BENCH_C_NAMED_MAP_RECORDS_MANUAL: return time_c_named_map_records_manual(iterations, out_total);
+    case BENCH_C_NAMED_MAP_RECORDS: return time_c_named_map_records(iterations, out_total);
+    case BENCH_C_NAMED_MAP_PURE_MANUAL: return time_c_named_map_pure_manual(iterations, out_total);
+    case BENCH_C_NAMED_MAP_PURE: return time_c_named_map_pure(iterations, out_total);
     case BENCH_C_STRUCT_SCALAR_MUL: return time_c_struct_scalar_mul(iterations, out_total);
     case BENCH_C_SCALAR_STRUCT_MUL: return time_c_scalar_struct_mul(iterations, out_total);
     case BENCH_C_STRUCT_STRUCT_MUL: return time_c_struct_struct_mul(iterations, out_total);
@@ -2386,6 +2422,98 @@ static void bench_static_instantiate(void) {
                     1.0));
 }
 
+static void bench_named_map_records(void) {
+    const size_t iterations = 5000000u;
+    double manual_total = 0.0;
+    double native_total = 0.0;
+    double manual_ns;
+    double native_ns;
+    char* manual_c = read_text_file(
+        bench_c_model_inline_path(BENCH_C_NAMED_MAP_RECORDS_MANUAL));
+    char* native_c = read_text_file(
+        bench_c_model_inline_path(BENCH_C_NAMED_MAP_RECORDS));
+    if (!manual_c || !native_c || strstr(manual_c, "CALL_AST") ||
+        strstr(native_c, "CALL_AST")) {
+        fprintf(stderr, "Named map generated C retained CALL_AST\n");
+        free(native_c);
+        free(manual_c);
+        exit(1);
+    }
+    free(native_c);
+    free(manual_c);
+    manual_ns = time_c_named_map_records_manual(iterations, &manual_total);
+    native_ns = time_c_named_map_records(iterations, &native_total);
+    if (fabs(manual_total - native_total) >
+        1e-9 * (1.0 + fabs(manual_total))) {
+        fprintf(stderr, "Named map generated-C total mismatch: %.17g vs %.17g\n",
+                manual_total, native_total);
+        exit(1);
+    }
+    g_sink += manual_total + native_total;
+    printf("\nNamed record map (generated C)\n");
+    printf("%-28s  %10s  %12s  %12s\n",
+           "case", "iters", "C ns/eval", "state bytes");
+    printf("%-28s  %10zu  %12.2f  %12zu\n",
+           "named_map_records_manual", iterations, manual_ns,
+           sizeof(cxpr_bench_ir_named_map_records_manual_state));
+    printf("%-28s  %10zu  %12.2f  %12zu\n",
+           "named_map_records", iterations, native_ns,
+           sizeof(cxpr_bench_ir_named_map_records_state));
+    printf("  delta: C=%+.2f ns (%+.2f%%), state=%+td bytes (%+.2f%%)\n",
+           native_ns - manual_ns, 100.0 * (native_ns / manual_ns - 1.0),
+           (ptrdiff_t)sizeof(cxpr_bench_ir_named_map_records_state) -
+               (ptrdiff_t)sizeof(cxpr_bench_ir_named_map_records_manual_state),
+           100.0 * ((double)sizeof(cxpr_bench_ir_named_map_records_state) /
+                        (double)sizeof(cxpr_bench_ir_named_map_records_manual_state) -
+                    1.0));
+}
+
+static void bench_named_map_pure(void) {
+    const size_t iterations = 5000000u;
+    double manual_total = 0.0;
+    double native_total = 0.0;
+    double manual_ns;
+    double native_ns;
+    char* manual_c = read_text_file(
+        bench_c_model_inline_path(BENCH_C_NAMED_MAP_PURE_MANUAL));
+    char* native_c = read_text_file(
+        bench_c_model_inline_path(BENCH_C_NAMED_MAP_PURE));
+    if (!manual_c || !native_c || strstr(manual_c, "CALL_AST") ||
+        strstr(native_c, "CALL_AST")) {
+        fprintf(stderr, "Pure named map generated C retained CALL_AST\n");
+        free(native_c);
+        free(manual_c);
+        exit(1);
+    }
+    free(native_c);
+    free(manual_c);
+    manual_ns = time_c_named_map_pure_manual(iterations, &manual_total);
+    native_ns = time_c_named_map_pure(iterations, &native_total);
+    if (fabs(manual_total - native_total) >
+        1e-9 * (1.0 + fabs(manual_total))) {
+        fprintf(stderr, "Pure named map total mismatch: %.17g vs %.17g\n",
+                manual_total, native_total);
+        exit(1);
+    }
+    g_sink += manual_total + native_total;
+    printf("\nPure named record map (generated C)\n");
+    printf("%-28s  %10s  %12s  %12s\n",
+           "case", "iters", "C ns/eval", "state bytes");
+    printf("%-28s  %10zu  %12.2f  %12zu\n",
+           "named_map_pure_manual", iterations, manual_ns,
+           sizeof(cxpr_bench_ir_named_map_pure_manual_state));
+    printf("%-28s  %10zu  %12.2f  %12zu\n",
+           "named_map_pure", iterations, native_ns,
+           sizeof(cxpr_bench_ir_named_map_pure_state));
+    printf("  delta: C=%+.2f ns (%+.2f%%), state=%+td bytes (%+.2f%%)\n",
+           native_ns - manual_ns, 100.0 * (native_ns / manual_ns - 1.0),
+           (ptrdiff_t)sizeof(cxpr_bench_ir_named_map_pure_state) -
+               (ptrdiff_t)sizeof(cxpr_bench_ir_named_map_pure_manual_state),
+           100.0 * ((double)sizeof(cxpr_bench_ir_named_map_pure_state) /
+                        (double)sizeof(cxpr_bench_ir_named_map_pure_manual_state) -
+                    1.0));
+}
+
 static int print_generated_c(const bench_case* cases, size_t case_count,
                              const typed_bench_case* typed_cases, size_t typed_case_count,
                              const lookback_bench_case* lookback_cases, size_t lookback_case_count,
@@ -2699,6 +2827,16 @@ int main(int argc, char** argv) {
         strcmp(case_filter, "static_instantiate_manual") == 0) {
         case_matched = true;
         bench_static_instantiate();
+    }
+    if (!case_filter || strcmp(case_filter, "named_map_records") == 0 ||
+        strcmp(case_filter, "named_map_records_manual") == 0) {
+        case_matched = true;
+        bench_named_map_records();
+    }
+    if (!case_filter || strcmp(case_filter, "named_map_pure") == 0 ||
+        strcmp(case_filter, "named_map_pure_manual") == 0) {
+        case_matched = true;
+        bench_named_map_pure();
     }
 
     if (case_filter && !case_matched) {

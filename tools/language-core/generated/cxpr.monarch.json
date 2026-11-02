@@ -207,6 +207,26 @@
         ]
       ],
       [
+        "(\\()(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s*)(\\))(\\s*)(=>)",
+        [
+          "punctuation",
+          "white",
+          "parameter",
+          "white",
+          "punctuation",
+          "white",
+          "operator"
+        ]
+      ],
+      [
+        "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s*)(=>)",
+        [
+          "parameter",
+          "white",
+          "operator"
+        ]
+      ],
+      [
         "\\bplot(?=\\s*\\{)",
         "plotBlock"
       ],

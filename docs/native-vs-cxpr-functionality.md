@@ -268,13 +268,15 @@ domains while preserving CXPR as a small, deterministic, domain-agnostic core.
   is a deterministic left fold with `step.acc`, `step.value`, and
   `step.index`; a non-escaping `map` is fused into its `reduce` consumer.
   Lowering is statically bounded and emits neither runtime callbacks nor
-  `CALL_AST` fallback. Escaping mapped collections remain unsupported.
+  `CALL_AST` fallback. Escaping mapped arrays remain unsupported; mapped
+  records preserve their field names and may be bound as named results.
 - [x] Fixed-size scoped instantiation uses
-  `instantiate(static_array, item => model@group(...))`. The compiler unrolls
-  the collection, derives stable per-element identities from `@group`, and
-  allocates independent state without dynamic allocation. The explicit label
-  syntax follows `../../docs/plans/cxpr-explicit-instance-identity-plan.md`;
-  `instance=` is not a model argument or language feature.
+  `map(static_collection, item => model(...))`. The compiler unrolls
+  arrays by static index and records by field name, preserves the collection
+  shape, and allocates independent state without dynamic allocation. Ordinary
+  scoped calls use their owning binding as identity as well. A named record
+  produces a named record, so `voices.main` is backed by the stable identity
+  `voices.main` rather than a numeric slot.
 - [ ] Generalize the bounded lowering contract to `find`, `count`,
   `enumerate`, and `zip` after their empty-collection and result-type contracts
   are specified.

@@ -14,222 +14,102 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct {
-    const cxpr_model_compiled* child;
-    const char* label;
-} cxpr_model_explicit_instance_seen;
-
-static bool cxpr_model_validate_instantiate_usage_ast(
-    const cxpr_expr_ast* ast, bool reducer_source, cxpr_error* err) {
+/* Stateful child identity follows the owning model binding. The ordinal only
+ * disambiguates additional child calls nested inside the same expression. */
+static bool cxpr_model_assign_binding_identities_ast(
+    cxpr_expr_ast* ast, const cxpr_registry* reg, const char* binding,
+    size_t* child_ordinal, cxpr_error* err) {
+    size_t child_count = 0u;
     if (!ast) return true;
-    if (ast->type == CXPR_NODE_FUNCTION_CALL) {
-        const char* name = ast->data.function_call.name;
-        bool is_instantiate = name && strcmp(name, "instantiate") == 0;
-        bool is_reducer = name &&
-            (strcmp(name, "reduce") == 0 || strcmp(name, "sum") == 0 ||
-             strcmp(name, "mean") == 0 || strcmp(name, "min") == 0 ||
-             strcmp(name, "max") == 0 || strcmp(name, "any") == 0 ||
-             strcmp(name, "all") == 0);
-        if (is_instantiate && !reducer_source) {
-            cxpr_model_set_error(
-                err, CXPR_ERR_SYNTAX,
-                "instantiate result may only be used directly as a reducer source", 0, 0);
-            return false;
-        }
-        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
-            if (!cxpr_model_validate_instantiate_usage_ast(
-                    ast->data.function_call.args[i], is_reducer && i == 0u, err))
+    if (ast->type == CXPR_NODE_FUNCTION_CALL ||
+        ast->type == CXPR_NODE_PRODUCER_ACCESS) {
+        const char* name = ast->type == CXPR_NODE_FUNCTION_CALL
+            ? ast->data.function_call.name : ast->data.producer_access.name;
+        cxpr_func_entry* entry = name ? cxpr_registry_find(reg, name) : NULL;
+        cxpr_model_child_program* child = entry && entry->model_producer
+            ? (cxpr_model_child_program*)entry->model_producer_userdata : NULL;
+        if (child && child->program &&
+            child->program->lifetime == CXPR_MODEL_LIFETIME_SCOPED) {
+            const char* element = cxpr_expr_ast_call_instance_id(ast);
+            size_t ordinal = (*child_ordinal)++;
+            size_t identity_size = strlen(binding) + (element ? strlen(element) : 0u) + 32u;
+            char* identity = (char*)malloc(identity_size);
+            bool assigned;
+            if (!identity) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0, 0);
                 return false;
+            }
+            if (element) snprintf(identity, identity_size, "%s.%s", binding, element);
+            else if (ordinal == 0u) snprintf(identity, identity_size, "%s", binding);
+            else snprintf(identity, identity_size, "%s.%zu", binding, ordinal);
+            assigned = cxpr_expr_ast_call_set_instance_id(ast, identity);
+            free(identity);
+            if (!assigned) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0, 0);
+                return false;
+            }
+        }
+        child_count = ast->type == CXPR_NODE_FUNCTION_CALL
+            ? ast->data.function_call.argc : ast->data.producer_access.argc;
+        for (size_t i = 0u; i < child_count; ++i) {
+            cxpr_expr_ast* child_ast = ast->type == CXPR_NODE_FUNCTION_CALL
+                ? ast->data.function_call.args[i]
+                : ast->data.producer_access.args[i];
+            if (!cxpr_model_assign_binding_identities_ast(
+                    child_ast, reg, binding, child_ordinal, err)) return false;
+        }
         return true;
     }
     switch (ast->type) {
     case CXPR_NODE_ARRAY:
         for (size_t i = 0u; i < ast->data.array.count; ++i)
-            if (!cxpr_model_validate_instantiate_usage_ast(
-                    ast->data.array.elements[i], false, err)) return false;
+            if (!cxpr_model_assign_binding_identities_ast(
+                    ast->data.array.elements[i], reg, binding,
+                    child_ordinal, err)) return false;
         return true;
     case CXPR_NODE_RECORD:
         for (size_t i = 0u; i < ast->data.record.field_count; ++i)
-            if (!cxpr_model_validate_instantiate_usage_ast(
-                    ast->data.record.field_values[i], false, err)) return false;
-        return true;
-    case CXPR_NODE_PRODUCER_ACCESS:
-        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i)
-            if (!cxpr_model_validate_instantiate_usage_ast(
-                    ast->data.producer_access.args[i], false, err)) return false;
+            if (!cxpr_model_assign_binding_identities_ast(
+                    ast->data.record.field_values[i], reg, binding,
+                    child_ordinal, err)) return false;
         return true;
     case CXPR_NODE_BINARY_OP:
-        return cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.binary_op.left, false, err) &&
-               cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.binary_op.right, false, err);
+        return cxpr_model_assign_binding_identities_ast(
+                   ast->data.binary_op.left, reg, binding, child_ordinal, err) &&
+               cxpr_model_assign_binding_identities_ast(
+                   ast->data.binary_op.right, reg, binding, child_ordinal, err);
     case CXPR_NODE_UNARY_OP:
-        return cxpr_model_validate_instantiate_usage_ast(
-            ast->data.unary_op.operand, false, err);
+        return cxpr_model_assign_binding_identities_ast(
+            ast->data.unary_op.operand, reg, binding, child_ordinal, err);
     case CXPR_NODE_TERNARY:
-        return cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.ternary.condition, false, err) &&
-               cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.ternary.true_branch, false, err) &&
-               cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.ternary.false_branch, false, err);
+        return cxpr_model_assign_binding_identities_ast(
+                   ast->data.ternary.condition, reg, binding, child_ordinal, err) &&
+               cxpr_model_assign_binding_identities_ast(
+                   ast->data.ternary.true_branch, reg, binding, child_ordinal, err) &&
+               cxpr_model_assign_binding_identities_ast(
+                   ast->data.ternary.false_branch, reg, binding, child_ordinal, err);
     case CXPR_NODE_INDEX:
-        return cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.index.target, false, err) &&
-               cxpr_model_validate_instantiate_usage_ast(
-                   ast->data.index.index, false, err);
+        return cxpr_model_assign_binding_identities_ast(
+                   ast->data.index.target, reg, binding, child_ordinal, err) &&
+               cxpr_model_assign_binding_identities_ast(
+                   ast->data.index.index, reg, binding, child_ordinal, err);
     case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_model_validate_instantiate_usage_ast(
-            ast->data.field_access.base, false, err);
+        return cxpr_model_assign_binding_identities_ast(
+            ast->data.field_access.base, reg, binding, child_ordinal, err);
     default:
         return true;
     }
 }
 
-static bool cxpr_model_validate_instance_labels_ast(
-    const cxpr_expr_ast* ast, const cxpr_registry* reg,
-    cxpr_model_explicit_instance_seen** seen, size_t* seen_count,
-    size_t* seen_capacity, cxpr_error* err) {
-    size_t child_count = 0u;
-    const char* label;
-    if (!ast) return true;
-    label = cxpr_expr_ast_call_instance_id(ast);
-    if (label) {
-        const char* name = NULL;
-        cxpr_func_entry* entry;
-        cxpr_model_child_program* child;
-        if (ast->type == CXPR_NODE_FUNCTION_CALL)
-            name = ast->data.function_call.name;
-        else if (ast->type == CXPR_NODE_PRODUCER_ACCESS)
-            name = ast->data.producer_access.name;
-        entry = name ? cxpr_registry_find(reg, name) : NULL;
-        child = entry && entry->model_producer
-                    ? (cxpr_model_child_program*)entry->model_producer_userdata
-                    : NULL;
-        if (!child || !child->program ||
-            child->program->lifetime != CXPR_MODEL_LIFETIME_SCOPED) {
-            cxpr_model_set_error(
-                err, CXPR_ERR_SYNTAX,
-                "Explicit instance labels require a scoped imported model", 0, 0);
-            return false;
-        }
-        for (size_t i = 0u; i < *seen_count; ++i) {
-            if ((*seen)[i].child == child->program &&
-                strcmp((*seen)[i].label, label) == 0) {
-                cxpr_model_set_error(
-                    err, CXPR_ERR_SYNTAX,
-                    "Duplicate explicit instance label for scoped model", 0, 0);
-                return false;
-            }
-        }
-        if (*seen_count == *seen_capacity) {
-            size_t next = *seen_capacity ? *seen_capacity * 2u : 8u;
-            cxpr_model_explicit_instance_seen* grown =
-                (cxpr_model_explicit_instance_seen*)realloc(
-                    *seen, next * sizeof(**seen));
-            if (!grown) {
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
-                                     "Out of memory", 0, 0);
-                return false;
-            }
-            *seen = grown;
-            *seen_capacity = next;
-        }
-        (*seen)[(*seen_count)++] =
-            (cxpr_model_explicit_instance_seen){child->program, label};
-    }
-    switch (ast->type) {
-    case CXPR_NODE_ARRAY:
-        child_count = ast->data.array.count;
-        for (size_t i = 0u; i < child_count; ++i)
-            if (!cxpr_model_validate_instance_labels_ast(
-                    ast->data.array.elements[i], reg, seen, seen_count,
-                    seen_capacity, err)) return false;
-        return true;
-    case CXPR_NODE_RECORD:
-        child_count = ast->data.record.field_count;
-        for (size_t i = 0u; i < child_count; ++i)
-            if (!cxpr_model_validate_instance_labels_ast(
-                    ast->data.record.field_values[i], reg, seen, seen_count,
-                    seen_capacity, err)) return false;
-        return true;
-    case CXPR_NODE_FUNCTION_CALL:
-        child_count = ast->data.function_call.argc;
-        for (size_t i = 0u; i < child_count; ++i)
-            if (!cxpr_model_validate_instance_labels_ast(
-                    ast->data.function_call.args[i], reg, seen, seen_count,
-                    seen_capacity, err)) return false;
-        return true;
-    case CXPR_NODE_PRODUCER_ACCESS:
-        child_count = ast->data.producer_access.argc;
-        for (size_t i = 0u; i < child_count; ++i)
-            if (!cxpr_model_validate_instance_labels_ast(
-                    ast->data.producer_access.args[i], reg, seen, seen_count,
-                    seen_capacity, err)) return false;
-        return true;
-    case CXPR_NODE_BINARY_OP:
-        return cxpr_model_validate_instance_labels_ast(
-                   ast->data.binary_op.left, reg, seen, seen_count,
-                   seen_capacity, err) &&
-               cxpr_model_validate_instance_labels_ast(
-                   ast->data.binary_op.right, reg, seen, seen_count,
-                   seen_capacity, err);
-    case CXPR_NODE_UNARY_OP:
-        return cxpr_model_validate_instance_labels_ast(
-            ast->data.unary_op.operand, reg, seen, seen_count,
-            seen_capacity, err);
-    case CXPR_NODE_TERNARY:
-        return cxpr_model_validate_instance_labels_ast(
-                   ast->data.ternary.condition, reg, seen, seen_count,
-                   seen_capacity, err) &&
-               cxpr_model_validate_instance_labels_ast(
-                   ast->data.ternary.true_branch, reg, seen, seen_count,
-                   seen_capacity, err) &&
-               cxpr_model_validate_instance_labels_ast(
-                   ast->data.ternary.false_branch, reg, seen, seen_count,
-                   seen_capacity, err);
-    case CXPR_NODE_INDEX:
-        return cxpr_model_validate_instance_labels_ast(
-                   ast->data.index.target, reg, seen, seen_count,
-                   seen_capacity, err) &&
-               cxpr_model_validate_instance_labels_ast(
-                   ast->data.index.index, reg, seen, seen_count,
-                   seen_capacity, err);
-    case CXPR_NODE_FIELD_ACCESS:
-        return cxpr_model_validate_instance_labels_ast(
-            ast->data.field_access.base, reg, seen, seen_count,
-            seen_capacity, err);
-    default:
-        return true;
-    }
-}
-
-static bool cxpr_model_validate_instance_labels(const cxpr_model* model,
-                                                const cxpr_registry* reg,
-                                                cxpr_error* err) {
-    cxpr_model_explicit_instance_seen* seen = NULL;
-    size_t seen_count = 0u, seen_capacity = 0u;
-    bool ok = true;
-    for (size_t i = 0u; ok && i < model->constant_count; ++i)
-        ok = cxpr_model_validate_instantiate_usage_ast(
-                 model->constants[i].expr, false, err) &&
-             cxpr_model_validate_instance_labels_ast(
-                 model->constants[i].expr, reg, &seen, &seen_count,
-                 &seen_capacity, err);
-    for (size_t i = 0u; ok && i < model->binding_count; ++i)
-        ok = cxpr_model_validate_instantiate_usage_ast(
-                 model->bindings[i].expr, false, err) &&
-             cxpr_model_validate_instance_labels_ast(
-                 model->bindings[i].expr, reg, &seen, &seen_count,
-                 &seen_capacity, err);
-    for (size_t i = 0u; ok && i < model->assert_count; ++i)
-        ok = cxpr_model_validate_instantiate_usage_ast(
-                 model->asserts[i].expr, false, err) &&
-             cxpr_model_validate_instance_labels_ast(
-                 model->asserts[i].expr, reg, &seen, &seen_count,
-                 &seen_capacity, err);
-    free(seen);
-    return ok;
+static bool cxpr_model_assign_binding_identities(
+    cxpr_expr_ast* ast, const cxpr_registry* reg, const char* binding,
+    cxpr_error* err) {
+    size_t child_ordinal = 0u;
+    if (!ast || !reg || !binding) return true;
+    return cxpr_model_assign_binding_identities_ast(
+        ast, reg, binding, &child_ordinal, err);
 }
 
 static bool cxpr_model_collect_resamples_ast(cxpr_model_compiled* program,
@@ -399,6 +279,7 @@ done:
 }
 
 static bool cxpr_model_executable_eval_order(const cxpr_model* model,
+                                             const cxpr_registry* registry,
                                              size_t* out_order,
                                              size_t executable_count,
                                              cxpr_error* err) {
@@ -406,6 +287,7 @@ static bool cxpr_model_executable_eval_order(const cxpr_model* model,
     cxpr_analysis* analyses;
     size_t* map;
     char** def_names;
+    char** def_sources;
     size_t def_count = 0u;
     bool ok;
 
@@ -414,11 +296,13 @@ static bool cxpr_model_executable_eval_order(const cxpr_model* model,
     analyses = (cxpr_analysis*)calloc(executable_count, sizeof(cxpr_analysis));
     map = (size_t*)calloc(executable_count, sizeof(size_t));
     def_names = (char**)calloc(executable_count, sizeof(char*));
-    if (!defs || !analyses || !map || !def_names) {
+    def_sources = (char**)calloc(executable_count, sizeof(char*));
+    if (!defs || !analyses || !map || !def_names || !def_sources) {
         free(defs);
         free(analyses);
         free(map);
         free(def_names);
+        free(def_sources);
         cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
         return false;
     }
@@ -438,7 +322,47 @@ static bool cxpr_model_executable_eval_order(const cxpr_model* model,
         } else {
             defs[def_count].name = model->bindings[i].name;
         }
-        defs[def_count].expression = model->bindings[i].source;
+        {
+            cxpr_expr_ast* expanded = cxpr_model_inline_defined_calls(
+                model->bindings[i].expr, registry, err);
+            def_sources[def_count] = expanded
+                ? cxpr_expr_ast_to_string(expanded) : NULL;
+            cxpr_expr_ast_free(expanded);
+            if (def_sources[def_count] && strchr(def_sources[def_count], '@')) {
+                const char* refs[256];
+                size_t nrefs = cxpr_expr_ast_references(
+                    model->bindings[i].expr, refs, 256u);
+                size_t size = 2u;
+                char* dependencies;
+                free(def_sources[def_count]);
+                def_sources[def_count] = NULL;
+                for (size_t r = 0u; r < nrefs && r < 256u; ++r) {
+                    for (size_t b = 0u; b < model->binding_count; ++b) {
+                        if (cxpr_model_names_match(refs[r], model->bindings[b].name))
+                            size += strlen(model->bindings[b].name) + 3u;
+                    }
+                }
+                dependencies = (char*)calloc(size, 1u);
+                if (dependencies) strcpy(dependencies, "0");
+                for (size_t r = 0u; dependencies && r < nrefs && r < 256u; ++r) {
+                    for (size_t b = 0u; b < model->binding_count; ++b) {
+                        if (cxpr_model_names_match(refs[r], model->bindings[b].name)) {
+                            strcat(dependencies, " + ");
+                            strcat(dependencies, model->bindings[b].name);
+                        }
+                    }
+                }
+                def_sources[def_count] = dependencies;
+            }
+            if (!def_sources[def_count]) {
+                ok = false;
+                if (err && err->code == CXPR_OK)
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0, 0);
+                goto cleanup;
+            }
+            defs[def_count].expression = def_sources[def_count];
+        }
         map[def_count] = i;
         def_count++;
     }
@@ -449,10 +373,12 @@ static bool cxpr_model_executable_eval_order(const cxpr_model* model,
     }
 cleanup:
     for (size_t i = 0; i < executable_count; ++i) free(def_names[i]);
+    for (size_t i = 0; i < executable_count; ++i) free(def_sources[i]);
     free(defs);
     free(analyses);
     free(map);
     free(def_names);
+    free(def_sources);
     return ok;
 }
 
@@ -848,14 +774,6 @@ cxpr_model_compiled* cxpr_model_compile_full(
             cxpr_model_compiled_free(program);
             return NULL;
         }
-        if (!cxpr_model_validate_instance_labels(model, program->registry, err)) {
-            for (size_t j = 0; j < required_default_count; ++j) free(required_defaults[j]);
-            free(required_defaults);
-            for (size_t i = 0u; i < inferred_input_count; ++i) free(inferred_inputs[i]);
-            free(inferred_inputs);
-            cxpr_model_compiled_free(program);
-            return NULL;
-        }
         for (size_t i = 0; i < required_default_count; ++i) {
             if (!cxpr_register_default_named(program->registry, required_defaults[i])) {
                 if (err) {
@@ -991,6 +909,13 @@ cxpr_model_compiled* cxpr_model_compile_full(
             program->constants[i].ast = cxpr_model_inline_static_collections(
                 program->constants[i].ast, program, err);
             if (program->constants[i].ast &&
+                !cxpr_model_assign_binding_identities(
+                    program->constants[i].ast, compile_reg,
+                    model->constants[i].name, err)) {
+                cxpr_model_compiled_free(program);
+                return NULL;
+            }
+            if (program->constants[i].ast &&
                 !cxpr_typecheck(program->constants[i].ast, compile_reg, NULL, err)) {
                 cxpr_model_compiled_free(program);
                 return NULL;
@@ -1067,6 +992,13 @@ cxpr_model_compiled* cxpr_model_compile_full(
                 program->state_defaults[out_i].ast = cxpr_model_inline_static_collections(
                     program->state_defaults[out_i].ast, program, err);
                 if (program->state_defaults[out_i].ast &&
+                    !cxpr_model_assign_binding_identities(
+                        program->state_defaults[out_i].ast, compile_reg,
+                        model->bindings[i].name, err)) {
+                    cxpr_model_compiled_free(program);
+                    return NULL;
+                }
+                if (program->state_defaults[out_i].ast &&
                     !cxpr_typecheck(program->state_defaults[out_i].ast,
                                     compile_reg, NULL, err)) {
                     cxpr_model_compiled_free(program);
@@ -1103,7 +1035,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
         }
-        if (!cxpr_model_executable_eval_order(model, order, executable_count, err)) {
+        if (!cxpr_model_executable_eval_order(
+                model, compile_reg, order, executable_count, err)) {
             free(order);
             cxpr_model_compiled_free(program);
             return NULL;
@@ -1137,6 +1070,14 @@ cxpr_model_compiled* cxpr_model_compile_full(
                 model->bindings[src_i].expr, compile_reg, err);
             program->bindings[out_i].ast = cxpr_model_inline_static_collections(
                 program->bindings[out_i].ast, program, err);
+            if (program->bindings[out_i].ast &&
+                !cxpr_model_assign_binding_identities(
+                    program->bindings[out_i].ast, compile_reg,
+                    model->bindings[src_i].name, err)) {
+                free(order);
+                cxpr_model_compiled_free(program);
+                return NULL;
+            }
             if (program->bindings[out_i].ast &&
                 !cxpr_typecheck(program->bindings[out_i].ast,
                                 compile_reg, NULL, err)) {

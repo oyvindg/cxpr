@@ -588,7 +588,28 @@ static bool cxpr_doc_ast_assign_name_expr(cxpr_doc_ast_node* node,
     *eq = '\0';
     name = cxpr_doc_ast_trim_in_place(statement);
     expr = cxpr_doc_ast_trim_in_place(eq + 1);
-    metadata_open = *expr == '{' ? NULL : strchr(expr, '{');
+    metadata_open = NULL;
+    if (*expr != '{') {
+        int paren_depth = 0;
+        int bracket_depth = 0;
+        char quote = '\0';
+        for (char* cursor = expr; *cursor; ++cursor) {
+            if (quote) {
+                if (*cursor == '\\' && cursor[1]) ++cursor;
+                else if (*cursor == quote) quote = '\0';
+                continue;
+            }
+            if (*cursor == '"' || *cursor == '\'') quote = *cursor;
+            else if (*cursor == '(') paren_depth++;
+            else if (*cursor == ')' && paren_depth > 0) paren_depth--;
+            else if (*cursor == '[') bracket_depth++;
+            else if (*cursor == ']' && bracket_depth > 0) bracket_depth--;
+            else if (*cursor == '{' && paren_depth == 0 && bracket_depth == 0) {
+                metadata_open = cursor;
+                break;
+            }
+        }
+    }
     if (metadata_open) {
         metadata_close = strrchr(metadata_open, '}');
         *metadata_open = '\0';

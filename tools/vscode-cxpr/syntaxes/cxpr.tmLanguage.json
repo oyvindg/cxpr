@@ -307,6 +307,34 @@
       }
     },
     {
+      "match": "(\\()(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s*)(\\))(\\s*)(=>)",
+      "captures": {
+        "1": {
+          "name": "punctuation.cxpr"
+        },
+        "3": {
+          "name": "variable.parameter.cxpr"
+        },
+        "5": {
+          "name": "punctuation.cxpr"
+        },
+        "7": {
+          "name": "keyword.operator.cxpr"
+        }
+      }
+    },
+    {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s*)(=>)",
+      "captures": {
+        "1": {
+          "name": "variable.parameter.cxpr"
+        },
+        "3": {
+          "name": "keyword.operator.cxpr"
+        }
+      }
+    },
+    {
       "match": "^\\s*((?!name\\b|model\\b|use\\b|in\\b|fn\\b|update\\b|out\\b|state\\b|meta\\b|assert\\b|optimize\\b)[A-Za-z_][A-Za-z0-9_]*)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?(?=\\s*\\{)",
       "captures": {
         "1": {

@@ -61,7 +61,6 @@ typedef enum {
     CXPR_TOK_PIPE,              /**< |> */
     CXPR_TOK_QUESTION,          /**< ? */
     CXPR_TOK_COLON,             /**< : */
-    CXPR_TOK_AT,                /**< @ explicit callable instance identity */
 
     /* Special */
     CXPR_TOK_EOF,               /**< End of input */

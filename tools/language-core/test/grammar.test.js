@@ -113,6 +113,19 @@ test("Monarch colors model type and timeframe as metadata", () => {
     ["white", "namedArgument", "white", "operator"]);
 });
 
+test("lambda parameters are blue and arrows are white with or without parentheses", () => {
+  const direct = monarch.tokenizer.root.find(([pattern]) =>
+    pattern === "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s*)(=>)");
+  const parenthesized = monarch.tokenizer.root.find(([pattern]) =>
+    pattern === "(\\()(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s*)(\\))(\\s*)(=>)");
+
+  assert.deepEqual(direct?.[1], ["parameter", "white", "operator"]);
+  assert.deepEqual(parenthesized?.[1],
+    ["punctuation", "white", "parameter", "white", "punctuation", "white", "operator"]);
+  assert.equal(colors.tokens.parameter, "#4FC1FF");
+  assert.equal(colors.tokens.operator, "#D4D4D4");
+});
+
 test("shared corpus covers the editor token classes", () => {
   const tokens = matches(monarch.tokenPatterns);
   for (const required of ["comment", "string", "parameter", "keyword", "function", "property", "number", "operator", "punctuation"]) {

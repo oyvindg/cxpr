@@ -1,0 +1,9 @@
+model ir_named_map_pure
+in { a, b, c, d }
+voices = map({
+    main = { signal = a, gain = 0.25 },
+    back = { signal = b, gain = 0.50 },
+    left = { signal = c, gain = 0.75 },
+    right = { signal = d, gain = 1.00 }
+}, voice => voice.signal * voice.gain)
+out result = voices.main + voices.back + voices.left + voices.right

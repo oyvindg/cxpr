@@ -1,6 +1,6 @@
 model ir_static_instantiate
 use bench_voice from instantiate
 in increment
-out result = reduce(instantiate([0, 1], voice => bench_voice@voices(
+out result = reduce(map([0, 1], voice => bench_voice(
     increment=increment + 0 * voice).sample), 0,
     step => step.acc + step.value)

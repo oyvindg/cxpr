@@ -530,6 +530,13 @@ function isStructInputField(text, currentStructInputRoot, inputNames, word, toke
          /^\s*(?:,|\})/.test(after);
 }
 
+function isLambdaParameter(text, tokenStart, tokenEnd) {
+  const before = text.slice(0, tokenStart);
+  const after = text.slice(tokenEnd);
+  return /^\s*=>/.test(after) ||
+    (/\(\s*$/.test(before) && /^\s*\)\s*=>/.test(after));
+}
+
 function tokenizeLine(line, text, inputNames, inputRoots, currentStructInputRoot, stateNames, referenceNames, suppressStateTokens, inDocumentBlock, inStateBlock) {
   const tokens = [];
   const outputRole = outputRoleDeclaration(text);
@@ -608,7 +615,9 @@ function tokenizeLine(line, text, inputNames, inputRoots, currentStructInputRoot
       const wordEnd = i + word.length;
       const prev = prevNonSpace(text, i - 1);
       const next = nextNonSpace(text, wordEnd);
-      if (outputRole && i === outputRole.roleStart && wordEnd === outputRole.roleEnd) {
+      if (isLambdaParameter(text, i, wordEnd)) {
+        pushToken(i, wordEnd, "parameter");
+      } else if (outputRole && i === outputRole.roleStart && wordEnd === outputRole.roleEnd) {
         pushToken(i, wordEnd, "property");
       } else if (isLineAssignment(text, i, wordEnd) || isDeclarationAssignment(text, i, wordEnd)) {
         pushToken(i, wordEnd, inStateBlock ? "state" : "assignment");

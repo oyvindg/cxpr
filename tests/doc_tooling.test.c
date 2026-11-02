@@ -325,6 +325,23 @@ static void test_function_declaration_parameters_are_semantic_parameters(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_lambda_parameters_and_arrows_have_semantic_colors(void) {
+    const char* source =
+        "first = map(values, voice => fn(voice))\n"
+        "second = map(values, (voice) => fn(voice))\n";
+    char* json = cxpr_document_analyze_json(source, "lambda-colors.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":0,\"start\":20,\"length\":5,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":0,\"start\":26,\"length\":2,\"type\":\"operator\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":22,\"length\":5,\"type\":\"parameter\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":29,\"length\":2,\"type\":\"operator\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
 static void test_declared_symbol_references_keep_semantic_colors(void) {
     const char* source =
         "value = 1\n"
@@ -585,6 +602,40 @@ static void test_resample_is_valid_tooling_function(void) {
     cxpr_document_json_free(hover);
 }
 
+static void test_map_is_valid_tooling_function(void) {
+    const char* source =
+        "model demo\n"
+        "voices = map({ main = { gain = 0.8 } }, voice => voice.gain)\n"
+        "out voices\n";
+    char* analysis = cxpr_document_analyze_json(source, "map.cxpr");
+    char* hover = cxpr_document_resolve_json(source, "map.cxpr", 1u, 10u);
+    assert(analysis != NULL);
+    assert(hover != NULL);
+    assert(strstr(analysis, "unknown function 'map'") == NULL);
+    assert(strstr(hover, "\"signature\":\"map(values, mapper)\"") != NULL);
+    assert(strstr(hover, "\"builtin\":true") != NULL);
+    cxpr_document_json_free(analysis);
+    cxpr_document_json_free(hover);
+}
+
+static void test_named_map_binding_hover_lists_outputs(void) {
+    const char* source =
+        "model voices_demo\n"
+        "voices = map({\n"
+        "  main = { frequency = 440, gain = 0.8 },\n"
+        "  back = { frequency = 550, gain = 0.5 },\n"
+        "  third = { frequency = 660, gain = 0.4 }\n"
+        "}, voice => oscillator(frequency=voice.frequency, gain=voice.gain))\n"
+        "out sample = voices.main + voices.back + voices.third\n";
+    char* hover = cxpr_document_resolve_json(source, "voices.cxpr", 6u, 15u);
+    assert(hover != NULL);
+    assert(strstr(hover,
+                  "\"signature\":\"voices = { main, back, third }\"") != NULL);
+    assert(strstr(hover, "frequency = 440") == NULL);
+    assert(strstr(hover, "gain = 0.8") == NULL);
+    cxpr_document_json_free(hover);
+}
+
 static void test_metadata_min_max_are_not_builtin_functions(void) {
     const char* source =
         "model demo\n"
@@ -759,6 +810,7 @@ int main(void) {
     test_host_builtin_catalog_merge();
     test_source_tokens_and_completion_contract();
     test_function_declaration_parameters_are_semantic_parameters();
+    test_lambda_parameters_and_arrows_have_semantic_colors();
     test_declared_symbol_references_keep_semantic_colors();
     test_model_name_semantic_token();
     test_output_metadata_is_named_argument();
@@ -774,6 +826,8 @@ int main(void) {
     test_cross_below_hover_metadata();
     test_stacked_builtin_and_anchor_token_boundary();
     test_resample_is_valid_tooling_function();
+    test_map_is_valid_tooling_function();
+    test_named_map_binding_hover_lists_outputs();
     test_metadata_min_max_are_not_builtin_functions();
     test_unresolved_resolution_exposes_c_parsed_imports();
     test_operator_token_does_not_match_identifier_substring();

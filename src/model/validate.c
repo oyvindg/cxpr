@@ -415,9 +415,9 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
         if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
                      !strcmp(name, "min") || !strcmp(name, "max") ||
                      !strcmp(name, "any") || !strcmp(name, "all") ||
-                     !strcmp(name, "map") || !strcmp(name, "reduce") ||
-                     !strcmp(name, "instantiate")) &&
-            array && (cxpr_expr_ast_kind_of(array) == CXPR_NODE_ARRAY || is_reduce) &&
+                     !strcmp(name, "map") || !strcmp(name, "reduce")) &&
+            array && (cxpr_expr_ast_kind_of(array) == CXPR_NODE_ARRAY ||
+                      cxpr_expr_ast_kind_of(array) == CXPR_NODE_RECORD || is_reduce) &&
             lambda && cxpr_expr_ast_kind_of(lambda) == CXPR_NODE_FUNCTION_CALL &&
             cxpr_expr_ast_call_name(lambda) &&
             !strcmp(cxpr_expr_ast_call_name(lambda), "__cxpr_lambda") &&

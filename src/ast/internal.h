@@ -8,6 +8,12 @@
 
 #include <cxpr/expr/ast.h>
 
+/** Assign compiler-owned binding identity to a stateful child call. */
+bool cxpr_expr_ast_call_set_instance_id(cxpr_expr_ast* ast,
+                                        const char* instance_id);
+/** Return compiler-owned binding identity, or NULL before model lowering. */
+const char* cxpr_expr_ast_call_instance_id(const cxpr_expr_ast* ast);
+
 /** @brief Internal owned AST node representation. */
 struct cxpr_expr_ast {
     cxpr_expr_ast_kind type;

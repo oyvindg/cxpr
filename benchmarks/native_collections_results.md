@@ -102,3 +102,31 @@ definition-dominated initialization reduced the four-element model benchmarks
 again: map from 45.21 to 29.50 ns/fold (-34.7%) and reduce from 45.67 to
 29.47 ns/fold (-35.5%). Relative to the original `a0924f2` baseline, the total
 improvement is -50.0% for map and -50.6% for reduce. Generated C is unaffected.
+
+## Named record map
+
+The named-record extension is measured with four independent scoped child
+models. The baseline spells out `main`, `back`, `left`, and `right` calls; the
+native form maps the same names and reads the resulting named fields. Each of
+nine trials executes 5,000,000 generated-C ticks.
+
+| Case | Median C ns/tick | State bytes |
+|---|---:|---:|
+| Four explicit child calls | 4.71 | 168 |
+| `map({main=..., back=..., left=..., right=...}, ...)` | 4.71 | 168 |
+
+The measured delta is 0.00 ns (0.0%) with no state-size increase. Generated-C
+totals match on every trial, and neither generated fixture contains `CALL_AST`.
+
+The pure scalar extension uses the same four named record entries but maps each
+entry to a number rather than a child model:
+
+| Case | Median C ns/tick | State bytes |
+|---|---:|---:|
+| Four explicit scalar bindings | 2.92 | 1 |
+| Pure `map({main=..., back=..., left=..., right=...}, ...)` | 2.93 | 1 |
+
+The pure named-map delta is +0.01 ns (+0.3%), within nanobenchmark noise, with
+identical output totals, no state-size increase, and no `CALL_AST`. The model
+test additionally forces the scalar form through fused IR and covers nested
+record results through the session runtime and generated C.

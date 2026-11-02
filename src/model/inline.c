@@ -183,6 +183,29 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
         }
         return out;
     }
+    case CXPR_NODE_FIELD_ACCESS: {
+        const cxpr_expr_ast* base = cxpr_expr_ast_field_base(ast);
+        if (!base) {
+            const cxpr_expr_ast* replacement = cxpr_model_local_lookup(
+                locals, local_count, cxpr_expr_ast_field_object(ast));
+            if (replacement && replacement->type == CXPR_NODE_RECORD) {
+                const char* field = cxpr_expr_ast_field_name(ast);
+                for (size_t i = 0u; i < replacement->data.record.field_count; ++i) {
+                    if (strcmp(replacement->data.record.field_names[i], field) == 0)
+                        return cxpr_expr_ast_clone(
+                            replacement->data.record.field_values[i]);
+                }
+            }
+            return cxpr_expr_ast_clone(ast);
+        }
+        {
+            cxpr_expr_ast* expanded = cxpr_model_inline_locals(
+                base, locals, local_count);
+            if (!expanded) return NULL;
+            return cxpr_expr_ast_field_expr_new(
+                expanded, cxpr_expr_ast_field_name(ast));
+        }
+    }
     case CXPR_NODE_INDEX: {
         cxpr_expr_ast* target = cxpr_model_inline_locals(cxpr_expr_ast_index_target(ast), locals, local_count);
         cxpr_expr_ast* index = cxpr_model_inline_locals(cxpr_expr_ast_index_expression(ast), locals, local_count);
@@ -275,7 +298,7 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
                                                        const cxpr_registry* registry,
                                                        size_t depth,
                                                        cxpr_error* err) {
-    if (!ast || !registry) return ast;
+    if (!ast) return ast;
     if (depth > 64u) {
         cxpr_expr_ast_free(ast);
         cxpr_model_set_error(
@@ -293,26 +316,38 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
                 return NULL;
             }
         }
-        if (strcmp(ast->data.function_call.name, "instantiate") == 0) {
+        if (strcmp(ast->data.function_call.name, "map") == 0 &&
+            ast->data.function_call.argc == 2u &&
+            (ast->data.function_call.args[0]->type == CXPR_NODE_RECORD ||
+             ((ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) &&
+              ast->data.function_call.args[1]->type == CXPR_NODE_FUNCTION_CALL &&
+              ast->data.function_call.args[1]->data.function_call.argc == 2u &&
+              (ast->data.function_call.args[1]->data.function_call.args[1]->type ==
+                   CXPR_NODE_FUNCTION_CALL ||
+               ast->data.function_call.args[1]->data.function_call.args[1]->type ==
+                   CXPR_NODE_PRODUCER_ACCESS)))) {
             const cxpr_expr_ast* source;
             const cxpr_expr_ast* lambda;
             const cxpr_expr_ast* parameter;
             const cxpr_expr_ast* body;
-            const char* base_label;
+            const char* implicit_output = NULL;
             cxpr_expr_ast** elements;
+            const char** field_names = NULL;
+            bool record_source;
             size_t count;
             if (ast->data.function_call.argc != 2u) {
                 cxpr_expr_ast_free(ast);
                 cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
-                                     "instantiate expects a static array and callback", 0u, 0u);
+                                     "map expects a static collection and callback", 0u, 0u);
                 return NULL;
             }
             source = ast->data.function_call.args[0];
             lambda = ast->data.function_call.args[1];
-            if (!source || source->type != CXPR_NODE_ARRAY) {
+            record_source = source && source->type == CXPR_NODE_RECORD;
+            if (!source || (source->type != CXPR_NODE_ARRAY && !record_source)) {
                 cxpr_expr_ast_free(ast);
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                     "instantiate source must be a static array", 0u, 0u);
+                                     "map source must be a static array or record", 0u, 0u);
                 return NULL;
             }
             if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
@@ -321,22 +356,38 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
                 lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
                 cxpr_expr_ast_free(ast);
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                     "instantiate expects a single-parameter callback", 0u, 0u);
+                                     "map expects a single-parameter callback", 0u, 0u);
                 return NULL;
             }
             parameter = lambda->data.function_call.args[0];
             body = lambda->data.function_call.args[1];
-            if (!body || (body->type != CXPR_NODE_FUNCTION_CALL &&
-                          body->type != CXPR_NODE_PRODUCER_ACCESS) ||
-                !(base_label = cxpr_expr_ast_call_instance_id(body))) {
-                cxpr_expr_ast_free(ast);
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                     "instantiate callback must directly call an explicitly labelled scoped child", 0u, 0u);
-                return NULL;
+            if (body->type == CXPR_NODE_FUNCTION_CALL) {
+                cxpr_func_entry* mapped_entry = registry
+                    ? cxpr_registry_find(registry, body->data.function_call.name)
+                    : NULL;
+                cxpr_model_child_program* mapped_child =
+                    mapped_entry && mapped_entry->model_producer
+                        ? (cxpr_model_child_program*)mapped_entry->model_producer_userdata
+                        : NULL;
+                if (mapped_child && mapped_child->program) {
+                    if (mapped_child->program->output_count != 1u) {
+                        cxpr_expr_ast_free(ast);
+                        cxpr_model_set_error(
+                            err, CXPR_ERR_SYNTAX,
+                            "map callback must select an output from a multi-output model",
+                            0u, 0u);
+                        return NULL;
+                    }
+                    implicit_output = mapped_child->program->outputs[0];
+                }
             }
-            count = source->data.array.count;
+            count = record_source ? source->data.record.field_count : source->data.array.count;
             elements = (cxpr_expr_ast**)calloc(count ? count : 1u, sizeof(*elements));
-            if (!elements) {
+            if (record_source)
+                field_names = (const char**)calloc(count ? count : 1u, sizeof(*field_names));
+            if (!elements || (record_source && !field_names)) {
+                free(elements);
+                free(field_names);
                 cxpr_expr_ast_free(ast);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
                 return NULL;
@@ -344,28 +395,52 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
             for (size_t i = 0u; i < count; ++i) {
                 cxpr_model_local_binding local = {
                     .name = parameter->data.identifier.name,
-                    .expr = source->data.array.elements[i]
+                    .expr = record_source ? source->data.record.field_values[i]
+                                          : source->data.array.elements[i]
                 };
-                size_t label_size = strlen(base_label) + 32u;
-                char* derived_label = (char*)malloc(label_size);
-                if (derived_label)
-                    snprintf(derived_label, label_size, "%s_%zu", base_label, i);
-                elements[i] = derived_label
-                                  ? cxpr_model_inline_locals(body, &local, 1u)
-                                  : NULL;
+                char derived_identity[64];
+                if (record_source) {
+                    field_names[i] = source->data.record.field_names[i];
+                    snprintf(derived_identity, sizeof(derived_identity), "%s", field_names[i]);
+                } else {
+                    snprintf(derived_identity, sizeof(derived_identity), "%zu", i);
+                }
+                elements[i] = cxpr_model_inline_locals(body, &local, 1u);
+                if (elements[i] && implicit_output &&
+                    elements[i]->type == CXPR_NODE_FUNCTION_CALL) {
+                    cxpr_expr_ast* call = elements[i];
+                    elements[i] = cxpr_expr_ast_producer_field_named_new(
+                        call->data.function_call.name,
+                        call->data.function_call.args,
+                        call->data.function_call.arg_names,
+                        call->data.function_call.argc,
+                        implicit_output);
+                    call->data.function_call.args = NULL;
+                    call->data.function_call.arg_names = NULL;
+                    call->data.function_call.argc = 0u;
+                    cxpr_expr_ast_free(call);
+                }
                 if (!elements[i] ||
-                    !cxpr_expr_ast_call_set_instance_id(elements[i], derived_label)) {
-                    free(derived_label);
+                    ((elements[i]->type == CXPR_NODE_FUNCTION_CALL ||
+                      elements[i]->type == CXPR_NODE_PRODUCER_ACCESS) &&
+                     !cxpr_expr_ast_call_set_instance_id(
+                         elements[i], derived_identity))) {
                     for (size_t j = 0u; j <= i; ++j) cxpr_expr_ast_free(elements[j]);
                     free(elements);
+                    free(field_names);
                     cxpr_expr_ast_free(ast);
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
                     return NULL;
                 }
-                free(derived_label);
             }
-            cxpr_expr_ast_free(ast);
-            ast = cxpr_expr_ast_array_new(elements, count);
+            {
+                cxpr_expr_ast* expanded = record_source
+                    ? cxpr_expr_ast_record_new(field_names, elements, count)
+                    : cxpr_expr_ast_array_new(elements, count);
+                cxpr_expr_ast_free(ast);
+                ast = expanded;
+            }
+            free(field_names);
             if (!ast) {
                 for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(elements[i]);
                 free(elements);
@@ -374,7 +449,9 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
             }
             return ast;
         }
-        entry = cxpr_registry_find(registry, ast->data.function_call.name);
+        entry = registry
+            ? cxpr_registry_find(registry, ast->data.function_call.name)
+            : NULL;
         if (entry && entry->defined_body &&
             cxpr_model_defined_body_is_series_aware(
                 entry->defined_body, registry, 0u) &&
@@ -482,6 +559,6 @@ cxpr_expr_ast* cxpr_model_inline_defined_calls(const cxpr_expr_ast* ast,
     cxpr_expr_ast* clone;
     if (!ast) return NULL;
     clone = cxpr_expr_ast_clone(ast);
-    if (!clone || !registry) return clone;
+    if (!clone) return NULL;
     return cxpr_model_expand_defined_owned(clone, registry, 0u, err);
 }

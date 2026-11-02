@@ -670,6 +670,22 @@ static int tooling_inside_metadata_block(const char* source, size_t offset) {
     return depth > 0u && metadata_stack[depth - 1u];
 }
 
+static int tooling_is_lambda_parameter(const char* source,
+                                       size_t start,
+                                       size_t end) {
+    size_t before = start;
+    size_t after = end;
+    while (source[after] == ' ' || source[after] == '\t') after++;
+    if (source[after] == '=' && source[after + 1u] == '>') return 1;
+    while (before > 0u && (source[before - 1u] == ' ' ||
+                           source[before - 1u] == '\t')) before--;
+    if (before == 0u || source[before - 1u] != '(') return 0;
+    if (source[after] != ')') return 0;
+    after++;
+    while (source[after] == ' ' || source[after] == '\t') after++;
+    return source[after] == '=' && source[after + 1u] == '>';
+}
+
 /* Source-level facts which the document AST deliberately does not retain.
  * Kept in C so every editor transport sees identical lexical/comment spans. */
 static void emit_source_tokens(const char* source,
@@ -789,7 +805,8 @@ static void emit_source_tokens(const char* source,
                 if (length == 2u && strncmp(source + start, "fn", 2u) == 0) {
                     expect_function_name = 1;
                 }
-                type = in_function_params ?
+                type = tooling_is_lambda_parameter(source, start, i) ? "parameter" :
+                    in_function_params ?
                     (tooling_is_exported_input(root, source, source + start, length)
                         ? "input" :
                      tooling_is_input_block_root(root, source + start, length)
@@ -842,7 +859,8 @@ static void emit_source_tokens(const char* source,
                 expect_flat_input = 0;
             }
         }
-        if ((ch == '>' && source[i + 1u] == '=') ||
+        if ((ch == '=' && source[i + 1u] == '>') ||
+            (ch == '>' && source[i + 1u] == '=') ||
             (ch == '<' && source[i + 1u] == '=') ||
             (ch == '=' && source[i + 1u] == '=') ||
             (ch == '!' && source[i + 1u] == '=') ||
@@ -1643,6 +1661,48 @@ static void tooling_emit_model_signature(const cxpr_model* model) {
     fputs(")\"", stdout);
 }
 
+static const cxpr_expr_ast* tooling_named_map_source(const cxpr_model* model,
+                                                     const char* binding_name) {
+    if (!model || !binding_name) return NULL;
+    for (size_t i = 0u; i < cxpr_model_binding_count(model); ++i) {
+        const cxpr_expr_ast* expr;
+        const char* name = cxpr_model_binding_name(model, i);
+        if (!name || strcmp(name, binding_name) != 0) continue;
+        expr = cxpr_model_binding_expr(model, i);
+        if (!expr || cxpr_expr_ast_kind_of(expr) != CXPR_NODE_FUNCTION_CALL ||
+            !cxpr_expr_ast_call_name(expr) ||
+            strcmp(cxpr_expr_ast_call_name(expr), "map") != 0 ||
+            cxpr_expr_ast_call_arg_count(expr) < 1u) return NULL;
+        expr = cxpr_expr_ast_call_arg(expr, 0u);
+        return cxpr_expr_ast_kind_of(expr) == CXPR_NODE_RECORD ? expr : NULL;
+    }
+    return NULL;
+}
+
+static int tooling_emit_named_map_signature(const char* source,
+                                            const char* binding_name) {
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_model_parse(source, &err);
+    const cxpr_expr_ast* record = tooling_named_map_source(model, binding_name);
+    size_t field_count = cxpr_expr_ast_record_field_count(record);
+    if (!record || field_count == 0u) {
+        cxpr_model_free(model);
+        return 0;
+    }
+    fputs(",\"signature\":", stdout);
+    fputc('"', stdout);
+    fputs(binding_name, stdout);
+    fputs(" = { ", stdout);
+    for (size_t i = 0u; i < field_count; ++i) {
+        const char* field = cxpr_expr_ast_record_field_name(record, i);
+        if (i) fputs(", ", stdout);
+        fputs(field ? field : "?", stdout);
+    }
+    fputs(" }\"", stdout);
+    cxpr_model_free(model);
+    return 1;
+}
+
 static char* tooling_model_documentation(const char* source,
                                          const cxpr_doc_ast_node* declaration) {
     cxpr_source_span span = cxpr_doc_ast_node_span(declaration);
@@ -1799,7 +1859,9 @@ char* cxpr_document_resolve_with_builtins_json(
                 json_string(cxpr_doc_ast_node_name(declaration));
             } else if (cxpr_doc_ast_node_expr(declaration) && declaration_name) {
                 const char* expression = cxpr_doc_ast_node_text(declaration);
-                if (expression) {
+                if (tooling_emit_named_map_signature(input, declaration_name)) {
+                    /* Named maps expose their generated outputs, not their input values. */
+                } else if (expression) {
                     const char* parameter_prefix = input[start] == '$' ? "$" : "";
                     size_t signature_length = strlen(parameter_prefix) +
                         strlen(declaration_name) + strlen(expression) + 4u;

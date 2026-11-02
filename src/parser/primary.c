@@ -768,21 +768,8 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
         free(name);
     } else if (cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
         char* name = cxpr_expr_parser_token_to_string(&p->current);
-        char* instance_id = NULL;
         cxpr_expr_parser_advance(p);
         if (!name) return NULL;
-        if (cxpr_expr_parser_match(p, CXPR_TOK_AT)) {
-            if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
-                free(name);
-                p->had_error = true;
-                p->last_error.code = CXPR_ERR_SYNTAX;
-                p->last_error.message = "Expected instance identifier after '@'";
-                return NULL;
-            }
-            instance_id = cxpr_expr_parser_token_to_string(&p->current);
-            cxpr_expr_parser_advance(p);
-            if (!instance_id) { free(name); return NULL; }
-        }
         if (cxpr_expr_parser_check(p, CXPR_TOK_LPAREN)) {
             size_t argc = 0;
             cxpr_expr_ast** args = NULL;
@@ -806,10 +793,6 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
                 free(name);
                 if (node) node = cxpr_parse_lower_window_reduction(node);
             }
-            if (node && instance_id && !cxpr_expr_ast_call_set_instance_id(node, instance_id)) {
-                cxpr_expr_ast_free(node); node = NULL;
-            }
-            free(instance_id);
             if (!node) return NULL;
             goto primary_done;
         fail_field:
@@ -867,17 +850,6 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
                 depth++;
                 cxpr_expr_parser_advance(p);
             }
-            if (cxpr_expr_parser_match(p, CXPR_TOK_AT)) {
-                if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
-                    cxpr_expr_parser_free_segments(segments, depth);
-                    p->had_error = true;
-                    p->last_error.code = CXPR_ERR_SYNTAX;
-                    p->last_error.message = "Expected instance identifier after '@'";
-                    return NULL;
-                }
-                instance_id = cxpr_expr_parser_token_to_string(&p->current);
-                cxpr_expr_parser_advance(p);
-            }
             if (cxpr_expr_parser_check(p, CXPR_TOK_LPAREN)) {
                 char* fn_name = cxpr_expr_parser_join_segments(segments, depth);
                 size_t argc = 0;
@@ -919,23 +891,12 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
                     if (node) node = cxpr_parse_lower_window_reduction(node);
                 }
                 free(fn_name);
-                if (node && instance_id && !cxpr_expr_ast_call_set_instance_id(node, instance_id)) {
-                    cxpr_expr_ast_free(node); node = NULL;
-                }
             } else {
                 node = depth == 2 ? cxpr_expr_ast_field_new(segments[0], segments[1])
                                   : cxpr_expr_ast_new_chain_access((const char* const*)segments, depth);
             }
-            free(instance_id);
             cxpr_expr_parser_free_segments(segments, depth);
         } else {
-            if (instance_id) {
-                free(instance_id); free(name);
-                p->had_error = true;
-                p->last_error.code = CXPR_ERR_SYNTAX;
-                p->last_error.message = "Explicit instance identity requires a call";
-                return NULL;
-            }
             node = cxpr_expr_ast_identifier_new(name);
             free(name);
         }

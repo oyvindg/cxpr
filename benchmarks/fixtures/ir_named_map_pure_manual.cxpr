@@ -1,0 +1,7 @@
+model ir_named_map_pure_manual
+in { a, b, c, d }
+main = a * 0.25
+back = b * 0.50
+left = c * 0.75
+right = d
+out result = main + back + left + right

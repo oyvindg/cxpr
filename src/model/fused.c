@@ -140,10 +140,10 @@ static const cxpr_model_binding* cxpr_model_record_binding(
 
 static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
                                         const cxpr_model* model,
-                                        const cxpr_model_binding* binding,
+                                        const char* binding_name,
+                                        const cxpr_expr_ast* record,
                                         const cxpr_registry* reg,
                                         cxpr_error* err) {
-    const cxpr_expr_ast* record = binding->expr;
     cxpr_model_fused_record* grown = (cxpr_model_fused_record*)realloc(
         program->fused_records,
         (program->fused_record_count + 1u) * sizeof(*program->fused_records));
@@ -152,7 +152,7 @@ static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
     cxpr_model_fused_record* out = &grown[program->fused_record_count];
     memset(out, 0, sizeof(*out));
     program->fused_record_count++;
-    out->name = cxpr_strdup(binding->name);
+    out->name = cxpr_strdup(binding_name);
     out->field_count = record->data.record.field_count;
     out->field_names = (char**)calloc(out->field_count, sizeof(*out->field_names));
     out->field_slots = (size_t*)calloc(out->field_count, sizeof(*out->field_slots));
@@ -163,11 +163,10 @@ static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
     for (size_t i = 0u; i < out->field_count; ++i) {
         char field_name[512];
         int written = snprintf(field_name, sizeof(field_name), "%s.%s",
-                               binding->name, record->data.record.field_names[i]);
+                               binding_name, record->data.record.field_names[i]);
         if (written <= 0 || (size_t)written >= sizeof(field_name) ||
-            !cxpr_model_fused_slot_add(program, field_name, &out->field_slots[i], err)) {
-            return false;
-        }
+            !cxpr_model_fused_slot_add(program, field_name,
+                                       &out->field_slots[i], err)) return false;
         out->field_names[i] = cxpr_strdup(record->data.record.field_names[i]);
         out->field_kinds[i] = cxpr_model_infer_result_kind(
             record->data.record.field_values[i], reg, model, program);
@@ -177,6 +176,63 @@ static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
 oom:
     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
     return false;
+}
+
+static bool cxpr_model_fused_ast_has_producer(
+    const cxpr_expr_ast* ast, const cxpr_registry* registry) {
+    if (!ast) return false;
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS) return true;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) {
+        cxpr_func_entry* entry = registry
+            ? cxpr_registry_find(registry, ast->data.function_call.name) : NULL;
+        if (entry && entry->model_producer) return true;
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
+            if (cxpr_model_fused_ast_has_producer(
+                    ast->data.function_call.args[i], registry)) return true;
+        return false;
+    }
+    switch (ast->type) {
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            if (cxpr_model_fused_ast_has_producer(
+                    ast->data.record.field_values[i], registry)) return true;
+        return false;
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            if (cxpr_model_fused_ast_has_producer(
+                    ast->data.array.elements[i], registry)) return true;
+        return false;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_fused_ast_has_producer(ast->data.binary_op.left, registry) ||
+               cxpr_model_fused_ast_has_producer(ast->data.binary_op.right, registry);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_fused_ast_has_producer(ast->data.unary_op.operand, registry);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_fused_ast_has_producer(ast->data.ternary.condition, registry) ||
+               cxpr_model_fused_ast_has_producer(ast->data.ternary.true_branch, registry) ||
+               cxpr_model_fused_ast_has_producer(ast->data.ternary.false_branch, registry);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_fused_ast_has_producer(ast->data.index.target, registry) ||
+               cxpr_model_fused_ast_has_producer(ast->data.index.index, registry);
+    case CXPR_NODE_FIELD_ACCESS:
+        return cxpr_model_fused_ast_has_producer(ast->data.field_access.base, registry);
+    default:
+        return false;
+    }
+}
+
+static const cxpr_expr_ast* cxpr_model_fused_binding_ast(
+    const cxpr_model_compiled* program, const cxpr_model_binding* binding,
+    const cxpr_registry* registry) {
+    if (!program || !binding) return NULL;
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        if (cxpr_model_names_match(program->bindings[i].name, binding->name)) {
+            const cxpr_expr_ast* compiled = program->bindings[i].ast;
+            return cxpr_model_fused_ast_has_producer(compiled, registry)
+                ? binding->expr : compiled;
+        }
+    }
+    return binding->expr;
 }
 
 static bool cxpr_model_fused_slot_is_committed_state(const cxpr_model_compiled* program,
@@ -319,16 +375,19 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
         }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
+        const cxpr_expr_ast* binding_ast = cxpr_model_fused_binding_ast(
+            program, &model->bindings[i], compile_reg);
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) continue;
         if (!(model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
               model->bindings[i].declared_type == CXPR_MODEL_DECL_BUFFER) &&
-            !cxpr_model_fused_ast_supported(model->bindings[i].expr, compile_reg)) {
+            !cxpr_model_fused_ast_supported(binding_ast, compile_reg)) {
             cxpr_model_fused_program_clear(program);
             return true;
         }
-        if (model->bindings[i].expr && model->bindings[i].expr->type == CXPR_NODE_RECORD) {
+        if (binding_ast && binding_ast->type == CXPR_NODE_RECORD) {
             if (!cxpr_model_fused_record_add(
-                    program, model, &model->bindings[i], compile_reg, err)) {
+                    program, model, model->bindings[i].name, binding_ast,
+                    compile_reg, err)) {
                 cxpr_model_fused_program_clear(program);
                 return false;
             }
@@ -406,9 +465,11 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
 
     for (size_t i = 0; i < model->binding_count; ++i) {
         size_t slot;
+        const cxpr_expr_ast* binding_ast = cxpr_model_fused_binding_ast(
+            program, &model->bindings[i], compile_reg);
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE) continue;
-        if (model->bindings[i].expr && model->bindings[i].expr->type == CXPR_NODE_RECORD) {
-            const cxpr_expr_ast* record = model->bindings[i].expr;
+        if (binding_ast && binding_ast->type == CXPR_NODE_RECORD) {
+            const cxpr_expr_ast* record = binding_ast;
             cxpr_model_fused_record* layout = NULL;
             for (size_t r = 0u; r < program->fused_record_count; ++r) {
                 if (cxpr_model_names_match(
@@ -422,30 +483,31 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                 const char** aliases = (const char**)calloc(
                     program->fused_slot_count, sizeof(*aliases));
                 if (!aliases) {
-                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0, 0);
                     cxpr_model_fused_program_clear(program);
                     return false;
                 }
-                for (size_t local = 0u; local < program->fused_slot_count; ++local) {
+                for (size_t local = 0u; local < program->fused_slot_count; ++local)
                     aliases[local] = program->fused_slot_names[local];
-                }
-                for (size_t prior = 0u; prior < field; ++prior) {
+                for (size_t prior = 0u; prior < field; ++prior)
                     aliases[layout->field_slots[prior]] = layout->field_names[prior];
-                }
-                bool compiled = cxpr_ir_compile_node(
-                    record->data.record.field_values[field], &program->fused_ir,
-                    compile_reg, aliases, program->fused_slot_count, NULL, 0u, err);
-                free(aliases);
-                if (!compiled || !cxpr_ir_emit(
-                        &program->fused_ir,
-                        (cxpr_ir_instr){.op = CXPR_OP_STORE_LOCAL,
-                                        .index = layout->field_slots[field]}, err)) {
-                    goto fused_failure;
+                {
+                    bool compiled = cxpr_ir_compile_node(
+                        record->data.record.field_values[field],
+                        &program->fused_ir, compile_reg, aliases,
+                        program->fused_slot_count, NULL, 0u, err);
+                    free(aliases);
+                    if (!compiled || !cxpr_ir_emit(
+                            &program->fused_ir,
+                            (cxpr_ir_instr){.op = CXPR_OP_STORE_LOCAL,
+                                            .index = layout->field_slots[field]},
+                            err)) goto fused_failure;
                 }
             }
             continue;
         }
-        if (!cxpr_ir_compile_node(model->bindings[i].expr,
+        if (!cxpr_ir_compile_node(binding_ast,
                                   &program->fused_ir,
                                   compile_reg,
                                   (const char* const*)program->fused_slot_names,

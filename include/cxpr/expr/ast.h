@@ -138,10 +138,6 @@ cxpr_expr_ast* cxpr_expr_ast_call_new(const char* name, cxpr_expr_ast** args, si
  */
 cxpr_expr_ast* cxpr_expr_ast_call_named_new(const char* name, cxpr_expr_ast** args,
                                            char** arg_names, size_t argc);
-/** Set or clear the explicit instance identity on a call or producer access. */
-bool cxpr_expr_ast_call_set_instance_id(cxpr_expr_ast* ast, const char* instance_id);
-/** Return the explicit instance identity, or NULL when structural identity applies. */
-const char* cxpr_expr_ast_call_instance_id(const cxpr_expr_ast* ast);
 /** Build the canonical state identity key for a call or producer access. */
 char* cxpr_expr_ast_call_identity_key(const cxpr_expr_ast* ast);
 /**
