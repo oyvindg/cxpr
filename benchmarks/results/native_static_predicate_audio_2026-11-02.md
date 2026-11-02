@@ -40,3 +40,23 @@ each run, produced:
 Every run produced 144 IR instructions and zero AST fallbacks. Peak RSS is the
 whole short-lived benchmark process, not an allocation attributed solely to
 the predicate expression.
+
+## Isolated `any`/`all` optimization baseline
+
+Commit `4f61e69` is the fixed baseline for four isolated selector cases. Each
+number below is the median of nine independent runs with 200,000 evaluations.
+The optimized compiler fuses a selector's top-level `or` for `any` and `and`
+for `all` into the reduction's existing short-circuit target instead of
+materializing and testing an intermediate boolean.
+
+| Case | Baseline IR | Optimized IR | Delta | Instructions |
+| --- | ---: | ---: | ---: | ---: |
+| `any`, early match | 61.03 ns/eval | 50.60 ns/eval | -17.1% | 120 -> 72 |
+| `any`, full scan | 464.07 ns/eval | 372.94 ns/eval | -19.6% | 120 -> 72 |
+| `all`, early reject | 79.73 ns/eval | 70.44 ns/eval | -11.7% | 104 -> 72 |
+| `all`, full scan | 492.44 ns/eval | 374.04 ns/eval | -24.0% | 104 -> 72 |
+
+Median compile time also improved in every case: 18.997 -> 16.133 us,
+18.997 -> 15.853 us, 17.880 -> 16.064 us, and 18.229 -> 15.715 us,
+respectively. All cases retained zero AST fallbacks. The complete dual-voice
+robot render remained byte-identical after the compiler change.

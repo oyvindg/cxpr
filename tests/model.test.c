@@ -4043,8 +4043,10 @@ static void test_function_record_return_compiles_with_field_access(void) {
         "average = mean([bands(close), bands(close + 2)], x => x.upper)\n"
         "has_high = any([top, bottom, wide], x => x > 10)\n"
         "all_finite_positive = all([top, bottom, wide], x => x > 0)\n"
+        "has_outlier = any([top, bottom, wide], x => x < 0 or x > 20)\n"
+        "all_in_range = all([top, bottom, wide], x => x > 0 and x < 30)\n"
         "out { top, bottom, wide, middle, mixed, highest, lowest, average, "
-        "has_high, all_finite_positive }\n");
+        "has_high, all_finite_positive, has_outlier, all_in_range }\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
     cxpr_context* ctx = cxpr_context_new();
 
@@ -4066,6 +4068,8 @@ static void test_function_record_return_compiles_with_field_access(void) {
     assert(cxpr_context_get(ctx, "average", &found) == 12.0 && found);
     assert(cxpr_context_get_bool(ctx, "has_high", &found) && found);
     assert(cxpr_context_get_bool(ctx, "all_finite_positive", &found) && found);
+    assert(!cxpr_context_get_bool(ctx, "has_outlier", &found) && found);
+    assert(cxpr_context_get_bool(ctx, "all_in_range", &found) && found);
 
     code = cxpr_model_compiled_generate_c(
         program, "static inline", "record_fn_tick", &err);

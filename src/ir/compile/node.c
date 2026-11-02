@@ -325,6 +325,43 @@ static bool cxpr_ir_compile_selected_field(const cxpr_expr_ast* ast, const char*
     return false;
 }
 
+static bool cxpr_ir_compile_predicate_jumps(
+    const cxpr_expr_ast* ast, int flatten_op, cxpr_opcode jump_op,
+    cxpr_ir_program* program, const cxpr_registry* reg,
+    const char* const* local_names, size_t local_count,
+    const cxpr_ir_subst_frame* subst, size_t inline_depth,
+    size_t** jumps, size_t* jump_count, size_t* jump_capacity,
+    cxpr_error* err) {
+    if (ast && ast->type == CXPR_NODE_BINARY_OP &&
+        ast->data.binary_op.op == flatten_op) {
+        return cxpr_ir_compile_predicate_jumps(
+                   ast->data.binary_op.left, flatten_op, jump_op, program, reg,
+                   local_names, local_count, subst, inline_depth,
+                   jumps, jump_count, jump_capacity, err) &&
+               cxpr_ir_compile_predicate_jumps(
+                   ast->data.binary_op.right, flatten_op, jump_op, program, reg,
+                   local_names, local_count, subst, inline_depth,
+                   jumps, jump_count, jump_capacity, err);
+    }
+    if (!cxpr_ir_compile_node(ast, program, reg, local_names, local_count,
+                              subst, inline_depth, err)) return false;
+    if (*jump_count == *jump_capacity) {
+        size_t next_capacity = *jump_capacity ? *jump_capacity * 2u : 8u;
+        size_t* grown = realloc(*jumps, next_capacity * sizeof(**jumps));
+        if (!grown) {
+            if (err) {
+                err->code = CXPR_ERR_OUT_OF_MEMORY;
+                err->message = "Out of memory";
+            }
+            return false;
+        }
+        *jumps = grown;
+        *jump_capacity = next_capacity;
+    }
+    (*jumps)[(*jump_count)++] = cxpr_ir_next_index(program);
+    return cxpr_ir_emit(program, (cxpr_ir_instr){.op = jump_op}, err);
+}
+
 bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                           const cxpr_registry* reg,
                           const char* const* local_names, size_t local_count,
@@ -818,7 +855,9 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             }
             if (!strcmp(fname, "any") || !strcmp(fname, "all")) {
                 const bool is_all = !strcmp(fname, "all");
-                size_t* predicate_jumps;
+                size_t* predicate_jumps = NULL;
+                size_t predicate_jump_count = 0u;
+                size_t predicate_jump_capacity = 0u;
                 size_t end_jump;
                 if (count == 0u) {
                     return cxpr_ir_emit(program,
@@ -826,14 +865,6 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                             .op = CXPR_OP_PUSH_BOOL,
                                             .value = is_all ? 1.0 : 0.0,
                                         }, err);
-                }
-                predicate_jumps = malloc(count * sizeof(*predicate_jumps));
-                if (!predicate_jumps) {
-                    if (err) {
-                        err->code = CXPR_ERR_OUT_OF_MEMORY;
-                        err->message = "Out of memory";
-                    }
-                    return false;
                 }
                 for (size_t i = 0u; i < count; ++i) {
                     const cxpr_expr_ast* element = array->data.array.elements[i];
@@ -844,24 +875,21 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                         cxpr_ir_subst_frame frame = {
                             .names = names, .args = args, .count = 1u, .parent = subst,
                         };
-                        compiled = cxpr_ir_compile_node(
-                            selector, program, reg, local_names, local_count,
-                            &frame, inline_depth, err);
+                        compiled = cxpr_ir_compile_predicate_jumps(
+                            selector, is_all ? CXPR_TOK_AND : CXPR_TOK_OR,
+                            is_all ? CXPR_OP_JUMP_IF_FALSE : CXPR_OP_JUMP_IF_TRUE,
+                            program, reg, local_names, local_count, &frame,
+                            inline_depth, &predicate_jumps, &predicate_jump_count,
+                            &predicate_jump_capacity, err);
                     } else {
-                        compiled = cxpr_ir_compile_node(
-                            element, program, reg, local_names, local_count,
-                            subst, inline_depth, err);
+                        compiled = cxpr_ir_compile_predicate_jumps(
+                            element, is_all ? CXPR_TOK_AND : CXPR_TOK_OR,
+                            is_all ? CXPR_OP_JUMP_IF_FALSE : CXPR_OP_JUMP_IF_TRUE,
+                            program, reg, local_names, local_count, subst,
+                            inline_depth, &predicate_jumps, &predicate_jump_count,
+                            &predicate_jump_capacity, err);
                     }
                     if (!compiled) {
-                        free(predicate_jumps);
-                        return false;
-                    }
-                    predicate_jumps[i] = cxpr_ir_next_index(program);
-                    if (!cxpr_ir_emit(program,
-                                      (cxpr_ir_instr){
-                                          .op = is_all ? CXPR_OP_JUMP_IF_FALSE
-                                                       : CXPR_OP_JUMP_IF_TRUE,
-                                      }, err)) {
                         free(predicate_jumps);
                         return false;
                     }
@@ -880,7 +908,7 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                     free(predicate_jumps);
                     return false;
                 }
-                for (size_t i = 0u; i < count; ++i) {
+                for (size_t i = 0u; i < predicate_jump_count; ++i) {
                     cxpr_ir_patch_target(program, predicate_jumps[i],
                                          cxpr_ir_next_index(program));
                 }
