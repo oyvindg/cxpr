@@ -1614,7 +1614,9 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
         free_bench_model(&source);
         exit(1);
     }
-    if (strcmp(c->name, "struct_call") == 0 || strcmp(c->name, "struct_binding") == 0) {
+    if (strcmp(c->name, "struct_call") == 0 ||
+        strcmp(c->name, "struct_binding") == 0 ||
+        strcmp(c->name, "static_predicates") == 0) {
         const size_t instruction_count = cxpr_expr_compiled_ir_count(program);
         for (size_t i = 0u; i < instruction_count; ++i) {
             cxpr_ir_instruction instruction;
@@ -2261,6 +2263,7 @@ int main(int argc, char** argv) {
         { "mixed_expr", "ir_mixed_expr.cxpr", 120000, 0, BENCH_C_MIXED_EXPR },
         { "mixed_pipe", "ir_mixed_pipe.cxpr", 120000, 0, BENCH_C_MIXED_PIPE },
         { "context_churn", "ir_context_churn.cxpr", 200000, 1, BENCH_C_CONTEXT_CHURN },
+        { "static_predicates", "ir_static_predicates.cxpr", 200000, 0, BENCH_C_NONE },
         { "producer_fields", "ir_producer_fields.cxpr", 150000, 0, BENCH_C_NONE },
     };
     const typed_bench_case typed_cases[] = {

@@ -16,3 +16,12 @@ for practical purposes. The relevant result is that the generic native form
 adds no runtime collection or callback allocation and preserves the audio
 exactly; IR and generated C contain statically unrolled, short-circuit boolean
 branches.
+
+Ongoing regression measurement is provided by the `static_predicates` case in
+`cxpr_bench_ir`. It measures parse-independent IR compile time and repeated AST
+and IR evaluation for both `any` and `all`, reports instruction/fallback counts,
+and fails if native lowering regresses to `CALL_AST`:
+
+```sh
+build/benchmarks/cxpr_bench_ir --case static_predicates
+```

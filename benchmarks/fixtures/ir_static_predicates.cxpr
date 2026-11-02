@@ -1,0 +1,6 @@
+model ir_static_predicates
+in { a, b, c, d, e, f, g, h }
+
+out result =
+    (any([a, b, c, d, e, f, g, h], value => value > 0) ? 1 : 0) +
+    (all([a, b, c, d, e, f, g, h], value => value > -100 and value < 100) ? 1 : 0)
