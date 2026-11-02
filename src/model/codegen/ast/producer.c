@@ -427,7 +427,12 @@ bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
         entry = program->registry
                     ? cxpr_registry_find(program->registry, cxpr_expr_ast_call_name(ast))
                     : NULL;
-        return entry && entry->defined_return_field_count > 1u;
+        /* A user-defined function with one named field still returns a record.
+         * A child model with one output is scalar; only multi-output child
+         * producers are record-like. Misclassifying the scalar child causes
+         * its local binding to be skipped and leaves an undeclared C alias. */
+        return entry && entry->defined_return_field_count >
+            (entry->model_producer ? 1u : 0u);
     default:
         return false;
     }

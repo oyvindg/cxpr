@@ -81,6 +81,23 @@ static void test_parser_expression_forms(void) {
     assert(strcmp(cxpr_expr_ast_identifier_name(cxpr_expr_ast_record_field_value(ast, 2)), "z") == 0);
     cxpr_expr_ast_free(ast);
 
+    ast = cxpr_expr_ast_parse(p, "sum([1, 2, 3])", &err);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p, "sum([1, 2], x => x * 2)", &err);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p, "sum([1, 2], (x) => x + 1)", &err);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p, "sum([])", &err);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_NUMBER);
+    assert(cxpr_expr_ast_number_value(ast) == 0.0);
+    cxpr_expr_ast_free(ast);
+
     cxpr_expr_parser_free(p);
 }
 

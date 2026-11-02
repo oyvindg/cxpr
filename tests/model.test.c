@@ -3989,6 +3989,7 @@ static void test_advanced_strategy_syntax_compiles_and_ticks(void) {
 static void test_function_record_return_compiles_with_field_access(void) {
     cxpr_error err = {0};
     bool found = false;
+    char* code;
     cxpr_model* model = parse_model_ok(
         "model record_fn\n"
         "in { close }\n"
@@ -3997,10 +3998,14 @@ static void test_function_record_return_compiles_with_field_access(void) {
         "    lower = src - 1\n"
         "    return { upper, lower }\n"
         "}\n"
+        "fn midpoint(src) { return { value = src } }\n"
+        "center = midpoint(close)\n"
         "top = bands(close).upper\n"
         "bottom = bands(close).lower\n"
         "wide = top - bottom\n"
-        "out { top, bottom, wide }\n");
+        "middle = center.value\n"
+        "mixed = sum([bands(close), bands(close + 1)], x => x.upper)\n"
+        "out { top, bottom, wide, middle, mixed }\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
     cxpr_context* ctx = cxpr_context_new();
 
@@ -4015,6 +4020,19 @@ static void test_function_record_return_compiles_with_field_access(void) {
     assert(cxpr_context_get(ctx, "top", &found) == 11.0 && found);
     assert(cxpr_context_get(ctx, "bottom", &found) == 9.0 && found);
     assert(cxpr_context_get(ctx, "wide", &found) == 2.0 && found);
+    assert(cxpr_context_get(ctx, "middle", &found) == 10.0 && found);
+    assert(cxpr_context_get(ctx, "mixed", &found) == 23.0 && found);
+
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "record_fn_tick", &err);
+    if (!code) {
+        fprintf(stderr, "record function C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "_cx_input_0 + 1.0") != NULL);
+    assert(strstr(code, "_cx_input_0 - 1.0") != NULL);
+    free(code);
 
     cxpr_context_free(ctx);
     cxpr_model_compiled_free(program);

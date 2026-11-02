@@ -29,6 +29,22 @@ static char* to_c(const char* expr) {
     return out;
 }
 
+static void test_array_sum_codegen(void) {
+    char* code = to_c("sum([a, b, c])");
+    assert(strcmp(code, "((a + b) + c)") == 0);
+    free(code);
+
+    code = to_c("sum([a, b], x => x * 2)");
+    assert(strstr(code, "a * 2.0") != NULL);
+    assert(strstr(code, "b * 2.0") != NULL);
+    free(code);
+
+    code = to_c("sum([a, b], (x) => x + 1)");
+    assert(strstr(code, "a + 1.0") != NULL);
+    assert(strstr(code, "b + 1.0") != NULL);
+    free(code);
+}
+
 static char* program_to_c(const char* expr,
                           const cxpr_c_program_arg* args,
                           size_t arg_count) {
@@ -541,6 +557,7 @@ int main(void) {
     test_operators();
     test_number_literals_are_double_literals();
     test_functions();
+    test_array_sum_codegen();
     test_lookback_codegen_with_leaf_hook();
     test_emit_call_hook();
     test_membership_desugar();

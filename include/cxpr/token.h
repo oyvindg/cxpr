@@ -35,6 +35,7 @@ typedef enum {
 
     /* Comparison / assignment operators */
     CXPR_TOK_ASSIGN,            /**< = */
+    CXPR_TOK_FAT_ARROW,         /**< => */
     CXPR_TOK_EQ,                /**< == */
     CXPR_TOK_NEQ,               /**< != */
     CXPR_TOK_LT,                /**< < */

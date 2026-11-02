@@ -34,7 +34,7 @@ static const cxpr_function_info builtins[] = {
     INFO("max", "max(value, ...values)", "Returns the largest value. Accepts 1 to 8 numeric arguments, or a trailing expression window such as max(window(expression, period)).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("argmin", "argmin(value, ...values)", "Returns the zero-based index of the smallest value.", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("argmax", "argmax(value, ...values)", "Returns the zero-based index of the largest value.", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
-    INFO("sum", "sum(value, ...values)", "Returns the sum of the supplied values.", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
+    INFO("sum", "sum(value, ...values)", "Returns the sum of scalar arguments or an array literal. Array literals optionally accept a pure selector such as sum(values, x => x.level).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("mean", "mean(value, ...values)", "Returns the arithmetic mean of the supplied values.", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT),
     INFO("stacked", "stacked(first, second, ...values)", "Returns true when every value is strictly lower than the preceding value.", p_stacked_values, 2u, 16u, CXPR_VALUE_BOOL, CXPR_BUILTIN_DEFAULT),
     INFO("clamp", "clamp(value, minimum, maximum)", "Constrains value to the inclusive minimum and maximum.", p_three, 3u, 3u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT),

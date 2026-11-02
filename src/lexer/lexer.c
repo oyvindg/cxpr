@@ -447,6 +447,10 @@ cxpr_token cxpr_lexer_next(cxpr_lexer* lexer) {
             }
             return cxpr_make_token(CXPR_TOK_NOT, start, 1, start_pos, start_line, start_col);
         case '=':
+            if (*lexer->current == '>') {
+                cxpr_lexer_advance(lexer);
+                return cxpr_make_token(CXPR_TOK_FAT_ARROW, start, 2, start_pos, start_line, start_col);
+            }
             if (*lexer->current == '=') {
                 cxpr_lexer_advance(lexer);
                 return cxpr_make_token(CXPR_TOK_EQ, start, 2, start_pos, start_line, start_col);

@@ -85,6 +85,11 @@ static void test_basic(void) {
     assert_parity("argmin(3, 1, 2)", 1.0);
     assert_parity("argmax(3, 1, 2)", 0.0);
     assert_parity("sum(1, 2, 3)", 6.0);
+    assert_parity("sum([1, 2, 3])", 6.0);
+    assert_parity("sum([1, 2, 3], x => x * 2)", 12.0);
+    assert_parity("sum([1, 2, 3], (x) => x + 1)", 9.0);
+    assert_parity("sum([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])", 55.0);
+    assert_parity("sum([])", 0.0);
     /* arity 1 and arity 8 boundaries */
     assert_parity("argmin(5)", 0.0);
     assert_parity("argmin(8, 7, 6, 5, 4, 3, 2, 1)", 7.0);

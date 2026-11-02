@@ -19,6 +19,178 @@ static const char* cxpr_window_reduction_name(const char* name) {
     return NULL;
 }
 
+static bool cxpr_parse_substitute_identifier(cxpr_expr_ast** slot,
+                                             const char* name,
+                                             const cxpr_expr_ast* replacement) {
+    cxpr_expr_ast* ast;
+    if (!slot || !(ast = *slot) || !name || !replacement) return false;
+    if (ast->type == CXPR_NODE_IDENTIFIER &&
+        strcmp(ast->data.identifier.name, name) == 0) {
+        cxpr_expr_ast* copy = cxpr_expr_parser_clone_ast(replacement);
+        if (!copy) return false;
+        cxpr_expr_ast_free(ast);
+        *slot = copy;
+        return true;
+    }
+    if (ast->type == CXPR_NODE_FIELD_ACCESS && !ast->data.field_access.base &&
+        ast->data.field_access.object &&
+        strcmp(ast->data.field_access.object, name) == 0) {
+        cxpr_expr_ast* base = cxpr_expr_parser_clone_ast(replacement);
+        cxpr_expr_ast* field = base
+            ? cxpr_expr_ast_field_expr_new(base, ast->data.field_access.field)
+            : NULL;
+        if (!field) {
+            cxpr_expr_ast_free(base);
+            return false;
+        }
+        cxpr_expr_ast_free(ast);
+        *slot = field;
+        return true;
+    }
+    if (ast->type == CXPR_NODE_CHAIN_ACCESS && ast->data.chain_access.depth > 0u &&
+        strcmp(ast->data.chain_access.path[0], name) == 0) {
+        cxpr_expr_ast* value = cxpr_expr_parser_clone_ast(replacement);
+        if (!value) return false;
+        for (size_t i = 1u; i < ast->data.chain_access.depth; ++i) {
+            cxpr_expr_ast* field = cxpr_expr_ast_field_expr_new(
+                value, ast->data.chain_access.path[i]);
+            if (!field) {
+                cxpr_expr_ast_free(value);
+                return false;
+            }
+            value = field;
+        }
+        cxpr_expr_ast_free(ast);
+        *slot = value;
+        return true;
+    }
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            if (!cxpr_parse_substitute_identifier(
+                    &ast->data.array.elements[i], name, replacement)) return false;
+        break;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            if (!cxpr_parse_substitute_identifier(
+                    &ast->data.record.field_values[i], name, replacement)) return false;
+        break;
+    case CXPR_NODE_FIELD_ACCESS:
+        if (ast->data.field_access.base &&
+            !cxpr_parse_substitute_identifier(
+                &ast->data.field_access.base, name, replacement)) return false;
+        break;
+    case CXPR_NODE_UNARY_OP:
+        if (!cxpr_parse_substitute_identifier(
+                &ast->data.unary_op.operand, name, replacement)) return false;
+        break;
+    case CXPR_NODE_BINARY_OP:
+        if (!cxpr_parse_substitute_identifier(
+                &ast->data.binary_op.left, name, replacement) ||
+            !cxpr_parse_substitute_identifier(
+                &ast->data.binary_op.right, name, replacement)) return false;
+        break;
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
+            if (!cxpr_parse_substitute_identifier(
+                    &ast->data.function_call.args[i], name, replacement)) return false;
+        break;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i)
+            if (!cxpr_parse_substitute_identifier(
+                    &ast->data.producer_access.args[i], name, replacement)) return false;
+        break;
+    case CXPR_NODE_INDEX:
+        if (!cxpr_parse_substitute_identifier(
+                &ast->data.index.target, name, replacement) ||
+            !cxpr_parse_substitute_identifier(
+                &ast->data.index.index, name, replacement)) return false;
+        break;
+    case CXPR_NODE_TERNARY:
+        if (!cxpr_parse_substitute_identifier(
+                &ast->data.ternary.condition, name, replacement) ||
+            !cxpr_parse_substitute_identifier(
+                &ast->data.ternary.true_branch, name, replacement) ||
+            !cxpr_parse_substitute_identifier(
+                &ast->data.ternary.false_branch, name, replacement)) return false;
+        break;
+    default:
+        break;
+    }
+    return true;
+}
+
+static cxpr_expr_ast* cxpr_parse_lower_array_sum(cxpr_expr_ast* node) {
+    cxpr_expr_ast* array;
+    cxpr_expr_ast* lambda = NULL;
+    const char* parameter = NULL;
+    cxpr_expr_ast** args;
+    size_t count;
+    if (!node || node->type != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(node->data.function_call.name, "sum") != 0 ||
+        node->data.function_call.argc < 1u || node->data.function_call.argc > 2u) {
+        return node;
+    }
+    array = node->data.function_call.args[0];
+    if (!array || array->type != CXPR_NODE_ARRAY) return node;
+    if (node->data.function_call.argc == 2u) {
+        lambda = node->data.function_call.args[1];
+        if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") != 0 ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            return node;
+        }
+        parameter = lambda->data.function_call.args[0]->data.identifier.name;
+    }
+    count = array->data.array.count;
+    if (count == 0u) {
+        cxpr_expr_ast_free(node);
+        return cxpr_expr_ast_number_new(0.0);
+    }
+    args = (cxpr_expr_ast**)calloc(count, sizeof(*args));
+    if (!args) {
+        cxpr_expr_ast_free(node);
+        return NULL;
+    }
+    for (size_t i = 0u; i < count; ++i) {
+        if (lambda) {
+            args[i] = cxpr_expr_parser_clone_ast(lambda->data.function_call.args[1]);
+            if (args[i] && !cxpr_parse_substitute_identifier(
+                               &args[i], parameter, array->data.array.elements[i])) {
+                cxpr_expr_ast_free(args[i]);
+                args[i] = NULL;
+            }
+        } else {
+            args[i] = cxpr_expr_parser_clone_ast(array->data.array.elements[i]);
+        }
+        if (!args[i]) {
+            for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(args[j]);
+            free(args);
+            cxpr_expr_ast_free(node);
+            return NULL;
+        }
+    }
+    cxpr_expr_ast_free(node);
+    {
+        cxpr_expr_ast* reduction = args[0];
+        for (size_t i = 1u; i < count; ++i) {
+            cxpr_expr_ast* joined =
+                cxpr_expr_ast_binary_new(CXPR_TOK_PLUS, reduction, args[i]);
+            if (!joined) {
+                cxpr_expr_ast_free(reduction);
+                cxpr_expr_ast_free(args[i]);
+                for (size_t j = i + 1u; j < count; ++j) cxpr_expr_ast_free(args[j]);
+                free(args);
+                return NULL;
+            }
+            reduction = joined;
+        }
+        free(args);
+        return reduction;
+    }
+}
+
 /*
  * A window is a compile-time expression view, not a runtime value. Lower the
  * public reduction form to the established window builtin so every evaluator
@@ -134,6 +306,62 @@ static bool cxpr_parse_call_argument(cxpr_expr_parser* p, cxpr_expr_ast** out_ar
     if (!out_arg || !out_name) return false;
     *out_arg = NULL;
     *out_name = NULL;
+    if (cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER) &&
+        cxpr_expr_parser_peek_next(p).type == CXPR_TOK_FAT_ARROW) {
+        cxpr_expr_ast** lambda_args = (cxpr_expr_ast**)calloc(2u, sizeof(*lambda_args));
+        char* parameter = cxpr_expr_parser_token_to_string(&p->current);
+        if (!lambda_args || !parameter) {
+            free(lambda_args);
+            free(parameter);
+            return false;
+        }
+        lambda_args[0] = cxpr_expr_ast_identifier_new(parameter);
+        free(parameter);
+        cxpr_expr_parser_advance(p);
+        cxpr_expr_parser_advance(p);
+        lambda_args[1] = cxpr_parse_expression(p);
+        if (!lambda_args[0] || !lambda_args[1] || p->had_error) {
+            cxpr_expr_ast_free(lambda_args[0]);
+            cxpr_expr_ast_free(lambda_args[1]);
+            free(lambda_args);
+            return false;
+        }
+        *out_arg = cxpr_expr_ast_call_new("__cxpr_lambda", lambda_args, 2u);
+        return *out_arg != NULL;
+    }
+    if (cxpr_expr_parser_check(p, CXPR_TOK_LPAREN)) {
+        cxpr_lexer lookahead = p->lexer;
+        cxpr_token parameter_token = cxpr_lexer_next(&lookahead);
+        cxpr_token close_token = cxpr_lexer_next(&lookahead);
+        cxpr_token arrow_token = cxpr_lexer_next(&lookahead);
+        if (parameter_token.type == CXPR_TOK_IDENTIFIER &&
+            close_token.type == CXPR_TOK_RPAREN &&
+            arrow_token.type == CXPR_TOK_FAT_ARROW) {
+            cxpr_expr_ast** lambda_args = (cxpr_expr_ast**)calloc(2u, sizeof(*lambda_args));
+            char* parameter;
+            cxpr_expr_parser_advance(p);
+            parameter = cxpr_expr_parser_token_to_string(&p->current);
+            if (!lambda_args || !parameter) {
+                free(lambda_args);
+                free(parameter);
+                return false;
+            }
+            lambda_args[0] = cxpr_expr_ast_identifier_new(parameter);
+            free(parameter);
+            cxpr_expr_parser_advance(p);
+            cxpr_expr_parser_advance(p);
+            cxpr_expr_parser_advance(p);
+            lambda_args[1] = cxpr_parse_expression(p);
+            if (!lambda_args[0] || !lambda_args[1] || p->had_error) {
+                cxpr_expr_ast_free(lambda_args[0]);
+                cxpr_expr_ast_free(lambda_args[1]);
+                free(lambda_args);
+                return false;
+            }
+            *out_arg = cxpr_expr_ast_call_new("__cxpr_lambda", lambda_args, 2u);
+            return *out_arg != NULL;
+        }
+    }
     if (cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER) &&
         cxpr_expr_parser_peek_next(p).type == CXPR_TOK_ASSIGN) {
         name = cxpr_expr_parser_token_to_string(&p->current);
@@ -529,6 +757,7 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
             } else {
                 node = cxpr_expr_ast_call_named_new(name, args, arg_names, argc);
                 free(name);
+                if (node) node = cxpr_parse_lower_array_sum(node);
                 if (node) node = cxpr_parse_lower_window_reduction(node);
             }
             if (!node) return NULL;
