@@ -120,17 +120,27 @@ static bool cxpr_parse_substitute_identifier(cxpr_expr_ast** slot,
     return true;
 }
 
-static cxpr_expr_ast* cxpr_parse_lower_array_sum(cxpr_expr_ast* node) {
+static cxpr_expr_ast* cxpr_parse_lower_static_array_reduction(cxpr_expr_ast* node) {
     cxpr_expr_ast* array;
     cxpr_expr_ast* lambda = NULL;
     const char* parameter = NULL;
     cxpr_expr_ast** args;
     size_t count;
+    const char* reduction_name;
+    bool is_sum;
+    bool is_mean;
+    bool is_min;
+    bool is_max;
     if (!node || node->type != CXPR_NODE_FUNCTION_CALL ||
-        strcmp(node->data.function_call.name, "sum") != 0 ||
         node->data.function_call.argc < 1u || node->data.function_call.argc > 2u) {
         return node;
     }
+    reduction_name = node->data.function_call.name;
+    is_sum = strcmp(reduction_name, "sum") == 0;
+    is_mean = strcmp(reduction_name, "mean") == 0;
+    is_min = strcmp(reduction_name, "min") == 0;
+    is_max = strcmp(reduction_name, "max") == 0;
+    if (!is_sum && !is_mean && !is_min && !is_max) return node;
     array = node->data.function_call.args[0];
     if (!array || array->type != CXPR_NODE_ARRAY) return node;
     if (node->data.function_call.argc == 2u) {
@@ -144,10 +154,11 @@ static cxpr_expr_ast* cxpr_parse_lower_array_sum(cxpr_expr_ast* node) {
         parameter = lambda->data.function_call.args[0]->data.identifier.name;
     }
     count = array->data.array.count;
-    if (count == 0u) {
+    if (count == 0u && is_sum) {
         cxpr_expr_ast_free(node);
         return cxpr_expr_ast_number_new(0.0);
     }
+    if (count == 0u) return node;
     args = (cxpr_expr_ast**)calloc(count, sizeof(*args));
     if (!args) {
         cxpr_expr_ast_free(node);
@@ -175,8 +186,20 @@ static cxpr_expr_ast* cxpr_parse_lower_array_sum(cxpr_expr_ast* node) {
     {
         cxpr_expr_ast* reduction = args[0];
         for (size_t i = 1u; i < count; ++i) {
-            cxpr_expr_ast* joined =
-                cxpr_expr_ast_binary_new(CXPR_TOK_PLUS, reduction, args[i]);
+            cxpr_expr_ast* joined;
+            if (is_min || is_max) {
+                cxpr_expr_ast** pair = (cxpr_expr_ast**)calloc(2u, sizeof(*pair));
+                if (pair) {
+                    pair[0] = reduction;
+                    pair[1] = args[i];
+                    joined = cxpr_expr_ast_call_new(is_min ? "min" : "max", pair, 2u);
+                    if (!joined) free(pair);
+                } else {
+                    joined = NULL;
+                }
+            } else {
+                joined = cxpr_expr_ast_binary_new(CXPR_TOK_PLUS, reduction, args[i]);
+            }
             if (!joined) {
                 cxpr_expr_ast_free(reduction);
                 cxpr_expr_ast_free(args[i]);
@@ -187,6 +210,17 @@ static cxpr_expr_ast* cxpr_parse_lower_array_sum(cxpr_expr_ast* node) {
             reduction = joined;
         }
         free(args);
+        if (is_mean) {
+            cxpr_expr_ast* divisor = cxpr_expr_ast_number_new((double)count);
+            cxpr_expr_ast* mean = divisor
+                ? cxpr_expr_ast_binary_new(CXPR_TOK_SLASH, reduction, divisor)
+                : NULL;
+            if (!mean) {
+                cxpr_expr_ast_free(reduction);
+                cxpr_expr_ast_free(divisor);
+            }
+            return mean;
+        }
         return reduction;
     }
 }
@@ -757,7 +791,7 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
             } else {
                 node = cxpr_expr_ast_call_named_new(name, args, arg_names, argc);
                 free(name);
-                if (node) node = cxpr_parse_lower_array_sum(node);
+                if (node) node = cxpr_parse_lower_static_array_reduction(node);
                 if (node) node = cxpr_parse_lower_window_reduction(node);
             }
             if (!node) return NULL;
@@ -855,6 +889,8 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
                     free(field);
                 } else {
                     node = cxpr_expr_ast_call_named_new(fn_name, args, arg_names, argc);
+                    if (node) node = cxpr_parse_lower_static_array_reduction(node);
+                    if (node) node = cxpr_parse_lower_window_reduction(node);
                 }
                 free(fn_name);
             } else {

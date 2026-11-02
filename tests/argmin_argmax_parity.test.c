@@ -90,6 +90,10 @@ static void test_basic(void) {
     assert_parity("sum([1, 2, 3], (x) => x + 1)", 9.0);
     assert_parity("sum([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])", 55.0);
     assert_parity("sum([])", 0.0);
+    assert_parity("mean([2, 4, 9])", 5.0);
+    assert_parity("mean([{level=2}, {level=4}, {level=9}], x => x.level)", 5.0);
+    assert_parity("min([8, 3, 5, 1, 9, 2, 7, 4, 6])", 1.0);
+    assert_parity("max([{level=2}, {level=9}, {level=4}], x => x.level)", 9.0);
     /* arity 1 and arity 8 boundaries */
     assert_parity("argmin(5)", 0.0);
     assert_parity("argmin(8, 7, 6, 5, 4, 3, 2, 1)", 7.0);

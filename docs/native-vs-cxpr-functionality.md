@@ -244,3 +244,15 @@ should be generalized before it is added to native CXPR.
 
 This sequence improves the expressiveness needed by audio examples and other
 domains while preserving CXPR as a small, deterministic, domain-agnostic core.
+
+### Implementation status
+
+- [ ] Static array-literal reductions: `sum`, `mean`, `min`, and `max` now lower
+  at expression compile time, including pure selectors over homogeneous
+  records. The generated expression contains a fixed tree rather than a
+  runtime collection loop. Model-import/codegen parity remains the completion
+  gate before audio models may adopt the new reducers beyond the existing
+  selector-based `sum` path used by the robot-voice sequencer.
+- [ ] Generalize the same bounded lowering contract to `map`, `reduce`, `any`,
+  `all`, `find`, `count`, `enumerate`, and `zip` after their empty-collection
+  and result-type contracts are specified.
