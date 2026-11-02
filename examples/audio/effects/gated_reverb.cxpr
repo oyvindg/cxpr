@@ -1,0 +1,43 @@
+// Short, dense gated reverb intended for snare and clap sends.
+model gated_reverb(lifecycle = "scoped")
+
+in source
+$sample_rate = 44100
+$feedback = 0.54
+$gate_seconds = 0.22
+assert $sample_rate == 44100 {
+    description = "Gated reverb buffers are tuned for 44100 Hz"
+}
+// Mutually prime-ish delay lengths reduce obvious periodic repetition.
+state line_one: buffer<number, samples = 1321>
+state line_two: buffer<number, samples = 1741>
+state line_three: buffer<number, samples = 2203>
+state gate_age = 10
+
+// Uninitialized history reads as NaN and is treated as silence at startup.
+one_raw = line_one[1320]
+two_raw = line_two[1740]
+three_raw = line_three[2202]
+one = isnan(one_raw) ? 0 : one_raw
+two = isnan(two_raw) ? 0 : two_raw
+three = isnan(three_raw) ? 0 : three_raw
+
+// Any meaningful send transient reopens the gate. The squared close curve
+// avoids an abrupt cut at the end of the configured hold interval.
+triggered = abs(source) > 0.015
+next_gate_age = triggered ? 0 : gate_age + 1 / $sample_rate
+gate = pow(clamp(($gate_seconds - next_gate_age) / 0.045, 0, 1), 2)
+feedback = clamp($feedback, 0, 0.68)
+
+// Cross-coupled signs diffuse energy rather than repeating one delay verbatim.
+line_one := 0.52 * source + feedback * (two + three) / 2
+line_two := 0.46 * source + feedback * (one - three) / 2
+line_three := 0.38 * source + feedback * (one + two) / 2
+gate_age := next_gate_age
+// Different tap combinations decorrelate the stereo return.
+left = gate * (0.62 * one + 0.38 * three)
+right = gate * (0.62 * two + 0.38 * three)
+
+out {
+    left, right
+}

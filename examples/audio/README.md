@@ -1,0 +1,53 @@
+# CXPR audio modules
+
+Reusable, host-neutral DSP building blocks for examples and applications.
+Configure `examples/audio/` as the CXPR import root. Every module then resolves
+shared dependencies below that root without knowing the repository layout:
+
+```cxpr
+use oscillator from oscillators
+use adsr from envelopes
+use state_variable_filter from filters
+use pan, master from effects
+```
+
+Each module owns only its local DSP state and public inputs/parameters. It does
+not know which example consumes it. Hosts remain responsible for compilation,
+sample timing, audio devices, buffers, and polyphonic voice allocation.
+
+Shared modules:
+
+- `oscillators/oscillator`: PolyBLEP saw and pulse plus sine, PWM, and drift;
+- `envelopes/adsr`: exponential attack, decay, sustain, and release;
+- `envelopes/rounded_ar`: sine-squared attack/release for smooth acoustic phrasing;
+- `filters/state_variable_filter`: smoothed resonant low/band/high-pass;
+- `effects/pan`, `effects/master`, `effects/reverb`, and two deliberately
+  distinct delay designs;
+- `effects/lfo`, `effects/chorus`, `effects/phaser`, chamber processing, gated
+  reverb, stereo compression, tape coloration, and delayed pitch vibrato;
+- `effects/portamento`: sample-continuous pitch transitions for legato voices;
+- `effects/saturation`: normalized soft clipping;
+- `sequencing/lane`: reusable trigger/age state for song arrangements.
+- `instruments/classical`, `instruments/drum`, `instruments/native`, and
+  `instruments/retrowave`: reusable voice families independent of songs.
+- `instruments/lead`: reusable melodic voices, including the dual-oscillator
+  `pulse_saw_lead`.
+
+Complete compositions live below `songs/`. Their depth does not affect import
+resolution: `audio/` remains the import root, so a model under
+`songs/drum_solo/models/` imports a shared filter with `from filters`.
+Song folders contain only composition and arrangement models; reusable DSP and
+instrument voices belong in the shared namespaces above.
+
+`render.mjs` is the common CLI adapter used by every audio example. Local
+entrypoints only pass their own `import.meta.url`; the adapter locates
+`models/song.cxpr`, selects `examples/audio/` as the shared import root, and delegates
+WAV generation to `tools/audio_renderer`.
+
+From `libs/cxpr/examples`:
+
+```sh
+./audio/render.mjs --example drum_solo --output "$HOME/drum-solo.wav"
+./audio/render.mjs --example modular_synth --output /tmp/synth.wav --frames=44100
+```
+

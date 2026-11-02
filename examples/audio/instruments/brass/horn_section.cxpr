@@ -1,0 +1,15 @@
+# Two-voice French-horn section for sustained harmonic support.
+model horn_section(lifecycle = "scoped")
+
+use french_horn from instruments/brass
+
+in age, root_frequency, harmony_frequency, trigger
+$sample_rate = 44100
+$hold = 1.80
+$release = 0.30
+$gain = 0.14
+root = french_horn(age=age, frequency=root_frequency, trigger=trigger,
+    sample_rate=$sample_rate, hold=$hold, release=$release, gain=$gain)
+harmony = french_horn(age=age, frequency=harmony_frequency, trigger=trigger,
+    sample_rate=$sample_rate, hold=$hold, release=$release, gain=0.82 * $gain)
+out sample = root + harmony

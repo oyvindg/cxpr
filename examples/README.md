@@ -14,6 +14,9 @@ This folder contains longer examples that are useful for understanding how `cxpr
   scalar `.cxpr` models through the generic bulk API
 - [`audio_dsp/`](audio_dsp/): host-neutral oscillators, envelope, and filters,
   with IR/generated-C parity and real-time deployment guidance
+- [`audio/`](audio/): shared, host-neutral DSP modules, a common renderer, and
+  all audio examples: modular synth, native song, retrowave, classical chamber
+  music, and an electronic drum solo
 - [`scientific.md`](scientific.md): interdependent expressions resolved in topological
   order across relativity, quantum mechanics, and chemistry
   Test: [`../tests/examples/scientific.test.c`](../tests/examples/scientific.test.c)

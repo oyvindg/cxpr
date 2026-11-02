@@ -1,0 +1,39 @@
+# Closed hi-hat combining high-passed noise with inharmonic metallic partials.
+model hat(lifecycle = "scoped")
+
+in age, trigger
+
+$sample_rate = 44100
+$seed = 12345
+$hold = 0.04
+$release = 0.10
+$gain = 0.25
+$cutoff = 6500
+$decay = 45
+
+state { seed = 0, low = 0, metal_phase = 0 }
+
+note_age = trigger > 0 ? 0 : max(0, age)
+current_seed = (trigger > 0 or seed == 0) ? $seed : seed
+next_seed = (48271 * current_seed) % 2147483647
+noise = 2 * next_seed / 2147483647 - 1
+
+coefficient = 1 - exp(-2 * pi() * $cutoff / $sample_rate)
+memory = trigger > 0 ? 0 : low
+filtered = memory + coefficient * (noise - memory)
+high = noise - filtered
+metal_now = trigger > 0 ? 0 : metal_phase
+metal = 0.34 * sin(2 * pi() * metal_now) +
+    0.27 * sin(2 * pi() * 1.447 * metal_now) +
+    0.22 * sin(2 * pi() * 1.813 * metal_now) +
+    0.17 * sin(2 * pi() * 2.317 * metal_now)
+gate = clamp(($hold + $release - note_age) / $release, 0, 1)
+amplitude = min(1, note_age / 0.0005) * exp(-$decay * note_age) * gate
+
+seed := next_seed
+low := filtered
+# Keep the shared phase unwrapped: wrapping at one cycle would make the
+# non-integer partials discontinuous.
+metal_phase := metal_now + 6200 / $sample_rate
+
+out sample = $gain * amplitude * tanh(0.82 * high + 0.18 * metal)

@@ -1,0 +1,28 @@
+# Modal fortepiano: felt hammer, inharmonic string modes and soundboard memory.
+model fortepiano(lifecycle = "scoped")
+
+in age, frequency, trigger
+$sample_rate = 44100
+$gain = 0.22
+state { phase = 0, soundboard_low = 0, soundboard_high = 0 }
+note_age = trigger > 0 ? 0 : max(0, age)
+phase_now = trigger > 0 ? 0 : phase
+step = frequency / $sample_rate
+hammer_contact = (1 - exp(-note_age / 0.0007)) * exp(-110 * note_age)
+mode_one = 0.58 * sin(2 * pi() * phase_now) * exp(-2.0 * note_age)
+mode_two = 0.22 * sin(2 * pi() * 2.003 * phase_now) * exp(-3.1 * note_age)
+mode_three = 0.11 * sin(2 * pi() * 3.009 * phase_now) * exp(-4.3 * note_age)
+mode_four = 0.055 * sin(2 * pi() * 4.018 * phase_now) * exp(-5.8 * note_age)
+mode_five = 0.025 * sin(2 * pi() * 5.031 * phase_now) * exp(-7.5 * note_age)
+string = mode_one + mode_two + mode_three + mode_four + mode_five +
+    0.045 * hammer_contact * sin(2 * pi() * 7.11 * phase_now)
+low_coefficient = 1 - exp(-2 * pi() * 420 / $sample_rate)
+high_coefficient = 1 - exp(-2 * pi() * 2300 / $sample_rate)
+next_low = soundboard_low + low_coefficient * (string - soundboard_low)
+next_high = soundboard_high + high_coefficient * (string - soundboard_high)
+soundboard = 0.58 * next_high + 0.42 * next_low
+damper = clamp((0.50 - note_age) / 0.11, 0, 1)
+phase := phase_now + step
+soundboard_low := next_low
+soundboard_high := next_high
+out sample = $gain * damper * tanh(1.15 * soundboard)

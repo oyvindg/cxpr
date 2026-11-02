@@ -1,0 +1,51 @@
+# Band-limited unison pad with drift, ADSR and resonant low-pass.
+model pad(lifecycle = "scoped")
+
+in age, frequency, trigger
+$sample_rate = 44100
+$hold = 2.05
+$release = 0.34
+$gain = 0.12
+$attack = 0.16
+$decay = 0.28
+$sustain = 0.82
+
+fn pad_blep(p, dt) {
+    leading = p / dt
+    trailing = (p - 1) / dt
+    return p < dt ? 2 * leading - leading * leading - 1 : p > 1 - dt ? trailing * trailing + 2 * trailing + 1 : 0
+}
+state { phase = 0, detuned_phase = 0, pulse_phase = 0, drift_phase = 0,
+        filter_low = 0, filter_band = 0 }
+note_age = trigger > 0 ? 0 : max(0, age)
+one = trigger > 0 ? 0 : phase
+two = trigger > 0 ? 0 : detuned_phase
+three = trigger > 0 ? 0 : pulse_phase
+drift_now = drift_phase
+step = frequency / $sample_rate
+drift = 0.0007 * sin(2 * pi() * drift_now)
+saw_one = 2 * one - 1 - pad_blep(one, step)
+second_step = step * (1.0045 + drift)
+saw_two = 2 * two - 1 - pad_blep(two, second_step)
+pulse_step = step * (0.997 - 0.5 * drift)
+pulse_edge = (three - 0.48 + 1) % 1
+pulse = (three < 0.48 ? 1 : -1) + pad_blep(three, pulse_step) - pad_blep(pulse_edge, pulse_step)
+source = 0.38 * saw_one + 0.34 * saw_two + 0.28 * pulse
+attack_position = clamp(note_age / $attack, 0, 1)
+smooth_attack = attack_position * attack_position * (3 - 2 * attack_position)
+decay_position = clamp((note_age - $attack) / $decay, 0, 1)
+held_envelope = note_age < $attack ? smooth_attack : 1 - (1 - $sustain) * decay_position
+release_level = pow(clamp(($hold + $release - note_age) / $release, 0, 1), 2)
+envelope = held_envelope * release_level
+cutoff = 900 + 1250 * envelope + 180 * sin(2 * pi() * drift_now)
+filter_f = 2 * sin(pi() * cutoff / $sample_rate)
+filter_high = tanh(0.72 * source) - filter_low - 0.54 * filter_band
+next_band = filter_band + filter_f * filter_high
+next_low = filter_low + filter_f * next_band
+phase := (one + step) % 1
+detuned_phase := (two + second_step) % 1
+pulse_phase := (three + pulse_step) % 1
+drift_phase := (drift_now + 0.061 / $sample_rate) % 1
+filter_low := next_low
+filter_band := next_band
+out sample = $gain * envelope * tanh(1.15 * next_low)

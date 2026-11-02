@@ -1,0 +1,30 @@
+// Bridged-T-inspired analog kick with a two-stage pitch sweep and warm drive.
+model kick(lifecycle = "scoped")
+
+in trigger
+$sample_rate = 44100
+$gain = 0.68
+state { age = 10, phase = 0, circuit_memory = 0 }
+note_age = trigger ? 0 : age
+phase_now = trigger ? 0 : phase
+
+// A fast initial drop supplies the knock; the slower component makes the pitch
+// settle like a discharged analog resonant circuit rather than a linear sweep.
+frequency = 47 + 96 * exp(-42 * note_age) + 44 * exp(-185 * note_age)
+fundamental = sin(2 * pi() * phase_now)
+harmonics = 0.105 * sin(4 * pi() * phase_now) +
+    0.025 * sin(6 * pi() * phase_now)
+body = fundamental + harmonics
+body_envelope = (1 - exp(-note_age / 0.00085)) *
+    (0.78 * exp(-7.2 * note_age) + 0.22 * exp(-22 * note_age))
+
+// The trigger pulse bypasses the slower body attack, as it would when exciting
+// the resonant circuit, and is rounded before entering the nonlinear stage.
+trigger_pulse = sin(2 * pi() * 1380 * note_age) * exp(-235 * note_age)
+driven = tanh(1.42 * (body_envelope * body + 0.075 * trigger_pulse))
+memory_now = trigger ? 0 : circuit_memory
+rounded = 0.88 * driven + 0.12 * memory_now
+age := note_age + 1 / $sample_rate
+phase := (phase_now + frequency / $sample_rate) % 1
+circuit_memory := rounded
+out sample = $gain * rounded

@@ -1,0 +1,23 @@
+# Restrained orchestral trumpet with a bright but damped bell spectrum.
+model trumpet(lifecycle = "scoped")
+
+use oscillator from oscillators
+use state_variable_filter from filters
+use rounded_ar from envelopes
+use vibrato from effects
+
+in age, frequency, trigger
+$sample_rate = 44100
+$hold = 1.70
+$release = 0.32
+$gain = 0.13
+note_age = trigger > 0 ? 0 : max(0, age)
+pitch = vibrato(age=note_age, trigger=trigger, sample_rate=$sample_rate,
+    rate=5.05, depth=0.0022, delay=0.12, fade=0.26, initial_phase=0.34)
+source = oscillator(frequency=frequency * pitch.ratio, reset=0, sample_rate=$sample_rate,
+    waveform=0, drift=0.00022)
+bell = state_variable_filter(source=source, sample_rate=$sample_rate,
+    cutoff=1850, resonance=0.24)
+envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
+    attack=0.13, hold=$hold, release=$release)
+out sample = $gain * envelope * tanh(0.82 * bell.low + 0.16 * bell.band)

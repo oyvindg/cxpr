@@ -1,0 +1,15 @@
+# Shared sequencer lane. Each call site owns independent previous-step state.
+model lane(type = "sequencer", lifecycle = "scoped")
+
+in t, step, step_seconds, offset, enabled
+
+state previous = -1
+
+age = max(0, t - (step + offset) * step_seconds)
+trigger = enabled and step != previous ? 1 : 0
+
+previous := step
+
+out {
+    age, trigger
+}

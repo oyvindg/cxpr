@@ -1,0 +1,74 @@
+# Shared small stereo room: four delay lines, damped orthogonal feedback
+# og to allpassdiffusorer. Bare wet returneres.
+# Delaylengdene er valgt for 44100 Hz; alle buffere har fast kapasitet.
+model reverb(lifecycle = "scoped")
+
+in source_left, source_right
+
+$sample_rate = 44100
+$feedback = 0.78
+$damping = 3600
+
+assert $sample_rate == 44100 {
+    description = "reverb buffer lengths are tuned for 44100 Hz"
+}
+
+state line_zero: buffer<number, samples = 1423>
+state line_one: buffer<number, samples = 1789>
+state line_two: buffer<number, samples = 2131>
+state line_three: buffer<number, samples = 2521>
+state diffuser_left: buffer<number, samples = 149>
+state diffuser_right: buffer<number, samples = 211>
+state damp_zero = 0
+state damp_one = 0
+state damp_two = 0
+state damp_three = 0
+
+raw_zero = line_zero[1422]
+raw_one = line_one[1788]
+raw_two = line_two[2130]
+raw_three = line_three[2520]
+tap_zero = isnan(raw_zero) ? 0 : raw_zero
+tap_one = isnan(raw_one) ? 0 : raw_one
+tap_two = isnan(raw_two) ? 0 : raw_two
+tap_three = isnan(raw_three) ? 0 : raw_three
+
+coefficient = 1 - exp(-2 * pi() * clamp($damping, 50, $sample_rate * 0.45) / $sample_rate)
+filtered_zero = damp_zero + coefficient * (tap_zero - damp_zero)
+filtered_one = damp_one + coefficient * (tap_one - damp_one)
+filtered_two = damp_two + coefficient * (tap_two - damp_two)
+filtered_three = damp_three + coefficient * (tap_three - damp_three)
+damp_zero := filtered_zero
+damp_one := filtered_one
+damp_two := filtered_two
+damp_three := filtered_three
+
+# Hadamard-matrisen / 2 bevarer energien. Feedback under 1 demper halen.
+feedback = clamp($feedback, 0, 0.90)
+return_zero = (filtered_zero + filtered_one + filtered_two + filtered_three) / 2
+return_one = (filtered_zero - filtered_one + filtered_two - filtered_three) / 2
+return_two = (filtered_zero + filtered_one - filtered_two - filtered_three) / 2
+return_three = (filtered_zero - filtered_one - filtered_two + filtered_three) / 2
+
+line_zero := 0.35 * source_left + feedback * return_zero
+line_one := 0.35 * source_right + feedback * return_one
+line_two := 0.25 * (source_left + source_right) + feedback * return_two
+line_three := 0.25 * (source_left - source_right) + feedback * return_three
+
+room_left = (tap_zero + tap_two) / 2
+room_right = (tap_one + tap_three) / 2
+raw_diffuser_left = diffuser_left[148]
+raw_diffuser_right = diffuser_right[210]
+diffused_left = isnan(raw_diffuser_left) ? 0 : raw_diffuser_left
+diffused_right = isnan(raw_diffuser_right) ? 0 : raw_diffuser_right
+wet_left = diffused_left - 0.55 * room_left
+wet_right = diffused_right - 0.55 * room_right
+diffuser_left := room_left + 0.55 * wet_left
+diffuser_right := room_right + 0.55 * wet_right
+
+left = wet_left
+right = wet_right
+
+out {
+    left, right
+}

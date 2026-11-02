@@ -1,0 +1,41 @@
+# Shared dotted eighth at 108 BPM and 44100 Hz: 18375 samples.
+# Bare wet returneres. Foreldremodellen bestemmer send og dry/wet-forhold.
+model stereo_delay(lifecycle = "scoped")
+
+in source_left, source_right
+
+$sample_rate = 44100
+$feedback = 0.30
+$cutoff = 2600
+
+assert $sample_rate == 44100 {
+    description = "stereo_delay buffer length is tuned for 44100 Hz"
+}
+
+state memory_left: buffer<number, samples = 18375>
+state memory_right: buffer<number, samples = 18375>
+state damp_left = 0
+state damp_right = 0
+
+# [0] er forrige sample; [18374] gir 18375 samples forsinkelse.
+tap_left = memory_left[18374]
+tap_right = memory_right[18374]
+delayed_left = isnan(tap_left) ? 0 : tap_left
+delayed_right = isnan(tap_right) ? 0 : tap_right
+
+coefficient = 1 - exp(-2 * pi() * clamp($cutoff, 20, $sample_rate * 0.45) / $sample_rate)
+filtered_left = damp_left + coefficient * (delayed_left - damp_left)
+filtered_right = damp_right + coefficient * (delayed_right - damp_right)
+feedback = clamp($feedback, 0, 0.90)
+
+damp_left := filtered_left
+damp_right := filtered_right
+memory_left := source_left + feedback * filtered_right
+memory_right := source_right + feedback * filtered_left
+
+left = filtered_left
+right = filtered_right
+
+out {
+    left, right
+}

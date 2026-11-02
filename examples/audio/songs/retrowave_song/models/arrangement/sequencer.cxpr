@@ -1,0 +1,93 @@
+# Eight-bar retrowave arrangement in A minor at 100 BPM.
+model sequencer(type = "sequencer", lifecycle = "scoped")
+
+use lane from sequencing
+
+in t
+$bpm = 100
+
+fn hz(note) = 440 * pow(2, (note - 69) / 12)
+fn chord(bar) = bar % 4
+fn root(c) = c == 0 ? 33 : c == 1 ? 29 : c == 2 ? 36 : 31
+fn chord_note(c, voice) {
+    first = c == 0 ? 57 : c == 1 ? 53 : c == 2 ? 60 : 55
+    second = c == 0 ? 60 : c == 1 ? 57 : c == 2 ? 64 : 59
+    third = c == 0 ? 64 : c == 1 ? 60 : c == 2 ? 67 : 62
+    fourth = c == 0 ? 71 : c == 1 ? 64 : c == 2 ? 72 : 67
+    return voice == 0 ? first : voice == 1 ? second : voice == 2 ? third : fourth
+}
+fn arp_note(c, slot) = chord_note(c, slot % 4) + (slot >= 4 ? 12 : 0)
+
+beat_seconds = 60 / $bpm
+bar_seconds = 4 * beat_seconds
+beat = max(0, t) / beat_seconds
+bar = min(floor(beat / 4), 7)
+current_chord = chord(bar)
+
+chord_lane = lane(t=t, step=bar, step_seconds=bar_seconds, offset=0, enabled=true)
+chord_trigger = chord_lane.trigger
+chord_age = chord_lane.age
+chord_one = chord_note(current_chord, 0) |> hz()
+chord_two = chord_note(current_chord, 1) |> hz()
+chord_three = chord_note(current_chord, 2) |> hz()
+chord_four = chord_note(current_chord, 3) |> hz()
+chord_hold = bar_seconds - 0.35
+chord_release = 0.34
+
+bass_step = min(floor(beat * 2), 63)
+bass_slot = bass_step % 8
+bass_bar = floor(bass_step / 8)
+bass_lane = lane(t=t, step=bass_step, step_seconds=beat_seconds / 2, offset=0, enabled=true)
+bass_trigger = bass_lane.trigger
+bass_age = bass_lane.age
+bass_frequency = root(chord(bass_bar)) + (bass_slot == 6 ? 12 : bass_slot == 3 ? 7 : 0) |> hz()
+bass_level = bass_slot == 1 or bass_slot == 5 ? 0.52 : bass_slot == 6 ? 0.78 : 1
+
+arp_step = min(floor(beat * 4), 127)
+arp_slot = arp_step % 8
+arp_bar = floor(arp_step / 16)
+arp_lane = lane(t=t, step=arp_step, step_seconds=beat_seconds / 4, offset=0, enabled=true)
+arp_trigger = arp_lane.trigger
+arp_age = arp_lane.age
+arp_frequency = arp_note(chord(arp_bar), arp_slot) |> hz()
+arp_level = arp_bar < 1 ? 0 : arp_slot % 2 == 0 ? 0.82 : 0.58
+
+lead_step = min(floor(beat), 31)
+lead_bar = floor(lead_step / 4)
+lead_slot = lead_step % 4
+lead_note = lead_slot == 0 ? 76 : lead_slot == 1 ? 79 : lead_slot == 2 ? 81 : 83
+lead_lane = lane(t=t, step=lead_step, step_seconds=beat_seconds, offset=0, enabled=true)
+lead_trigger = lead_lane.trigger
+lead_age = lead_lane.age
+lead_frequency = lead_note - (lead_bar % 4 == 1 ? 4 : lead_bar % 4 == 3 ? 2 : 0) |> hz()
+lead_level = lead_bar < 4 ? 0 : lead_slot == 3 ? 0.65 : 0.88
+
+drum_step = min(floor(beat * 2), 63)
+drum_slot = drum_step % 8
+drum_bar = floor(drum_step / 8)
+drum_lane = lane(t=t, step=drum_step, step_seconds=beat_seconds / 2, offset=0, enabled=true)
+drum_trigger = drum_lane.trigger
+drum_age = drum_lane.age
+kick_level = drum_slot == 0 ? 1 : drum_slot == 4 ? 0.92 : 0
+snare_level = drum_slot == 2 or drum_slot == 6 ? 0.90 : 0
+clap_level = drum_bar >= 2 and (drum_slot == 2 or drum_slot == 6) ? 0.58 : 0
+hat_level = drum_slot % 2 == 0 ? 0.30 : 0.68
+open_hat_level = drum_bar >= 1 and drum_slot == 7 ? (drum_bar % 2 == 1 ? 0.52 : 0.34) : 0
+tom_level = drum_bar == 3 or drum_bar == 7 ?
+    (drum_slot == 5 ? 0.48 : drum_slot == 6 ? 0.62 : drum_slot == 7 ? 0.78 : 0) : 0
+tom_frequency = drum_slot == 5 ? 155 : drum_slot == 6 ? 130 : 105
+drum_seed = drum_step % 3 == 0 ? 19391 : drum_step % 3 == 1 ? 27183 : 31469
+
+intensity = bar < 2 ? 0.65 : bar < 4 ? 0.82 : 1
+duration = 8 * bar_seconds + 4.0
+
+out {
+    chord_trigger, chord_age, chord_one, chord_two,
+    chord_three, chord_four, chord_hold, chord_release,
+    bass_trigger, bass_age, bass_frequency, bass_level,
+    arp_trigger, arp_age, arp_frequency, arp_level,
+    lead_trigger, lead_age, lead_frequency, lead_level,
+    drum_trigger, drum_age, kick_level, snare_level,
+    clap_level, hat_level, open_hat_level, tom_level,
+    tom_frequency, drum_seed, intensity, duration
+}

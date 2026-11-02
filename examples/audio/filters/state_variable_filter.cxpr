@@ -1,0 +1,34 @@
+# Shared topology-preserving state-variable filter with smoothed controls.
+model state_variable_filter(lifecycle = "scoped")
+
+in source
+
+$sample_rate = 44100
+$cutoff = 1800
+$resonance = 0.25
+$smoothing_seconds = 0.004
+
+state integrator_one = 0
+state integrator_two = 0
+state smoothed_cutoff = 1800
+state smoothed_resonance = 0.25
+
+smooth = 1 - exp(-1 / (max(0.0001, $smoothing_seconds) * $sample_rate))
+cutoff = smoothed_cutoff + smooth * (clamp($cutoff, 20, $sample_rate * 0.45) - smoothed_cutoff)
+resonance = smoothed_resonance + smooth * (clamp($resonance, 0, 0.96) - smoothed_resonance)
+g = tan(pi() * cutoff / $sample_rate)
+damping = 2 - 1.9 * resonance
+normalizer = 1 / (1 + g * (g + damping))
+band = normalizer * (integrator_one + g * (source - integrator_two))
+low = integrator_two + g * band
+high = source - damping * band - low
+
+integrator_one := 2 * band - integrator_one
+integrator_two := 2 * low - integrator_two
+smoothed_cutoff := cutoff
+smoothed_resonance := resonance
+
+out {
+    low, band, high
+}
+

@@ -1,0 +1,13 @@
+# Shared mono-to-stereo equal-power panning.
+model pan
+
+in source, position
+
+angle = (clamp(position, -1, 1) + 1) * pi() / 4
+
+left = source * cos(angle)
+right = source * sin(angle)
+
+out {
+    left, right
+}

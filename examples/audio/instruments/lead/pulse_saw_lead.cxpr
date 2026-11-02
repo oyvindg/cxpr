@@ -1,0 +1,44 @@
+# Bright saw/pulse lead with independent amplifier and filter envelopes.
+model pulse_saw_lead(lifecycle = "scoped")
+
+use oscillator from oscillators
+use adsr from envelopes
+use state_variable_filter from filters
+use saturation from effects
+
+in frequency, gate, trigger
+$sample_rate = 44100
+$detune_ratio = 1.006
+$cutoff_base = 320
+$cutoff_envelope = 4300
+$resonance = 0.58
+$attack = 0.008
+$release = 0.10
+$pulse_mix = 0.38
+$drive = 1.65
+$low_mix = 1
+$band_mix = 0
+$notch_mix = 0
+$high_mix = 0
+
+amplitude = adsr(gate=gate, trigger=trigger, sample_rate=$sample_rate,
+                 attack=$attack, decay=0.10, sustain=0.58, release=$release)
+tone = adsr(gate=gate, trigger=trigger, sample_rate=$sample_rate,
+            attack=0.003, decay=0.16, sustain=0.16, release=0.15)
+saw = oscillator(frequency=frequency, reset=trigger, sample_rate=$sample_rate,
+                 waveform=0, drift=0.0015)
+pulse = oscillator(frequency=frequency * $detune_ratio, reset=trigger,
+                   sample_rate=$sample_rate, waveform=1,
+                   pulse_width=0.44, drift=0.0011)
+pulse_mix = clamp($pulse_mix, 0, 1)
+mixed = (1 - pulse_mix) * saw + pulse_mix * pulse
+driven = saturation(source=mixed, drive=$drive)
+cutoff = $cutoff_base + $cutoff_envelope * tone
+filtered = state_variable_filter(source=driven, sample_rate=$sample_rate,
+                                 cutoff=cutoff, resonance=$resonance)
+selected = $low_mix * filtered.low +
+    1.35 * $band_mix * filtered.band +
+    0.72 * $notch_mix * (filtered.low + filtered.high) +
+    0.86 * $high_mix * filtered.high
+
+out sample = amplitude * selected

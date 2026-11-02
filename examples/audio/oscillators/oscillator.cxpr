@@ -1,0 +1,42 @@
+# Shared band-limited saw/pulse oscillator. Each scoped call site owns one phase.
+model oscillator(lifecycle = "scoped")
+
+in frequency, reset
+
+$sample_rate = 44100
+$waveform = 0
+$pulse_width = 0.5
+$drift = 0
+
+state phase = 0
+state drift_phase = 0
+
+drift_now = drift_phase
+drifted_frequency = frequency * (1 + $drift * sin(2 * pi() * drift_now))
+step = clamp(drifted_frequency / $sample_rate, 0.0000001, 0.45)
+phase_now = reset > 0 ? 0 : phase
+width = clamp($pulse_width, 0.05, 0.95)
+
+# PolyBLEP correction around a unit-period discontinuity.
+leading = phase_now / step
+trailing = (phase_now - 1) / step
+blep = phase_now < step ? 2 * leading - leading * leading - 1 :
+    phase_now > 1 - step ? trailing * trailing + 2 * trailing + 1 : 0
+saw = 2 * phase_now - 1 - blep
+
+# A pulse is the difference between two phase-shifted, corrected saws.
+shifted_phase = (phase_now - width + 1) % 1
+shifted_leading = shifted_phase / step
+shifted_trailing = (shifted_phase - 1) / step
+shifted_blep = shifted_phase < step ? 2 * shifted_leading - shifted_leading * shifted_leading - 1 :
+    shifted_phase > 1 - step ? shifted_trailing * shifted_trailing + 2 * shifted_trailing + 1 : 0
+shifted_saw = 2 * shifted_phase - 1 - shifted_blep
+pulse = 0.5 * (saw - shifted_saw)
+sine = sin(2 * pi() * phase_now)
+sample = $waveform < 0.5 ? saw : ($waveform < 1.5 ? pulse : sine)
+
+phase := (phase_now + step) % 1
+drift_phase := (drift_now + 0.17 / $sample_rate) % 1
+
+out sample
+

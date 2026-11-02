@@ -1,0 +1,178 @@
+# Vienna Morning: an original twelve-bar symphonic movement in a Classical-era idiom.
+model score(type = "sequencer", lifecycle = "scoped")
+
+use lane from sequencing
+
+in t
+$bpm = 126
+
+fn hz(note) = 440 * pow(2, (note - 69) / 12)
+fn harmony(bar) {
+    value = bar == 0 ? 0 : bar == 1 ? 4 : bar == 2 ? 5 : bar == 3 ? 4 : bar == 4 ? 3 : bar == 5 ? 0 : bar == 6 ? 1 : bar == 7 ? 4 : bar == 8 ? 0 : bar == 9 ? 3 : bar == 10 ? 4 : 0
+    return value
+}
+fn root(chord) {
+    value = chord == 0 ? 48 : chord == 1 ? 50 : chord == 3 ? 53 : chord == 4 ? 55 : chord == 5 ? 57 : 48
+    return value
+}
+fn third(chord) = root(chord) + (chord == 1 or chord == 5 ? 3 : 4)
+fn fifth(chord) = root(chord) + 7
+fn melody(chord, slot, phrase) {
+    first = chord == 4 ? 74 : chord == 5 ? 76 : chord == 3 ? 72 : 72
+    second = chord == 4 ? 71 : chord == 5 ? 72 : chord == 3 ? 69 : 76
+    third_note = chord == 4 ? 67 : chord == 5 ? 69 : chord == 3 ? 65 : 79
+    fourth = chord == 4 ? 71 : chord == 5 ? 72 : chord == 3 ? 69 : 76
+    opening = slot == 0 ? first : slot == 1 ? second : slot == 2 ? third_note : fourth
+    answer = slot == 0 ? third_note : slot == 1 ? fourth : slot == 2 ? second : first
+    base = phrase % 2 == 0 ? opening : answer
+    return base
+}
+
+beat_seconds = 60 / $bpm
+bar_seconds = 4 * beat_seconds
+beat = max(0, t) / beat_seconds
+bar = min(floor(beat / 4), 11)
+chord = harmony(bar)
+phrase = floor(bar / 3)
+
+# Alberti pattern: root-fifth-third-fifth in eighth notes.
+piano_step = min(floor(beat * 2), 95)
+piano_slot = piano_step % 8
+piano_bar = floor(piano_step / 8)
+piano_chord = harmony(piano_bar)
+piano_note = piano_slot % 4 == 0 ? root(piano_chord) :
+    piano_slot % 4 == 1 ? fifth(piano_chord) :
+    piano_slot % 4 == 2 ? third(piano_chord) : fifth(piano_chord)
+piano_lane = lane(t=t, step=piano_step, step_seconds=beat_seconds / 2, offset=0, enabled=true)
+piano_trigger = piano_lane.trigger
+piano_age = piano_lane.age
+piano_frequency = piano_note |> hz()
+piano_level = piano_slot % 4 == 0 ? 0.88 : piano_slot % 4 == 2 ? 0.72 : 0.60
+
+# Upper piano answers at the end of each two-beat unit.
+upper_step = min(floor(beat * 2), 95)
+upper_slot = upper_step % 8
+upper_lane = lane(t=t, step=upper_step, step_seconds=beat_seconds / 2, offset=0, enabled=true)
+upper_trigger = upper_lane.trigger
+upper_age = upper_lane.age
+upper_chord = harmony(floor(upper_step / 8))
+upper_root_frequency = (root(upper_chord) + 12) |> hz()
+upper_third_frequency = (third(upper_chord) + 12) |> hz()
+upper_fifth_frequency = (fifth(upper_chord) + 12) |> hz()
+upper_level = upper_slot == 3 or upper_slot == 7 ? 0.62 : 0
+
+# Violin melody uses quarter notes and closes with a tonic cadence.
+violin_step = min(floor(beat), 47)
+violin_slot = violin_step % 4
+violin_bar = floor(violin_step / 4)
+violin_note = violin_bar == 11 ? (violin_slot == 0 ? 79 : violin_slot == 1 ? 77 : violin_slot == 2 ? 76 : 72) :
+    melody(harmony(violin_bar), violin_slot, floor(violin_bar / 3))
+violin_lane = lane(t=t, step=violin_step, step_seconds=beat_seconds, offset=0, enabled=true)
+violin_trigger = violin_lane.trigger
+violin_age = violin_lane.age
+violin_frequency = violin_note |> hz()
+violin_harmony_frequency = (third(harmony(violin_bar)) + 24) |> hz()
+violin_inner_frequency = (fifth(harmony(violin_bar)) + 12) |> hz()
+violin_hold = violin_bar == 11 and violin_slot >= 2 ? 1.35 : 0.40
+violin_level = violin_bar < 2 ? 0.70 :
+    violin_slot == 0 ? 1 : violin_slot == 2 ? 0.88 : 0.76
+violin_attack = violin_slot == 0 ? 0.12 : violin_slot == 2 ? 0.14 : 0.17
+violin_harmony_mix = violin_slot == 0 ? 0.42 :
+    violin_bar >= 8 and violin_slot == 2 ? 0.28 : 0.08
+
+# Viola supplies alternating thirds and fifths on half notes.
+viola_step = min(floor(beat / 2), 23)
+viola_bar = floor(viola_step / 2)
+viola_lane = lane(t=t, step=viola_step, step_seconds=2 * beat_seconds, offset=0, enabled=true)
+viola_trigger = viola_lane.trigger
+viola_age = viola_lane.age
+viola_frequency = (viola_step % 2 == 0 ? third(harmony(viola_bar)) : fifth(harmony(viola_bar))) + 12 |> hz()
+viola_hold = 0.82
+
+# Cello emphasizes roots and dominant approaches.
+cello_step = min(floor(beat / 2), 23)
+cello_bar = floor(cello_step / 2)
+cello_lane = lane(t=t, step=cello_step, step_seconds=2 * beat_seconds, offset=0, enabled=true)
+cello_trigger = cello_lane.trigger
+cello_age = cello_lane.age
+cello_frequency = root(harmony(cello_bar)) - 12 + (cello_step % 2 == 1 ? 7 : 0) |> hz()
+cello_hold = cello_bar == 11 ? 1.6 : 0.78
+
+# Horn-like trombone calls broaden the tutti without masking the strings.
+brass_step = min(floor(beat / 4), 11)
+brass_lane = lane(t=t, step=brass_step, step_seconds=4 * beat_seconds, offset=0,
+    enabled=brass_step >= 4)
+brass_trigger = brass_lane.trigger
+brass_age = brass_lane.age
+brass_frequency = (root(harmony(brass_step)) - 12) |> hz()
+brass_level = brass_step < 4 ? 0 : brass_step < 8 ? 0.32 : brass_step == 11 ? 0.58 : 0.44
+
+# Timpani marks structural arrivals: development, recapitulation and cadence.
+timpani_step = min(floor(beat), 47)
+timpani_bar = floor(timpani_step / 4)
+timpani_slot = timpani_step % 4
+timpani_enabled = (timpani_bar == 4 or timpani_bar == 8) and timpani_slot == 0 or
+    timpani_bar == 10 and timpani_slot == 0 or
+    timpani_bar == 11 and (timpani_slot == 0 or timpani_slot == 2)
+timpani_lane = lane(t=t, step=timpani_step, step_seconds=beat_seconds, offset=0,
+    enabled=timpani_enabled)
+timpani_trigger = timpani_lane.trigger
+timpani_frequency = (timpani_bar == 10 ? root(4) : root(harmony(timpani_bar))) - 24 |> hz()
+timpani_level = timpani_enabled ? (timpani_bar == 11 ? 0.72 : 0.48) : 0
+
+# Flute crowns the second half with an octave answer to the principal theme.
+flute_step = min(floor(beat), 47)
+flute_bar = floor(flute_step / 4)
+flute_slot = flute_step % 4
+flute_lane = lane(t=t, step=flute_step, step_seconds=beat_seconds, offset=0,
+    enabled=flute_bar >= 6)
+flute_trigger = flute_lane.trigger
+flute_age = flute_lane.age
+flute_frequency = (melody(harmony(flute_bar), flute_slot, floor(flute_bar / 3)) + 12) |> hz()
+flute_hold = flute_bar == 11 ? 1.30 : 0.58
+flute_level = flute_bar < 6 ? 0 : flute_bar < 9 ? 0.44 : 0.58
+
+# Oboe answers in contrary motion, leaving room for the violin theme.
+oboe_step = min(floor(beat / 2), 23)
+oboe_bar = floor(oboe_step / 2)
+oboe_lane = lane(t=t, step=oboe_step, step_seconds=2 * beat_seconds, offset=0,
+    enabled=oboe_bar >= 2 and oboe_bar < 10)
+oboe_trigger = oboe_lane.trigger
+oboe_age = oboe_lane.age
+oboe_frequency = ((oboe_step % 2 == 0 ? fifth(harmony(oboe_bar)) :
+    third(harmony(oboe_bar))) + 24) |> hz()
+oboe_hold = 0.88
+oboe_level = oboe_bar >= 2 and oboe_bar < 10 ? 0.46 : 0
+
+# Horns sustain chord roots and fifths beneath the more pointed trombone calls.
+horn_step = min(floor(beat / 2), 23)
+horn_bar = floor(horn_step / 2)
+horn_lane = lane(t=t, step=horn_step, step_seconds=2 * beat_seconds, offset=0,
+    enabled=horn_bar >= 3)
+horn_trigger = horn_lane.trigger
+horn_age = horn_lane.age
+horn_frequency = (horn_step % 2 == 0 ? root(harmony(horn_bar)) :
+    fifth(harmony(horn_bar))) |> hz()
+horn_harmony_frequency = (third(harmony(horn_bar)) + 12) |> hz()
+horn_hold = 2 * beat_seconds - 0.08
+horn_level = horn_bar < 3 ? 0 : horn_bar < 8 ? 0.38 : 0.50
+
+expression = bar < 4 ? 0.76 : bar < 8 ? 0.90 : 1
+duration = 12 * bar_seconds + 3.2
+
+out {
+    piano_trigger, piano_age, piano_frequency, piano_level,
+    upper_trigger, upper_age, upper_root_frequency, upper_third_frequency,
+    upper_fifth_frequency, upper_level,
+    violin_trigger, violin_age, violin_frequency, violin_hold,
+    violin_harmony_frequency, violin_inner_frequency, violin_level,
+    violin_attack, violin_harmony_mix,
+    viola_trigger, viola_age, viola_frequency,
+    viola_hold, cello_trigger, cello_age, cello_frequency,
+    cello_hold, brass_trigger, brass_age, brass_frequency, brass_level,
+    timpani_trigger, timpani_frequency, timpani_level, expression, duration,
+    flute_trigger, flute_age, flute_frequency, flute_hold, flute_level,
+    oboe_trigger, oboe_age, oboe_frequency, oboe_hold, oboe_level,
+    horn_trigger, horn_age, horn_frequency, horn_harmony_frequency,
+    horn_hold, horn_level
+}

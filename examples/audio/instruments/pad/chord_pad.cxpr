@@ -1,0 +1,28 @@
+# Four-voice atmospheric minor pad with an open two-octave voicing.
+model chord_pad(lifecycle = "scoped")
+
+use pad from instruments
+
+in age, root_frequency, trigger
+$sample_rate = 44100
+$hold = 1.20
+$release = 0.72
+$clarity = 0
+
+clarity = clamp($clarity, 0, 1)
+cutoff_scale = 0.62 + 0.78 * clarity
+
+root = pad(age=age, frequency=root_frequency, trigger=trigger,
+           sample_rate=$sample_rate, hold=$hold, release=$release,
+           attack=0.18, cutoff=1250 * cutoff_scale, gain=0.34)
+fifth = pad(age=age, frequency=root_frequency * pow(2, 7 / 12), trigger=trigger,
+            sample_rate=$sample_rate, hold=$hold, release=$release,
+            attack=0.22, cutoff=1450 * cutoff_scale, gain=0.31)
+minor_tenth = pad(age=age, frequency=root_frequency * pow(2, 15 / 12), trigger=trigger,
+                  sample_rate=$sample_rate, hold=$hold, release=$release,
+                  attack=0.26, cutoff=1650 * cutoff_scale, gain=0.28)
+octave = pad(age=age, frequency=4 * root_frequency, trigger=trigger,
+             sample_rate=$sample_rate, hold=$hold, release=$release,
+             attack=0.30, cutoff=1850 * cutoff_scale, gain=0.24)
+
+out sample = root + fifth + minor_tenth + octave

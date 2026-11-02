@@ -1,0 +1,21 @@
+# Reusable delayed pitch vibrato with per-instance phase state.
+model vibrato(lifecycle = "scoped")
+
+in age, trigger
+$sample_rate = 44100
+$rate = 5
+$depth = 0.002
+$delay = 0.10
+$fade = 0.24
+$initial_phase = 0
+
+state phase = 0
+phase_now = trigger > 0 ? $initial_phase % 1 : phase
+fade = clamp((max(0, age) - $delay) / max(0.001, $fade), 0, 1)
+modulation = $depth * fade * sin(2 * pi() * phase_now)
+ratio = 1 + modulation
+phase := (phase_now + $rate / $sample_rate) % 1
+
+out {
+    modulation, ratio
+}

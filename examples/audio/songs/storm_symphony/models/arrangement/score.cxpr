@@ -1,0 +1,190 @@
+# Original thirty-two-bar dramatic orchestral score in C minor.
+model score(type = "sequencer", lifecycle = "scoped")
+
+use lane from sequencing
+
+in t
+$bpm = 144
+
+fn hz(note) = 440 * pow(2, (note - 69) / 12)
+fn harmony(bar) {
+    position = bar % 16
+    exposition = position == 0 ? 0 : position == 1 ? 0 : position == 2 ? 6 : position == 3 ? 5 : position == 4 ? 0 : position == 5 ? 3 : position == 6 ? 4 : position == 7 ? 5 : position == 8 ? 0 : position == 9 ? 6 : position == 10 ? 3 : position == 11 ? 5 : position == 12 ? 4 : position == 13 ? 6 : position == 14 ? 5 : 0
+    development = position == 0 ? 0 : position == 1 ? 2 : position == 2 ? 3 : position == 3 ? 5 : position == 4 ? 6 : position == 5 ? 4 : position == 6 ? 2 : position == 7 ? 5 : position == 8 ? 0 : position == 9 ? 6 : position == 10 ? 3 : position == 11 ? 7 : position == 12 ? 4 : position == 13 ? 2 : position == 14 ? 5 : 0
+    value = bar < 16 ? exposition : development
+    return value
+}
+fn root(chord) {
+    value = chord == 0 ? 48 : chord == 2 ? 50 : chord == 3 ? 51 : chord == 4 ? 53 : chord == 5 ? 55 : chord == 6 ? 56 : chord == 7 ? 58 : 48
+    return value
+}
+fn third(chord) = root(chord) + (chord == 5 or chord == 7 ? 4 : 3)
+fn fifth(chord) = root(chord) + (chord == 2 ? 6 : 7)
+
+beat_seconds = 60 / $bpm
+bar_seconds = 4 * beat_seconds
+beat = max(0, t) / beat_seconds
+bar = min(floor(beat / 4), 31)
+chord = harmony(bar)
+
+# Relentless eighth-note lower-string cell with accented downbeats.
+ostinato_step = min(floor(beat * 2), 255)
+ostinato_slot = ostinato_step % 8
+ostinato_bar = floor(ostinato_step / 8)
+ostinato_chord = harmony(ostinato_bar)
+ostinato_first = ostinato_slot % 4 == 0 ? root(ostinato_chord) - 12 :
+    ostinato_slot % 4 == 1 ? fifth(ostinato_chord) - 12 :
+    ostinato_slot % 4 == 2 ? root(ostinato_chord) : third(ostinato_chord)
+ostinato_development = ostinato_slot % 4 == 0 ? root(ostinato_chord) - 12 :
+    ostinato_slot % 4 == 1 ? third(ostinato_chord) :
+    ostinato_slot % 4 == 2 ? fifth(ostinato_chord) : root(ostinato_chord) + 12
+ostinato_note = ostinato_bar < 16 ? ostinato_first : ostinato_development
+ostinato_lane = lane(t=t, step=ostinato_step,
+    step_seconds=beat_seconds / 2, offset=0, enabled=beat >= 1)
+ostinato_trigger = ostinato_lane.trigger
+ostinato_age = ostinato_lane.age
+ostinato_frequency = ostinato_note |> hz()
+ostinato_level = ostinato_bar < 16 ?
+    (ostinato_slot % 4 == 0 ? 1 : 0.68) :
+    (ostinato_slot % 4 == 2 ? 0.92 : ostinato_slot % 2 == 0 ? 0.76 : 0.62)
+
+# Fast sixteenth-note arpeggios animate the development without filling every bar.
+arp_step = min(floor(beat * 4), 511)
+arp_slot = arp_step % 16
+arp_bar = floor(arp_step / 16)
+arp_chord = harmony(arp_bar)
+arp_note = arp_slot % 4 == 0 ? root(arp_chord) :
+    arp_slot % 4 == 1 ? third(arp_chord) :
+    arp_slot % 4 == 2 ? fifth(arp_chord) : root(arp_chord) + 12
+arp_enabled = arp_bar >= 18 and arp_bar % 4 != 3
+arp_lane = lane(t=t, step=arp_step, step_seconds=beat_seconds / 4,
+    offset=0, enabled=arp_enabled)
+arp_trigger = arp_lane.trigger
+arp_age = arp_lane.age
+arp_frequency = (arp_note + 12) |> hz()
+arp_level = arp_enabled ? (arp_slot % 4 == 0 ? 0.64 : 0.46) : 0
+
+# A restrained short-short-short-long cell, inspired by Classical motivic economy.
+violin_step = min(floor(beat * 2), 255)
+violin_slot = violin_step % 8
+violin_bar = floor(violin_step / 8)
+violin_chord = harmony(violin_bar)
+violin_exposition_note = violin_bar == 15 ?
+    (violin_slot < 3 ? 67 : 72) :
+    violin_slot < 3 ?
+        (violin_bar % 2 == 0 ? fifth(violin_chord) + 24 : third(violin_chord) + 24) :
+        root(violin_chord) + 24
+violin_development_note = violin_bar == 31 ?
+    (violin_slot < 3 ? 67 : 72) :
+    violin_slot == 0 ? root(violin_chord) + 24 :
+    violin_slot == 1 ? third(violin_chord) + 24 :
+    violin_slot == 2 ? fifth(violin_chord) + 24 : root(violin_chord) + 36
+violin_note = violin_bar < 16 ? violin_exposition_note : violin_development_note
+violin_lane = lane(t=t, step=violin_step,
+    step_seconds=beat_seconds / 2, offset=0,
+    enabled=violin_slot <= 3 and beat >= 1)
+violin_trigger = violin_lane.trigger
+violin_age = violin_slot <= 3 ? violin_lane.age :
+    (violin_slot - 3) * beat_seconds / 2 + violin_lane.age
+violin_frequency = violin_note |> hz()
+violin_harmony_frequency = (third(harmony(violin_bar)) + 24) |> hz()
+violin_inner_frequency = (fifth(harmony(violin_bar)) + 12) |> hz()
+violin_hold = violin_slot < 3 ? 0.22 : violin_bar == 15 or violin_bar == 31 ? 1.45 : 0.92
+violin_attack = violin_slot < 3 ? 0.085 : 0.16
+violin_level = violin_slot == 0 ? 0.78 : violin_slot == 1 ? 0.88 :
+    violin_slot == 2 ? 0.72 : 0.96
+violin_harmony_mix = violin_slot == 3 ?
+    ((violin_bar % 16) >= 12 ? 0.28 : 0.12) : 0.03
+
+# Inner strings and bass reinforce the harmonic rhythm.
+inner_step = min(floor(beat / 2), 63)
+inner_bar = floor(inner_step / 2)
+inner_lane = lane(t=t, step=inner_step,
+    step_seconds=2 * beat_seconds, offset=0, enabled=beat >= 2)
+inner_trigger = inner_lane.trigger
+inner_age = inner_lane.age
+viola_frequency = ((inner_step % 2 == 0 ? third(harmony(inner_bar)) :
+    fifth(harmony(inner_bar))) + 12) |> hz()
+viola_hold = 0.70
+cello_frequency = (root(harmony(inner_bar)) - 12 +
+    (inner_step % 2 == 0 ? 0 : 7)) |> hz()
+cello_hold = inner_bar == 15 or inner_bar == 31 ? 1.45 : 0.72
+
+# Woodwind answers enter after the opening statement.
+wind_step = min(floor(beat), 127)
+wind_slot = wind_step % 4
+wind_bar = floor(wind_step / 4)
+wind_position = wind_bar % 16
+wind_lane = lane(t=t, step=wind_step, step_seconds=beat_seconds,
+    offset=0, enabled=wind_bar < 16 ?
+        ((wind_position >= 4 and wind_position < 8) or
+            (wind_position >= 10 and wind_position < 12)) :
+        (wind_position >= 2 and wind_position < 7 or
+            wind_position >= 9 and wind_position < 14))
+wind_trigger = wind_lane.trigger
+wind_age = wind_lane.age
+wind_chord = harmony(wind_bar)
+wind_note = wind_slot == 0 ? third(wind_chord) + 24 :
+    wind_slot == 1 ? fifth(wind_chord) + 24 :
+    wind_slot == 2 ? root(wind_chord) + 36 : fifth(wind_chord) + 24
+wind_frequency = wind_note |> hz()
+wind_hold = 0.44
+wind_level = wind_bar < 16 ?
+    ((wind_position >= 4 and wind_position < 8) or
+        (wind_position >= 10 and wind_position < 12) ? 0.42 : 0) :
+    (wind_position >= 2 and wind_position < 7 or
+        wind_position >= 9 and wind_position < 14 ?
+        (0.38 + 0.012 * wind_position) : 0)
+
+# Brass enters in broad one-bar calls and dominates the final tutti.
+brass_step = min(floor(beat / 4), 31)
+brass_position = brass_step % 16
+brass_lane = lane(t=t, step=brass_step, step_seconds=4 * beat_seconds,
+    offset=0, enabled=brass_position == 8 or brass_position == 11 or
+        brass_position >= 13)
+brass_trigger = brass_lane.trigger
+brass_age = brass_lane.age
+brass_root_frequency = root(harmony(brass_step)) |> hz()
+brass_third_frequency = (third(harmony(brass_step)) + 12) |> hz()
+brass_level = brass_position == 8 or brass_position == 11 ?
+    (brass_step >= 16 ? 0.44 : 0.38) :
+    brass_position >= 13 ? (brass_step >= 16 ? 0.68 : 0.58) : 0
+
+# Timpani accents structural downbeats and drives the final cadence.
+timpani_step = min(floor(beat * 2), 255)
+timpani_bar = floor(timpani_step / 8)
+timpani_position = timpani_bar % 16
+timpani_slot = timpani_step % 8
+timpani_enabled = timpani_bar > 0 and timpani_slot == 0 or
+    timpani_position >= 12 and (timpani_slot == 4 or timpani_slot == 6)
+timpani_lane = lane(t=t, step=timpani_step,
+    step_seconds=beat_seconds / 2, offset=0, enabled=timpani_enabled)
+timpani_trigger = timpani_lane.trigger
+timpani_frequency = (root(harmony(timpani_bar)) - 24) |> hz()
+timpani_level = timpani_enabled ?
+    (timpani_position >= 12 ? (timpani_bar >= 16 ? 0.92 : 0.86) : 0.58) : 0
+
+# A dedicated low opening stroke rings into the empty hall before the orchestra.
+opening_lane = lane(t=t, step=0, step_seconds=beat_seconds,
+    offset=0, enabled=beat < 1)
+opening_timpani_trigger = opening_lane.trigger
+opening_timpani_frequency = 43.65
+opening_timpani_level = beat < 4 ? 1 : 0
+
+expression = bar < 4 ? 0.74 : bar < 8 ? 0.86 : bar < 12 ? 0.94 :
+    bar < 16 ? 1 : bar < 20 ? 0.80 : bar < 24 ? 0.90 :
+    bar < 28 ? 0.97 : 1.06
+duration = 32 * bar_seconds + 4.0
+
+out {
+    ostinato_trigger, ostinato_age, ostinato_frequency, ostinato_level,
+    arp_trigger, arp_age, arp_frequency, arp_level,
+    violin_trigger, violin_age, violin_frequency, violin_harmony_frequency,
+    violin_inner_frequency, violin_hold, violin_attack, violin_level,
+    violin_harmony_mix, inner_trigger, inner_age, viola_frequency, viola_hold,
+    cello_frequency, cello_hold, wind_trigger, wind_age, wind_frequency,
+    wind_hold, wind_level, brass_trigger, brass_age, brass_root_frequency,
+    brass_third_frequency, brass_level, timpani_trigger, timpani_frequency,
+    timpani_level, opening_timpani_trigger, opening_timpani_frequency,
+    opening_timpani_level, expression, duration
+}

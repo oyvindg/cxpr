@@ -1,0 +1,33 @@
+// Three-burst synthetic hand clap with a diffuse noise tail.
+model clap(lifecycle = "scoped")
+
+in trigger
+$sample_rate = 44100
+$seed = 35791
+$gain = 0.32
+
+// The deterministic generator gives every trigger a repeatable noise texture.
+state { age = 10, seed = 0, low = 0 }
+note_age = trigger ? 0 : age
+current_seed = trigger or seed == 0 ? $seed : seed
+next_seed = (48271 * current_seed) % 2147483647
+noise = 2 * next_seed / 2147483647 - 1
+
+// Remove low-frequency noise so the clap remains above kick and tom energy.
+memory = trigger ? 0 : low
+coefficient = 1 - exp(-2 * pi() * 900 / $sample_rate)
+next_low = memory + coefficient * (noise - memory)
+bright = noise - next_low
+
+// Three staggered bursts approximate several hands arriving milliseconds apart.
+bursts = exp(-52 * note_age) +
+    (note_age > 0.017 ? 0.78 * exp(-68 * (note_age - 0.017)) : 0) +
+    (note_age > 0.034 ? 0.56 * exp(-78 * (note_age - 0.034)) : 0)
+tail = 0.30 * exp(-16 * note_age)
+
+// Commit generator/filter state after the current sample has been synthesized.
+age := note_age + 1 / $sample_rate
+seed := next_seed
+low := next_low
+// A short attack ramp suppresses discontinuities when a new burst retriggers.
+out sample = $gain * (1 - exp(-note_age / 0.0008)) * bright * (bursts + tail)

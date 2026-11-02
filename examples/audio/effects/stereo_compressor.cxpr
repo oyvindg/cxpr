@@ -1,0 +1,35 @@
+// Stereo-linked peak compressor for mix cohesion.
+model stereo_compressor(lifecycle = "scoped")
+
+in source_left, source_right
+$sample_rate = 44100
+$threshold = 0.30
+$ratio = 3.0
+$attack = 0.012
+$release = 0.16
+$makeup = 1.08
+
+// A shared detector prevents left/right image movement during asymmetric hits.
+state envelope = 0
+detector = max(abs(source_left), abs(source_right))
+
+// Separate ballistics catch peaks quickly and recover more slowly.
+attack_coefficient = 1 - exp(-1 / (max(0.001, $attack) * $sample_rate))
+release_coefficient = 1 - exp(-1 / (max(0.001, $release) * $sample_rate))
+coefficient = detector > envelope ? attack_coefficient : release_coefficient
+next_envelope = envelope + coefficient * (detector - envelope)
+
+// Compress only signal above threshold; ratio=1 remains transparent.
+threshold = max(0.001, $threshold)
+compressed_level = next_envelope <= threshold ? next_envelope :
+    threshold + (next_envelope - threshold) / max(1, $ratio)
+gain = next_envelope > 0.000001 ? compressed_level / next_envelope : 1
+
+// Apply one gain value to both channels after updating the detector state.
+envelope := next_envelope
+left = $makeup * gain * source_left
+right = $makeup * gain * source_right
+
+out {
+    left, right
+}

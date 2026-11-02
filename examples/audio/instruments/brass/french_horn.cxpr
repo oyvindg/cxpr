@@ -1,0 +1,24 @@
+# Warm French horn with a slow bloom and restrained bell resonance.
+model french_horn(lifecycle = "scoped")
+
+use oscillator from oscillators
+use state_variable_filter from filters
+use rounded_ar from envelopes
+use vibrato from effects
+
+in age, frequency, trigger
+$sample_rate = 44100
+$hold = 1.80
+$release = 0.30
+$gain = 0.20
+note_age = trigger ? 0 : max(0, age)
+bloom = 1 - exp(-note_age / 0.11)
+pitch = vibrato(age=note_age, trigger=trigger, sample_rate=$sample_rate,
+    rate=4.40, depth=0.0017, delay=0.18, fade=0.34, initial_phase=0.53)
+source = oscillator(frequency=frequency * pitch.ratio,
+    reset=0, sample_rate=$sample_rate, waveform=0, drift=0.0004)
+bell = state_variable_filter(source=tanh((0.72 + 0.38 * bloom) * source),
+    sample_rate=$sample_rate, cutoff=760 + 240 * bloom, resonance=0.72)
+envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
+    attack=0.16, hold=$hold, release=$release)
+out sample = $gain * envelope * tanh(0.84 * bell.low + 0.30 * bell.band)

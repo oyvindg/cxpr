@@ -1,0 +1,108 @@
+# Kretsløp. Hele låten, inkludert noter, stemmer, miks og effekter, er cxpr.
+# Hosten gir bare t og sample_rate, og skriver left/right til WAV.
+model song(type = "dsp")
+
+use sequencer from arrangement
+use bass, lead, kick, snare, hat, bell from instruments/native
+use pad from instruments
+use lfo, phaser from effects
+use pan, stereo_delay, reverb, master from effects
+
+in t
+$sample_rate = 44100
+$bpm = 108
+$master_gain = 1.6
+
+assert $sample_rate == 44100 {
+    description = "Song effect buffers are tuned for 44100 Hz"
+}
+
+seq = sequencer(t=t, bpm=$bpm)
+movement = lfo(rate=0.11, sample_rate=$sample_rate)
+brightness = lfo(rate=0.07, sample_rate=$sample_rate)
+vibrato = lfo(rate=5.3, sample_rate=$sample_rate)
+pad_cutoff = 1050 + 700 * brightness.unipolar
+
+# Åtte faste padstemmer: fire i hver bank. Hver scoped kallplass har egen state.
+pa1 = pad(age=seq.a_age, frequency=seq.a_one, trigger=seq.a_trigger,
+          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
+pa2 = pad(age=seq.a_age, frequency=seq.a_two, trigger=seq.a_trigger,
+          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
+pa3 = pad(age=seq.a_age, frequency=seq.a_three, trigger=seq.a_trigger,
+          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
+pa4 = pad(age=seq.a_age, frequency=seq.a_four, trigger=seq.a_trigger,
+          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
+pb1 = pad(age=seq.b_age, frequency=seq.b_one, trigger=seq.b_trigger,
+          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
+pb2 = pad(age=seq.b_age, frequency=seq.b_two, trigger=seq.b_trigger,
+          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
+pb3 = pad(age=seq.b_age, frequency=seq.b_three, trigger=seq.b_trigger,
+          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
+pb4 = pad(age=seq.b_age, frequency=seq.b_four, trigger=seq.b_trigger,
+          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
+
+chord_one = 0.40 * (seq.a_level * pa1.sample + seq.b_level * pb1.sample)
+chord_two = 0.40 * (seq.a_level * pa2.sample + seq.b_level * pb2.sample)
+chord_three = 0.40 * (seq.a_level * pa3.sample + seq.b_level * pb3.sample)
+chord_four = 0.40 * (seq.a_level * pa4.sample + seq.b_level * pb4.sample)
+p1 = pan(source=chord_one, position=-0.70)
+p2 = pan(source=chord_two, position=-0.22)
+p3 = pan(source=chord_three, position=0.24)
+p4 = pan(source=chord_four, position=0.70)
+pad_left = p1.left + p2.left + p3.left + p4.left
+pad_right = p1.right + p2.right + p3.right + p4.right
+phase_left = phaser(source=pad_left, sample_rate=$sample_rate, rate=0.13, depth=0.78, mix=0.32)
+phase_right = phaser(source=pad_right, sample_rate=$sample_rate, rate=0.17, depth=0.78, mix=0.32)
+
+b = bass(age=seq.bass_age, frequency=seq.bass_frequency, trigger=seq.bass_trigger,
+         sample_rate=$sample_rate, hold=seq.bass_hold, release=seq.bass_release)
+melody = lead(age=seq.lead_age,
+              frequency=seq.lead_frequency * (1 + 0.0012 * vibrato.bipolar),
+              trigger=seq.lead_trigger, sample_rate=$sample_rate,
+              hold=seq.lead_hold, release=seq.lead_release,
+              index=1.05 + 0.55 * seq.intensity)
+melody_stereo = pan(source=0.72 * seq.lead_level * melody.sample,
+                     position=0.28 * movement.bipolar)
+
+# Arpeggiert FM-klokkespill som synter sin egen linje fra bank A-akkorden.
+bell_voice = bell(t=t, f1=seq.a_one, f2=seq.a_two, f3=seq.a_three, f4=seq.a_four,
+                  sample_rate=$sample_rate, bpm=$bpm)
+bell_stereo = pan(source=0.6 * seq.intensity * bell_voice.sample,
+                  position=-0.30 * movement.bipolar)
+
+k = kick(age=seq.kick_age)
+s = snare(age=seq.snare_age, trigger=seq.snare_trigger, sample_rate=$sample_rate,
+          seed=seq.snare_seed)
+h = hat(age=seq.hat_age, trigger=seq.hat_trigger, sample_rate=$sample_rate,
+        seed=seq.hat_seed)
+hat_stereo = pan(source=0.34 * seq.hat_level * h.sample, position=0.22)
+snare_sample = 0.75 * seq.snare_level * s.sample
+center = 0.7071067811865476 * (0.90 * seq.bass_level * b.sample +
+          0.64 * seq.kick_level * k.sample + snare_sample)
+
+dry_left = center + phase_left.sample + melody_stereo.left + hat_stereo.left + bell_stereo.left
+dry_right = center + phase_right.sample + melody_stereo.right + hat_stereo.right + bell_stereo.right
+
+# Send-effekter. Delay og romklang fortsetter å kjøre gjennom hele halen.
+echo = stereo_delay(
+    source_left=0.30 * melody_stereo.left + 0.06 * phase_left.sample + 0.18 * bell_stereo.left,
+    source_right=0.30 * melody_stereo.right + 0.06 * phase_right.sample + 0.18 * bell_stereo.right,
+    sample_rate=$sample_rate, feedback=0.32, cutoff=2600)
+room = reverb(
+    source_left=0.22 * phase_left.sample + 0.18 * melody_stereo.left + 0.10 * snare_sample + 0.14 * bell_stereo.left + 0.30 * echo.left,
+    source_right=0.22 * phase_right.sample + 0.18 * melody_stereo.right + 0.10 * snare_sample + 0.14 * bell_stereo.right + 0.30 * echo.right,
+    sample_rate=$sample_rate, feedback=0.80, damping=3400)
+
+finished = master(
+    source_left=dry_left + echo.left + 0.75 * room.left,
+    source_right=dry_right + echo.right + 0.75 * room.right,
+    t=t, sample_rate=$sample_rate, gain=$master_gain,
+    duration=seq.duration, fade_seconds=1.4, ceiling=0.90)
+
+left = finished.left
+right = finished.right
+duration = seq.duration
+
+out {
+    left, right, duration
+}

@@ -1,0 +1,75 @@
+// Layered acoustic-style snare with shell modes, beater crack and wire rattle.
+model snare(lifecycle = "scoped")
+
+in trigger
+$sample_rate = 44100
+$seed = 24681
+$gain = 0.48
+state {
+    age = 10,
+    seed = 0,
+    phase = 0,
+    second_phase = 0,
+    third_phase = 0,
+    fourth_phase = 0,
+    tone_offset = 0,
+    noise_slow = 0,
+    noise_mid = 0,
+    noise_fast = 0
+}
+note_age = trigger ? 0 : age
+current_seed = trigger or seed == 0 ? $seed : seed
+next_seed = (48271 * current_seed) % 2147483647
+noise = 2 * next_seed / 2147483647 - 1
+
+// Two filter memories split the noise into papery body, snare-wire band and air.
+slow_memory = trigger ? 0 : noise_slow
+mid_memory = trigger ? 0 : noise_mid
+fast_memory = trigger ? 0 : noise_fast
+slow_coefficient = 1 - exp(-2 * pi() * 720 / $sample_rate)
+mid_coefficient = 1 - exp(-2 * pi() * 2600 / $sample_rate)
+fast_coefficient = 1 - exp(-2 * pi() * 6100 / $sample_rate)
+next_slow = slow_memory + slow_coefficient * (noise - slow_memory)
+next_mid = mid_memory + mid_coefficient * (noise - mid_memory)
+next_fast = fast_memory + fast_coefficient * (noise - fast_memory)
+skin_band = next_mid - next_slow
+wire_band = next_fast - next_mid
+air = noise - next_fast
+
+one = trigger ? 0 : phase
+two = trigger ? 0 : second_phase
+three = trigger ? 0 : third_phase
+four = trigger ? 0 : fourth_phase
+hit_tone = trigger ? (($seed % 17) - 8) * 0.35 : tone_offset
+mode_one = sin(2 * pi() * one)
+mode_two = sin(2 * pi() * two)
+mode_three = sin(2 * pi() * three)
+mode_four = sin(2 * pi() * four)
+attack = 1 - exp(-note_age / 0.00018)
+beater = (0.48 * skin_band + 0.32 * wire_band + 0.20 * air) *
+    exp(-125 * note_age)
+rattle = 0.90 + 0.06 * sin(2 * pi() * 43 * note_age) +
+    0.04 * sin(2 * pi() * 71 * note_age)
+wire_attack = 1 - exp(-note_age / 0.0011)
+wire_tail = wire_attack * rattle * (0.74 * wire_band + 0.18 * air) *
+    (0.68 * exp(-16 * note_age) + 0.32 * exp(-36 * note_age))
+// The short band-passed slap and low papery thump carry the sensation of a
+// stick exciting a stretched head before the shell and wires bloom.
+skin_slap = 0.42 * skin_band * exp(-68 * note_age)
+skin_thump = 0.22 * next_slow * exp(-48 * note_age)
+body_tail = 0.25 * mode_one * exp(-24 * note_age) +
+    0.12 * mode_two * exp(-33 * note_age) +
+    0.060 * mode_three * exp(-45 * note_age) +
+    0.028 * mode_four * exp(-59 * note_age)
+age := note_age + 1 / $sample_rate
+seed := next_seed
+noise_slow := next_slow
+noise_mid := next_mid
+noise_fast := next_fast
+tone_offset := hit_tone
+phase := (one + (176 + hit_tone + 16 * exp(-45 * note_age)) / $sample_rate) % 1
+second_phase := (two + (286 + 0.7 * hit_tone + 10 * exp(-52 * note_age)) / $sample_rate) % 1
+third_phase := (three + (438 - 0.4 * hit_tone) / $sample_rate) % 1
+fourth_phase := (four + (617 + 0.25 * hit_tone) / $sample_rate) % 1
+out sample = $gain * attack *
+    tanh(1.06 * (beater + skin_slap + skin_thump + body_tail + wire_tail))

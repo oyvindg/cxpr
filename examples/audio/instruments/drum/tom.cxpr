@@ -1,0 +1,24 @@
+// Tuned tom with pitch drop, membrane mode and short attack noise.
+model tom(lifecycle = "scoped")
+
+in trigger
+$sample_rate = 44100
+$frequency = 130
+$gain = 0.48
+
+// Retriggering resets both age and phase for a consistent stick transient.
+state { age = 10, phase = 0 }
+note_age = trigger ? 0 : age
+phase_now = trigger ? 0 : phase
+
+// The rapid downward sweep mimics a membrane relaxing after the initial hit.
+instant_frequency = $frequency + 58 * exp(-26 * note_age)
+// An inharmonic secondary mode prevents the tom from sounding like a pure sine.
+body = sin(2 * pi() * phase_now) + 0.18 * sin(2 * pi() * 1.53 * phase_now)
+// Finite attack avoids a click; the slow exponential supplies the drum tail.
+envelope = (1 - exp(-note_age / 0.0024)) * exp(-7.8 * note_age)
+
+// State advances at audio rate and is isolated for each tuned tom voice.
+age := note_age + 1 / $sample_rate
+phase := phase_now + instant_frequency / $sample_rate
+out sample = $gain * envelope * tanh(body)

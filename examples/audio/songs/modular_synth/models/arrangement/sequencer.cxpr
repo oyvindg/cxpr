@@ -1,0 +1,161 @@
+# Local sixteen-step note arrangement for the modular synth demonstration.
+model sequencer(type = "sequencer", lifecycle = "scoped")
+
+use lane from sequencing
+
+in t
+$step_seconds = 0.25
+$duration = 64
+
+fn hz(note) = 440 * pow(2, (note - 69) / 12)
+fn pad_root_at(chord) = chord % 4 == 0 ? 48 : chord % 4 == 1 ? 46 :
+    chord % 4 == 2 ? 44 : 43
+
+step = floor(t / $step_seconds)
+position = step % 16
+group = floor(position / 4)
+root = group < 1 ? 48 : (group < 2 ? 46 : (group < 3 ? 44 : 43))
+degree = position % 4
+interval = degree < 1 ? 0 : (degree < 2 ? 7 : (degree < 3 ? 12 : 15))
+note = root + interval
+frequency = hz(note)
+phase_in_step = (t % $step_seconds) / $step_seconds
+gate = phase_in_step < 0.72 ? 1 : 0
+note_lane = lane(t=t, step=step, step_seconds=$step_seconds, offset=0, enabled=true)
+trigger = note_lane.trigger
+
+# One pad chord spans each four-note synth phrase.
+pad_step = floor(step / 4)
+pad_seconds = 4 * $step_seconds
+pad_a_step = 2 * floor(pad_step / 2)
+pad_b_step = 2 * floor((pad_step - 1) / 2) + 1
+pad_a_root = pad_root_at(pad_a_step)
+pad_b_root = pad_root_at(max(0, pad_b_step))
+pad_a_lane = lane(t=t, step=pad_a_step, step_seconds=pad_seconds, offset=0, enabled=true)
+pad_b_lane = lane(t=t, step=pad_b_step, step_seconds=pad_seconds, offset=0, enabled=pad_b_step >= 0)
+pad_a_frequency = hz(pad_a_root)
+pad_b_frequency = hz(pad_b_root)
+
+# Bass repeats the root twice per pad chord; its instrument supplies a sub octave.
+bass_step = floor(step / 2)
+bass_chord = floor(bass_step / 2)
+bass_note = pad_root_at(bass_chord) - 12
+bass_lane = lane(t=t, step=bass_step, step_seconds=2 * $step_seconds, offset=0, enabled=true)
+bass_frequency = hz(bass_note)
+# A second bass voice shares the pulse but traces a distinct eight-step contour.
+bass_melody_slot = bass_step % 8
+bass_melody_interval = bass_melody_slot == 1 ? 7 :
+    bass_melody_slot == 3 ? 12 :
+    bass_melody_slot == 5 ? 3 :
+    bass_melody_slot == 7 ? -2 : 0
+bass_melody_frequency = hz(bass_note + bass_melody_interval)
+
+# A short upper pluck shadows the melodic sequence one octave above.
+pluck_age = note_lane.age
+pluck_trigger = note_lane.trigger
+pluck_frequency = 2 * frequency
+
+# A denser sixteen-note background arp combines chord tones and extensions.
+background_arp_seconds = $step_seconds / 2
+background_arp_step = floor(t / background_arp_seconds)
+background_arp_slot = background_arp_step % 16
+background_arp_chord = floor(background_arp_step / 8)
+background_arp_interval = background_arp_slot == 0 ? 0 :
+    background_arp_slot == 1 ? 7 : background_arp_slot == 2 ? 12 :
+    background_arp_slot == 3 ? 15 : background_arp_slot == 4 ? 19 :
+    background_arp_slot == 5 ? 15 : background_arp_slot == 6 ? 12 :
+    background_arp_slot == 7 ? 7 : background_arp_slot == 8 ? 3 :
+    background_arp_slot == 9 ? 10 : background_arp_slot == 10 ? 14 :
+    background_arp_slot == 11 ? 17 : background_arp_slot == 12 ? 22 :
+    background_arp_slot == 13 ? 17 : background_arp_slot == 14 ? 14 : 10
+background_arp_lane = lane(t=t, step=background_arp_step,
+                           step_seconds=background_arp_seconds,
+                           offset=0, enabled=true)
+background_arp_frequency = hz(pad_root_at(background_arp_chord) +
+    background_arp_interval + 12)
+
+# A second lead advances through the same pitch pattern at twice the rate.
+fast_step_seconds = $step_seconds / 2
+fast_step = floor(t / fast_step_seconds)
+fast_position = fast_step % 16
+fast_group = floor(fast_position / 4)
+fast_root = fast_group < 1 ? 48 : fast_group < 2 ? 46 :
+    fast_group < 3 ? 44 : 43
+fast_degree = fast_position % 4
+fast_interval = fast_degree < 1 ? 0 : fast_degree < 2 ? 7 :
+    fast_degree < 3 ? 12 : 15
+fast_lane = lane(t=t, step=fast_step, step_seconds=fast_step_seconds, offset=0, enabled=true)
+fast_lead_frequency = hz(fast_root + fast_interval + 12)
+
+# A half-time response voice moves through a different chord-tone contour.
+response_seconds = 2 * $step_seconds
+response_step = floor(t / response_seconds)
+response_chord = floor(response_step / 2)
+response_slot = response_step % 4
+response_interval = response_slot == 0 ? 12 : response_slot == 1 ? 7 :
+    response_slot == 2 ? 15 : 3
+response_lane = lane(t=t, step=response_step,
+                     step_seconds=response_seconds, offset=0, enabled=true)
+response_phase = (t % response_seconds) / response_seconds
+response_gate = response_phase < 0.74 ? 1 : 0
+response_frequency = hz(pad_root_at(response_chord) + response_interval)
+
+# Sparse two-second counter notes leave room around the faster leads.
+counter_seconds = 2
+counter_step = floor(t / counter_seconds)
+counter_slot = counter_step % 4
+counter_interval = counter_slot == 0 ? 19 : counter_slot == 1 ? 15 :
+    counter_slot == 2 ? 12 : 7
+counter_lane = lane(t=t, step=counter_step,
+                    step_seconds=counter_seconds, offset=0, enabled=true)
+counter_frequency = hz(pad_root_at(counter_step) + counter_interval)
+
+# Low brass sounds only on the first note boundary of each pad chord.
+trombone_step = pad_step
+trombone_root = pad_root_at(trombone_step) - 12
+chord_lane = lane(t=t, step=trombone_step,
+                  step_seconds=pad_seconds, offset=0, enabled=true)
+trombone_lane = lane(t=t, step=trombone_step,
+                     step_seconds=pad_seconds, offset=0,
+                     enabled=trombone_step % 4 == 0)
+trombone_frequency = hz(trombone_root)
+timpani_level = trombone_step % 4 == 0 ? 1 : 0.58
+
+# A compact four-beat drum-machine pattern remains independent of the timpani.
+drum_step = step
+drum_slot = drum_step % 16
+drum_lane = lane(t=t, step=drum_step, step_seconds=$step_seconds, offset=0, enabled=true)
+# Slow double-kick answer: kick, kick, then snare on the following beat.
+drum_kick = drum_slot == 0 or drum_slot == 8 ? 1 :
+    drum_slot == 2 or drum_slot == 10 ? 0.82 : 0
+drum_snare = drum_slot == 4 or drum_slot == 12 ? 0.86 : 0
+drum_clap = drum_slot == 12 ? 0.48 : 0
+drum_hat = drum_slot % 2 == 0 ? 0.34 : 0.62
+drum_open_hat = drum_slot == 14 ? 0.44 : 0
+drum_seed = drum_step % 3 == 0 ? 19391 : drum_step % 3 == 1 ? 27183 : 31469
+
+out {
+    frequency, gate, trigger,
+    pad_a_age = pad_a_lane.age, pad_a_trigger = pad_a_lane.trigger,
+    pad_a_frequency,
+    pad_b_age = pad_b_lane.age, pad_b_trigger = pad_b_lane.trigger,
+    pad_b_frequency,
+    bass_age = bass_lane.age, bass_trigger = bass_lane.trigger, bass_frequency,
+    bass_melody_frequency,
+    pluck_age, pluck_trigger, pluck_frequency,
+    background_arp_age = background_arp_lane.age,
+    background_arp_trigger = background_arp_lane.trigger,
+    background_arp_frequency,
+    fast_lead_age = fast_lane.age, fast_lead_trigger = fast_lane.trigger,
+    fast_lead_frequency,
+    response_trigger = response_lane.trigger, response_gate, response_frequency,
+    counter_age = counter_lane.age, counter_trigger = counter_lane.trigger,
+    counter_frequency,
+    trombone_age = trombone_lane.age,
+    trombone_trigger = trombone_lane.trigger, trombone_frequency,
+    timpani_trigger = chord_lane.trigger, timpani_level,
+    drum_age = drum_lane.age, drum_trigger = drum_lane.trigger,
+    drum_kick, drum_snare, drum_clap, drum_hat, drum_open_hat, drum_seed,
+    duration = $duration
+}
+

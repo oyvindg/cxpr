@@ -1,0 +1,33 @@
+# Stereo chorus using two short modulated delay buffers.
+model chorus(lifecycle = "scoped")
+
+in source
+$sample_rate = 44100
+$rate = 0.24
+$depth = 0.65
+$mix = 0.45
+state left_delay: buffer<number, samples = 1103>
+state right_delay: buffer<number, samples = 1217>
+state phase = 0
+phase := (phase + $rate / $sample_rate) % 1
+left_blend = (1 + $depth * sin(2 * pi() * phase)) / 2
+right_blend = (1 + $depth * sin(2 * pi() * phase + pi() / 2)) / 2
+left_short = left_delay[649]
+left_long = left_delay[949]
+right_short = right_delay[719]
+right_long = right_delay[1059]
+safe_left_short = isnan(left_short) ? 0 : left_short
+safe_left_long = isnan(left_long) ? 0 : left_long
+safe_right_short = isnan(right_short) ? 0 : right_short
+safe_right_long = isnan(right_long) ? 0 : right_long
+wet_left = (1 - left_blend) * safe_left_short + left_blend * safe_left_long
+wet_right = (1 - right_blend) * safe_right_short + right_blend * safe_right_long
+left_delay := source
+right_delay := source
+wet = clamp($mix, 0, 1)
+left = (1 - wet) * source + wet * wet_left
+right = (1 - wet) * source + wet * wet_right
+
+out {
+    left, right
+}
