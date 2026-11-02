@@ -43,6 +43,89 @@ static const cxpr_expr_ast* cxpr_ir_static_record_field(
     return NULL;
 }
 
+static bool cxpr_ir_is_reduce_acc(const cxpr_expr_ast* ast,
+                                  const char* step_parameter) {
+    if (!ast || !step_parameter) return false;
+    if (ast->type == CXPR_NODE_FIELD_ACCESS) {
+        if (strcmp(ast->data.field_access.field, "acc") != 0) return false;
+        if (!ast->data.field_access.base)
+            return ast->data.field_access.object &&
+                   strcmp(ast->data.field_access.object, step_parameter) == 0;
+        return ast->data.field_access.base->type == CXPR_NODE_IDENTIFIER &&
+               strcmp(ast->data.field_access.base->data.identifier.name,
+                      step_parameter) == 0;
+    }
+    return ast->type == CXPR_NODE_CHAIN_ACCESS &&
+           ast->data.chain_access.depth == 2u &&
+           strcmp(ast->data.chain_access.path[0], step_parameter) == 0 &&
+           strcmp(ast->data.chain_access.path[1], "acc") == 0;
+}
+
+static bool cxpr_ir_contains_reduce_acc(const cxpr_expr_ast* ast,
+                                        const char* step_parameter) {
+    if (!ast) return false;
+    if (cxpr_ir_is_reduce_acc(ast, step_parameter)) return true;
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            if (cxpr_ir_contains_reduce_acc(ast->data.array.elements[i],
+                                            step_parameter)) return true;
+        return false;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            if (cxpr_ir_contains_reduce_acc(ast->data.record.field_values[i],
+                                            step_parameter)) return true;
+        return false;
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
+            if (cxpr_ir_contains_reduce_acc(ast->data.function_call.args[i],
+                                            step_parameter)) return true;
+        return false;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i)
+            if (cxpr_ir_contains_reduce_acc(ast->data.producer_access.args[i],
+                                            step_parameter)) return true;
+        return false;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_ir_contains_reduce_acc(ast->data.binary_op.left,
+                                           step_parameter) ||
+               cxpr_ir_contains_reduce_acc(ast->data.binary_op.right,
+                                           step_parameter);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_ir_contains_reduce_acc(ast->data.unary_op.operand,
+                                           step_parameter);
+    case CXPR_NODE_TERNARY:
+        return cxpr_ir_contains_reduce_acc(ast->data.ternary.condition,
+                                           step_parameter) ||
+               cxpr_ir_contains_reduce_acc(ast->data.ternary.true_branch,
+                                           step_parameter) ||
+               cxpr_ir_contains_reduce_acc(ast->data.ternary.false_branch,
+                                           step_parameter);
+    case CXPR_NODE_INDEX:
+        return cxpr_ir_contains_reduce_acc(ast->data.index.target,
+                                           step_parameter) ||
+               cxpr_ir_contains_reduce_acc(ast->data.index.index,
+                                           step_parameter);
+    case CXPR_NODE_FIELD_ACCESS:
+        return cxpr_ir_contains_reduce_acc(ast->data.field_access.base,
+                                           step_parameter);
+    default:
+        return false;
+    }
+}
+
+static bool cxpr_ir_reduce_stack_opcode(int token, cxpr_opcode* opcode) {
+    switch (token) {
+    case CXPR_TOK_PLUS: *opcode = CXPR_OP_ADD; return true;
+    case CXPR_TOK_MINUS: *opcode = CXPR_OP_SUB; return true;
+    case CXPR_TOK_STAR: *opcode = CXPR_OP_MUL; return true;
+    case CXPR_TOK_SLASH: *opcode = CXPR_OP_DIV; return true;
+    case CXPR_TOK_PERCENT: *opcode = CXPR_OP_MOD; return true;
+    case CXPR_TOK_POWER: *opcode = CXPR_OP_POW; return true;
+    default: return false;
+    }
+}
+
 static cxpr_ir_lookback_payload* cxpr_ir_lookback_payload_new(
     const cxpr_expr_ast* target, const cxpr_registry* reg) {
     cxpr_ir_lookback_payload* payload =
@@ -924,6 +1007,8 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             const cxpr_expr_ast* array;
             const char* step_parameter;
             const cxpr_expr_ast* step_body;
+            const cxpr_expr_ast* stack_rhs = NULL;
+            cxpr_opcode stack_op = CXPR_OP_ADD;
             size_t temp_index;
             if (source && source->type == CXPR_NODE_FUNCTION_CALL &&
                 !strcmp(source->data.function_call.name, "map") &&
@@ -947,6 +1032,42 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             array = source;
             step_parameter = lambda->data.function_call.args[0]->data.identifier.name;
             step_body = lambda->data.function_call.args[1];
+            if (step_body->type == CXPR_NODE_BINARY_OP &&
+                cxpr_ir_is_reduce_acc(step_body->data.binary_op.left,
+                                      step_parameter) &&
+                !cxpr_ir_contains_reduce_acc(step_body->data.binary_op.right,
+                                             step_parameter)) {
+                if (cxpr_ir_reduce_stack_opcode(step_body->data.binary_op.op,
+                                                &stack_op))
+                    stack_rhs = step_body->data.binary_op.right;
+            }
+            if (stack_rhs) {
+                if (!cxpr_ir_compile_node(initial, program, reg, local_names,
+                                          local_count, subst, inline_depth, err))
+                    return false;
+                for (size_t i = 0u; i < array->data.array.count; ++i) {
+                    const cxpr_expr_ast* element = array->data.array.elements[i];
+                    const char* map_names[] = {mapped_parameter};
+                    const cxpr_expr_ast* map_args[] = {element};
+                    cxpr_ir_subst_frame map_frame = {
+                        .names = map_names, .args = map_args,
+                        .count = mapped_selector ? 1u : 0u, .parent = subst,
+                    };
+                    cxpr_ir_subst_frame reduce_frame = {
+                        .reduce_object = step_parameter,
+                        .reduce_value = mapped_selector ? mapped_selector : element,
+                        .reduce_index = i,
+                        .parent = mapped_selector ? &map_frame : subst,
+                    };
+                    if (!cxpr_ir_compile_node(stack_rhs, program, reg, local_names,
+                                              local_count, &reduce_frame,
+                                              inline_depth, err) ||
+                        !cxpr_ir_emit(program,
+                                      (cxpr_ir_instr){.op = stack_op}, err))
+                        return false;
+                }
+                return true;
+            }
             temp_index = program->temp_count++;
             if (program->temp_count > CXPR_IR_STACK_CAPACITY) {
                 if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Too many compiler temporaries"; }
@@ -1648,10 +1769,19 @@ static_reduction_not_handled:
                                   err)) {
             return false;
         }
+        size_t right_start = program->count;
         if (!cxpr_ir_compile_node(ast->data.binary_op.right, program, reg,
                                   local_names, local_count, subst, inline_depth,
                                   err)) {
             return false;
+        }
+        if ((ast->data.binary_op.op == CXPR_TOK_STAR ||
+             ast->data.binary_op.op == CXPR_TOK_SLASH) &&
+            program->count == right_start + 1u &&
+            program->code[right_start].op == CXPR_OP_PUSH_CONST &&
+            program->code[right_start].value == 1.0) {
+            program->count = right_start;
+            return true;
         }
         switch (ast->data.binary_op.op) {
         case CXPR_TOK_PLUS:

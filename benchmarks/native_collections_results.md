@@ -50,3 +50,23 @@ per trial because the shorter interval was dominated by scheduler noise:
 The median delta is -0.14 ns (-4.5%) with no state-size increase. Both
 models contain two independent scoped child states; generated output is checked
 for absence of `CALL_AST` before timing.
+
+## Stack-fold IR optimization
+
+Commit `a0924f2` was rebuilt in a separate release worktree and compared with
+the stack-fold lowering on the same host. Each result is the median of nine
+trials. The optimized left fold keeps its accumulator on the evaluator stack;
+more complex reducers that reference the accumulator multiple times retain the
+general temporary-slot lowering.
+
+| Case | `a0924f2` IR ns | Optimized IR ns | Delta | IR instructions |
+|---|---:|---:|---:|---:|
+| map native | 59.03 | 45.21 | -23.4% | 28 -> 16 |
+| reduce native | 59.70 | 45.67 | -23.5% | 28 -> 16 |
+
+Relative to the manual forms measured in the same runs, native map overhead
+fell from 42.7% to 2.5%; native reduce moved from 41.6% slower to 0.4% faster.
+Median compile time also fell from 3,909 to 3,458 ns for map (-11.5%) and from
+3,375 to 3,095 ns for reduce (-8.3%). Generated C remains the same lowering;
+its measured changes (+2.5% map, -1.0% reduce) are within nanobenchmark noise,
+and all cases retain zero `CALL_AST` fallback.

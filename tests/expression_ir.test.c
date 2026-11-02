@@ -122,6 +122,8 @@ static void test_static_reduce_compiles_to_ir(void) {
         assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
         assert(instruction.op != CXPR_IR_OP_CALL_AST);
         assert(instruction.op != CXPR_IR_OP_LOAD_CHAIN);
+        assert(instruction.op != CXPR_IR_OP_LOAD_TEMP);
+        assert(instruction.op != CXPR_IR_OP_STORE_TEMP);
     }
     cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
@@ -139,6 +141,8 @@ static void test_static_reduce_compiles_to_ir(void) {
         assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
         assert(instruction.op != CXPR_IR_OP_CALL_AST);
         assert(instruction.op != CXPR_IR_OP_GET_FIELD);
+        assert(instruction.op != CXPR_IR_OP_LOAD_TEMP);
+        assert(instruction.op != CXPR_IR_OP_STORE_TEMP);
     }
     cxpr_expr_compiled_free(program);
     cxpr_expr_ast_free(ast);
