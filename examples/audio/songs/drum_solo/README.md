@@ -22,5 +22,5 @@ node libs/cxpr/examples/audio/songs/drum_solo/render.mjs "$HOME/cxpr-drum-solo.w
 ```
 
 All models are local to this example. Its wrapper uses the neutral generated-C
-host from `tools/audio_renderer`; fixed effect buffers currently support 44.1
-kHz.
+host from `audio/renderer`; effect buffers reserve 44.1 kHz capacity and scale
+their taps to the active sample rate.

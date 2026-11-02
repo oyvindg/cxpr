@@ -11,8 +11,8 @@ $sample_rate = 44100
 $bpm = 100
 $master_gain = 1.45
 
-assert $sample_rate == 44100 {
-    description = "Song effect buffers are tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Audio buffers support sample rates from 8000 through 44100 Hz"
 }
 
 seq = sequencer(t=t, bpm=$bpm)

@@ -26,7 +26,7 @@ subtle so transients and dynamics remain appropriate for an acoustic ensemble.
 
 The example is self-contained, including pan, master and chamber models. Its
 small wrapper invokes the neutral generated-C/WAV renderer from
-`tools/audio_renderer`.
+`audio/renderer`.
 Piano, upper-piano, violin, viola and cello clocks share
 `models/arrangement/lane.cxpr` instead of duplicating step state.
 

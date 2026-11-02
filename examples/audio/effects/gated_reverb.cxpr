@@ -5,8 +5,8 @@ in source
 $sample_rate = 44100
 $feedback = 0.54
 $gate_seconds = 0.22
-assert $sample_rate == 44100 {
-    description = "Gated reverb buffers are tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Gated reverb supports sample rates from 8000 through 44100 Hz"
 }
 // Mutually prime-ish delay lengths reduce obvious periodic repetition.
 state line_one: buffer<number, samples = 1321>
@@ -15,9 +15,12 @@ state line_three: buffer<number, samples = 2203>
 state gate_age = 10
 
 // Uninitialized history reads as NaN and is treated as silence at startup.
-one_raw = line_one[1320]
-two_raw = line_two[1740]
-three_raw = line_three[2202]
+line_one_index = max(0, floor(1321 * $sample_rate / 44100) - 1)
+line_two_index = max(0, floor(1741 * $sample_rate / 44100) - 1)
+line_three_index = max(0, floor(2203 * $sample_rate / 44100) - 1)
+one_raw = line_one[line_one_index]
+two_raw = line_two[line_two_index]
+three_raw = line_three[line_three_index]
 one = isnan(one_raw) ? 0 : one_raw
 two = isnan(two_raw) ? 0 : two_raw
 three = isnan(three_raw) ? 0 : three_raw

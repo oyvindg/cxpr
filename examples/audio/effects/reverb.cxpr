@@ -1,6 +1,6 @@
 # Shared small stereo room: four delay lines, damped orthogonal feedback
 # og to allpassdiffusorer. Bare wet returneres.
-# Delaylengdene er valgt for 44100 Hz; alle buffere har fast kapasitet.
+# Buffers reserve 44100 Hz capacity; taps scale to the active sample rate.
 model reverb(lifecycle = "scoped")
 
 in source_left, source_right
@@ -9,8 +9,8 @@ $sample_rate = 44100
 $feedback = 0.78
 $damping = 3600
 
-assert $sample_rate == 44100 {
-    description = "reverb buffer lengths are tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Reverb buffers support sample rates from 8000 through 44100 Hz"
 }
 
 state line_zero: buffer<number, samples = 1423>
@@ -24,10 +24,14 @@ state damp_one = 0
 state damp_two = 0
 state damp_three = 0
 
-raw_zero = line_zero[1422]
-raw_one = line_one[1788]
-raw_two = line_two[2130]
-raw_three = line_three[2520]
+line_zero_index = max(0, floor(1423 * $sample_rate / 44100) - 1)
+line_one_index = max(0, floor(1789 * $sample_rate / 44100) - 1)
+line_two_index = max(0, floor(2131 * $sample_rate / 44100) - 1)
+line_three_index = max(0, floor(2521 * $sample_rate / 44100) - 1)
+raw_zero = line_zero[line_zero_index]
+raw_one = line_one[line_one_index]
+raw_two = line_two[line_two_index]
+raw_three = line_three[line_three_index]
 tap_zero = isnan(raw_zero) ? 0 : raw_zero
 tap_one = isnan(raw_one) ? 0 : raw_one
 tap_two = isnan(raw_two) ? 0 : raw_two
@@ -57,8 +61,10 @@ line_three := 0.25 * (source_left - source_right) + feedback * return_three
 
 room_left = (tap_zero + tap_two) / 2
 room_right = (tap_one + tap_three) / 2
-raw_diffuser_left = diffuser_left[148]
-raw_diffuser_right = diffuser_right[210]
+diffuser_left_index = max(0, floor(149 * $sample_rate / 44100) - 1)
+diffuser_right_index = max(0, floor(211 * $sample_rate / 44100) - 1)
+raw_diffuser_left = diffuser_left[diffuser_left_index]
+raw_diffuser_right = diffuser_right[diffuser_right_index]
 diffused_left = isnan(raw_diffuser_left) ? 0 : raw_diffuser_left
 diffused_right = isnan(raw_diffuser_right) ? 0 : raw_diffuser_right
 wet_left = diffused_left - 0.55 * room_left

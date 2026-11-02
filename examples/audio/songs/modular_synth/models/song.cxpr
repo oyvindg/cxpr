@@ -16,8 +16,8 @@ in t
 $sample_rate = 44100
 $master_gain = 0.64
 
-assert $sample_rate == 44100 {
-    description = "The example delay is tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Audio buffers support sample rates from 8000 through 44100 Hz"
 }
 
 sequence = sequencer(t=t)

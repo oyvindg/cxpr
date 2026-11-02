@@ -42,7 +42,7 @@ instrument voices belong in the shared namespaces above.
 `render.mjs` is the common CLI adapter used by every audio example. Local
 entrypoints only pass their own `import.meta.url`; the adapter locates
 `models/song.cxpr`, selects `examples/audio/` as the shared import root, and delegates
-WAV generation to `tools/audio_renderer`.
+WAV generation to the example-local native host under `audio/renderer`.
 
 From `libs/cxpr/examples`:
 

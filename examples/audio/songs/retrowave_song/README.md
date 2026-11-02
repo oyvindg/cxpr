@@ -12,7 +12,7 @@ color stage before mastering.
 
 The example is self-contained: all arrangement, instrument and effect models
 live below its own `models/` directory. Its small wrapper invokes the neutral
-generated-C/WAV renderer from `tools/audio_renderer`.
+generated-C/WAV renderer from `audio/renderer`.
 Its chord, bass, arpeggio, lead and drum clocks all use the shared
 `models/arrangement/lane.cxpr` age/trigger contract.
 

@@ -11,8 +11,8 @@ in t
 $sample_rate = 44100
 $bpm = 118
 $master_gain = 1.35
-assert $sample_rate == 44100 {
-    description = "Drum solo effect buffers are tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Audio buffers support sample rates from 8000 through 44100 Hz"
 }
 
 // The sequencer owns the twenty-four-bar pattern and emits one-sample triggers,

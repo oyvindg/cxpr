@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url"
 
 const audioRoot = dirname(fileURLToPath(import.meta.url))
 const examplesRoot = resolve(audioRoot, "..")
-const renderer = resolve(examplesRoot, "..", "tools", "audio_renderer", "render.mjs")
+const renderer = join(audioRoot, "renderer", "render.mjs")
 
 /**
  * Discovers renderable song directories from the audio examples tree.

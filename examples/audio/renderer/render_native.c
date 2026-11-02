@@ -9,7 +9,7 @@
 #include <string.h>
 #include "song.gen.c"
 
-enum { SUPPORTED_SAMPLE_RATE = 44100 };
+enum { DEFAULT_SAMPLE_RATE = 44100, MIN_SAMPLE_RATE = 8000, MAX_SAMPLE_RATE = 44100 };
 
 static size_t find_name(const char *const *names, size_t count, const char *name) {
     for (size_t i = 0; i < count; ++i)
@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Bruk: render-native OUTPUT.wav [--frames=COUNT] [--sample-rate=44100]\n");
         return 2;
     }
-    uint32_t sample_rate = SUPPORTED_SAMPLE_RATE;
+    uint32_t sample_rate = DEFAULT_SAMPLE_RATE;
     uint32_t requested_frames = 0;
     for (int argument = 2; argument < argc; ++argument) {
         const char *frame_prefix = "--frames=";
@@ -55,9 +55,9 @@ int main(int argc, char **argv) {
         else
             sample_rate = (uint32_t)parsed;
     }
-    if (sample_rate != SUPPORTED_SAMPLE_RATE) {
-        fprintf(stderr, "Modellens effektbuffere støtter bare %u Hz.\n",
-                SUPPORTED_SAMPLE_RATE);
+    if (sample_rate < MIN_SAMPLE_RATE || sample_rate > MAX_SAMPLE_RATE) {
+        fprintf(stderr, "Sample rate må være mellom %u og %u Hz.\n",
+                MIN_SAMPLE_RATE, MAX_SAMPLE_RATE);
         return 2;
     }
     const cxpr_generated_model_descriptor *model = &cxpr_model_tick_descriptor;

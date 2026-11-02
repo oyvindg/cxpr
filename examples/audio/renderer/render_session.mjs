@@ -2,7 +2,7 @@ import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:f
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { compileModel } from "../../../cxpr-node/dist/index.js"
+import { compileModel } from "../../../../cxpr-node/dist/index.js"
 
 const SAMPLE_RATE = 44_100
 const CHANNELS = 2

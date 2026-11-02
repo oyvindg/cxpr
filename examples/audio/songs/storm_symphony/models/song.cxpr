@@ -13,8 +13,8 @@ in t
 $sample_rate = 44100
 $bpm = 144
 $master_gain = 1.04
-assert $sample_rate == 44100 {
-    description = "Orchestral hall buffers are tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Orchestral buffers support sample rates from 8000 through 44100 Hz"
 }
 
 seq = score(t=t, bpm=$bpm)

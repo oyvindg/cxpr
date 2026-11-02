@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 const here = dirname(fileURLToPath(import.meta.url))
-const cxprRoot = resolve(here, "..", "..")
+const cxprRoot = resolve(here, "..", "..", "..")
 const modelOption = process.argv.find((argument) => argument.startsWith("--model="))
 const importOption = process.argv.find((argument) => argument.startsWith("--import-dir="))
 const modelPath = modelOption ? resolve(modelOption.slice("--model=".length)) : undefined

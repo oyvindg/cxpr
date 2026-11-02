@@ -6,8 +6,8 @@ $sample_rate = 44100
 $feedback = 0.32
 $tone = 3200
 
-assert $sample_rate == 44100 {
-    description = "The fixed delay buffers are tuned for 44100 Hz"
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Delay buffers support sample rates from 8000 through 44100 Hz"
 }
 
 state left_memory: buffer<number, samples = 11025>
@@ -15,8 +15,9 @@ state right_memory: buffer<number, samples = 11025>
 state left_tone = 0
 state right_tone = 0
 
-left_tap = left_memory[11024]
-right_tap = right_memory[11024]
+delay_index = max(0, floor(11025 * $sample_rate / 44100) - 1)
+left_tap = left_memory[delay_index]
+right_tap = right_memory[delay_index]
 left_delayed = isnan(left_tap) ? 0 : left_tap
 right_delayed = isnan(right_tap) ? 0 : right_tap
 coefficient = 1 - exp(-2 * pi() * clamp($tone, 100, $sample_rate * 0.45) / $sample_rate)
