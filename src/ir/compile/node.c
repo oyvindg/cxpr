@@ -717,6 +717,18 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                     }, err);
             }
         }
+        if (ast->data.field_access.full_key) {
+            size_t local_index = cxpr_ir_local_index(
+                ast->data.field_access.full_key, local_names, local_count);
+            if (local_index != (size_t)-1) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_LOAD_LOCAL,
+                                        .index = local_index,
+                                    },
+                                    err);
+            }
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_FIELD,

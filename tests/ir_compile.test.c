@@ -29,6 +29,33 @@ static void test_ir_compile_with_locals_and_fast_kind(void) {
     cxpr_expr_parser_free(p);
 }
 
+static void test_ir_compile_field_access_uses_materialized_local(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_registry* registry = cxpr_registry_new();
+    cxpr_error error = {0};
+    cxpr_expr_ast* ast;
+    cxpr_ir_program program = {0};
+    const char* locals[] = {"mapped.main", "mapped.back"};
+
+    assert(parser && registry);
+    ast = cxpr_expr_ast_parse(parser, "mapped.main + mapped.back", &error);
+    assert(ast);
+    assert(cxpr_ir_compile_with_locals(
+        ast, registry, locals, 2u, &program, &error));
+    assert(program.count == 4u);
+    assert(program.code[0].op == CXPR_OP_LOAD_LOCAL);
+    assert(program.code[0].index == 0u);
+    assert(program.code[1].op == CXPR_OP_LOAD_LOCAL);
+    assert(program.code[1].index == 1u);
+    assert(program.code[2].op == CXPR_OP_ADD);
+    assert(program.code[3].op == CXPR_OP_RETURN);
+
+    cxpr_ir_program_reset(&program);
+    cxpr_expr_ast_free(ast);
+    cxpr_registry_free(registry);
+    cxpr_expr_parser_free(parser);
+}
+
 static void test_ir_compile_array_literal_builds_array_ir(void) {
     cxpr_expr_parser* p = cxpr_expr_parser_new();
     cxpr_registry* reg = cxpr_registry_new();
@@ -196,6 +223,7 @@ static void test_deep_scalar_defined_chain_inlines_without_call_opcode(void) {
 
 int main(void) {
     test_ir_compile_with_locals_and_fast_kind();
+    test_ir_compile_field_access_uses_materialized_local();
     test_ir_compile_array_literal_builds_array_ir();
     test_ir_compile_rejects_wrong_builtin_arity();
     test_long_unknown_field_has_eval_parity();

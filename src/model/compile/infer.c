@@ -200,20 +200,6 @@ static const cxpr_expr_ast* cxpr_model_static_value_binding(
     return NULL;
 }
 
-static const cxpr_expr_ast* cxpr_model_static_mapped_record_binding(
-    const cxpr_model_compiled* program, const char* name) {
-    if (!program || !name) return NULL;
-    for (size_t i = 0u; i < program->binding_count; ++i) {
-        const cxpr_model_compiled_binding* binding = &program->bindings[i];
-        const char* source = binding->source;
-        while (source && isspace((unsigned char)*source)) source++;
-        if (binding->name && binding->ast &&
-            cxpr_model_names_match(binding->name, name) && source &&
-            strncmp(source, "map(", 4u) == 0) return binding->ast;
-    }
-    return NULL;
-}
-
 static bool cxpr_model_materialize_static_value(
     cxpr_expr_ast** value,
     const cxpr_model_compiled* program,
@@ -233,77 +219,6 @@ static bool cxpr_model_materialize_static_value(
         }
         cxpr_expr_ast_free(*value);
         *value = clone;
-    }
-    if ((*value)->type == CXPR_NODE_CHAIN_ACCESS &&
-        (*value)->data.chain_access.depth > 1u &&
-        (replacement = cxpr_model_static_mapped_record_binding(
-             program, (*value)->data.chain_access.path[0])) != NULL) {
-        const cxpr_expr_ast* selected = replacement;
-        for (size_t part = 1u; part < (*value)->data.chain_access.depth; ++part) {
-            const char* field = (*value)->data.chain_access.path[part];
-            const cxpr_expr_ast* next = NULL;
-            if (selected->type != CXPR_NODE_RECORD) break;
-            for (size_t i = 0u; i < selected->data.record.field_count; ++i) {
-                if (strcmp(selected->data.record.field_names[i], field) == 0) {
-                    next = selected->data.record.field_values[i];
-                    break;
-                }
-            }
-            if (!next) break;
-            selected = next;
-        }
-        if (selected != replacement) {
-            clone = cxpr_expr_ast_clone(selected);
-            if (!clone) {
-                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
-                                     "Out of memory", 0u, 0u);
-                return false;
-            }
-            cxpr_expr_ast_free(*value);
-            *value = clone;
-        }
-    }
-    if ((*value)->type == CXPR_NODE_FIELD_ACCESS) {
-        cxpr_expr_ast* base = (*value)->data.field_access.base;
-        if (!base && (*value)->data.field_access.object &&
-            (replacement = cxpr_model_static_mapped_record_binding(
-                 program, (*value)->data.field_access.object)) != NULL &&
-            replacement->type == CXPR_NODE_RECORD) {
-            const char* field = (*value)->data.field_access.field;
-            for (size_t i = 0u; i < replacement->data.record.field_count; ++i) {
-                if (strcmp(replacement->data.record.field_names[i], field) == 0) {
-                    clone = cxpr_expr_ast_clone(replacement->data.record.field_values[i]);
-                    if (!clone) {
-                        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
-                                             "Out of memory", 0u, 0u);
-                        return false;
-                    }
-                    cxpr_expr_ast_free(*value);
-                    *value = clone;
-                    return cxpr_model_materialize_static_value(
-                        value, program, depth + 1u, err);
-                }
-            }
-        }
-        if (base && !cxpr_model_materialize_static_value(
-                        &base, program, depth + 1u, err)) return false;
-        (*value)->data.field_access.base = base;
-        if (base && base->type == CXPR_NODE_RECORD) {
-            const char* field = (*value)->data.field_access.field;
-            for (size_t i = 0u; i < base->data.record.field_count; ++i) {
-                if (strcmp(base->data.record.field_names[i], field) == 0) {
-                    clone = cxpr_expr_ast_clone(base->data.record.field_values[i]);
-                    if (!clone) {
-                        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
-                                             "Out of memory", 0u, 0u);
-                        return false;
-                    }
-                    cxpr_expr_ast_free(*value);
-                    *value = clone;
-                    break;
-                }
-            }
-        }
     }
     if ((*value)->type == CXPR_NODE_ARRAY) {
         for (size_t i = 0u; i < (*value)->data.array.count; ++i) {
@@ -381,12 +296,6 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
         ast->data.unary_op.operand = cxpr_model_inline_static_collections(
             ast->data.unary_op.operand, program, err);
         if (!ast->data.unary_op.operand) {
-            cxpr_expr_ast_free(ast);
-            return NULL;
-        }
-    } else if (ast->type == CXPR_NODE_CHAIN_ACCESS ||
-               ast->type == CXPR_NODE_FIELD_ACCESS) {
-        if (!cxpr_model_materialize_static_value(&ast, program, 0u, err)) {
             cxpr_expr_ast_free(ast);
             return NULL;
         }

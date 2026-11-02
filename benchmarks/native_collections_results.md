@@ -149,3 +149,18 @@ Named map is therefore +10.40 ns/tick (+16.1%) in the model IR session and
 real IR materialization cost even though generated C optimizes the same graph
 to parity. Both cases are forced through `CXPR_MODEL_BACKEND_IR`; the benchmark
 aborts if the fused fast path is unavailable or outputs differ.
+
+After IR field accesses were changed to load already materialized named-map
+fields from their local slots, the same benchmark reports:
+
+| Case | Optimized IR ns/tick | Compile ns | IR instructions |
+|---|---:|---:|---:|
+| Four explicit scalar bindings | 58.03 | 14,480 | 24 |
+| Pure named map | 58.06 | 22,037 | 24 |
+
+The optimized named map is within +0.03 ns/tick (+0.05%) of the explicit
+baseline and emits the same 24 instructions. Compared with the original named
+map result it removes six instructions and 17.07 ns/tick (22.7%). Named-map
+compilation remains 7,557 ns (52.2%) slower because static map expansion still
+happens during model compilation; this change targets the generated IR and its
+runtime cost.
