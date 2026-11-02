@@ -360,6 +360,46 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast*
                                    ast->data.function_call.args[2], err);
     }
 
+    if ((strcmp(name, "any") == 0 || strcmp(name, "all") == 0) &&
+        ast->data.function_call.argc >= 1u &&
+        ast->data.function_call.argc <= 2u &&
+        ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) {
+        const cxpr_expr_ast* lambda = ast->data.function_call.argc == 2u
+            ? ast->data.function_call.args[1] : NULL;
+        cxpr_typecheck_static_type predicate_type;
+        if (!lambda) {
+            const cxpr_expr_ast* array = ast->data.function_call.args[0];
+            for (size_t i = 0u; i < array->data.array.count; ++i) {
+                predicate_type = cxpr_typecheck_infer(
+                    array->data.array.elements[i], reg, err);
+                if (predicate_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+                if (!cxpr_typecheck_is_bool(predicate_type)) {
+                    cxpr_typecheck_error(err, name, "bool array element", "element",
+                                         array->data.array.elements[i], predicate_type);
+                    return CXPR_STATIC_ERROR;
+                }
+            }
+            return CXPR_STATIC_BOOL;
+        }
+        if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") != 0 ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            cxpr_typecheck_error(err, name, "one-parameter selector", "argument",
+                                 lambda, CXPR_STATIC_UNKNOWN);
+            return CXPR_STATIC_ERROR;
+        }
+        predicate_type = cxpr_typecheck_infer(
+            lambda->data.function_call.args[1], reg, err);
+        if (predicate_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        if (!cxpr_typecheck_is_bool(predicate_type)) {
+            cxpr_typecheck_error(err, name, "bool selector", "selector",
+                                 lambda->data.function_call.args[1], predicate_type);
+            return CXPR_STATIC_ERROR;
+        }
+        return CXPR_STATIC_BOOL;
+    }
+
     entry = cxpr_registry_find(reg, name);
     for (size_t i = 0; i < ast->data.function_call.argc; ++i) {
         size_t expected_index = i;

@@ -597,10 +597,16 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
     const char* parameter = NULL;
     const char* name;
     double accumulated = 0.0;
+    bool predicate_accumulated;
+    bool is_any;
+    bool is_all;
     if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !out) return false;
     name = ast->data.function_call.name;
+    is_any = name && !strcmp(name, "any");
+    is_all = name && !strcmp(name, "all");
     if (!name || (strcmp(name, "sum") && strcmp(name, "mean") &&
-                  strcmp(name, "min") && strcmp(name, "max")) ||
+                  strcmp(name, "min") && strcmp(name, "max") &&
+                  !is_any && !is_all) ||
         ast->data.function_call.argc < 1u ||
         ast->data.function_call.argc > 2u) return false;
     array = ast->data.function_call.args[0];
@@ -621,12 +627,15 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
     if (array->data.array.count == 0u) {
         if (!strcmp(name, "sum")) {
             *out = cxpr_num(0.0);
+        } else if (is_any || is_all) {
+            *out = cxpr_bool(is_all);
         } else {
             *out = cxpr_eval_error(err, CXPR_ERR_WRONG_ARITY,
                                    "Static reduction requires a non-empty array");
         }
         return true;
     }
+    predicate_accumulated = is_all;
     for (size_t i = 0u; i < array->data.array.count; ++i) {
         cxpr_value value;
         if (selector) {
@@ -654,6 +663,21 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
             *out = cxpr_num(NAN);
             return true;
         }
+        if (is_any || is_all) {
+            if (value.type != CXPR_VALUE_BOOL) {
+                cxpr_value_free(&value);
+                *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                       "Static predicate selector must return bool");
+                return true;
+            }
+            predicate_accumulated = is_any
+                ? predicate_accumulated || value.b
+                : predicate_accumulated && value.b;
+            cxpr_value_free(&value);
+            if ((is_any && predicate_accumulated) ||
+                (is_all && !predicate_accumulated)) break;
+            continue;
+        }
         if (value.type != CXPR_VALUE_NUMBER && value.type != CXPR_VALUE_INT64) {
             cxpr_value_free(&value);
             *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
@@ -671,6 +695,10 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
             }
         }
         cxpr_value_free(&value);
+    }
+    if (is_any || is_all) {
+        *out = cxpr_bool(predicate_accumulated);
+        return true;
     }
     if (!strcmp(name, "mean")) accumulated /= (double)array->data.array.count;
     *out = cxpr_num(accumulated);

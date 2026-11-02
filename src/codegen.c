@@ -388,7 +388,8 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
 
     if (argc >= 1u && argc <= 2u &&
         (!strcmp(name, "sum") || !strcmp(name, "mean") ||
-         !strcmp(name, "min") || !strcmp(name, "max"))) {
+         !strcmp(name, "min") || !strcmp(name, "max") ||
+         !strcmp(name, "any") || !strcmp(name, "all"))) {
         const cxpr_expr_ast* array = cxpr_expr_ast_call_arg(ast, 0u);
         if (array && array->type == CXPR_NODE_ARRAY) {
             const cxpr_expr_ast* selector = NULL;
@@ -411,12 +412,18 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
                     cxpr_cg_puts(b, "0.0");
                     return 1;
                 }
+                if (!strcmp(name, "any") || !strcmp(name, "all")) {
+                    cxpr_cg_puts(b, !strcmp(name, "all") ? "true" : "false");
+                    return 1;
+                }
                 return cxpr_cg_err(err, CXPR_ERR_WRONG_ARITY,
                                    "static reduction requires a non-empty array");
             }
             if (!strcmp(name, "mean")) cxpr_cg_putc(b, '(');
             if (!strcmp(name, "sum") || !strcmp(name, "mean")) {
                 for (size_t i = 1u; i < count; ++i) cxpr_cg_putc(b, '(');
+            } else if (!strcmp(name, "any") || !strcmp(name, "all")) {
+                cxpr_cg_putc(b, '(');
             } else {
                 const char* fn = !strcmp(name, "min") ? "fmin" : "fmax";
                 for (size_t i = 1u; i < count; ++i) {
@@ -426,7 +433,9 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
             }
             for (size_t i = 0u; i < count; ++i) {
                 const cxpr_expr_ast* value = array->data.array.elements[i];
-                if (i > 0u) cxpr_cg_puts(b, ", ");
+                if (i > 0u) cxpr_cg_puts(
+                    b, !strcmp(name, "any") ? " || " :
+                       !strcmp(name, "all") ? " && " : ", ");
                 if ((!strcmp(name, "sum") || !strcmp(name, "mean")) && i > 0u) {
                     b->data[b->len - 2u] = ' ';
                     b->data[b->len - 1u] = '+';
@@ -437,8 +446,10 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
                                                lookback_offset, b, target, err)) return 0;
                 } else if (!cxpr_cg_emit_at_offset(
                                value, lookback_offset, b, target, err)) return 0;
-                if (i > 0u) cxpr_cg_putc(b, ')');
+                if (i > 0u && strcmp(name, "any") && strcmp(name, "all"))
+                    cxpr_cg_putc(b, ')');
             }
+            if (!strcmp(name, "any") || !strcmp(name, "all")) cxpr_cg_putc(b, ')');
             if (!strcmp(name, "mean")) {
                 char divisor[48];
                 snprintf(divisor, sizeof(divisor), " / %zu.0)", count);

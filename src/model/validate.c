@@ -409,7 +409,8 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
         const cxpr_expr_ast* array = cxpr_expr_ast_call_arg(expr, 0u);
         const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(expr, 1u);
         if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
-                     !strcmp(name, "min") || !strcmp(name, "max")) &&
+                     !strcmp(name, "min") || !strcmp(name, "max") ||
+                     !strcmp(name, "any") || !strcmp(name, "all")) &&
             array && cxpr_expr_ast_kind_of(array) == CXPR_NODE_ARRAY &&
             lambda && cxpr_expr_ast_kind_of(lambda) == CXPR_NODE_FUNCTION_CALL &&
             cxpr_expr_ast_call_name(lambda) &&

@@ -466,8 +466,8 @@ static cxpr_value cxpr_basket_eval_call(const cxpr_expr_ast* call_ast,
 void cxpr_register_basket_builtins(cxpr_registry* reg) {
     if (!reg) return;
     cxpr_registry_add_ast(reg, "avg", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
-    cxpr_registry_add_ast(reg, "any", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_BOOL, NULL, NULL);
-    cxpr_registry_add_ast(reg, "all", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_add_ast(reg, "any", cxpr_basket_eval_call, 1, 2, CXPR_VALUE_BOOL, NULL, NULL);
+    cxpr_registry_add_ast(reg, "all", cxpr_basket_eval_call, 1, 2, CXPR_VALUE_BOOL, NULL, NULL);
     cxpr_registry_add_ast(reg, "count", cxpr_basket_eval_call, 1, 1, CXPR_VALUE_NUMBER, NULL, NULL);
     cxpr_registry_add_ast(reg, "min", cxpr_basket_eval_call, 1, 8,
                           CXPR_VALUE_NUMBER, NULL, NULL);

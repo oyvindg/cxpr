@@ -126,9 +126,9 @@ drum_step = step
 drum_slot = drum_step % 16
 drum_lane = lane(t=t, step=drum_step, step_seconds=$step_seconds, offset=0, enabled=true)
 # Slow double-kick answer: kick, kick, then snare on the following beat.
-drum_kick = drum_slot == 0 or drum_slot == 8 ? 1 :
-    drum_slot == 2 or drum_slot == 10 ? 0.82 : 0
-drum_snare = drum_slot == 4 or drum_slot == 12 ? 0.86 : 0
+drum_kick = any([0, 8], slot => drum_slot == slot) ? 1 :
+    any([2, 10], slot => drum_slot == slot) ? 0.82 : 0
+drum_snare = any([4, 12], slot => drum_slot == slot) ? 0.86 : 0
 drum_clap = drum_slot == 12 ? 0.48 : 0
 drum_hat = drum_slot % 2 == 0 ? 0.34 : 0.62
 drum_open_hat = drum_slot == 14 ? 0.44 : 0

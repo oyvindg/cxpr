@@ -256,6 +256,13 @@ domains while preserving CXPR as a small, deterministic, domain-agnostic core.
   active phoneme and phase without a domain-specific builtin, runtime callback,
   or runtime collection loop. Benchmark evidence is recorded in
   `benchmarks/results/native_static_reduction_audio_2026-11-02.md`.
-- [ ] Generalize the same bounded lowering contract to `map`, `reduce`, `any`,
-  `all`, `find`, `count`, `enumerate`, and `zip` after their empty-collection
-  and result-type contracts are specified.
+- [x] Static predicate reductions: `any` and `all` accept an optional selector,
+  type-check its boolean result, and lower directly to short-circuit IR and C.
+  Empty arrays use the standard identities (`false` for `any`, `true` for
+  `all`). The modular-synth sequencer uses selector-based `any` for bounded
+  trigger groups; the migrated render is byte-identical to its explicit OR
+  chains. Benchmark evidence is recorded in
+  `benchmarks/results/native_static_predicate_audio_2026-11-02.md`.
+- [ ] Generalize the bounded lowering contract to `map`, `reduce`, `find`,
+  `count`, `enumerate`, and `zip` after their empty-collection and result-type
+  contracts are specified.

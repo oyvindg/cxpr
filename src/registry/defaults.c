@@ -5,6 +5,7 @@
 
 #include "internal.h"
 
+#include <cxpr/basket.h>
 #include <cxpr/expr/ast.h>
 
 #include <math.h>
@@ -610,6 +611,8 @@ bool cxpr_register_default_named(cxpr_registry* reg, const char* name) {
     } else if (strcmp(name, "within") == 0) {
         cxpr_registry_add_ast(reg, "within", cxpr_fn_within, 3, 5,
                               CXPR_VALUE_BOOL, NULL, NULL);
+    } else if (strcmp(name, "any") == 0 || strcmp(name, "all") == 0) {
+        cxpr_register_basket_builtins(reg);
     } else if (strcmp(name, "isnan") == 0) {
         static const cxpr_value_type number_arg[] = { CXPR_VALUE_NUMBER };
         cxpr_registry_add_typed(reg, "isnan", cxpr_fn_isnan, 1, 1, number_arg,

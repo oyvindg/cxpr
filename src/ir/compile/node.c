@@ -795,7 +795,8 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             ast->data.function_call.args[0] &&
             ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY &&
             (!strcmp(fname, "sum") || !strcmp(fname, "mean") ||
-             !strcmp(fname, "min") || !strcmp(fname, "max"))) {
+             !strcmp(fname, "min") || !strcmp(fname, "max") ||
+             !strcmp(fname, "any") || !strcmp(fname, "all"))) {
             const cxpr_expr_ast* array = ast->data.function_call.args[0];
             const cxpr_expr_ast* selector = NULL;
             const char* parameter = NULL;
@@ -814,6 +815,83 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                 }
                 parameter = lambda->data.function_call.args[0]->data.identifier.name;
                 selector = lambda->data.function_call.args[1];
+            }
+            if (!strcmp(fname, "any") || !strcmp(fname, "all")) {
+                const bool is_all = !strcmp(fname, "all");
+                size_t* predicate_jumps;
+                size_t end_jump;
+                if (count == 0u) {
+                    return cxpr_ir_emit(program,
+                                        (cxpr_ir_instr){
+                                            .op = CXPR_OP_PUSH_BOOL,
+                                            .value = is_all ? 1.0 : 0.0,
+                                        }, err);
+                }
+                predicate_jumps = malloc(count * sizeof(*predicate_jumps));
+                if (!predicate_jumps) {
+                    if (err) {
+                        err->code = CXPR_ERR_OUT_OF_MEMORY;
+                        err->message = "Out of memory";
+                    }
+                    return false;
+                }
+                for (size_t i = 0u; i < count; ++i) {
+                    const cxpr_expr_ast* element = array->data.array.elements[i];
+                    bool compiled;
+                    if (selector) {
+                        const char* names[] = {parameter};
+                        const cxpr_expr_ast* args[] = {element};
+                        cxpr_ir_subst_frame frame = {
+                            .names = names, .args = args, .count = 1u, .parent = subst,
+                        };
+                        compiled = cxpr_ir_compile_node(
+                            selector, program, reg, local_names, local_count,
+                            &frame, inline_depth, err);
+                    } else {
+                        compiled = cxpr_ir_compile_node(
+                            element, program, reg, local_names, local_count,
+                            subst, inline_depth, err);
+                    }
+                    if (!compiled) {
+                        free(predicate_jumps);
+                        return false;
+                    }
+                    predicate_jumps[i] = cxpr_ir_next_index(program);
+                    if (!cxpr_ir_emit(program,
+                                      (cxpr_ir_instr){
+                                          .op = is_all ? CXPR_OP_JUMP_IF_FALSE
+                                                       : CXPR_OP_JUMP_IF_TRUE,
+                                      }, err)) {
+                        free(predicate_jumps);
+                        return false;
+                    }
+                }
+                if (!cxpr_ir_emit(program,
+                                  (cxpr_ir_instr){
+                                      .op = CXPR_OP_PUSH_BOOL,
+                                      .value = is_all ? 1.0 : 0.0,
+                                  }, err)) {
+                    free(predicate_jumps);
+                    return false;
+                }
+                end_jump = cxpr_ir_next_index(program);
+                if (!cxpr_ir_emit(program,
+                                  (cxpr_ir_instr){.op = CXPR_OP_JUMP}, err)) {
+                    free(predicate_jumps);
+                    return false;
+                }
+                for (size_t i = 0u; i < count; ++i) {
+                    cxpr_ir_patch_target(program, predicate_jumps[i],
+                                         cxpr_ir_next_index(program));
+                }
+                free(predicate_jumps);
+                if (!cxpr_ir_emit(program,
+                                  (cxpr_ir_instr){
+                                      .op = CXPR_OP_PUSH_BOOL,
+                                      .value = is_all ? 0.0 : 1.0,
+                                  }, err)) return false;
+                cxpr_ir_patch_target(program, end_jump, cxpr_ir_next_index(program));
+                return true;
             }
             if (count == 0u) {
                 if (strcmp(fname, "sum")) {

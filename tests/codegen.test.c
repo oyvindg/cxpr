@@ -43,6 +43,24 @@ static void test_array_sum_codegen(void) {
     assert(strstr(code, "a + 1.0") != NULL);
     assert(strstr(code, "b + 1.0") != NULL);
     free(code);
+
+    code = to_c("any([a, b, c], x => x > 0)");
+    assert(strstr(code, "a > 0.0") != NULL);
+    assert(strstr(code, " || ") != NULL);
+    free(code);
+
+    code = to_c("all([a, b], x => x > 0)");
+    assert(strstr(code, "a > 0.0") != NULL);
+    assert(strstr(code, " && ") != NULL);
+    free(code);
+
+    code = to_c("any([])");
+    assert(strcmp(code, "false") == 0);
+    free(code);
+
+    code = to_c("all([])");
+    assert(strcmp(code, "true") == 0);
+    free(code);
 }
 
 static char* program_to_c(const char* expr,

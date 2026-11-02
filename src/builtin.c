@@ -28,10 +28,11 @@ PARAMS(p_x_y_t, "x", "y", "t");
 PARAMS(p_edge0_edge1_x, "edge0", "edge1", "x");
 PARAMS(p_x_midpoint_steepness, "x", "midpoint", "steepness");
 PARAMS(p_basket_expression, "expression");
+PARAMS(p_collection_selector, "values", "selector");
 
 static const cxpr_function_info builtins[] = {
     INFO("min", "min(value, ...values)", "Returns the smallest value. Accepts numeric arguments, a static array with an optional selector, or a trailing expression window such as min(window(expression, period)).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
-    INFO("max", "max(value, ...values)", "Returns the largest value. Accepts numeric arguments, a static array with an optional selector, or a trailing expression window such as max(window(expression, period)).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
+    INFO("max", "max(value, ...values)", "Returns the largest value. Accepts 1 to 8 numeric arguments, a static array with an optional selector, or a trailing expression window such as max(window(expression, period)).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("argmin", "argmin(value, ...values)", "Returns the zero-based index of the smallest value.", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("argmax", "argmax(value, ...values)", "Returns the zero-based index of the largest value.", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("sum", "sum(value, ...values)", "Returns the sum of scalar arguments or an array literal. Array literals optionally accept a pure selector such as sum(values, x => x.level).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
@@ -107,8 +108,8 @@ static const cxpr_function_info builtins[] = {
     SERIES("bars_since_extreme", "bars_since_extreme(value, samples, mode)", "Returns the number of samples since the selected maximum or minimum.", p_value_samples_mode, 3u, 3u, CXPR_VALUE_NUMBER),
 #undef SERIES
     INFO("avg", "avg(expression)", "Returns the basket average for expression.", p_basket_expression, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_BASKET),
-    INFO("any", "any(expression)", "Returns true when expression is true for any basket member.", p_basket_expression, 1u, 1u, CXPR_VALUE_BOOL, CXPR_BUILTIN_BASKET),
-    INFO("all", "all(expression)", "Returns true when expression is true for every basket member.", p_basket_expression, 1u, 1u, CXPR_VALUE_BOOL, CXPR_BUILTIN_BASKET),
+    INFO("any", "any(values, selector)", "Returns true when a basket expression or static array selector is true for any member.", p_collection_selector, 1u, 2u, CXPR_VALUE_BOOL, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
+    INFO("all", "all(values, selector)", "Returns true when a basket expression or static array selector is true for every member.", p_collection_selector, 1u, 2u, CXPR_VALUE_BOOL, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("count", "count(expression)", "Counts matching basket members.", p_basket_expression, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_BASKET),
     INFO("window", "window(expression, period)", "Creates a compile-time trailing expression window for reducers such as mean and stddev; no runtime array is created.", p_expression_period, 2u, 2u, CXPR_VALUE_ARRAY, CXPR_BUILTIN_SYNTAX),
     INFO("stddev", "stddev(window(expression, period))", "Computes the standard deviation over a trailing expression window.", p_expression_period, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
