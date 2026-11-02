@@ -1,4 +1,4 @@
-# Exact supplied notes performed by the register-aware concert grand.
+# Complete first movement rendered by twelve overlapping physical-grand voices.
 model song(type = "dsp")
 
 use sequencer from arrangement
@@ -11,34 +11,52 @@ $sample_rate = 44100
 $bpm = 54
 
 seq = sequencer(t=t, bpm=$bpm)
-left_voices = map({
-    root = { frequency = seq.left_root_frequency, gain = 0.27 },
-    upper = { frequency = seq.left_upper_frequency, gain = 0.23 }
-}, voice => grand_piano(age=seq.left_age, frequency=voice.frequency,
-    trigger=seq.left_trigger, sample_rate=$sample_rate, gain=voice.gain,
+piano_voices = map({
+    v0 = { age = seq.voice_0_age, frequency = seq.voice_0_frequency, trigger = seq.voice_0_trigger, gain = seq.voice_0_gain },
+    v1 = { age = seq.voice_1_age, frequency = seq.voice_1_frequency, trigger = seq.voice_1_trigger, gain = seq.voice_1_gain },
+    v2 = { age = seq.voice_2_age, frequency = seq.voice_2_frequency, trigger = seq.voice_2_trigger, gain = seq.voice_2_gain },
+    v3 = { age = seq.voice_3_age, frequency = seq.voice_3_frequency, trigger = seq.voice_3_trigger, gain = seq.voice_3_gain },
+    v4 = { age = seq.voice_4_age, frequency = seq.voice_4_frequency, trigger = seq.voice_4_trigger, gain = seq.voice_4_gain },
+    v5 = { age = seq.voice_5_age, frequency = seq.voice_5_frequency, trigger = seq.voice_5_trigger, gain = seq.voice_5_gain },
+    v6 = { age = seq.voice_6_age, frequency = seq.voice_6_frequency, trigger = seq.voice_6_trigger, gain = seq.voice_6_gain },
+    v7 = { age = seq.voice_7_age, frequency = seq.voice_7_frequency, trigger = seq.voice_7_trigger, gain = seq.voice_7_gain },
+    v8 = { age = seq.voice_8_age, frequency = seq.voice_8_frequency, trigger = seq.voice_8_trigger, gain = seq.voice_8_gain },
+    v9 = { age = seq.voice_9_age, frequency = seq.voice_9_frequency, trigger = seq.voice_9_trigger, gain = seq.voice_9_gain },
+    v10 = { age = seq.voice_10_age, frequency = seq.voice_10_frequency, trigger = seq.voice_10_trigger, gain = seq.voice_10_gain },
+    v11 = { age = seq.voice_11_age, frequency = seq.voice_11_frequency, trigger = seq.voice_11_trigger, gain = seq.voice_11_gain }
+}, voice => grand_piano(age=voice.age, frequency=voice.frequency,
+    trigger=voice.trigger, sample_rate=$sample_rate, gain=0.10 * voice.gain,
     delay_samples=floor($sample_rate / voice.frequency)))
-right_voice = grand_piano(age=seq.right_age, frequency=seq.right_frequency,
-    trigger=seq.right_trigger, sample_rate=$sample_rate, gain=0.29,
-    delay_samples=floor($sample_rate / seq.right_frequency))
 
-left_source = left_voices.root + seq.left_upper_level * left_voices.upper
-right_source = seq.right_level * right_voice.sample
-left_tone = state_variable_filter(source=left_source, sample_rate=$sample_rate,
-    cutoff=3200, resonance=0.025)
-right_tone = state_variable_filter(source=right_source, sample_rate=$sample_rate,
-    cutoff=4400, resonance=0.025)
+v0 = pan(source=piano_voices.v0, position=seq.voice_0_pan)
+v1 = pan(source=piano_voices.v1, position=seq.voice_1_pan)
+v2 = pan(source=piano_voices.v2, position=seq.voice_2_pan)
+v3 = pan(source=piano_voices.v3, position=seq.voice_3_pan)
+v4 = pan(source=piano_voices.v4, position=seq.voice_4_pan)
+v5 = pan(source=piano_voices.v5, position=seq.voice_5_pan)
+v6 = pan(source=piano_voices.v6, position=seq.voice_6_pan)
+v7 = pan(source=piano_voices.v7, position=seq.voice_7_pan)
+v8 = pan(source=piano_voices.v8, position=seq.voice_8_pan)
+v9 = pan(source=piano_voices.v9, position=seq.voice_9_pan)
+v10 = pan(source=piano_voices.v10, position=seq.voice_10_pan)
+v11 = pan(source=piano_voices.v11, position=seq.voice_11_pan)
+raw_left = v0.left + v1.left + v2.left + v3.left + v4.left + v5.left +
+    v6.left + v7.left + v8.left + v9.left + v10.left + v11.left
+raw_right = v0.right + v1.right + v2.right + v3.right + v4.right + v5.right +
+    v6.right + v7.right + v8.right + v9.right + v10.right + v11.right
+left_tone = state_variable_filter(source=raw_left, sample_rate=$sample_rate,
+    cutoff=4200, resonance=0.025)
+right_tone = state_variable_filter(source=raw_right, sample_rate=$sample_rate,
+    cutoff=4200, resonance=0.025)
+dry_left = left_tone.low
+dry_right = right_tone.low
 
-left_hand = pan(source=left_tone.low, position=-0.26)
-right_hand = pan(source=right_tone.low, position=0.18)
-dry_left = left_hand.left + right_hand.left
-dry_right = left_hand.right + right_hand.right
-
-hall = reverb(source_left=0.40 * dry_left, source_right=0.40 * dry_right,
-    sample_rate=$sample_rate, decay_seconds=4.8, damping=2750)
-finished = master(source_left=dry_left + 0.60 * hall.left,
-    source_right=dry_right + 0.60 * hall.right,
-    t=t, sample_rate=$sample_rate, gain=2.35, duration=seq.duration,
-    fade_seconds=4.2, fade_in_seconds=0.30, ceiling=0.90)
+hall = reverb(source_left=0.34 * dry_left, source_right=0.34 * dry_right,
+    sample_rate=$sample_rate, decay_seconds=5.2, damping=2800)
+finished = master(source_left=dry_left + 0.52 * hall.left,
+    source_right=dry_right + 0.52 * hall.right,
+    t=t, sample_rate=$sample_rate, gain=1.45, duration=seq.duration,
+    fade_seconds=5.0, fade_in_seconds=0.35, ceiling=0.90)
 
 left = finished.left
 right = finished.right

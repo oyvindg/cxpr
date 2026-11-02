@@ -1,17 +1,19 @@
 # Adagio Sostenuto
 
-`Adagio Sostenuto` performs the supplied note lists exactly, without added
-harmony or repeated material. It runs at 54 BPM on an eighth-note-triplet grid:
-the 29 right-hand notes occur once each, while each of the 16 left-hand events
-spans two pulses so both lists finish together.
+`Adagio Sostenuto` renders the complete first movement of Beethoven's Piano
+Sonata No. 14 in C-sharp minor, Op. 27 No. 2. It runs in 2/2 at Piano.org's
+54-quarter-note BPM performance tempo. The previous user-note transcription
+has been removed completely.
 
-The ambiguous `G+lA#` spelling in the source request is interpreted as
-`G+A#`. Pitch registers are D2-A2 for the bass and A3-G4 for the arpeggios.
-The shared `grand_piano` voice uses triple-string detuning, a firm hammer
-transient, long modal decay, and coupled soundboard memory. Named `map` banks
-provide independent voices for the two notes of each left-hand dyad. Single
-left-hand notes mute the second voice; the right hand has one voice and no
-octave doubling. Hall resonance and the soft-limited master add no pitches.
+The 1,142 note-on events are compiled from Stewart Holmes' Mutopia MIDI edition
+(CC BY-SA 2.5) into twelve overlapping physical `grand_piano` voices. MIDI is
+not parsed at runtime. Hall resonance and the soft-limited master add no
+pitches.
+
+Source: <https://piano.org/songs/moonlight-sonata/>. The page documents the
+original C-sharp-minor score and its meter, tempo, opening notes, continuous
+triplets, deep bass octave, and sostenuto performance model. Complete score
+data: <https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=276>.
 
 Render from the repository root:
 

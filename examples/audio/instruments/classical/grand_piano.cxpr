@@ -83,7 +83,8 @@ hammer_noise = 0.72 * sin(2 * pi() * 1250 * note_age + 0.31 * key) +
     0.08 * sin(2 * pi() * 3910 * note_age + 0.07 * key)
 hammer_tone = sin(2 * pi() * physical_frequency * note_age)
 hammer_hardness = 0.08 + 0.14 * register
-excitation = 1.30 * contact_envelope *
+key_energy = 1.62 - 0.52 * register
+excitation = key_energy * 1.30 * contact_envelope *
     ((1 - hammer_hardness) * hammer_tone + hammer_hardness * hammer_noise)
 
 # The loop loss filter models bridge, felt and air losses. Bass loops retain
@@ -110,8 +111,8 @@ strings = key < 33 ? unichord : key < 48 ? bichord : trichord
 
 # Three bridge-coupled board bands provide body, attack radiation and a small
 # duplex-like high resonance without adding separately played pitches.
-low_cutoff = 175 + 240 * register
-mid_cutoff = 760 + 760 * register
+low_cutoff = 235 + 260 * register
+mid_cutoff = 920 + 720 * register
 high_cutoff = 2600 + 2400 * register
 low_coefficient = 1 - exp(-2 * pi() * low_cutoff / $sample_rate)
 mid_coefficient = 1 - exp(-2 * pi() * mid_cutoff / $sample_rate)
@@ -129,5 +130,7 @@ soundboard = low_weight * next_low + mid_weight * next_mid +
     high_weight * next_high
 direct_hammer = 0.035 * contact_envelope * hammer_noise
 bridge_radiation = 0.10 * strings + 1.15 * soundboard
+register_compensation = 1.48 - 0.38 * register
+voiced_radiation = register_compensation * bridge_radiation + direct_hammer
 
-out sample = $gain * tanh(5.20 * (bridge_radiation + direct_hammer))
+out sample = $gain * tanh(5.00 * voiced_radiation)
