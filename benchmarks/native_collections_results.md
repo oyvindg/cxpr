@@ -164,3 +164,21 @@ map result it removes six instructions and 17.07 ns/tick (22.7%). Named-map
 compilation remains 7,557 ns (52.2%) slower because static map expansion still
 happens during model compilation; this change targets the generated IR and its
 runtime cost.
+
+Registry-independent static maps are now also pre-lowered once when the model
+is parsed. The public model AST remains unchanged; repeated compilation clones
+the cached lowered tree instead of expanding the callback for every compile.
+Three complete benchmark runs (nine internal trials per run) produced these
+median-of-run medians:
+
+| Case | Cached IR ns/tick | Compile ns | IR instructions |
+|---|---:|---:|---:|
+| Four explicit scalar bindings | 65.91 | 13,835 | 24 |
+| Pure named map | 65.51 | 20,320 | 24 |
+
+Against the previous named-map result, compile time falls from 22,037 ns to
+20,320 ns: -1,717 ns (-7.8%). The named-map compile overhead relative to the
+contemporaneous explicit baseline falls from 52.2% to 46.9%. Runtime remains
+at parity and the IR stays at 24 instructions. The cache deliberately excludes
+callbacks containing function or producer calls because their lowering may
+depend on the compile registry.

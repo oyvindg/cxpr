@@ -662,6 +662,8 @@ static bool cxpr_doc_model_append_binding(cxpr_model* model,
     model->bindings[model->binding_count].name = cxpr_strdup(name);
     model->bindings[model->binding_count].source = text ? cxpr_strdup(text) : NULL;
     model->bindings[model->binding_count].expr = expr ? cxpr_expr_ast_clone(expr) : NULL;
+    model->bindings[model->binding_count].prelowered_expr =
+        expr ? cxpr_model_prelower_static_map(expr) : NULL;
     model->bindings[model->binding_count].span = cxpr_doc_ast_node_span(node);
     model->bindings[model->binding_count].has_span = true;
     model->bindings[model->binding_count].declared_type = declared_type;

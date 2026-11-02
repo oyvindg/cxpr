@@ -31,6 +31,8 @@ typedef struct {
     char* name;
     char* source;
     cxpr_expr_ast* expr;
+    /* Cached only for static maps whose lowering cannot depend on a registry. */
+    cxpr_expr_ast* prelowered_expr;
     cxpr_source_span span;
     bool has_span;
     cxpr_model_decl_type declared_type;
@@ -366,6 +368,7 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
 cxpr_expr_ast* cxpr_model_inline_defined_calls(const cxpr_expr_ast* ast,
                                                const cxpr_registry* registry,
                                                cxpr_error* err);
+cxpr_expr_ast* cxpr_model_prelower_static_map(const cxpr_expr_ast* ast);
 bool cxpr_model_lookback_target_key(const cxpr_expr_ast* target,
                                     char** out_key,
                                     cxpr_error* err);

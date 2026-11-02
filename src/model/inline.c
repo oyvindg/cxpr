@@ -562,3 +562,73 @@ cxpr_expr_ast* cxpr_model_inline_defined_calls(const cxpr_expr_ast* ast,
     if (!clone) return NULL;
     return cxpr_model_expand_defined_owned(clone, registry, 0u, err);
 }
+
+static bool cxpr_model_static_map_expr_is_registry_independent(
+    const cxpr_expr_ast* ast) {
+    if (!ast) return false;
+    switch (ast->type) {
+    case CXPR_NODE_NUMBER:
+    case CXPR_NODE_INT64:
+    case CXPR_NODE_BOOL:
+    case CXPR_NODE_STRING:
+    case CXPR_NODE_IDENTIFIER:
+    case CXPR_NODE_VARIABLE:
+    case CXPR_NODE_CHAIN_ACCESS:
+        return true;
+    case CXPR_NODE_FIELD_ACCESS:
+        return !ast->data.field_access.base ||
+               cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.field_access.base);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_static_map_expr_is_registry_independent(
+            ast->data.unary_op.operand);
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.binary_op.left) &&
+               cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.binary_op.right);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.ternary.condition) &&
+               cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.ternary.true_branch) &&
+               cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.ternary.false_branch);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.index.target) &&
+               cxpr_model_static_map_expr_is_registry_independent(
+                   ast->data.index.index);
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            if (!cxpr_model_static_map_expr_is_registry_independent(
+                    ast->data.array.elements[i])) return false;
+        return true;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            if (!cxpr_model_static_map_expr_is_registry_independent(
+                    ast->data.record.field_values[i])) return false;
+        return true;
+    default:
+        return false;
+    }
+}
+
+cxpr_expr_ast* cxpr_model_prelower_static_map(const cxpr_expr_ast* ast) {
+    cxpr_error ignored = {0};
+    const cxpr_expr_ast* source;
+    const cxpr_expr_ast* lambda;
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(ast->data.function_call.name, "map") != 0 ||
+        ast->data.function_call.argc != 2u) return NULL;
+    source = ast->data.function_call.args[0];
+    lambda = ast->data.function_call.args[1];
+    if (!source || (source->type != CXPR_NODE_ARRAY &&
+                    source->type != CXPR_NODE_RECORD) ||
+        !lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(lambda->data.function_call.name, "__cxpr_lambda") != 0 ||
+        lambda->data.function_call.argc != 2u ||
+        !cxpr_model_static_map_expr_is_registry_independent(
+            lambda->data.function_call.args[1])) return NULL;
+    return cxpr_model_inline_defined_calls(ast, NULL, &ignored);
+}

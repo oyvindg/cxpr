@@ -177,6 +177,7 @@ void cxpr_model_free(cxpr_model* model) {
         free(model->bindings[i].name);
         free(model->bindings[i].source);
         cxpr_expr_ast_free(model->bindings[i].expr);
+        cxpr_expr_ast_free(model->bindings[i].prelowered_expr);
     }
     free(model->bindings);
     for (size_t i = 0; i < model->output_count; ++i) free(model->outputs[i]);

@@ -14,6 +14,12 @@
 #define CXPR_TEST_SOURCE_DIR "."
 #endif
 
+cxpr_expr_ast* cxpr_model_prelower_static_map(const cxpr_expr_ast* ast);
+cxpr_expr_ast* cxpr_model_inline_defined_calls(
+    const cxpr_expr_ast* ast, const cxpr_registry* registry, cxpr_error* err);
+bool cxpr_model_ast_equal(
+    const cxpr_expr_ast* left, const cxpr_expr_ast* right);
+
 static char* read_fixture(const char* relative_path) {
     char path[1024];
     FILE* f;
@@ -3481,6 +3487,12 @@ static void test_named_map_materializes_pure_values(void) {
     cxpr_context* context;
     char* code;
 
+    assert(cxpr_model_binding_count(model) == 2u);
+    assert(cxpr_expr_ast_kind_of(cxpr_model_binding_expr(model, 0u)) ==
+           CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_expr_ast_call_name(
+                      cxpr_model_binding_expr(model, 0u)), "map") == 0);
+
     if (!program) fprintf(stderr, "named pure map compile failed: %s\n",
                           err.message ? err.message : "(null)");
     assert(program != NULL);
@@ -3535,6 +3547,30 @@ static void test_named_map_materializes_pure_values(void) {
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
     printf("  ✓ test_named_map_materializes_pure_values\n");
+}
+
+static void test_static_map_prelowering_has_ast_parity(void) {
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_error error = {0};
+    cxpr_expr_ast* source;
+    cxpr_expr_ast* cached;
+    cxpr_expr_ast* regular;
+
+    assert(parser != NULL);
+    source = cxpr_expr_ast_parse(
+        parser, "map({ main = a, back = b }, value => value * 2)", &error);
+    assert(source != NULL);
+    cached = cxpr_model_prelower_static_map(source);
+    regular = cxpr_model_inline_defined_calls(source, NULL, &error);
+    assert(cached != NULL && regular != NULL);
+    assert(cxpr_model_ast_equal(cached, regular));
+    assert(cxpr_expr_ast_kind_of(source) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_expr_ast_call_name(source), "map") == 0);
+
+    cxpr_expr_ast_free(regular);
+    cxpr_expr_ast_free(cached);
+    cxpr_expr_ast_free(source);
+    cxpr_expr_parser_free(parser);
 }
 
 static void test_stateful_producer_history_queries_do_not_replay(void) {
@@ -5297,6 +5333,7 @@ int main(void) {
     test_binding_names_separate_scoped_state();
     test_static_map_unrolls_scoped_children();
     test_named_map_materializes_pure_values();
+    test_static_map_prelowering_has_ast_parity();
     test_stateful_producer_history_queries_do_not_replay();
     test_imported_producer_default_singleton_shares_state();
     test_imported_producer_explicit_singleton_shares_state();

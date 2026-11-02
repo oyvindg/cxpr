@@ -1066,8 +1066,10 @@ cxpr_model_compiled* cxpr_model_compile_full(
             program->bindings[out_i].name = cxpr_strdup(model->bindings[src_i].name);
             program->bindings[out_i].source = cxpr_strdup(model->bindings[src_i].source);
             program->bindings[out_i].name_hash = cxpr_hash_string(model->bindings[src_i].name);
-            program->bindings[out_i].ast = cxpr_model_inline_defined_calls(
-                model->bindings[src_i].expr, compile_reg, err);
+            program->bindings[out_i].ast = model->bindings[src_i].prelowered_expr
+                ? cxpr_expr_ast_clone(model->bindings[src_i].prelowered_expr)
+                : cxpr_model_inline_defined_calls(
+                      model->bindings[src_i].expr, compile_reg, err);
             program->bindings[out_i].ast = cxpr_model_inline_static_collections(
                 program->bindings[out_i].ast, program, err);
             if (program->bindings[out_i].ast &&

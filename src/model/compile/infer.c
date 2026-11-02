@@ -361,6 +361,7 @@ static bool cxpr_model_append_synthetic_binding(cxpr_model* model,
     model->bindings[model->binding_count].name = cxpr_strdup(name);
     model->bindings[model->binding_count].source = cxpr_strdup(source);
     model->bindings[model->binding_count].expr = expr;
+    model->bindings[model->binding_count].prelowered_expr = NULL;
     model->bindings[model->binding_count].span = (cxpr_source_span){0};
     model->bindings[model->binding_count].has_span = false;
     if (!model->bindings[model->binding_count].name ||
@@ -427,11 +428,15 @@ bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
                 ? cxpr_strdup(src->bindings[i].source) : NULL;
             dst->bindings[i].expr = src->bindings[i].expr
                 ? cxpr_expr_ast_clone(src->bindings[i].expr) : NULL;
+            dst->bindings[i].prelowered_expr = src->bindings[i].prelowered_expr
+                ? cxpr_expr_ast_clone(src->bindings[i].prelowered_expr) : NULL;
             dst->bindings[i].span = src->bindings[i].span;
             dst->bindings[i].has_span = src->bindings[i].has_span;
             if (!dst->bindings[i].name ||
                 (src->bindings[i].source && !dst->bindings[i].source) ||
-                (src->bindings[i].expr && !dst->bindings[i].expr)) {
+                (src->bindings[i].expr && !dst->bindings[i].expr) ||
+                (src->bindings[i].prelowered_expr &&
+                 !dst->bindings[i].prelowered_expr)) {
                 dst->binding_count = i + 1u;
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
@@ -477,6 +482,7 @@ void cxpr_model_expanded_copy_free(cxpr_model* model) {
         free(model->bindings[i].name);
         free(model->bindings[i].source);
         cxpr_expr_ast_free(model->bindings[i].expr);
+        cxpr_expr_ast_free(model->bindings[i].prelowered_expr);
     }
     free(model->bindings);
     for (size_t i = 0u; i < model->output_count; ++i) {
