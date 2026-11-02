@@ -62,21 +62,36 @@ eighth_bar = floor(eighth_step / 8)
 rhythm_lane = lane(t=t, step=eighth_step, step_seconds=eighth_seconds, offset=0, enabled=true)
 rhythm_trigger = rhythm_lane.trigger
 rhythm_age = rhythm_lane.age
-kick_level = eighth_slot % 2 == 0 ? 0.8661417323 : 0
-kick_trigger = rhythm_trigger * (eighth_slot % 2 == 0 ? 1 : 0)
+# The first bar leaves breathing room, then the full four-on-the-floor pattern
+# arrives in bar two and carries the listener into the bass entrance.
+kick_hit = bar == 0 ? (eighth_slot == 0 or eighth_slot == 4) :
+    eighth_slot % 2 == 0
+kick_level = kick_hit ? 0.8661417323 : 0
+kick_trigger = rhythm_trigger * (kick_hit ? 1 : 0)
 # During the bridge, the rhythm section keeps its clock but the snare leaves an
 # eight-beat gap between hits. Normal beat-two/four backbeats resume afterward.
 snare_bridge = bar >= 8 and bar < 12
-snare_hit = snare_bridge ? (bar % 2 == 1 and eighth_slot == 6) :
+snare_hit = bar == 0 ? eighth_slot == 6 : snare_bridge ?
+    (bar % 2 == 1 and eighth_slot == 6) :
     (eighth_slot == 2 or eighth_slot == 6)
 snare_level = snare_hit ? 0.8661417323 : 0
 snare_trigger = rhythm_trigger * (snare_hit ? 1 : 0)
-hat_level = 0.8661417323
-# Three sequential double-strokes occupy the final six sixteenths: dd dd dd.
-# Each shell owns a lane, and held pitch/pan values keep its decaying tail
-# stable while the opposite shell plays the second stroke of each pair.
+# Alternating velocities keep the eighth-note pulse moving. Every fourth bar
+# ends with an open-hat lift instead of another identical closed transient.
+hat_open = eighth_slot == 7 and bar % 4 == 3
+hat_intro_hit = bar > 0 or eighth_slot % 2 == 0
+hat_bridge_scale = bar >= 8 and bar < 12 ? 0.78 : 1
+hat_build_scale = bar == 0 ? 0.62 : bar == 1 ?
+    (eighth_slot % 2 == 0 ? 0.78 : 0.46) : bar == 2 ? 0.86 : 1
+hat_level = not hat_intro_hit ? 0 : hat_open ? 0.22 :
+    hat_build_scale * hat_bridge_scale * (eighth_slot == 3 ? 0.94 :
+        eighth_slot % 2 == 0 ? 0.64 : 0.82)
+open_hat_level = hat_open ? 0.78 : 0
+# Three descending double-strokes are reserved for section transitions. The
+# bridge therefore stays calm until its final bar points into the breakdown.
 transition_step = min(floor(beat * 4), 255)
 transition_slot = transition_step % 16
+transition_bridge = bar >= 8 and bar < 12
 transition_section = bar % 4 == 3 and bar < 15 and transition_slot >= 10
 transition_pair = floor((transition_slot - 10) / 2)
 transition_main_active = transition_section and transition_slot % 2 == 0
@@ -159,7 +174,10 @@ lead_phrase_note = chord == 0 ?
 # inside it are skipped instead of retriggering a still-audible tail.
 lead_release_guard = 0.90
 lead_is_holding = held_lead_age < held_lead_duration + lead_release_guard
-lead_active = bar >= 4 and lead_phrase_note and not lead_is_holding
+# The hook rests for bars 13-14 so the final two-bar reprise feels earned;
+# the sparse counter-line remains available to carry that breakdown.
+lead_section_active = bar >= 4 and (bar < 12 or bar >= 14)
+lead_active = lead_section_active and lead_phrase_note and not lead_is_holding
 lead_lane = lane(t=t, step=lead_step, step_seconds=eighth_seconds,
                  offset=0, enabled=lead_active)
 lead_trigger = lead_lane.trigger
@@ -180,10 +198,10 @@ lead_target_duration_beats = lead_long_hold ? 2.25 : chord == 0 ?
     (lead_slot == 0 ? 1.25 : lead_slot == 3 ? 0.45 : 0.75) :
     chord == 1 ? (lead_slot == 4 ? 1.25 : lead_slot == 7 ? 0.45 : 0.75) :
     chord == 3 and lead_slot == 6 ? 1.25 : 0.75
-lead_section_level = 0.82
+lead_voice_level = 0.82
 # Strong downbeats, lighter passing notes, and a secondary beat-three accent
 # create a shaped phrase rather than a flat sequence of equal notes.
-lead_target_level = lead_section_level *
+lead_target_level = lead_voice_level *
     (lead_slot == 0 ? 1 : lead_slot == 4 ? 0.92 : 0.80)
 lead_target_brightness = lead_slot == 0 ? 1 : lead_slot == 4 ? 0.90 : 0.74
 next_lead_frequency = lead_trigger > 0 ? lead_target_frequency : held_lead_frequency
@@ -225,7 +243,7 @@ background_note = chord == 0 ? background_note_am :
     chord == 2 ? background_note_f : background_note_g
 background_frequency = background_note |> hz()
 background_gate = background_active and background_lane.age < 0.60 * beat_seconds
-background_level = bar >= 6 ? 0.65 : 0
+background_level = bar >= 6 ? 0.75 : 0
 
 # A restrained eighth-note arp lifts bars 7-8 and returns for bars 15-16. It
 # stays out of both the rhythm intro and the busier sixteenth-note bass bridge.
@@ -241,7 +259,16 @@ arp_level = arp_active ? 1 : 0
 # not cut active tails. Bars 1-2 are percussion-only, bar 3 adds bass beneath
 # the drums, pads and lead enter together in bar 5, and bars 13-14 expose the
 # melodic buses without rhythm.
-music_section_level = clamp((beat - 16) / 1, 0, 1)
+# Pads foreshadow the hook for one bar. The lead follows with its own slower
+# entrance, fades ahead of the breakdown, and swells back before the finale.
+pad_section_level = 0.90 * clamp((beat - 12) / 4, 0, 1)
+lead_entry_level = 0.90 * clamp((beat - 16) / 2, 0, 1)
+lead_breakdown_level = beat < 47 ? 1 : beat < 49 ?
+    1 - clamp((beat - 47) / 2, 0, 1) : beat < 55 ? 0 :
+    clamp((beat - 55) / 2, 0, 1)
+lead_mix_level = lead_entry_level * lead_breakdown_level
+final_lift = beat < 55 ? 0.90 : 0.90 + 0.10 * clamp((beat - 55) / 2, 0, 1)
+music_section_level = final_lift
 late_drum_level = beat < 48 ? 1 : beat < 56 ?
     1 - clamp((beat - 48) / 0.5, 0, 1) :
     clamp((beat - 56) / 0.5, 0, 1)
@@ -255,7 +282,7 @@ out {
     beat_seconds, eighth_seconds, chord_trigger, chord_age,
     chord_one, chord_two, chord_three, chord_four, chord_hold, chord_release,
     rhythm_trigger, rhythm_age, kick_level, kick_trigger,
-    snare_level, snare_trigger, hat_level, drum_seed,
+    snare_level, snare_trigger, hat_level, open_hat_level, drum_seed,
     transition_main_trigger = transition_main_lane.trigger,
     transition_main_age = next_transition_main_age,
     transition_frequency = next_transition_frequency,
@@ -264,6 +291,7 @@ out {
     transition_low_age = next_transition_low_age,
     transition_low_frequency = next_transition_low_frequency,
     transition_low_pan = next_transition_low_pan,
+    transition_bridge,
     bass_trigger, bass_age, bass_frequency, bass_level,
     lead_trigger, lead_age, lead_duration = next_lead_duration,
     lead_frequency, lead_level, lead_brightness,
@@ -272,5 +300,6 @@ out {
     background_frequency, background_gate, background_level,
     arp_trigger = arp_lane.trigger, arp_age = arp_lane.age,
     arp_frequency, arp_level,
-    music_section_level, drum_section_level, bass_section_level, duration
+    music_section_level, pad_section_level, lead_mix_level,
+    drum_section_level, bass_section_level, duration
 }

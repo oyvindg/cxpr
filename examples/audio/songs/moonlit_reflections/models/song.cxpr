@@ -1,0 +1,83 @@
+# Moonlit Reflections: original impressionist solo-piano miniature.
+model song(type = "dsp")
+
+use sequencer from arrangement
+use fortepiano, fortepiano_chord from instruments/classical
+use pan, reverb, master from effects
+use state_variable_filter from filters
+
+in t
+$sample_rate = 44100
+$bpm = 72
+
+seq = sequencer(t=t, bpm=$bpm)
+
+# Independent named maps turn each musical role into a small piano section.
+arpeggio_voices = map({
+    body = { ratio = 1.0, gain = 0.18 },
+    light = { ratio = 2.0, gain = 0.065 }
+}, voice => fortepiano(age=seq.arp_age,
+    frequency=voice.ratio * seq.arp_frequency, trigger=seq.arp_trigger,
+    sample_rate=$sample_rate, gain=voice.gain))
+melody_voices = map({
+    singing = { ratio = 1.0, gain = 0.22 },
+    halo = { ratio = 2.0, gain = 0.055 }
+}, voice => fortepiano(age=seq.melody_age,
+    frequency=voice.ratio * seq.melody_frequency, trigger=seq.melody_trigger,
+    sample_rate=$sample_rate, gain=voice.gain))
+inner_voices = map({
+    lower = { ratio = 0.5, gain = 0.075 },
+    middle = { ratio = 1.0, gain = 0.13 },
+    upper = { ratio = 2.0, gain = 0.040 }
+}, voice => fortepiano(age=seq.inner_age,
+    frequency=voice.ratio * seq.inner_frequency, trigger=seq.inner_trigger,
+    sample_rate=$sample_rate, gain=voice.gain))
+bass_voices = map({
+    foundation = { ratio = 1.0, gain = 0.21 },
+    resonance = { ratio = 2.0, gain = 0.070 }
+}, voice => fortepiano(age=seq.bass_age,
+    frequency=voice.ratio * seq.bass_frequency, trigger=seq.bass_trigger,
+    sample_rate=$sample_rate, gain=voice.gain))
+chord_voice = fortepiano_chord(age=seq.chord_age,
+    root_frequency=seq.chord_root_frequency,
+    third_frequency=seq.chord_third_frequency,
+    fifth_frequency=seq.chord_fifth_frequency,
+    trigger=seq.chord_trigger, sample_rate=$sample_rate, gain=0.12)
+
+arp_tone = state_variable_filter(source=seq.arp_level *
+    (arpeggio_voices.body + arpeggio_voices.light),
+    sample_rate=$sample_rate, cutoff=3100, resonance=0.08)
+melody_tone = state_variable_filter(source=seq.melody_level *
+    (melody_voices.singing + melody_voices.halo),
+    sample_rate=$sample_rate, cutoff=3600, resonance=0.07)
+inner_tone = state_variable_filter(source=seq.inner_level *
+    (inner_voices.lower + inner_voices.middle + inner_voices.upper),
+    sample_rate=$sample_rate, cutoff=2500, resonance=0.07)
+bass_tone = state_variable_filter(source=seq.bass_level *
+    (bass_voices.foundation + bass_voices.resonance),
+    sample_rate=$sample_rate, cutoff=1700, resonance=0.06)
+chord_tone = state_variable_filter(source=seq.chord_level * chord_voice.sample,
+    sample_rate=$sample_rate, cutoff=2800, resonance=0.08)
+
+arpeggio = pan(source=arp_tone.low, position=-0.13)
+melody = pan(source=melody_tone.low, position=0.20)
+inner = pan(source=inner_tone.low, position=0.04)
+bass = pan(source=bass_tone.low, position=-0.30)
+chord = pan(source=chord_tone.low, position=0.12)
+dry_left = arpeggio.left + melody.left + inner.left + bass.left + chord.left
+dry_right = arpeggio.right + melody.right + inner.right + bass.right + chord.right
+
+room = reverb(source_left=0.42 * dry_left, source_right=0.42 * dry_right,
+    sample_rate=$sample_rate, decay_seconds=3.8, damping=2600)
+finished = master(source_left=dry_left + 0.62 * room.left,
+    source_right=dry_right + 0.62 * room.right,
+    t=t, sample_rate=$sample_rate, gain=1.12, duration=seq.duration,
+    fade_seconds=3.8, fade_in_seconds=0.35, ceiling=0.90)
+
+left = finished.left
+right = finished.right
+duration = seq.duration
+
+out {
+    left, right, duration
+}

@@ -6,10 +6,10 @@ use fortepiano from instruments/classical
 in age, root_frequency, third_frequency, fifth_frequency, trigger
 $sample_rate = 44100
 $gain = 0.15
-root = fortepiano(age=age, frequency=root_frequency, trigger=trigger,
-    sample_rate=$sample_rate, gain=$gain)
-third = fortepiano(age=age, frequency=third_frequency, trigger=trigger,
-    sample_rate=$sample_rate, gain=0.90 * $gain)
-fifth = fortepiano(age=age, frequency=fifth_frequency, trigger=trigger,
-    sample_rate=$sample_rate, gain=0.82 * $gain)
-out sample = root + third + fifth
+voices = map({
+    root = { frequency = root_frequency, gain = $gain },
+    third = { frequency = third_frequency, gain = 0.90 * $gain },
+    fifth = { frequency = fifth_frequency, gain = 0.82 * $gain }
+}, voice => fortepiano(age=age, frequency=voice.frequency, trigger=trigger,
+    sample_rate=$sample_rate, gain=voice.gain))
+out sample = voices.root + voices.third + voices.fifth

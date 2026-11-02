@@ -34,7 +34,7 @@ voice_side_right = robot_voice(t=t, pitch=seq_sides.pitch,
 voice_pitch_left = robot_voice(t=t, pitch=0.82 * seq_pitch.pitch,
     gate=seq_pitch.gate, phoneme=seq_pitch.phoneme,
     motion=seq_pitch.motion, sample_rate=$sample_rate)
-voice_pitch_right = robot_voice(t=t, pitch=1.20 * seq_pitch.pitch,
+voice_pitch_right = robot_voice(t=t, pitch=1.02 * seq_pitch.pitch,
     gate=seq_pitch.gate, phoneme=seq_pitch.phoneme,
     motion=seq_pitch.motion, sample_rate=$sample_rate)
 
@@ -57,7 +57,7 @@ pitch_left_filter = state_variable_filter(source=voice_pitch_left,
     sample_rate=$sample_rate, cutoff=2400, resonance=0.18,
     smoothing_seconds=0.020)
 pitch_right_filter = state_variable_filter(source=voice_pitch_right,
-    sample_rate=$sample_rate, cutoff=3600, resonance=0.12,
+    sample_rate=$sample_rate, cutoff=2800, resonance=0.06,
     smoothing_seconds=0.020)
 
 voice_mix = 0.84 * bright_filter.low +
@@ -78,11 +78,11 @@ side_left = pan(source=0.56 * side_left_filter.low, position=-0.88)
 side_right = pan(source=0.56 * side_right_filter.low, position=0.88)
 pitch_round_time = t - 4 * repeat_spacing - 2.0
 dark_outer_position = 0.98 * sin(2 * pi() * 0.18 * pitch_round_time - pi() / 2)
-bright_inner_position = 0.26 * sin(2 * pi() * 0.32 * pitch_round_time)
+natural_inner_position = 0.26 * sin(2 * pi() * 0.32 * pitch_round_time)
 pitch_left = pan(source=0.54 * pitch_left_filter.low,
     position=dark_outer_position)
 pitch_right = pan(source=0.54 * pitch_right_filter.low,
-    position=bright_inner_position)
+    position=natural_inner_position)
 dry = {
     left = solo_dry.left + side_left.left + side_right.left +
         pitch_left.left + pitch_right.left,

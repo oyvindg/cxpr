@@ -1,0 +1,49 @@
+# Exact supplied notes performed by the register-aware concert grand.
+model song(type = "dsp")
+
+use sequencer from arrangement
+use grand_piano from instruments/classical
+use pan, reverb, master from effects
+use state_variable_filter from filters
+
+in t
+$sample_rate = 44100
+$bpm = 54
+
+seq = sequencer(t=t, bpm=$bpm)
+left_voices = map({
+    root = { frequency = seq.left_root_frequency, gain = 0.27 },
+    upper = { frequency = seq.left_upper_frequency, gain = 0.23 }
+}, voice => grand_piano(age=seq.left_age, frequency=voice.frequency,
+    trigger=seq.left_trigger, sample_rate=$sample_rate, gain=voice.gain,
+    delay_samples=floor($sample_rate / voice.frequency)))
+right_voice = grand_piano(age=seq.right_age, frequency=seq.right_frequency,
+    trigger=seq.right_trigger, sample_rate=$sample_rate, gain=0.29,
+    delay_samples=floor($sample_rate / seq.right_frequency))
+
+left_source = left_voices.root + seq.left_upper_level * left_voices.upper
+right_source = seq.right_level * right_voice.sample
+left_tone = state_variable_filter(source=left_source, sample_rate=$sample_rate,
+    cutoff=3200, resonance=0.025)
+right_tone = state_variable_filter(source=right_source, sample_rate=$sample_rate,
+    cutoff=4400, resonance=0.025)
+
+left_hand = pan(source=left_tone.low, position=-0.26)
+right_hand = pan(source=right_tone.low, position=0.18)
+dry_left = left_hand.left + right_hand.left
+dry_right = left_hand.right + right_hand.right
+
+hall = reverb(source_left=0.40 * dry_left, source_right=0.40 * dry_right,
+    sample_rate=$sample_rate, decay_seconds=4.8, damping=2750)
+finished = master(source_left=dry_left + 0.60 * hall.left,
+    source_right=dry_right + 0.60 * hall.right,
+    t=t, sample_rate=$sample_rate, gain=2.35, duration=seq.duration,
+    fade_seconds=4.2, fade_in_seconds=0.30, ceiling=0.90)
+
+left = finished.left
+right = finished.right
+duration = seq.duration
+
+out {
+    left, right, duration
+}

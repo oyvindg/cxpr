@@ -1,0 +1,62 @@
+# Exact user-supplied left- and right-hand note sequences on a triplet grid.
+model sequencer(type = "sequencer", lifecycle = "scoped")
+
+use lane from sequencing
+
+in t
+$bpm = 54
+
+fn hz(note) = 440 * pow(2, (note - 69) / 12)
+
+beat_seconds = 60 / $bpm
+pulse_seconds = beat_seconds / 3
+pulse = min(floor(max(0, t) / pulse_seconds), 31)
+
+# Left: D+A x4, C+A x4, Bb x2, G+Bb x2, A x3, F+A.
+left_step = min(floor(pulse / 2), 15)
+left_lane = lane(t=t, step=left_step, step_seconds=2 * pulse_seconds,
+    offset=0, enabled=true)
+left_trigger = left_lane.trigger
+left_age = left_lane.age
+left_root_note = left_step < 4 ? 38 : left_step < 8 ? 36 :
+    left_step < 10 ? 46 : left_step < 12 ? 43 :
+    left_step < 15 ? 45 : 41
+left_upper_note = left_step < 8 ? 45 : left_step < 10 ? 46 :
+    left_step < 12 ? 46 : left_step < 15 ? 45 : 45
+left_upper_level = left_step >= 8 and left_step < 10 ? 0 :
+    left_step >= 12 and left_step < 15 ? 0 : 1
+left_root_frequency = hz(left_root_note)
+left_upper_frequency = hz(left_upper_note)
+
+# Right: all 29 supplied notes, once each and in their original order.
+right_step = min(pulse, 28)
+right_enabled = pulse < 29
+right_lane = lane(t=t, step=right_step, step_seconds=pulse_seconds,
+    offset=0, enabled=right_enabled)
+right_trigger = right_lane.trigger
+right_age = right_lane.age
+right_note = right_step == 0 ? 62 : right_step == 1 ? 65 :
+    right_step == 2 ? 62 : right_step == 3 ? 65 :
+    right_step == 4 ? 62 : right_step == 5 ? 65 :
+    right_step == 6 ? 62 : right_step == 7 ? 65 :
+    right_step == 8 ? 62 : right_step == 9 ? 65 :
+    right_step == 10 ? 62 : right_step == 11 ? 65 :
+    right_step == 12 ? 62 : right_step == 13 ? 65 :
+    right_step == 14 ? 62 : right_step == 15 ? 65 :
+    right_step == 16 ? 63 : right_step == 17 ? 67 :
+    right_step == 18 ? 63 : right_step == 19 ? 67 :
+    right_step == 20 ? 61 : right_step == 21 ? 67 :
+    right_step == 22 ? 62 : right_step == 23 ? 65 :
+    right_step == 24 ? 62 : right_step == 25 ? 64 :
+    right_step == 26 ? 61 : right_step == 27 ? 64 : 62
+right_frequency = hz(right_note)
+right_level = right_note == 67 ? 0.78 : 1
+
+duration = 32 * pulse_seconds + 5.0
+
+out {
+    left_trigger, left_age, left_root_frequency, left_upper_frequency,
+    left_upper_level,
+    right_trigger, right_age, right_frequency, right_level,
+    duration
+}

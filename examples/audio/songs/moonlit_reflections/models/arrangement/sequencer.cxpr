@@ -1,0 +1,102 @@
+# Original impressionist piano miniature in a loose ternary arc.
+model sequencer(type = "sequencer", lifecycle = "scoped")
+
+use lane from sequencing
+
+in t
+$bpm = 72
+
+fn hz(note) = 440 * pow(2, (note - 69) / 12)
+fn root(bar) {
+    first = bar == 0 ? 50 : bar == 1 ? 45 : bar == 2 ? 48 : 43
+    second = bar == 4 ? 52 : bar == 5 ? 54 : bar == 6 ? 56 : 51
+    third = bar == 8 ? 50 : bar == 9 ? 57 : bar == 10 ? 55 : 52
+    fourth = bar == 12 ? 48 : bar == 13 ? 45 : bar == 14 ? 43 : 50
+    return bar < 4 ? first : bar < 8 ? second : bar < 12 ? third : fourth
+}
+beat_seconds = 60 / $bpm
+bar_seconds = 4 * beat_seconds
+beat = max(0, t) / beat_seconds
+bar = min(floor(beat / 4), 15)
+
+# Eight-note broken sonorities, with softer offbeats for a rubato-like contour.
+arp_step = min(floor(beat * 2), 127)
+arp_slot = arp_step % 8
+arp_bar = floor(arp_step / 8)
+arp_shade = arp_bar == 4 or arp_bar == 5 or arp_bar == 6 ? 2 :
+    arp_bar == 7 or arp_bar == 9 or arp_bar == 10 ? 1 : 0
+arp_interval = arp_slot == 0 ? 0 : arp_slot == 1 ? 7 : arp_slot == 2 ? 14 :
+    arp_slot == 3 ? (arp_shade == 2 ? 20 : arp_shade == 1 ? 18 : 16) :
+    arp_slot == 4 ? 21 : arp_slot == 5 ? (arp_shade == 2 ? 26 : 23) :
+    arp_slot == 6 ? (arp_shade == 1 ? 30 : 28) : 19
+arp_lane = lane(t=t, step=arp_step, step_seconds=beat_seconds / 2, offset=0, enabled=true)
+arp_trigger = arp_lane.trigger
+arp_age = arp_lane.age
+arp_frequency = hz(root(arp_bar) + arp_interval)
+arp_level = arp_slot == 0 ? 0.90 : arp_slot == 3 or arp_slot == 6 ? 0.72 : 0.56
+
+# The melody breathes in quarter notes and withdraws briefly before the return.
+melody_step = min(floor(beat), 63)
+melody_slot = melody_step % 4
+melody_bar = floor(melody_step / 4)
+melody_enabled = not (melody_bar == 3 or melody_bar == 7 or melody_bar == 11)
+melody_lane = lane(t=t, step=melody_step, step_seconds=beat_seconds, offset=0,
+    enabled=melody_enabled)
+melody_trigger = melody_lane.trigger
+melody_age = melody_lane.age
+melody_anchor = melody_bar < 4 ? 74 : melody_bar < 8 ? 78 : melody_bar < 12 ? 81 : 76
+melody_shape = melody_slot == 0 ? 0 : melody_slot == 1 ? (melody_bar % 2 == 0 ? 5 : 3) :
+    melody_slot == 2 ? (melody_bar >= 4 and melody_bar < 8 ? 8 : 7) :
+    (melody_bar >= 8 and melody_bar < 12 ? 2 : -2)
+melody_interval = melody_bar == 15 ? (melody_slot == 0 ? 2 : melody_slot == 1 ? 0 :
+    melody_slot == 2 ? -5 : -2) : melody_shape
+melody_frequency = hz(melody_anchor + melody_interval)
+melody_level = melody_enabled ? (melody_slot == 0 ? 0.90 : melody_slot == 2 ? 0.76 : 0.62) : 0
+
+# A slower inner line answers the melody and fills the middle register.
+inner_step = min(floor(beat * 2), 127)
+inner_slot = inner_step % 8
+inner_bar = floor(inner_step / 8)
+inner_enabled = inner_slot == 1 or inner_slot == 4 or inner_slot == 6
+inner_lane = lane(t=t, step=inner_step, step_seconds=beat_seconds / 2, offset=0,
+    enabled=inner_enabled)
+inner_trigger = inner_lane.trigger
+inner_age = inner_lane.age
+inner_interval = inner_slot == 1 ? 12 : inner_slot == 4 ?
+    (inner_bar % 2 == 0 ? 16 : 15) : 19
+inner_frequency = hz(root(inner_bar) + inner_interval)
+inner_level = inner_enabled ? (inner_slot == 4 ? 0.54 : 0.42) : 0
+
+# One low pedal per bar anchors the otherwise ambiguous harmony.
+bass_step = min(floor(beat / 4), 15)
+bass_lane = lane(t=t, step=bass_step, step_seconds=bar_seconds, offset=0, enabled=true)
+bass_trigger = bass_lane.trigger
+bass_age = bass_lane.age
+bass_frequency = hz(root(bass_step) - 12)
+bass_level = bass_step == 7 or bass_step == 11 ? 0.58 : 0.74
+
+# Sparse upper chord blooms mark phrase boundaries.
+chord_step = min(floor(beat / 4), 15)
+chord_enabled = chord_step == 0 or chord_step == 4 or chord_step == 8 or
+    chord_step == 12 or chord_step == 15
+chord_lane = lane(t=t, step=chord_step, step_seconds=bar_seconds, offset=0,
+    enabled=chord_enabled)
+chord_trigger = chord_lane.trigger
+chord_age = chord_lane.age
+chord_root_frequency = hz(root(chord_step) + 12)
+chord_shade = chord_step == 4 or chord_step == 5 or chord_step == 6 ? 2 :
+    chord_step == 7 or chord_step == 9 or chord_step == 10 ? 1 : 0
+chord_third_frequency = hz(root(chord_step) + (chord_shade == 2 ? 18 : 16))
+chord_fifth_frequency = hz(root(chord_step) + 21)
+chord_level = chord_enabled ? (chord_step == 15 ? 0.72 : 0.52) : 0
+
+duration = 16 * bar_seconds + 5.5
+
+out {
+    arp_trigger, arp_age, arp_frequency, arp_level,
+    melody_trigger, melody_age, melody_frequency, melody_level,
+    inner_trigger, inner_age, inner_frequency, inner_level,
+    bass_trigger, bass_age, bass_frequency, bass_level,
+    chord_trigger, chord_age, chord_root_frequency, chord_third_frequency,
+    chord_fifth_frequency, chord_level, duration
+}

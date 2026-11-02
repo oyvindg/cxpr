@@ -1,0 +1,133 @@
+# Concert grand built from fractional digital waveguides and a coupled board.
+model grand_piano(lifecycle = "scoped")
+
+in age, frequency, trigger
+$sample_rate = 44100
+$gain = 0.20
+in $delay_samples: int = 100 { min = 2, max = 1603 }
+
+# A0 needs about 1604 samples at 44.1 kHz. Each scoped instance owns three
+# strings so bass unichords, tenor bichords and treble trichords share one API.
+state string_one: buffer<number, samples = 1605>
+state string_two: buffer<number, samples = 1605>
+state string_three: buffer<number, samples = 1605>
+state previous_one = 0
+state previous_two = 0
+state previous_three = 0
+state board_low = 0
+state board_mid = 0
+state board_high = 0
+
+physical_frequency = clamp(frequency, 27.5, 4186.01)
+key = clamp(69 + 12 * log(physical_frequency / 440) / log(2), 21, 108)
+register = (key - 21) / 87
+note_age = trigger > 0 ? 0 : max(0, age)
+
+# Railsback-style stretch is realized as unequal string lengths. Detuning grows
+# gently toward the short treble strings, while the wrapped bass stays stable.
+bass_stretch_cents = -1.8 * pow(1 - register, 3)
+treble_stretch_cents = 2.6 * pow(register, 4)
+stretch_ratio = pow(2, (bass_stretch_cents + treble_stretch_cents) / 1200)
+detune_cents = 0.35 + 1.55 * register
+ratio_one = stretch_ratio * pow(2, -detune_cents / 1200)
+ratio_two = stretch_ratio
+ratio_three = stretch_ratio * pow(2, detune_cents / 1200)
+
+# Fractional delay interpolation keeps every key in tune instead of rounding
+# the string length to a whole sample.
+delay_one = clamp($sample_rate / (physical_frequency * ratio_one), 2, 1604)
+delay_two = clamp($sample_rate / (physical_frequency * ratio_two), 2, 1604)
+delay_three = clamp($sample_rate / (physical_frequency * ratio_three), 2, 1604)
+index_before = 1.0 * $delay_samples - 2
+index_center = 1.0 * $delay_samples - 1
+index_after = 1.0 * $delay_samples
+raw_one_before = string_one[index_before]
+raw_one_center = string_one[index_center]
+raw_one_after = string_one[index_after]
+raw_two_before = string_two[index_before]
+raw_two_center = string_two[index_center]
+raw_two_after = string_two[index_after]
+raw_three_before = string_three[index_before]
+raw_three_center = string_three[index_center]
+raw_three_after = string_three[index_after]
+one_before = isnan(raw_one_before) ? 0 : raw_one_before
+one_center = isnan(raw_one_center) ? 0 : raw_one_center
+one_after = isnan(raw_one_after) ? 0 : raw_one_after
+two_before = isnan(raw_two_before) ? 0 : raw_two_before
+two_center = isnan(raw_two_center) ? 0 : raw_two_center
+two_after = isnan(raw_two_after) ? 0 : raw_two_after
+three_before = isnan(raw_three_before) ? 0 : raw_three_before
+three_center = isnan(raw_three_center) ? 0 : raw_three_center
+three_after = isnan(raw_three_after) ? 0 : raw_three_after
+position_one = clamp(delay_one - $delay_samples, -1, 1)
+position_two = clamp(delay_two - $delay_samples, -1, 1)
+position_three = clamp(delay_three - $delay_samples, -1, 1)
+tap_one = position_one < 0 ?
+    (1 + position_one) * one_center - position_one * one_before :
+    (1 - position_one) * one_center + position_one * one_after
+tap_two = position_two < 0 ?
+    (1 + position_two) * two_center - position_two * two_before :
+    (1 - position_two) * two_center + position_two * two_after
+tap_three = position_three < 0 ?
+    (1 + position_three) * three_center - position_three * three_before :
+    (1 - position_three) * three_center + position_three * three_after
+
+# A soft felt contact excites a mostly tonal pulse. A small deterministic noise
+# component retains hammer definition without turning the attack into hiss.
+contact_seconds = 0.00210 - 0.00085 * register
+contact_position = note_age / max(0.0002, contact_seconds)
+contact_envelope = note_age < 4 * contact_seconds ?
+    (1 - exp(-18 * contact_position)) * exp(-1.35 * contact_position) : 0
+hammer_noise = 0.72 * sin(2 * pi() * 1250 * note_age + 0.31 * key) +
+    0.20 * sin(2 * pi() * 2380 * note_age + 0.17 * key) +
+    0.08 * sin(2 * pi() * 3910 * note_age + 0.07 * key)
+hammer_tone = sin(2 * pi() * physical_frequency * note_age)
+hammer_hardness = 0.08 + 0.14 * register
+excitation = 1.30 * contact_envelope *
+    ((1 - hammer_hardness) * hammer_tone + hammer_hardness * hammer_noise)
+
+# The loop loss filter models bridge, felt and air losses. Bass loops retain
+# energy for many seconds; short treble strings lose it much faster.
+damping_mix = 0.28 + 0.16 * register
+filtered_one = damping_mix * tap_one + (1 - damping_mix) * previous_one
+filtered_two = damping_mix * tap_two + (1 - damping_mix) * previous_two
+filtered_three = damping_mix * tap_three + (1 - damping_mix) * previous_three
+loop_gain = 0.99935 - 0.0068 * register - 0.0105 * pow(register, 3)
+active_feedback = trigger > 0 ? 0 : loop_gain
+string_one := excitation + active_feedback * filtered_one
+string_two := excitation + active_feedback * filtered_two
+string_three := excitation + active_feedback * filtered_three
+previous_one := tap_one
+previous_two := tap_two
+previous_three := tap_three
+
+# Real grands transition from one wound bass string to two strings and then
+# three. Slightly unequal weights avoid an unnaturally static chorus.
+unichord = tap_two
+bichord = 0.53 * tap_one + 0.47 * tap_three
+trichord = 0.27 * tap_one + 0.46 * tap_two + 0.27 * tap_three
+strings = key < 33 ? unichord : key < 48 ? bichord : trichord
+
+# Three bridge-coupled board bands provide body, attack radiation and a small
+# duplex-like high resonance without adding separately played pitches.
+low_cutoff = 175 + 240 * register
+mid_cutoff = 760 + 760 * register
+high_cutoff = 2600 + 2400 * register
+low_coefficient = 1 - exp(-2 * pi() * low_cutoff / $sample_rate)
+mid_coefficient = 1 - exp(-2 * pi() * mid_cutoff / $sample_rate)
+high_coefficient = 1 - exp(-2 * pi() * high_cutoff / $sample_rate)
+next_low = board_low + low_coefficient * (strings - board_low)
+next_mid = board_mid + mid_coefficient * (strings - board_mid)
+next_high = board_high + high_coefficient * (strings - board_high)
+board_low := next_low
+board_mid := next_mid
+board_high := next_high
+low_weight = 0.56 - 0.20 * register
+high_weight = 0.08 + 0.10 * register
+mid_weight = 1 - low_weight - high_weight
+soundboard = low_weight * next_low + mid_weight * next_mid +
+    high_weight * next_high
+direct_hammer = 0.035 * contact_envelope * hammer_noise
+bridge_radiation = 0.10 * strings + 1.15 * soundboard
+
+out sample = $gain * tanh(5.20 * (bridge_radiation + direct_hammer))

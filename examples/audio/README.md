@@ -30,8 +30,13 @@ Shared modules:
 - `effects/saturation`: normalized soft clipping;
 - `sequencing/lane`: reusable trigger/age state for song arrangements.
 - `filters/track_eq`: cascaded high-pass slopes and parametric bell EQ.
-- `instruments/classical`, `instruments/drum`, `instruments/native`, and
-  `instruments/retrowave`: reusable voice families independent of songs.
+- `instruments/classical`, including fortepiano and a register-aware modern
+  concert grand covering A0-C8 with fractional string waveguides, hammer
+  contact, register-dependent string choirs and a coupled soundboard,
+  plus `instruments/drum`, `instruments/native`, and `instruments/retrowave`:
+  reusable voice families independent of songs.
+- Named `map` records preserve voice names while allocating independent scoped
+  state, as demonstrated by `instruments/classical/fortepiano_chord`.
 - `instruments/lead`: reusable melodic voices, including the dual-oscillator
   `pulse_saw_lead`.
 - `instruments/voice`: source-free vocal synthesis, including the three-formant

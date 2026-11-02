@@ -23,9 +23,9 @@ brightness = lfo(rate=0.07, sample_rate=$sample_rate)
 vibrato = lfo(rate=5.3, sample_rate=$sample_rate)
 pad_cutoff = 1050 + 700 * brightness.unipolar
 
-# Four statically bounded groups instantiate one independent pad per bank. The
-# compiler derives chord_N identities from each explicit group label.
-chord_one = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_one(
+# Four statically bounded groups create one independent pad instance per bank. The
+# compiler derives independent identities from the owning binding and index.
+chord_one = 0.40 * reduce(map([0, 1], bank => pad(
     age=bank == 0 ? seq.a_age : seq.b_age,
     frequency=bank == 0 ? seq.a_one : seq.b_one,
     trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
@@ -34,7 +34,7 @@ chord_one = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_one(
     release=bank == 0 ? seq.a_release : seq.b_release,
     cutoff=pad_cutoff).sample), 0,
     step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
-chord_two = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_two(
+chord_two = 0.40 * reduce(map([0, 1], bank => pad(
     age=bank == 0 ? seq.a_age : seq.b_age,
     frequency=bank == 0 ? seq.a_two : seq.b_two,
     trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
@@ -43,7 +43,7 @@ chord_two = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_two(
     release=bank == 0 ? seq.a_release : seq.b_release,
     cutoff=pad_cutoff).sample), 0,
     step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
-chord_three = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_three(
+chord_three = 0.40 * reduce(map([0, 1], bank => pad(
     age=bank == 0 ? seq.a_age : seq.b_age,
     frequency=bank == 0 ? seq.a_three : seq.b_three,
     trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
@@ -52,7 +52,7 @@ chord_three = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_three(
     release=bank == 0 ? seq.a_release : seq.b_release,
     cutoff=pad_cutoff).sample), 0,
     step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
-chord_four = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_four(
+chord_four = 0.40 * reduce(map([0, 1], bank => pad(
     age=bank == 0 ? seq.a_age : seq.b_age,
     frequency=bank == 0 ? seq.a_four : seq.b_four,
     trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,

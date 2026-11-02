@@ -45,33 +45,50 @@ snare_tone = state_variable_filter(source=snare.sample,
                                    resonance=0.08, smoothing_seconds=0.002)
 snare_soft = 0.78 * snare_tone.low
 # The raw metallic noise is intentionally bright; a dedicated low-pass removes
-# digital fizz without changing the hat pattern or its short transient.
-hat_tone = state_variable_filter(source=seq.hat_level * drum.hat,
+# digital fizz while preserving the sequencer's accents and open-hat lifts.
+hat_source = seq.hat_level * drum.hat + seq.open_hat_level * drum.open_hat
+hat_tone = state_variable_filter(source=hat_source,
                                  sample_rate=$sample_rate, cutoff=9000,
                                  resonance=0.05, smoothing_seconds=0.002)
 hat_raw = hat_tone.low
 transition_tom = tom(age=seq.transition_main_age,
                      frequency=seq.transition_frequency,
                      trigger=seq.transition_main_trigger, sample_rate=$sample_rate,
-                     gain=0.55, attack=0.006)
+                     gain=0.62, attack=0.0025)
 transition_tone = track_eq(source=transition_tom.sample,
                            sample_rate=$sample_rate, high_pass_hz=75,
                            high_pass_stages=2, bell_hz=180,
-                           bell_gain_db=-2.5, bell_q=1.2)
-transition_stereo = pan(source=transition_tone.sample,
+                           bell_gain_db=1.5, bell_q=1.1)
+# The bridge transition is narrowed around the tom body so it remains clear
+# against the sustained synth bed without adding ambience or extra hits.
+transition_focus = state_variable_filter(
+    source=transition_tone.sample, sample_rate=$sample_rate,
+    cutoff=seq.transition_bridge ? 760 : 2400,
+    resonance=seq.transition_bridge ? 0.24 : 0.06,
+    smoothing_seconds=0.004)
+transition_focused = transition_focus.low +
+    (seq.transition_bridge ? 0.18 : 0.06) * transition_focus.band
+transition_stereo = pan(source=transition_focused,
                         position=seq.transition_pan)
 # A second, lower shell mirrors the main fill from the opposite side. Separate
 # scoped calls preserve independent resonant tails even on simultaneous hits.
 transition_low_tom = tom(age=seq.transition_low_age,
                          frequency=seq.transition_low_frequency,
                          trigger=seq.transition_low_trigger,
-                         sample_rate=$sample_rate, gain=0.42, attack=0.006)
+                         sample_rate=$sample_rate, gain=0.50, attack=0.0025)
 transition_low_tone = track_eq(
-    source=0.68 * transition_low_tom.sample,
+    source=0.78 * transition_low_tom.sample,
     sample_rate=$sample_rate, high_pass_hz=65, high_pass_stages=2,
-    bell_hz=140, bell_gain_db=-3, bell_q=1.3)
+    bell_hz=145, bell_gain_db=1, bell_q=1.2)
+transition_low_focus = state_variable_filter(
+    source=transition_low_tone.sample, sample_rate=$sample_rate,
+    cutoff=seq.transition_bridge ? 620 : 2100,
+    resonance=seq.transition_bridge ? 0.22 : 0.05,
+    smoothing_seconds=0.004)
+transition_low_focused = transition_low_focus.low +
+    (seq.transition_bridge ? 0.16 : 0.05) * transition_low_focus.band
 transition_low_stereo = pan(
-    source=transition_low_tone.sample,
+    source=transition_low_focused,
     position=seq.transition_low_pan)
 
 bass_voice = stacked_bass(age=seq.bass_age, frequency=seq.bass_frequency,
@@ -168,8 +185,8 @@ background_voice = pulse_saw_lead(
     pulse_mix=0.36, drive=1.10, pwm_lfo_hz=4.4, pwm_depth=0.08,
     phase_reset=0)
 background_pan = pan(
-    source=0.18 * seq.background_level * background_voice.sample,
-    position=0.72 * sin(2 * pi() * 0.065 * t))
+    source=0.24 * seq.background_level * background_voice.sample,
+    position=0.52 * sin(2 * pi() * 0.065 * t))
 
 # The sectioned arp is deliberately lean: high-pass removes bass overlap,
 # kick ducking preserves the groove, and its slow pan sits outside the lead.
@@ -210,12 +227,12 @@ lead_room = reverb(source_left=0.35 * lead_left,
 # The shared music room glues pads and leads together. Rhythm ambience stays on
 # dedicated snare/hall buses so diagnostic gain controls isolate cleanly.
 room = reverb(
-    source_left=$pad_gain * 0.52 * pad_left +
-        $lead_gain * 0.04 * lead_left +
-        $background_gain * 0.48 * background_pan.left,
-    source_right=$pad_gain * 0.52 * pad_right +
-        $lead_gain * 0.04 * lead_right +
-        $background_gain * 0.48 * background_pan.right,
+    source_left=$pad_gain * seq.pad_section_level * 0.52 * pad_left +
+        $lead_gain * seq.lead_mix_level * 0.04 * lead_left +
+        $background_gain * 0.28 * background_pan.left,
+    source_right=$pad_gain * seq.pad_section_level * 0.52 * pad_right +
+        $lead_gain * seq.lead_mix_level * 0.04 * lead_right +
+        $background_gain * 0.28 * background_pan.right,
     sample_rate=$sample_rate, feedback=0.88, damping=2400)
 
 drum_center = 0.7071067811865476 *
@@ -224,27 +241,33 @@ bass_center = 0.7071067811865476 * 1.05 * bass_ducked.sample
 # Separate buses support rhythm-only and music-only renders without changing
 # sequencing or DSP topology. Both gains default to unity for the final mix.
 percussion_left = drum_center + 0.66 * hat_stereo.left + 0.74 * hall.left +
-    0.72 * transition_stereo.left + 0.46 * transition_low_stereo.left +
+    (seq.transition_bridge ? 0.96 : 0.84) * transition_stereo.left +
+    (seq.transition_bridge ? 0.74 : 0.66) * transition_low_stereo.left +
     0.65 * snare_room.left
 percussion_right = drum_center + 0.66 * hat_stereo.right + 0.74 * hall.right +
-    0.72 * transition_stereo.right + 0.46 * transition_low_stereo.right +
+    (seq.transition_bridge ? 0.96 : 0.84) * transition_stereo.right +
+    (seq.transition_bridge ? 0.74 : 0.66) * transition_low_stereo.right +
     0.65 * snare_room.right
 rhythm_left = $drum_gain * seq.drum_section_level * percussion_left +
     $bass_gain * seq.bass_section_level * bass_center
 rhythm_right = $drum_gain * seq.drum_section_level * percussion_right +
     $bass_gain * seq.bass_section_level * bass_center
 music_left = seq.music_section_level *
-    ($pad_gain * (0.42 * pad_left + 0.06 * shadow_pad_left +
+    ($pad_gain * seq.pad_section_level *
+        (0.42 * pad_left + 0.06 * shadow_pad_left +
         0.90 * shadow_pad_room.left) +
-    $lead_gain * (0.38 * lead_left + 0.46 * lead_room.left) +
+    $lead_gain * seq.lead_mix_level *
+        (0.38 * lead_left + 0.46 * lead_room.left) +
     $arp_gain * (0.22 * arp_stereo.left + 0.68 * arp_room.left) +
-    $background_gain * 0.16 * background_pan.left + 0.92 * room.left)
+    $background_gain * 0.34 * background_pan.left + 0.92 * room.left)
 music_right = seq.music_section_level *
-    ($pad_gain * (0.42 * pad_right + 0.06 * shadow_pad_right +
+    ($pad_gain * seq.pad_section_level *
+        (0.42 * pad_right + 0.06 * shadow_pad_right +
         0.90 * shadow_pad_room.right) +
-    $lead_gain * (0.38 * lead_right + 0.46 * lead_room.right) +
+    $lead_gain * seq.lead_mix_level *
+        (0.38 * lead_right + 0.46 * lead_room.right) +
     $arp_gain * (0.22 * arp_stereo.right + 0.68 * arp_room.right) +
-    $background_gain * 0.16 * background_pan.right + 0.92 * room.right)
+    $background_gain * 0.34 * background_pan.right + 0.92 * room.right)
 left_mix = $rhythm_gain * rhythm_left + $music_gain * music_left
 right_mix = $rhythm_gain * rhythm_right + $music_gain * music_right
 

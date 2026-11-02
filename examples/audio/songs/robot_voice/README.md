@@ -12,8 +12,8 @@ pass, equal-power panning traces a left/right orbit while inverse dry level and
 reverb send create a headphone-oriented front/back pseudo-surround movement.
 The fourth round places two independently rendered voices on opposite sides at
 the same pitch. In the fifth, the dark 0.82x voice travels from the far left to
-the far right while the bright 1.20x voice moves simultaneously in a narrow
-field around the center.
+the far right while a smoother, near-natural 1.02x voice moves simultaneously
+in a narrow field around the center.
 
 Render from `libs/cxpr`:
 
