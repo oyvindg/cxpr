@@ -1602,12 +1602,23 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
     cxpr_error err = {0};
     bench_model_source source = load_bench_model(c->fixture);
     const cxpr_expr_ast* ast = source.result;
-    cxpr_expr_compiled* program;
+    cxpr_expr_compiled* program = NULL;
+    const size_t compile_iterations =
+        (strncmp(c->name, "static_any_", 11u) == 0 ||
+         strncmp(c->name, "static_all_", 11u) == 0) ? 1000u : 1u;
 
     (void)parser;
 
     compile_start = now_ns();
-    program = cxpr_expr_compile(ast, reg, &err);
+    for (size_t i = 0u; i < compile_iterations; ++i) {
+        cxpr_expr_compiled* compiled = cxpr_expr_compile(ast, reg, &err);
+        if (!compiled) {
+            program = NULL;
+            break;
+        }
+        cxpr_expr_compiled_free(program);
+        program = compiled;
+    }
     compile_end = now_ns();
     if (!program) {
         fprintf(stderr, "Compile failed for '%s': %s\n", c->name, err.message);
@@ -1715,7 +1726,8 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
                ir_ns / c_ns);
     }
 
-    print_ir_metadata(program, compile_end - compile_start);
+    print_ir_metadata(program,
+                      (compile_end - compile_start) / (long long)compile_iterations);
     cxpr_expr_compiled_free(program);
     free_bench_model(&source);
 }

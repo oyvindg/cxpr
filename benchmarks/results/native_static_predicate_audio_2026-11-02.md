@@ -60,3 +60,13 @@ Median compile time also improved in every case: 18.997 -> 16.133 us,
 18.997 -> 15.853 us, 17.880 -> 16.064 us, and 18.229 -> 15.715 us,
 respectively. All cases retained zero AST fallbacks. The complete dual-voice
 robot render remained byte-identical after the compiler change.
+
+The isolated cases now average 1,000 compile/free cycles when reporting
+`compile_ns`; runtime evaluation counts remain unchanged. This replaces the
+noisier single-compilation timing while keeping the historical baseline above
+for the accepted branch-fusion change.
+
+Two follow-up candidates were measured and rejected: executor-side
+compare/jump fusion made full scans about 4% slower, and pre-counting selector
+leaves for one exact jump-list allocation increased compile time in three of
+four cases. Neither candidate is part of the retained implementation.
