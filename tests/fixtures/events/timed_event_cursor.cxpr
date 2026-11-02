@@ -1,0 +1,36 @@
+# Target fixture for generic, statically bounded ordered data. The missing
+# capabilities are upper_bound() and dynamic static-record-array indexing.
+model timed_event_cursor(type = "event_fixture", lifecycle = "scoped")
+
+in position
+
+state previous_cursor = -1
+
+e0 = { at = 0.0, value = 37, weight = 0.92, channel = 0 }
+e1 = { at = 0.5, value = 56, weight = 0.68, channel = 1 }
+e2 = { at = 1.5, value = 61, weight = 0.58, channel = 1 }
+e3 = { at = 2.5, value = 64, weight = 0.64, channel = 1 }
+e4 = { at = 3.5, value = 49, weight = 0.76, channel = 0 }
+e5 = { at = 4.5, value = 56, weight = 0.68, channel = 1 }
+e6 = { at = 5.5, value = 61, weight = 0.58, channel = 1 }
+e7 = { at = 6.5, value = 64, weight = 0.64, channel = 1 }
+events = [e0, e1, e2, e3, e4, e5, e6, e7]
+
+cursor = upper_bound(events, position, event => event.at) - 1
+enabled = cursor >= 0 and cursor < 8
+current = events[clamp(cursor, 0, 7)]
+trigger = enabled and cursor != previous_cursor ? 1 : 0
+age = enabled ? max(0, position - current.at) : 0
+
+previous_cursor := enabled ? cursor : previous_cursor
+
+out {
+    cursor,
+    event_position = current.at,
+    value = current.value,
+    weight = current.weight,
+    channel = current.channel,
+    enabled,
+    trigger,
+    age
+}
