@@ -25,8 +25,11 @@ function findCodegen() {
   const configured = process.env.CXPR_MODEL_CODEGEN
   const candidates = [
     configured,
-    resolve(cxprRoot, "..", "..", "build", "libs", "cxpr", "cxpr_model_codegen"),
-    join(cxprRoot, "build", "cxpr_model_codegen")
+    // Prefer the standalone CXPR build because it is guaranteed to match the
+    // source tree containing this renderer. The parent Dynasty build may lag
+    // behind while CXPR is developed as a submodule.
+    join(cxprRoot, "build", "cxpr_model_codegen"),
+    resolve(cxprRoot, "..", "..", "build", "libs", "cxpr", "cxpr_model_codegen")
   ]
   const codegen = candidates.find((candidate) => candidate && existsSync(candidate))
   if (!codegen) {
