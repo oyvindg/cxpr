@@ -12,6 +12,11 @@ and final master limiting. The dry voice stays centered while the wet signal
 moves across the stereo field. The result is intentionally a musical robot
 impression rather than a general text-to-speech engine.
 
+The ALIVE word also exercises CXPR's generic bounded collection lowering. Its
+four phoneme records are reduced with compile-time `max` expressions for the
+active phoneme ID and local phase. Generated C therefore contains a fixed
+expression tree with no audio-specific primitive, runtime loop, or allocation.
+
 Source layout:
 
 - `models/arrangement/sequencer.cxpr` defines words as phoneme IDs, timing and pitch;

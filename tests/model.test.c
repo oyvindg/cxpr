@@ -4037,7 +4037,11 @@ static void test_function_record_return_compiles_with_field_access(void) {
         "wide = top - bottom\n"
         "middle = center.value\n"
         "mixed = sum([bands(close), bands(close + 1)], x => x.upper)\n"
-        "out { top, bottom, wide, middle, mixed }\n");
+        "highest = max([top, bottom, wide, middle, mixed, top, bottom, wide, "
+        "middle, mixed, top, bottom, wide, middle, mixed, top, bottom])\n"
+        "lowest = min([bands(close), bands(close + 1)], x => x.lower)\n"
+        "average = mean([bands(close), bands(close + 2)], x => x.upper)\n"
+        "out { top, bottom, wide, middle, mixed, highest, lowest, average }\n");
     cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
     cxpr_context* ctx = cxpr_context_new();
 
@@ -4054,6 +4058,9 @@ static void test_function_record_return_compiles_with_field_access(void) {
     assert(cxpr_context_get(ctx, "wide", &found) == 2.0 && found);
     assert(cxpr_context_get(ctx, "middle", &found) == 10.0 && found);
     assert(cxpr_context_get(ctx, "mixed", &found) == 23.0 && found);
+    assert(cxpr_context_get(ctx, "highest", &found) == 23.0 && found);
+    assert(cxpr_context_get(ctx, "lowest", &found) == 9.0 && found);
+    assert(cxpr_context_get(ctx, "average", &found) == 12.0 && found);
 
     code = cxpr_model_compiled_generate_c(
         program, "static inline", "record_fn_tick", &err);
