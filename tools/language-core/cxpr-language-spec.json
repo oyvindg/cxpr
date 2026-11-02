@@ -11,7 +11,7 @@
     "true", "false", "null", "assert", "optimize"
   ],
   "typeNames": ["bool", "buffer", "int", "number", "series"],
-  "operatorTokens": ["<=", ">=", "==", "!=", "&&", "||", "|>", "**"],
+  "operatorTokens": ["=>", "<=", ">=", "==", "!=", "&&", "||", "|>", "**"],
   "punctuationChars": [".", ",", "(", ")", "[", "]", "{", "}"],
   "singleCharOperators": ["+", "-", "*", "/", "%", "^", "<", ">", "=", "!", "?", ":"]
 }

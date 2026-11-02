@@ -65,6 +65,13 @@ test("isolated VSIX serves diagnostics, completion, hover and definition through
   const source = "model smoke\nin close\nout x = sqrt(close)\n";
 
   assert.deepEqual(await service.getDiagnostics(source, "smoke.cxpr"), []);
+  const selectorSource = `model selector
+fn voice(level) { return { phoneme = level } }
+phoneme = sum([voice(1), voice(2)], x => x.phoneme)
+motion = sum([voice(1), voice(2)], (x) => x.phoneme)
+out { phoneme, motion }
+`;
+  assert.deepEqual(await service.getDiagnostics(selectorSource, "selector.cxpr"), []);
   assert.ok((await service.getCompletions(source, { line: 2, column: 10 }, "smoke.cxpr"))
     .some((item) => item.label === "sqrt"));
   assert.match((await service.getHover(source, { line: 2, column: 10 }, "smoke.cxpr")).markdown,

@@ -37,7 +37,7 @@
       "scope": "constant.numeric.cxpr"
     },
     "operator": {
-      "pattern": "<=|>=|==|!=|&&|\\|\\||\\|>|\\*\\*|[-+*/%^<>=!?:]",
+      "pattern": "=>|<=|>=|==|!=|&&|\\|\\||\\|>|\\*\\*|[-+*/%^<>=!?:]",
       "scope": "keyword.operator.cxpr"
     },
     "punctuation": {
@@ -344,7 +344,7 @@
     },
     {
       "name": "keyword.operator.cxpr",
-      "match": "<=|>=|==|!=|&&|\\|\\||\\|>|\\*\\*|[-+*/%^<>=!?:]"
+      "match": "=>|<=|>=|==|!=|&&|\\|\\||\\|>|\\*\\*|[-+*/%^<>=!?:]"
     },
     {
       "name": "punctuation.cxpr",

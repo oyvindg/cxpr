@@ -23,7 +23,7 @@ const CXPR_GRAMMAR = Object.freeze({
     function: "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()",
     property: "\\.[A-Za-z_][A-Za-z0-9_]*",
     number: "(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?(?:i64)?",
-    operator: "<=|>=|==|!=|&&|\\|\\||\\|>|\\*\\*|[-+*/%^<>=!?:]",
+    operator: "=>|<=|>=|==|!=|&&|\\|\\||\\|>|\\*\\*|[-+*/%^<>=!?:]",
     punctuation: "[.,]",
     brackets: "[{}\\[\\]()]",
     importDirect: "\\b(use)(\\s+)([A-Za-z0-9_./-]*\\/[A-Za-z0-9_./-]+)",
