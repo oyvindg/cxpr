@@ -41,16 +41,16 @@ alive_l = phoneme_segment((speech_time + 0.13), 2.67, 2.79, 3)
 alive_ay = phoneme_segment((speech_time + 0.13), 2.79, 3.05, 10)
 alive_v = phoneme_segment((speech_time + 0.13), 3.05, 3.23, 21)
 
-# Bounded max reductions select the active member of the four-segment ALIVE
-# group. Other words keep the selector sum that scales well for the full list.
-alive_phoneme = max([alive_ah, alive_l, alive_ay, alive_v], x => x.phoneme)
-alive_motion = max([alive_ah, alive_l, alive_ay, alive_v], x => x.motion)
+# Segments are non-overlapping, so the mapped reductions select the one active
+# phoneme and its local phase without parallel ternary or addition chains.
 phoneme = sum([hello_h, hello_eh, hello_l, hello_ow,
     human_h, human_y, human_uw, human_m, human_ah, human_n,
-    i_ay, am_ae, am_m], x => x.phoneme) + alive_phoneme
+    i_ay, am_ae, am_m, alive_ah, alive_l, alive_ay, alive_v],
+    x => x.phoneme)
 motion = sum([hello_h, hello_eh, hello_l, hello_ow,
     human_h, human_y, human_uw, human_m, human_ah, human_n,
-    i_ay, am_ae, am_m], x => x.motion) + alive_motion
+    i_ay, am_ae, am_m, alive_ah, alive_l, alive_ay, alive_v],
+    (x) => x.motion)
 
 speaking = phoneme != 0
 # Twelve percent of every segment crossfades its edges. A low floor preserves

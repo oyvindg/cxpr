@@ -19,7 +19,15 @@ cc -std=c11 -O1 -I include -I "$bench_dir" \
   examples/audio/renderer/render_native.c -lm -o "$bench_dir/renderer"
 ```
 
-## Results
+## Superseded comparison
+
+The original comparison below was collected while `robot_voice` also changed
+from one full-list selector `sum` to a split `sum` plus `max`. It therefore does
+not isolate the compiler representation change and must not be used as proof of
+an improvement. The audio topology was restored after an audible regression
+was reported.
+
+## Original results (not directly comparable)
 
 | Metric | Before: parser lowering | After: native representation | Change |
 |---|---:|---:|---:|
@@ -30,7 +38,9 @@ cc -std=c11 -O1 -I include -I "$bench_dir" \
 | Generated C size | 94,312 bytes | 89,942 bytes | -4,370 bytes (-4.6%) |
 | Generated state | 67,056 bytes | 67,056 bytes | No change |
 
-The post-change native renderer produced 4096 finite stereo frames at 44.1 kHz
-and a duration of 0.092880 seconds. The result supports preserving collection
-intent through the frontend and lowering per backend instead of expanding the
-selector into the parser AST.
+After restoring the original full-list selector `sum`, the native build
+produced 89,793 bytes of C, used 5,376 KB peak RSS in codegen and 45,224 KB peak
+RSS in one C compile, and retained 67,056 bytes of generated state. A new
+controlled benchmark using identical source revisions is required before
+claiming a performance delta. Correctness and preserved audio behavior remain
+the acceptance criteria for the native representation.

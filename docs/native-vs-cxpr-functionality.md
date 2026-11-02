@@ -252,8 +252,8 @@ domains while preserving CXPR as a small, deterministic, domain-agnostic core.
   and generated C consume that native representation directly; backend
   lowering uses lexical substitution without cloning the selector AST. Model
   evaluation and generated C have parity coverage, including a 17-element
-  reduction. The robot-voice sequencer uses bounded `max` to select the active
-  ALIVE phoneme and phase without a domain-specific builtin, runtime callback,
+  reduction. The robot-voice sequencer uses selector-based `sum` to select its
+  active phoneme and phase without a domain-specific builtin, runtime callback,
   or runtime collection loop. Benchmark evidence is recorded in
   `benchmarks/results/native_static_reduction_audio_2026-11-02.md`.
 - [ ] Generalize the same bounded lowering contract to `map`, `reduce`, `any`,
