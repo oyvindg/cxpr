@@ -336,6 +336,59 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
     return true;
 }
 
+static bool cxpr_model_expr_binds_lambda_reference(const cxpr_expr_ast* ast,
+                                                   const char* reference) {
+    if (!ast || !reference) return false;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) {
+        if (ast->data.function_call.name &&
+            !strcmp(ast->data.function_call.name, "__cxpr_lambda") &&
+            ast->data.function_call.argc == 2u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER &&
+            cxpr_model_reference_matches_symbol(
+                reference, ast->data.function_call.args[0]->data.identifier.name)) {
+            return true;
+        }
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
+            if (cxpr_model_expr_binds_lambda_reference(
+                    ast->data.function_call.args[i], reference)) return true;
+        return false;
+    }
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            if (cxpr_model_expr_binds_lambda_reference(
+                    ast->data.array.elements[i], reference)) return true;
+        return false;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            if (cxpr_model_expr_binds_lambda_reference(
+                    ast->data.record.field_values[i], reference)) return true;
+        return false;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_expr_binds_lambda_reference(
+                   ast->data.binary_op.left, reference) ||
+               cxpr_model_expr_binds_lambda_reference(
+                   ast->data.binary_op.right, reference);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_expr_binds_lambda_reference(
+            ast->data.unary_op.operand, reference);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_expr_binds_lambda_reference(
+                   ast->data.index.target, reference) ||
+               cxpr_model_expr_binds_lambda_reference(
+                   ast->data.index.index, reference);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_expr_binds_lambda_reference(
+                   ast->data.ternary.condition, reference) ||
+               cxpr_model_expr_binds_lambda_reference(
+                   ast->data.ternary.true_branch, reference) ||
+               cxpr_model_expr_binds_lambda_reference(
+                   ast->data.ternary.false_branch, reference);
+    default:
+        return false;
+    }
+}
+
 static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
                                                  const cxpr_expr_ast* expr,
                                                  bool constant_expr,
@@ -349,6 +402,48 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
     const char* params[256];
     size_t nrefs;
     size_t nparams;
+
+    if (expr && cxpr_expr_ast_kind_of(expr) == CXPR_NODE_FUNCTION_CALL &&
+        cxpr_expr_ast_call_arg_count(expr) == 2u) {
+        const char* name = cxpr_expr_ast_call_name(expr);
+        const cxpr_expr_ast* array = cxpr_expr_ast_call_arg(expr, 0u);
+        const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(expr, 1u);
+        if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
+                     !strcmp(name, "min") || !strcmp(name, "max")) &&
+            array && cxpr_expr_ast_kind_of(array) == CXPR_NODE_ARRAY &&
+            lambda && cxpr_expr_ast_kind_of(lambda) == CXPR_NODE_FUNCTION_CALL &&
+            cxpr_expr_ast_call_name(lambda) &&
+            !strcmp(cxpr_expr_ast_call_name(lambda), "__cxpr_lambda") &&
+            cxpr_expr_ast_call_arg_count(lambda) == 2u &&
+            cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(lambda, 0u)) ==
+                CXPR_NODE_IDENTIFIER) {
+            const char** scoped_refs;
+            const char* parameter =
+                cxpr_expr_ast_identifier_name(cxpr_expr_ast_call_arg(lambda, 0u));
+            if (!cxpr_model_validate_expr_refs_scoped(
+                    model, array, constant_expr, function_registry,
+                    external_refs, external_ref_count, local_refs,
+                    local_ref_count, err)) return false;
+            scoped_refs = (const char**)calloc(local_ref_count + 1u,
+                                                sizeof(*scoped_refs));
+            if (!scoped_refs) {
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0, 0);
+                return false;
+            }
+            for (size_t i = 0u; i < local_ref_count; ++i)
+                scoped_refs[i] = local_refs[i];
+            scoped_refs[local_ref_count] = parameter;
+            {
+                bool ok = cxpr_model_validate_expr_refs_scoped(
+                    model, cxpr_expr_ast_call_arg(lambda, 1u), constant_expr,
+                    function_registry, external_refs, external_ref_count,
+                    scoped_refs, local_ref_count + 1u, err);
+                free(scoped_refs);
+                return ok;
+            }
+        }
+    }
 
     if (expr && cxpr_expr_ast_kind_of(expr) == CXPR_NODE_RECORD) {
         const size_t field_count = cxpr_expr_ast_record_field_count(expr);
@@ -398,6 +493,7 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
 
     nrefs = cxpr_expr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
     for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
+        if (cxpr_model_expr_binds_lambda_reference(expr, refs[i])) continue;
         if (cxpr_model_local_reference_exists(local_refs, local_ref_count, refs[i])) continue;
         if (!constant_expr &&
             cxpr_model_expr_accepts_record_root_ref(
@@ -470,6 +566,7 @@ static bool cxpr_model_validate_function_expr_refs(const cxpr_model* model,
 
     nrefs = cxpr_expr_ast_references(expr, refs, CXPR_ARRAY_COUNT(refs));
     for (size_t i = 0; i < nrefs && i < CXPR_ARRAY_COUNT(refs); ++i) {
+        if (cxpr_model_expr_binds_lambda_reference(expr, refs[i])) continue;
         if (cxpr_model_param_exists(fn->params, fn->param_count, refs[i])) continue;
         if (cxpr_model_local_reference_exists(local_refs, local_ref_count, refs[i])) continue;
         if (cxpr_model_external_reference_exists(external_refs, external_ref_count, refs[i])) continue;

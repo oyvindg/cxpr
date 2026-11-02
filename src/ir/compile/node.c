@@ -530,6 +530,19 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                                     },
                                     err);
             }
+            if (mapped) {
+                if (!cxpr_ir_compile_node(mapped, program, reg,
+                                          local_names, local_count,
+                                          owner ? owner->parent : subst,
+                                          inline_depth, err)) {
+                    return false;
+                }
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_GET_FIELD,
+                                        .name = ast->data.field_access.field,
+                                    }, err);
+            }
         }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
@@ -777,6 +790,90 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
         const char* fname = ast->data.function_call.name;
+        if (ast->data.function_call.argc >= 1u &&
+            ast->data.function_call.argc <= 2u &&
+            ast->data.function_call.args[0] &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY &&
+            (!strcmp(fname, "sum") || !strcmp(fname, "mean") ||
+             !strcmp(fname, "min") || !strcmp(fname, "max"))) {
+            const cxpr_expr_ast* array = ast->data.function_call.args[0];
+            const cxpr_expr_ast* selector = NULL;
+            const char* parameter = NULL;
+            size_t count = array->data.array.count;
+            if (ast->data.function_call.argc == 2u) {
+                const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
+                if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                    strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+                    lambda->data.function_call.argc != 2u ||
+                    lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+                    if (err) {
+                        err->code = CXPR_ERR_TYPE_MISMATCH;
+                        err->message = "Static reduction requires a one-parameter selector";
+                    }
+                    return false;
+                }
+                parameter = lambda->data.function_call.args[0]->data.identifier.name;
+                selector = lambda->data.function_call.args[1];
+            }
+            if (count == 0u) {
+                if (strcmp(fname, "sum")) {
+                    if (err) {
+                        err->code = CXPR_ERR_WRONG_ARITY;
+                        err->message = "Static reduction requires a non-empty array";
+                    }
+                    return false;
+                }
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_PUSH_CONST,
+                                        .value = 0.0,
+                                    }, err);
+            }
+            for (size_t i = 0u; i < count; ++i) {
+                const cxpr_expr_ast* element = array->data.array.elements[i];
+                if (selector) {
+                    const char* names[] = {parameter};
+                    const cxpr_expr_ast* args[] = {element};
+                    cxpr_ir_subst_frame frame = {
+                        .names = names,
+                        .args = args,
+                        .count = 1u,
+                        .parent = subst,
+                    };
+                    if (!cxpr_ir_compile_node(selector, program, reg,
+                                              local_names, local_count, &frame,
+                                              inline_depth, err)) return false;
+                } else if (!cxpr_ir_compile_node(
+                               element, program, reg, local_names, local_count,
+                               subst, inline_depth, err)) return false;
+                if (i > 0u) {
+                    if (!strcmp(fname, "sum") || !strcmp(fname, "mean")) {
+                        if (!cxpr_ir_emit(program,
+                                          (cxpr_ir_instr){.op = CXPR_OP_ADD},
+                                          err)) return false;
+                    } else if (!cxpr_ir_emit(
+                                   program,
+                                   (cxpr_ir_instr){
+                                       .op = CXPR_OP_CALL_FUNC,
+                                       .func = entry,
+                                       .payload = ast,
+                                       .index = 2u,
+                                   }, err)) return false;
+                }
+            }
+            if (!strcmp(fname, "mean")) {
+                if (!cxpr_ir_emit(program,
+                                  (cxpr_ir_instr){
+                                      .op = CXPR_OP_PUSH_CONST,
+                                      .value = (double)count,
+                                  }, err) ||
+                    !cxpr_ir_emit(program,
+                                  (cxpr_ir_instr){.op = CXPR_OP_DIV}, err)) {
+                    return false;
+                }
+            }
+            return true;
+        }
         if (cxpr_expr_ast_call_uses_named_args(ast)) {
             return cxpr_ir_emit(program,
                                 (cxpr_ir_instr){

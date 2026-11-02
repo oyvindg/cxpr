@@ -82,20 +82,27 @@ static void test_parser_expression_forms(void) {
     cxpr_expr_ast_free(ast);
 
     ast = cxpr_expr_ast_parse(p, "sum([1, 2, 3])", &err);
-    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_expr_ast_call_name(ast), "sum") == 0);
+    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0)) == CXPR_NODE_ARRAY);
     cxpr_expr_ast_free(ast);
 
     ast = cxpr_expr_ast_parse(p, "sum([1, 2], x => x * 2)", &err);
-    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0)) == CXPR_NODE_ARRAY);
+    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 1)) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_expr_ast_call_name(cxpr_expr_ast_call_arg(ast, 1)),
+                  "__cxpr_lambda") == 0);
     cxpr_expr_ast_free(ast);
 
     ast = cxpr_expr_ast_parse(p, "sum([1, 2], (x) => x + 1)", &err);
-    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_BINARY_OP);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
     cxpr_expr_ast_free(ast);
 
     ast = cxpr_expr_ast_parse(p, "sum([])", &err);
-    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_NUMBER);
-    assert(cxpr_expr_ast_number_value(ast) == 0.0);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0)) == CXPR_NODE_ARRAY);
+    assert(cxpr_expr_ast_array_count(cxpr_expr_ast_call_arg(ast, 0)) == 0u);
     cxpr_expr_ast_free(ast);
 
     cxpr_expr_parser_free(p);

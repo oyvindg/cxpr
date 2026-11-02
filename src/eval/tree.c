@@ -587,6 +587,96 @@ static cxpr_value cxpr_eval_ternary_op(const cxpr_expr_ast* ast, const cxpr_cont
                           ctx, reg, err);
 }
 
+static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
+                                             const cxpr_context* ctx,
+                                             const cxpr_registry* reg,
+                                             cxpr_value* out,
+                                             cxpr_error* err) {
+    const cxpr_expr_ast* array;
+    const cxpr_expr_ast* selector = NULL;
+    const char* parameter = NULL;
+    const char* name;
+    double accumulated = 0.0;
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !out) return false;
+    name = ast->data.function_call.name;
+    if (!name || (strcmp(name, "sum") && strcmp(name, "mean") &&
+                  strcmp(name, "min") && strcmp(name, "max")) ||
+        ast->data.function_call.argc < 1u ||
+        ast->data.function_call.argc > 2u) return false;
+    array = ast->data.function_call.args[0];
+    if (!array || array->type != CXPR_NODE_ARRAY) return false;
+    if (ast->data.function_call.argc == 2u) {
+        const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
+        if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                   "Static reduction requires a one-parameter selector");
+            return true;
+        }
+        parameter = lambda->data.function_call.args[0]->data.identifier.name;
+        selector = lambda->data.function_call.args[1];
+    }
+    if (array->data.array.count == 0u) {
+        if (!strcmp(name, "sum")) {
+            *out = cxpr_num(0.0);
+        } else {
+            *out = cxpr_eval_error(err, CXPR_ERR_WRONG_ARITY,
+                                   "Static reduction requires a non-empty array");
+        }
+        return true;
+    }
+    for (size_t i = 0u; i < array->data.array.count; ++i) {
+        cxpr_value value;
+        if (selector) {
+            cxpr_context* overlay = cxpr_context_overlay_new(ctx);
+            cxpr_value element;
+            if (!overlay) {
+                *out = cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                return true;
+            }
+            element = cxpr_eval_node(array->data.array.elements[i], ctx, reg, err);
+            if (err && err->code != CXPR_OK) {
+                cxpr_context_free(overlay);
+                *out = cxpr_num(NAN);
+                return true;
+            }
+            cxpr_context_set_value(overlay, parameter, &element);
+            value = cxpr_eval_node(selector, overlay, reg, err);
+            cxpr_value_free(&element);
+            cxpr_context_free(overlay);
+        } else {
+            value = cxpr_eval_node(array->data.array.elements[i], ctx, reg, err);
+        }
+        if (err && err->code != CXPR_OK) {
+            cxpr_value_free(&value);
+            *out = cxpr_num(NAN);
+            return true;
+        }
+        if (value.type != CXPR_VALUE_NUMBER && value.type != CXPR_VALUE_INT64) {
+            cxpr_value_free(&value);
+            *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                   "Static reduction selector must return a number");
+            return true;
+        }
+        {
+            double number = value.type == CXPR_VALUE_INT64 ? (double)value.i64 : value.d;
+            if (i == 0u || !strcmp(name, "sum") || !strcmp(name, "mean")) {
+                accumulated = i == 0u ? number : accumulated + number;
+            } else if (!strcmp(name, "min") && number < accumulated) {
+                accumulated = number;
+            } else if (!strcmp(name, "max") && number > accumulated) {
+                accumulated = number;
+            }
+        }
+        cxpr_value_free(&value);
+    }
+    if (!strcmp(name, "mean")) accumulated /= (double)array->data.array.count;
+    *out = cxpr_num(accumulated);
+    return true;
+}
+
 static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                           const cxpr_registry* reg, cxpr_error* err) {
     if (!ast) return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "NULL AST node");
@@ -886,6 +976,10 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         size_t argc = ast->data.function_call.argc;
         const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
+        cxpr_value static_reduction;
+
+        if (cxpr_eval_static_array_reduction(
+                ast, ctx, reg, &static_reduction, err)) return static_reduction;
 
         if (!entry) {
             return cxpr_eval_error(

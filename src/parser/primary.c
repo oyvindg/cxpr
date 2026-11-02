@@ -791,7 +791,6 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
             } else {
                 node = cxpr_expr_ast_call_named_new(name, args, arg_names, argc);
                 free(name);
-                if (node) node = cxpr_parse_lower_static_array_reduction(node);
                 if (node) node = cxpr_parse_lower_window_reduction(node);
             }
             if (!node) return NULL;
@@ -889,7 +888,6 @@ cxpr_expr_ast* cxpr_parse_primary(cxpr_expr_parser* p) {
                     free(field);
                 } else {
                     node = cxpr_expr_ast_call_named_new(fn_name, args, arg_names, argc);
-                    if (node) node = cxpr_parse_lower_static_array_reduction(node);
                     if (node) node = cxpr_parse_lower_window_reduction(node);
                 }
                 free(fn_name);

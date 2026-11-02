@@ -43,7 +43,11 @@ static double eval_expr(const char* source, int compiled) {
     if (compiled) {
         cxpr_expr_compiled* program = cxpr_expr_compile(ast, reg, &err);
         assert(program);
-        assert(cxpr_expr_compiled_eval(program, ctx, reg, &value, &err));
+        if (!cxpr_expr_compiled_eval(program, ctx, reg, &value, &err)) {
+            fprintf(stderr, "compiled reduction failed for %s: %s\n", source,
+                    err.message ? err.message : "unknown error");
+            assert(false);
+        }
         cxpr_expr_compiled_free(program);
     } else {
         assert(cxpr_eval_ast(ast, ctx, reg, &value, &err));

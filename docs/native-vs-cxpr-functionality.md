@@ -247,12 +247,15 @@ domains while preserving CXPR as a small, deterministic, domain-agnostic core.
 
 ### Implementation status
 
-- [x] Static array-literal reductions: `sum`, `mean`, `min`, and `max` lower at
-  expression compile time, including pure selectors over homogeneous records.
-  Model evaluation and generated C have parity coverage, including a
-  17-element reduction. The robot-voice sequencer uses bounded `max` to select
-  the active ALIVE phoneme and phase without a domain-specific builtin or a
-  runtime collection loop.
+- [x] Static array-literal reductions: `sum`, `mean`, `min`, and `max` preserve
+  their array and selector callback in the AST. Tree evaluation, IR compilation
+  and generated C consume that native representation directly; backend
+  lowering uses lexical substitution without cloning the selector AST. Model
+  evaluation and generated C have parity coverage, including a 17-element
+  reduction. The robot-voice sequencer uses bounded `max` to select the active
+  ALIVE phoneme and phase without a domain-specific builtin, runtime callback,
+  or runtime collection loop. Benchmark evidence is recorded in
+  `benchmarks/results/native_static_reduction_audio_2026-11-02.md`.
 - [ ] Generalize the same bounded lowering contract to `map`, `reduce`, `any`,
   `all`, `find`, `count`, `enumerate`, and `zip` after their empty-collection
   and result-type contracts are specified.

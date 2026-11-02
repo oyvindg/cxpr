@@ -8,6 +8,7 @@
 
 #include "core.h"
 #include "lookback.h"
+#include "ast/internal.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -125,6 +126,90 @@ static const char* cxpr_cg_binary_op_str(int op) {
 static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_offset,
                                   cxpr_cg_buf* b, const cxpr_c_target* target,
                                   cxpr_error* err);
+
+static int cxpr_cg_emit_selector(const cxpr_expr_ast* ast,
+                                 const char* parameter,
+                                 const cxpr_expr_ast* element,
+                                 unsigned lookback_offset,
+                                 cxpr_cg_buf* b,
+                                 const cxpr_c_target* target,
+                                 cxpr_error* err) {
+    if (!ast) return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "NULL selector AST node");
+    if (ast->type == CXPR_NODE_IDENTIFIER &&
+        !strcmp(ast->data.identifier.name, parameter)) {
+        return cxpr_cg_emit_at_offset(element, lookback_offset, b, target, err);
+    }
+    if (ast->type == CXPR_NODE_FIELD_ACCESS && !ast->data.field_access.base &&
+        ast->data.field_access.object &&
+        !strcmp(ast->data.field_access.object, parameter)) {
+        cxpr_expr_ast selected = {0};
+        selected.type = CXPR_NODE_FIELD_ACCESS;
+        selected.data.field_access.base = (cxpr_expr_ast*)element;
+        selected.data.field_access.field = ast->data.field_access.field;
+        return cxpr_cg_emit_at_offset(&selected, lookback_offset, b, target, err);
+    }
+    if (ast->type == CXPR_NODE_CHAIN_ACCESS && ast->data.chain_access.depth == 2u &&
+        !strcmp(ast->data.chain_access.path[0], parameter)) {
+        cxpr_expr_ast selected = {0};
+        selected.type = CXPR_NODE_FIELD_ACCESS;
+        selected.data.field_access.base = (cxpr_expr_ast*)element;
+        selected.data.field_access.field = ast->data.chain_access.path[1];
+        return cxpr_cg_emit_at_offset(&selected, lookback_offset, b, target, err);
+    }
+    if (ast->type == CXPR_NODE_BINARY_OP) {
+        int op = ast->data.binary_op.op;
+        const char* spelling;
+        if (op == CXPR_TOK_POWER || op == CXPR_TOK_PERCENT) {
+            cxpr_cg_puts(b, op == CXPR_TOK_POWER ? "pow(" : "fmod(");
+            if (!cxpr_cg_emit_selector(ast->data.binary_op.left, parameter, element,
+                                       lookback_offset, b, target, err)) return 0;
+            cxpr_cg_puts(b, ", ");
+            if (!cxpr_cg_emit_selector(ast->data.binary_op.right, parameter, element,
+                                       lookback_offset, b, target, err)) return 0;
+            cxpr_cg_putc(b, ')');
+            return 1;
+        }
+        spelling = cxpr_cg_binary_op_str(op);
+        if (!spelling) return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                                          "unsupported selector binary operator");
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_selector(ast->data.binary_op.left, parameter, element,
+                                   lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ' ');
+        cxpr_cg_puts(b, spelling);
+        cxpr_cg_putc(b, ' ');
+        if (!cxpr_cg_emit_selector(ast->data.binary_op.right, parameter, element,
+                                   lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+        return 1;
+    }
+    if (ast->type == CXPR_NODE_UNARY_OP) {
+        int op = ast->data.unary_op.op;
+        if (op != CXPR_TOK_MINUS && op != CXPR_TOK_NOT)
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX,
+                               "unsupported selector unary operator");
+        cxpr_cg_putc(b, '(');
+        cxpr_cg_putc(b, op == CXPR_TOK_MINUS ? '-' : '!');
+        if (!cxpr_cg_emit_selector(ast->data.unary_op.operand, parameter, element,
+                                   lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+        return 1;
+    }
+    if (ast->type == CXPR_NODE_TERNARY) {
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_selector(ast->data.ternary.condition, parameter, element,
+                                   lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " ? ");
+        if (!cxpr_cg_emit_selector(ast->data.ternary.true_branch, parameter, element,
+                                   lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " : ");
+        if (!cxpr_cg_emit_selector(ast->data.ternary.false_branch, parameter, element,
+                                   lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')');
+        return 1;
+    }
+    return cxpr_cg_emit_at_offset(ast, lookback_offset, b, target, err);
+}
 
 static int cxpr_cg_contains_arg_index(const char* name) {
     if (!name) return -1;
@@ -300,6 +385,68 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
                                        cxpr_error* err) {
     const char* name = cxpr_expr_ast_call_name(ast);
     size_t argc = cxpr_expr_ast_call_arg_count(ast);
+
+    if (argc >= 1u && argc <= 2u &&
+        (!strcmp(name, "sum") || !strcmp(name, "mean") ||
+         !strcmp(name, "min") || !strcmp(name, "max"))) {
+        const cxpr_expr_ast* array = cxpr_expr_ast_call_arg(ast, 0u);
+        if (array && array->type == CXPR_NODE_ARRAY) {
+            const cxpr_expr_ast* selector = NULL;
+            const char* parameter = NULL;
+            size_t count = array->data.array.count;
+            if (argc == 2u) {
+                const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(ast, 1u);
+                if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                    strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+                    lambda->data.function_call.argc != 2u ||
+                    lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+                    return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH,
+                                       "static reduction requires a one-parameter selector");
+                }
+                parameter = lambda->data.function_call.args[0]->data.identifier.name;
+                selector = lambda->data.function_call.args[1];
+            }
+            if (count == 0u) {
+                if (!strcmp(name, "sum")) {
+                    cxpr_cg_puts(b, "0.0");
+                    return 1;
+                }
+                return cxpr_cg_err(err, CXPR_ERR_WRONG_ARITY,
+                                   "static reduction requires a non-empty array");
+            }
+            if (!strcmp(name, "mean")) cxpr_cg_putc(b, '(');
+            if (!strcmp(name, "sum") || !strcmp(name, "mean")) {
+                for (size_t i = 1u; i < count; ++i) cxpr_cg_putc(b, '(');
+            } else {
+                const char* fn = !strcmp(name, "min") ? "fmin" : "fmax";
+                for (size_t i = 1u; i < count; ++i) {
+                    cxpr_cg_puts(b, fn);
+                    cxpr_cg_putc(b, '(');
+                }
+            }
+            for (size_t i = 0u; i < count; ++i) {
+                const cxpr_expr_ast* value = array->data.array.elements[i];
+                if (i > 0u) cxpr_cg_puts(b, ", ");
+                if ((!strcmp(name, "sum") || !strcmp(name, "mean")) && i > 0u) {
+                    b->data[b->len - 2u] = ' ';
+                    b->data[b->len - 1u] = '+';
+                    cxpr_cg_putc(b, ' ');
+                }
+                if (selector) {
+                    if (!cxpr_cg_emit_selector(selector, parameter, value,
+                                               lookback_offset, b, target, err)) return 0;
+                } else if (!cxpr_cg_emit_at_offset(
+                               value, lookback_offset, b, target, err)) return 0;
+                if (i > 0u) cxpr_cg_putc(b, ')');
+            }
+            if (!strcmp(name, "mean")) {
+                char divisor[48];
+                snprintf(divisor, sizeof(divisor), " / %zu.0)", count);
+                cxpr_cg_puts(b, divisor);
+            }
+            return 1;
+        }
+    }
 
     if (cxpr_cg_target_has_call(target)) {
         bool handled = false;
