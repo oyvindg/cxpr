@@ -139,6 +139,14 @@ unsigned char cxpr_ir_infer_fast_result_kind(const cxpr_expr_ast* ast, const cxp
         return CXPR_IR_RESULT_UNKNOWN;
 
     case CXPR_NODE_FUNCTION_CALL:
+        if (strcmp(ast->data.function_call.name, "reduce") == 0 &&
+            ast->data.function_call.argc == 3) {
+            /* Native static reduce preserves the accumulator's scalar kind.  The
+             * reducer body is compiled against a compiler-owned temporary, so it
+             * cannot be inferred independently from its synthetic step record. */
+            return cxpr_ir_infer_fast_result_kind(ast->data.function_call.args[1], reg,
+                                                   depth + 1);
+        }
         if (strcmp(ast->data.function_call.name, "if") == 0 &&
             ast->data.function_call.argc == 3) {
             cond_kind =

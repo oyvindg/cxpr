@@ -23,34 +23,57 @@ brightness = lfo(rate=0.07, sample_rate=$sample_rate)
 vibrato = lfo(rate=5.3, sample_rate=$sample_rate)
 pad_cutoff = 1050 + 700 * brightness.unipolar
 
-# Åtte faste padstemmer: fire i hver bank. Hver scoped kallplass har egen state.
-pa1 = pad(age=seq.a_age, frequency=seq.a_one, trigger=seq.a_trigger,
-          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
-pa2 = pad(age=seq.a_age, frequency=seq.a_two, trigger=seq.a_trigger,
-          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
-pa3 = pad(age=seq.a_age, frequency=seq.a_three, trigger=seq.a_trigger,
-          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
-pa4 = pad(age=seq.a_age, frequency=seq.a_four, trigger=seq.a_trigger,
-          sample_rate=$sample_rate, hold=seq.a_hold, release=seq.a_release, cutoff=pad_cutoff)
-pb1 = pad(age=seq.b_age, frequency=seq.b_one, trigger=seq.b_trigger,
-          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
-pb2 = pad(age=seq.b_age, frequency=seq.b_two, trigger=seq.b_trigger,
-          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
-pb3 = pad(age=seq.b_age, frequency=seq.b_three, trigger=seq.b_trigger,
-          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
-pb4 = pad(age=seq.b_age, frequency=seq.b_four, trigger=seq.b_trigger,
-          sample_rate=$sample_rate, hold=seq.b_hold, release=seq.b_release, cutoff=pad_cutoff)
-
-chord_one = 0.40 * (seq.a_level * pa1.sample + seq.b_level * pb1.sample)
-chord_two = 0.40 * (seq.a_level * pa2.sample + seq.b_level * pb2.sample)
-chord_three = 0.40 * (seq.a_level * pa3.sample + seq.b_level * pb3.sample)
-chord_four = 0.40 * (seq.a_level * pa4.sample + seq.b_level * pb4.sample)
+# Four statically bounded groups instantiate one independent pad per bank. The
+# compiler derives chord_N identities from each explicit group label.
+chord_one = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_one(
+    age=bank == 0 ? seq.a_age : seq.b_age,
+    frequency=bank == 0 ? seq.a_one : seq.b_one,
+    trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
+    sample_rate=$sample_rate,
+    hold=bank == 0 ? seq.a_hold : seq.b_hold,
+    release=bank == 0 ? seq.a_release : seq.b_release,
+    cutoff=pad_cutoff).sample), 0,
+    step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
+chord_two = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_two(
+    age=bank == 0 ? seq.a_age : seq.b_age,
+    frequency=bank == 0 ? seq.a_two : seq.b_two,
+    trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
+    sample_rate=$sample_rate,
+    hold=bank == 0 ? seq.a_hold : seq.b_hold,
+    release=bank == 0 ? seq.a_release : seq.b_release,
+    cutoff=pad_cutoff).sample), 0,
+    step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
+chord_three = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_three(
+    age=bank == 0 ? seq.a_age : seq.b_age,
+    frequency=bank == 0 ? seq.a_three : seq.b_three,
+    trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
+    sample_rate=$sample_rate,
+    hold=bank == 0 ? seq.a_hold : seq.b_hold,
+    release=bank == 0 ? seq.a_release : seq.b_release,
+    cutoff=pad_cutoff).sample), 0,
+    step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
+chord_four = 0.40 * reduce(instantiate([0, 1], bank => pad@chord_four(
+    age=bank == 0 ? seq.a_age : seq.b_age,
+    frequency=bank == 0 ? seq.a_four : seq.b_four,
+    trigger=bank == 0 ? seq.a_trigger : seq.b_trigger,
+    sample_rate=$sample_rate,
+    hold=bank == 0 ? seq.a_hold : seq.b_hold,
+    release=bank == 0 ? seq.a_release : seq.b_release,
+    cutoff=pad_cutoff).sample), 0,
+    step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
 p1 = pan(source=chord_one, position=-0.70)
 p2 = pan(source=chord_two, position=-0.22)
 p3 = pan(source=chord_three, position=0.24)
 p4 = pan(source=chord_four, position=0.70)
-pad_left = p1.left + p2.left + p3.left + p4.left
-pad_right = p1.right + p2.right + p3.right + p4.right
+pan_one = { left=p1.left, right=p1.right }
+pan_two = { left=p2.left, right=p2.right }
+pan_three = { left=p3.left, right=p3.right }
+pan_four = { left=p4.left, right=p4.right }
+pan_voices = [pan_one, pan_two, pan_three, pan_four]
+pad_left = reduce(map(pan_voices, voice => voice.left), 0,
+    step => step.acc + step.value)
+pad_right = reduce(map(pan_voices, voice => voice.right), 0,
+    step => step.acc + step.value)
 phase_left = phaser(source=pad_left, sample_rate=$sample_rate, rate=0.13, depth=0.78, mix=0.32)
 phase_right = phaser(source=pad_right, sample_rate=$sample_rate, rate=0.17, depth=0.78, mix=0.32)
 

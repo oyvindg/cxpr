@@ -335,11 +335,11 @@ static void test_error_position(void) {
     cxpr_error err = {0};
 
     /* Error should be at position of unexpected token */
-    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "a @", &err);
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, "a \\", &err);
     assert(ast == NULL);
     assert(err.code == CXPR_ERR_SYNTAX);
     assert(err.line == 1);
-    assert(err.column > 1); /* @ is not at column 1 */
+    assert(err.column > 1); /* backslash is not at column 1 */
 
     cxpr_expr_parser_free(p);
     printf("  ✓ test_error_position\n");

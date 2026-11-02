@@ -213,6 +213,7 @@ bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
         return true;
     case CXPR_NODE_PRODUCER_ACCESS:
         if (!cxpr_eval_opt_string_equal(lhs->data.producer_access.name, rhs->data.producer_access.name) ||
+            !cxpr_eval_opt_string_equal(lhs->data.producer_access.instance_id, rhs->data.producer_access.instance_id) ||
             !cxpr_eval_opt_string_equal(lhs->data.producer_access.field, rhs->data.producer_access.field) ||
             lhs->data.producer_access.argc != rhs->data.producer_access.argc ||
             !cxpr_eval_arg_names_equal(
@@ -234,6 +235,7 @@ bool cxpr_eval_ast_equal(const cxpr_expr_ast* lhs, const cxpr_expr_ast* rhs) {
                cxpr_eval_ast_equal(lhs->data.unary_op.operand, rhs->data.unary_op.operand);
     case CXPR_NODE_FUNCTION_CALL:
         if (!cxpr_eval_opt_string_equal(lhs->data.function_call.name, rhs->data.function_call.name) ||
+            !cxpr_eval_opt_string_equal(lhs->data.function_call.instance_id, rhs->data.function_call.instance_id) ||
             lhs->data.function_call.argc != rhs->data.function_call.argc ||
             !cxpr_eval_arg_names_equal(
                 lhs->data.function_call.arg_names,

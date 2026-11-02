@@ -133,6 +133,8 @@ const char* cxpr_ir_internal_opcode_name(cxpr_opcode op) {
     case CXPR_OP_LOOKBACK_POP: return "LOOKBACK_POP";
     case CXPR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
     case CXPR_OP_STORE_LOCAL: return "STORE_LOCAL";
+    case CXPR_OP_LOAD_TEMP: return "LOAD_TEMP";
+    case CXPR_OP_STORE_TEMP: return "STORE_TEMP";
     case CXPR_OP_RETURN: return "RETURN";
     case CXPR_OP_INDEX: return "INDEX";
     default: return "UNKNOWN";

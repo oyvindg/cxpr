@@ -124,6 +124,9 @@ int main(void) {
     expect_reject(reg, "atr(true)");
     expect_reject(reg, "atr(period=true)");
     expect_reject(reg, "({price: 1}).missing");
+    expect_reject(reg, "[{price: 1, active: true}, {active: true, price: 2}]");
+    expect_reject(reg, "[{price: 1}, {price: true}]");
+    expect_reject(reg, "[{price: 1}, 2]");
     expect_backend_rejects(reg, "1 and 2");
 
     expect_accept(reg, "close > 5 and rsi < 30");
@@ -135,6 +138,10 @@ int main(void) {
     expect_accept(reg, "[[1, 2], [3, 4]][1][0] > 0");
     expect_accept(reg, "[1, true][i]");
     expect_accept(reg, "(close + high)[1]");
+    expect_accept(reg, "[{price: 1, active: true}, {price: 2, active: false}]");
+    expect_accept(reg,
+        "reduce([{signal: 2, gain: 0.25}, {signal: 4, gain: 0.5}], 0, "
+        "step => step.acc + step.value.signal * step.value.gain)");
 
     expect_type(reg, "[1, 2][0]", CXPR_VALUE_NUMBER);
     expect_type(reg, "[true, false][1]", CXPR_VALUE_BOOL);
@@ -143,6 +150,10 @@ int main(void) {
     expect_type(reg, "[[1], [2]][0][0]", CXPR_VALUE_NUMBER);
     expect_type(reg, "({price: 1, active: true}).price", CXPR_VALUE_NUMBER);
     expect_type(reg, "({price: 1, active: true}).active", CXPR_VALUE_BOOL);
+    expect_type(reg,
+        "reduce([{signal: 2, gain: 0.25}, {signal: 4, gain: 0.5}], 0, "
+        "step => step.acc + step.value.signal * step.value.gain)",
+        CXPR_VALUE_NUMBER);
 
     cxpr_registry_free(reg);
     return 0;

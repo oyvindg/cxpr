@@ -86,6 +86,8 @@ typedef enum {
     CXPR_OP_LOOKBACK_POP,
     CXPR_OP_LOOKBACK_RESOLVE,
     CXPR_OP_STORE_LOCAL,
+    CXPR_OP_LOAD_TEMP,
+    CXPR_OP_STORE_TEMP,
     CXPR_OP_RETURN,
     CXPR_OP_INDEX
 } cxpr_opcode;
@@ -197,6 +199,7 @@ typedef struct cxpr_ir_program_tag {
     const cxpr_expr_ast* ast;        /**< Borrowed root AST for typed fallback evaluation */
     cxpr_ir_input_descriptor* inputs; /**< Immutable unique scalar input descriptors. */
     size_t input_count;
+    size_t temp_count;           /**< Compiler-owned numeric temporary slots. */
     uint64_t binding_generation; /**< Unique identity for evaluator binding invalidation. */
     unsigned char* value_kinds; /**< Immutable cxpr_ir_value_kind per instruction result. */
     unsigned char fast_result_kind; /**< CXPR_IR_RESULT_* fast-path classification. */
@@ -215,6 +218,10 @@ typedef struct cxpr_ir_subst_frame {
     const char* const* names;
     const cxpr_expr_ast* const* args;
     size_t count;
+    const char* reduce_object;
+    const cxpr_expr_ast* reduce_value;
+    size_t reduce_index;
+    size_t reduce_temp_index;
     const struct cxpr_ir_subst_frame* parent;
 } cxpr_ir_subst_frame;
 

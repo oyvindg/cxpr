@@ -195,7 +195,7 @@ static bool cxpr_ir_c_emit_load_local_square(cxpr_ir_c_buf* b,
 static size_t cxpr_ir_c_local_slot_count(const cxpr_ir_program* ir,
                                          const cxpr_c_program_arg* args,
                                          size_t arg_count) {
-    size_t count = 0u;
+    size_t count = ir ? ir->temp_count : 0u;
 
     if (!ir) return 0u;
     for (size_t i = 0u; i < ir->count; ++i) {
@@ -629,6 +629,12 @@ char* cxpr_expr_compiled_to_c_function(const cxpr_expr_compiled* prog,
             cxpr_ir_c_printf(&b, "    if (_cx_s[--_cx_sp] != 0.0) goto L%zu;\n", instr->index);
             break;
         case CXPR_OP_STORE_LOCAL:
+            cxpr_ir_c_printf(&b, "    _cx_l[%zu] = _cx_s[--_cx_sp];\n", instr->index);
+            break;
+        case CXPR_OP_LOAD_TEMP:
+            cxpr_ir_c_printf(&b, "    _cx_s[_cx_sp++] = _cx_l[%zu];\n", instr->index);
+            break;
+        case CXPR_OP_STORE_TEMP:
             cxpr_ir_c_printf(&b, "    _cx_l[%zu] = _cx_s[--_cx_sp];\n", instr->index);
             break;
         case CXPR_OP_CALL_AST:

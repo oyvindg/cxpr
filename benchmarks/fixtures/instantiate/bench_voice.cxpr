@@ -1,0 +1,5 @@
+model bench_voice(lifecycle = "scoped")
+in increment
+state value = 0
+out sample = value
+value := value + increment

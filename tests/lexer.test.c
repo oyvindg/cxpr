@@ -465,7 +465,7 @@ static void test_ternary_expression(void) {
 
 static void test_error_unknown_char(void) {
     cxpr_lexer lex;
-    cxpr_lexer_init(&lex, "@");
+    cxpr_lexer_init(&lex, "\\");
     cxpr_token tok = cxpr_lexer_next(&lex);
     assert(tok.type == CXPR_TOK_ERROR);
     printf("  ✓ test_error_unknown_char\n");

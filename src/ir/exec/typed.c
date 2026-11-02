@@ -992,6 +992,9 @@ cxpr_value cxpr_ir_exec_typed_bound(const cxpr_ir_program* program, const cxpr_c
             break;
         case CXPR_OP_STORE_LOCAL:
             return cxpr_ir_runtime_error(err, "STORE_LOCAL requires scalar fast execution");
+        case CXPR_OP_LOAD_TEMP:
+        case CXPR_OP_STORE_TEMP:
+            return cxpr_ir_runtime_error(err, "Compiler temporaries require scalar fast execution");
         case CXPR_OP_RETURN:
             if (!cxpr_ir_pop1(stack, &sp, &result, err)) return cxpr_num(NAN);
             if (sp != 0) {

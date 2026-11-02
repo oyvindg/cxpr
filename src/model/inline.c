@@ -1,6 +1,8 @@
 #include "model/internal.h"
 #include "model/window/window.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 const cxpr_expr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
                                         size_t count,
@@ -155,7 +157,12 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
             }
             return NULL;
         }
-        return cxpr_expr_ast_call_named_new(cxpr_expr_ast_call_name(ast), args, arg_names, argc);
+        cxpr_expr_ast* out = cxpr_expr_ast_call_named_new(cxpr_expr_ast_call_name(ast), args, arg_names, argc);
+        if (out && cxpr_expr_ast_call_instance_id(ast) &&
+            !cxpr_expr_ast_call_set_instance_id(out, cxpr_expr_ast_call_instance_id(ast))) {
+            cxpr_expr_ast_free(out); return NULL;
+        }
+        return out;
     }
     case CXPR_NODE_PRODUCER_ACCESS: {
         size_t argc = cxpr_expr_ast_producer_arg_count(ast);
@@ -168,8 +175,13 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
             }
             return NULL;
         }
-        return cxpr_expr_ast_producer_field_named_new(cxpr_expr_ast_producer_name(ast), args, arg_names,
+        cxpr_expr_ast* out = cxpr_expr_ast_producer_field_named_new(cxpr_expr_ast_producer_name(ast), args, arg_names,
                                                   argc, cxpr_expr_ast_producer_field(ast));
+        if (out && cxpr_expr_ast_call_instance_id(ast) &&
+            !cxpr_expr_ast_call_set_instance_id(out, cxpr_expr_ast_call_instance_id(ast))) {
+            cxpr_expr_ast_free(out); return NULL;
+        }
+        return out;
     }
     case CXPR_NODE_INDEX: {
         cxpr_expr_ast* target = cxpr_model_inline_locals(cxpr_expr_ast_index_target(ast), locals, local_count);
@@ -280,6 +292,87 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
                 cxpr_expr_ast_free(ast);
                 return NULL;
             }
+        }
+        if (strcmp(ast->data.function_call.name, "instantiate") == 0) {
+            const cxpr_expr_ast* source;
+            const cxpr_expr_ast* lambda;
+            const cxpr_expr_ast* parameter;
+            const cxpr_expr_ast* body;
+            const char* base_label;
+            cxpr_expr_ast** elements;
+            size_t count;
+            if (ast->data.function_call.argc != 2u) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
+                                     "instantiate expects a static array and callback", 0u, 0u);
+                return NULL;
+            }
+            source = ast->data.function_call.args[0];
+            lambda = ast->data.function_call.args[1];
+            if (!source || source->type != CXPR_NODE_ARRAY) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "instantiate source must be a static array", 0u, 0u);
+                return NULL;
+            }
+            if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                strcmp(lambda->data.function_call.name, "__cxpr_lambda") != 0 ||
+                lambda->data.function_call.argc != 2u ||
+                lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "instantiate expects a single-parameter callback", 0u, 0u);
+                return NULL;
+            }
+            parameter = lambda->data.function_call.args[0];
+            body = lambda->data.function_call.args[1];
+            if (!body || (body->type != CXPR_NODE_FUNCTION_CALL &&
+                          body->type != CXPR_NODE_PRODUCER_ACCESS) ||
+                !(base_label = cxpr_expr_ast_call_instance_id(body))) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "instantiate callback must directly call an explicitly labelled scoped child", 0u, 0u);
+                return NULL;
+            }
+            count = source->data.array.count;
+            elements = (cxpr_expr_ast**)calloc(count ? count : 1u, sizeof(*elements));
+            if (!elements) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            for (size_t i = 0u; i < count; ++i) {
+                cxpr_model_local_binding local = {
+                    .name = parameter->data.identifier.name,
+                    .expr = source->data.array.elements[i]
+                };
+                size_t label_size = strlen(base_label) + 32u;
+                char* derived_label = (char*)malloc(label_size);
+                if (derived_label)
+                    snprintf(derived_label, label_size, "%s_%zu", base_label, i);
+                elements[i] = derived_label
+                                  ? cxpr_model_inline_locals(body, &local, 1u)
+                                  : NULL;
+                if (!elements[i] ||
+                    !cxpr_expr_ast_call_set_instance_id(elements[i], derived_label)) {
+                    free(derived_label);
+                    for (size_t j = 0u; j <= i; ++j) cxpr_expr_ast_free(elements[j]);
+                    free(elements);
+                    cxpr_expr_ast_free(ast);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+                    return NULL;
+                }
+                free(derived_label);
+            }
+            cxpr_expr_ast_free(ast);
+            ast = cxpr_expr_ast_array_new(elements, count);
+            if (!ast) {
+                for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(elements[i]);
+                free(elements);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            return ast;
         }
         entry = cxpr_registry_find(registry, ast->data.function_call.name);
         if (entry && entry->defined_body &&

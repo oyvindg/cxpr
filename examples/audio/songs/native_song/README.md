@@ -23,6 +23,14 @@ The delay and reverb buffers are deliberately fixed for 44.1 kHz. Their models
 assert that sample rate instead of presenting the buffers as sample-rate
 independent.
 
+The pad mix also exercises CXPR's generic bounded-collection support. Four
+static two-voice groups use `pad@group` labels with `instantiate` to create
+independent state owners, while homogeneous pan records are projected with
+`map` and folded with `reduce`. These are compile-time bounded language
+mechanisms; the CXPR core has no audio-specific voice or mixer primitive. The
+migrated graph produces a byte-identical WAV and retains the same generated
+state size as the previous eight manually expanded pad calls.
+
 ## Render
 
 Build `cxpr_model_codegen`, then run the host:

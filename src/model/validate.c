@@ -404,14 +404,20 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
     size_t nparams;
 
     if (expr && cxpr_expr_ast_kind_of(expr) == CXPR_NODE_FUNCTION_CALL &&
-        cxpr_expr_ast_call_arg_count(expr) == 2u) {
+        (cxpr_expr_ast_call_arg_count(expr) == 2u ||
+         (cxpr_expr_ast_call_name(expr) &&
+          !strcmp(cxpr_expr_ast_call_name(expr), "reduce") &&
+          cxpr_expr_ast_call_arg_count(expr) == 3u))) {
         const char* name = cxpr_expr_ast_call_name(expr);
         const cxpr_expr_ast* array = cxpr_expr_ast_call_arg(expr, 0u);
-        const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(expr, 1u);
+        const bool is_reduce = name && !strcmp(name, "reduce");
+        const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(expr, is_reduce ? 2u : 1u);
         if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
                      !strcmp(name, "min") || !strcmp(name, "max") ||
-                     !strcmp(name, "any") || !strcmp(name, "all")) &&
-            array && cxpr_expr_ast_kind_of(array) == CXPR_NODE_ARRAY &&
+                     !strcmp(name, "any") || !strcmp(name, "all") ||
+                     !strcmp(name, "map") || !strcmp(name, "reduce") ||
+                     !strcmp(name, "instantiate")) &&
+            array && (cxpr_expr_ast_kind_of(array) == CXPR_NODE_ARRAY || is_reduce) &&
             lambda && cxpr_expr_ast_kind_of(lambda) == CXPR_NODE_FUNCTION_CALL &&
             cxpr_expr_ast_call_name(lambda) &&
             !strcmp(cxpr_expr_ast_call_name(lambda), "__cxpr_lambda") &&
@@ -425,6 +431,10 @@ static bool cxpr_model_validate_expr_refs_scoped(const cxpr_model* model,
                     model, array, constant_expr, function_registry,
                     external_refs, external_ref_count, local_refs,
                     local_ref_count, err)) return false;
+            if (is_reduce && !cxpr_model_validate_expr_refs_scoped(
+                    model, cxpr_expr_ast_call_arg(expr, 1u), constant_expr,
+                    function_registry, external_refs, external_ref_count,
+                    local_refs, local_ref_count, err)) return false;
             scoped_refs = (const char**)calloc(local_ref_count + 1u,
                                                 sizeof(*scoped_refs));
             if (!scoped_refs) {

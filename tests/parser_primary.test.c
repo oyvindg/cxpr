@@ -1,7 +1,42 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+static void test_explicit_instance_identity(void) {
+    cxpr_error err = {0};
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* ast = cxpr_expr_ast_parse(parser, "voice@left(pitch=2).sample", &err);
+    cxpr_expr_ast* clone;
+    char* printed;
+    char* key;
+    assert(ast && err.code == CXPR_OK);
+    assert(cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS);
+    assert(strcmp(cxpr_expr_ast_call_instance_id(ast), "left") == 0);
+    printed = cxpr_expr_ast_to_string(ast);
+    assert(printed && strcmp(printed, "voice@left(pitch=2).sample") == 0);
+    key = cxpr_expr_ast_call_identity_key(ast);
+    assert(key && strstr(key, "explicit:") == key && strstr(key, "left"));
+    clone = cxpr_expr_ast_clone(ast);
+    assert(clone && strcmp(cxpr_expr_ast_call_instance_id(clone), "left") == 0);
+    free(key); free(printed); cxpr_expr_ast_free(clone); cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
+
+    parser = cxpr_expr_parser_new(); err = (cxpr_error){0};
+    ast = cxpr_expr_ast_parse(parser, "audio.voice@right(440)", &err);
+    assert(ast && strcmp(cxpr_expr_ast_call_instance_id(ast), "right") == 0);
+    printed = cxpr_expr_ast_to_string(ast);
+    assert(printed && strcmp(printed, "audio.voice@right(440)") == 0);
+    free(printed); cxpr_expr_ast_free(ast); cxpr_expr_parser_free(parser);
+
+    parser = cxpr_expr_parser_new(); err = (cxpr_error){0};
+    ast = cxpr_expr_ast_parse(parser, "1 |> voice@pipe(2)", &err);
+    assert(ast && strcmp(cxpr_expr_ast_call_instance_id(ast), "pipe") == 0);
+    printed = cxpr_expr_ast_to_string(ast);
+    assert(printed && strcmp(printed, "voice@pipe(1, 2)") == 0);
+    free(printed); cxpr_expr_ast_free(ast); cxpr_expr_parser_free(parser);
+}
 
 static void test_parser_primary_forms(void) {
     cxpr_error err = {0};
@@ -95,6 +130,7 @@ static void test_parser_primary_forms(void) {
 }
 
 int main(void) {
+    test_explicit_instance_identity();
     test_parser_primary_forms();
     printf("  \xE2\x9C\x93 parser_primary\n");
     return 0;

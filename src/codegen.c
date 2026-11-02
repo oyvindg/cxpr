@@ -127,6 +127,19 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
                                   cxpr_cg_buf* b, const cxpr_c_target* target,
                                   cxpr_error* err);
 
+static const cxpr_expr_ast* cxpr_cg_static_record_field(
+    const cxpr_expr_ast* record, const char* field) {
+    size_t count;
+    if (!record || record->type != CXPR_NODE_RECORD || !field) return NULL;
+    count = cxpr_expr_ast_record_field_count(record);
+    for (size_t i = 0u; i < count; ++i) {
+        const char* name = cxpr_expr_ast_record_field_name(record, i);
+        if (name && strcmp(name, field) == 0)
+            return cxpr_expr_ast_record_field_value(record, i);
+    }
+    return NULL;
+}
+
 static int cxpr_cg_emit_selector(const cxpr_expr_ast* ast,
                                  const char* parameter,
                                  const cxpr_expr_ast* element,
@@ -142,6 +155,10 @@ static int cxpr_cg_emit_selector(const cxpr_expr_ast* ast,
     if (ast->type == CXPR_NODE_FIELD_ACCESS && !ast->data.field_access.base &&
         ast->data.field_access.object &&
         !strcmp(ast->data.field_access.object, parameter)) {
+        const cxpr_expr_ast* field_value = cxpr_cg_static_record_field(
+            element, ast->data.field_access.field);
+        if (field_value)
+            return cxpr_cg_emit_at_offset(field_value, lookback_offset, b, target, err);
         cxpr_expr_ast selected = {0};
         selected.type = CXPR_NODE_FIELD_ACCESS;
         selected.data.field_access.base = (cxpr_expr_ast*)element;
@@ -150,6 +167,10 @@ static int cxpr_cg_emit_selector(const cxpr_expr_ast* ast,
     }
     if (ast->type == CXPR_NODE_CHAIN_ACCESS && ast->data.chain_access.depth == 2u &&
         !strcmp(ast->data.chain_access.path[0], parameter)) {
+        const cxpr_expr_ast* field_value = cxpr_cg_static_record_field(
+            element, ast->data.chain_access.path[1]);
+        if (field_value)
+            return cxpr_cg_emit_at_offset(field_value, lookback_offset, b, target, err);
         cxpr_expr_ast selected = {0};
         selected.type = CXPR_NODE_FIELD_ACCESS;
         selected.data.field_access.base = (cxpr_expr_ast*)element;
@@ -207,6 +228,114 @@ static int cxpr_cg_emit_selector(const cxpr_expr_ast* ast,
                                    lookback_offset, b, target, err)) return 0;
         cxpr_cg_putc(b, ')');
         return 1;
+    }
+    return cxpr_cg_emit_at_offset(ast, lookback_offset, b, target, err);
+}
+
+static int cxpr_cg_emit_reduce_step(const cxpr_expr_ast* ast,
+                                    const char* parameter,
+                                    const char* accumulator,
+                                    const cxpr_expr_ast* element,
+                                    const cxpr_expr_ast* mapped_selector,
+                                    const char* mapped_parameter,
+                                    size_t index,
+                                    unsigned lookback_offset,
+                                    cxpr_cg_buf* b,
+                                    const cxpr_c_target* target,
+                                    cxpr_error* err) {
+    if (!ast) return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "NULL reduce selector");
+    if (ast->type == CXPR_NODE_FIELD_ACCESS && ast->data.field_access.base &&
+        ast->data.field_access.base->type == CXPR_NODE_IDENTIFIER &&
+        !strcmp(ast->data.field_access.base->data.identifier.name, parameter)) {
+        const char* field = ast->data.field_access.field;
+        if (!strcmp(field, "acc")) { cxpr_cg_puts(b, accumulator); return !b->oom; }
+        if (!strcmp(field, "index")) {
+            char text[32]; snprintf(text, sizeof(text), "%zu.0", index);
+            cxpr_cg_puts(b, text); return !b->oom;
+        }
+        if (!strcmp(field, "value")) {
+            return mapped_selector
+                ? cxpr_cg_emit_selector(mapped_selector, mapped_parameter, element,
+                                        lookback_offset, b, target, err)
+                : cxpr_cg_emit_at_offset(element, lookback_offset, b, target, err);
+        }
+    }
+    if (ast->type == CXPR_NODE_FIELD_ACCESS && !ast->data.field_access.base &&
+        ast->data.field_access.object && !strcmp(ast->data.field_access.object, parameter)) {
+        const char* field = ast->data.field_access.field;
+        if (!strcmp(field, "acc")) { cxpr_cg_puts(b, accumulator); return !b->oom; }
+        if (!strcmp(field, "index")) {
+            char text[32]; snprintf(text, sizeof(text), "%zu.0", index);
+            cxpr_cg_puts(b, text); return !b->oom;
+        }
+        if (!strcmp(field, "value")) {
+            return mapped_selector
+                ? cxpr_cg_emit_selector(mapped_selector, mapped_parameter, element,
+                                        lookback_offset, b, target, err)
+                : cxpr_cg_emit_at_offset(element, lookback_offset, b, target, err);
+        }
+    }
+    if (ast->type == CXPR_NODE_CHAIN_ACCESS && ast->data.chain_access.depth == 2u &&
+        !strcmp(ast->data.chain_access.path[0], parameter)) {
+        const char* field = ast->data.chain_access.path[1];
+        if (!strcmp(field, "acc")) { cxpr_cg_puts(b, accumulator); return !b->oom; }
+        if (!strcmp(field, "index")) {
+            char text[32]; snprintf(text, sizeof(text), "%zu.0", index);
+            cxpr_cg_puts(b, text); return !b->oom;
+        }
+        if (!strcmp(field, "value")) {
+            return mapped_selector
+                ? cxpr_cg_emit_selector(mapped_selector, mapped_parameter, element,
+                                        lookback_offset, b, target, err)
+                : cxpr_cg_emit_at_offset(element, lookback_offset, b, target, err);
+        }
+    }
+    if (ast->type == CXPR_NODE_CHAIN_ACCESS && ast->data.chain_access.depth == 3u &&
+        !strcmp(ast->data.chain_access.path[0], parameter) &&
+        !strcmp(ast->data.chain_access.path[1], "value")) {
+        const cxpr_expr_ast* field_value = cxpr_cg_static_record_field(
+            element, ast->data.chain_access.path[2]);
+        if (!field_value)
+            return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH,
+                               "reduce value field requires a static record element");
+        return cxpr_cg_emit_at_offset(field_value, lookback_offset, b, target, err);
+    }
+    if (ast->type == CXPR_NODE_BINARY_OP) {
+        const char* op = cxpr_cg_binary_op_str(ast->data.binary_op.op);
+        if (!op) return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "unsupported reduce operator");
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_reduce_step(ast->data.binary_op.left, parameter, accumulator,
+                                      element, mapped_selector, mapped_parameter, index,
+                                      lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ' '); cxpr_cg_puts(b, op); cxpr_cg_putc(b, ' ');
+        if (!cxpr_cg_emit_reduce_step(ast->data.binary_op.right, parameter, accumulator,
+                                      element, mapped_selector, mapped_parameter, index,
+                                      lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')'); return !b->oom;
+    }
+    if (ast->type == CXPR_NODE_UNARY_OP) {
+        int op = ast->data.unary_op.op;
+        if (op != CXPR_TOK_MINUS && op != CXPR_TOK_NOT)
+            return cxpr_cg_err(err, CXPR_ERR_SYNTAX, "unsupported reduce unary operator");
+        cxpr_cg_putc(b, op == CXPR_TOK_MINUS ? '-' : '!');
+        return cxpr_cg_emit_reduce_step(ast->data.unary_op.operand, parameter, accumulator,
+                                        element, mapped_selector, mapped_parameter, index,
+                                        lookback_offset, b, target, err);
+    }
+    if (ast->type == CXPR_NODE_TERNARY) {
+        cxpr_cg_putc(b, '(');
+        if (!cxpr_cg_emit_reduce_step(ast->data.ternary.condition, parameter, accumulator,
+                                      element, mapped_selector, mapped_parameter, index,
+                                      lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " ? ");
+        if (!cxpr_cg_emit_reduce_step(ast->data.ternary.true_branch, parameter, accumulator,
+                                      element, mapped_selector, mapped_parameter, index,
+                                      lookback_offset, b, target, err)) return 0;
+        cxpr_cg_puts(b, " : ");
+        if (!cxpr_cg_emit_reduce_step(ast->data.ternary.false_branch, parameter, accumulator,
+                                      element, mapped_selector, mapped_parameter, index,
+                                      lookback_offset, b, target, err)) return 0;
+        cxpr_cg_putc(b, ')'); return !b->oom;
     }
     return cxpr_cg_emit_at_offset(ast, lookback_offset, b, target, err);
 }
@@ -386,11 +515,74 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
     const char* name = cxpr_expr_ast_call_name(ast);
     size_t argc = cxpr_expr_ast_call_arg_count(ast);
 
+    if (!strcmp(name, "reduce") && argc == 3u) {
+        const cxpr_expr_ast* source = cxpr_expr_ast_call_arg(ast, 0u);
+        const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(ast, 2u);
+        const cxpr_expr_ast* mapped_selector = NULL;
+        const char* mapped_parameter = NULL;
+        cxpr_cg_buf accumulator = {0};
+        if (source && source->type == CXPR_NODE_FUNCTION_CALL &&
+            !strcmp(cxpr_expr_ast_call_name(source), "map") &&
+            cxpr_expr_ast_call_arg_count(source) == 2u) {
+            const cxpr_expr_ast* map_lambda = cxpr_expr_ast_call_arg(source, 1u);
+            if (!map_lambda || map_lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                strcmp(map_lambda->data.function_call.name, "__cxpr_lambda") ||
+                map_lambda->data.function_call.argc != 2u ||
+                map_lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER)
+                return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH, "invalid map selector");
+            mapped_parameter = map_lambda->data.function_call.args[0]->data.identifier.name;
+            mapped_selector = map_lambda->data.function_call.args[1];
+            source = cxpr_expr_ast_call_arg(source, 0u);
+        }
+        if (!source || source->type != CXPR_NODE_ARRAY || !lambda ||
+            lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER)
+            return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH,
+                               "reduce requires a static collection and one-parameter step selector");
+        if (!cxpr_cg_emit_at_offset(cxpr_expr_ast_call_arg(ast, 1u), lookback_offset,
+                                    &accumulator, target, err)) {
+            free(accumulator.data); return 0;
+        }
+        for (size_t i = 0u; i < source->data.array.count; ++i) {
+            cxpr_cg_buf next = {0};
+            if (!cxpr_cg_emit_reduce_step(lambda->data.function_call.args[1],
+                    lambda->data.function_call.args[0]->data.identifier.name,
+                    accumulator.data ? accumulator.data : "", source->data.array.elements[i],
+                    mapped_selector, mapped_parameter, i, lookback_offset,
+                    &next, target, err)) {
+                free(accumulator.data); free(next.data); return 0;
+            }
+            free(accumulator.data);
+            accumulator = next;
+        }
+        cxpr_cg_puts(b, accumulator.data ? accumulator.data : "");
+        free(accumulator.data);
+        return !b->oom;
+    }
+
     if (argc >= 1u && argc <= 2u &&
         (!strcmp(name, "sum") || !strcmp(name, "mean") ||
          !strcmp(name, "min") || !strcmp(name, "max") ||
          !strcmp(name, "any") || !strcmp(name, "all"))) {
         const cxpr_expr_ast* array = cxpr_expr_ast_call_arg(ast, 0u);
+        const cxpr_expr_ast* mapped_selector = NULL;
+        const char* mapped_parameter = NULL;
+        if (array && array->type == CXPR_NODE_FUNCTION_CALL && argc == 1u &&
+            !strcmp(cxpr_expr_ast_call_name(array), "map") &&
+            cxpr_expr_ast_call_arg_count(array) == 2u) {
+            const cxpr_expr_ast* lambda = cxpr_expr_ast_call_arg(array, 1u);
+            if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+                lambda->data.function_call.argc != 2u ||
+                lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER)
+                return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH,
+                                   "map requires a one-parameter selector");
+            mapped_parameter = lambda->data.function_call.args[0]->data.identifier.name;
+            mapped_selector = lambda->data.function_call.args[1];
+            array = cxpr_expr_ast_call_arg(array, 0u);
+        }
         if (array && array->type == CXPR_NODE_ARRAY) {
             const cxpr_expr_ast* selector = NULL;
             const char* parameter = NULL;
@@ -444,6 +636,9 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
                 if (selector) {
                     if (!cxpr_cg_emit_selector(selector, parameter, value,
                                                lookback_offset, b, target, err)) return 0;
+                } else if (mapped_selector) {
+                    if (!cxpr_cg_emit_selector(mapped_selector, mapped_parameter, value,
+                                               lookback_offset, b, target, err)) return 0;
                 } else if (!cxpr_cg_emit_at_offset(
                                value, lookback_offset, b, target, err)) return 0;
                 if (i > 0u && strcmp(name, "any") && strcmp(name, "all"))
@@ -457,6 +652,11 @@ static int cxpr_cg_emit_call_at_offset(const cxpr_expr_ast* ast, unsigned lookba
             }
             return 1;
         }
+    }
+
+    if (!strcmp(name, "map")) {
+        return cxpr_cg_err(err, CXPR_ERR_TYPE_MISMATCH,
+                           "map result must be consumed by a static reduction");
     }
 
     if (cxpr_cg_target_has_call(target)) {

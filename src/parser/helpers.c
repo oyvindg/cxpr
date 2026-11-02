@@ -135,8 +135,13 @@ cxpr_expr_ast* cxpr_expr_parser_clone_ast(const cxpr_expr_ast* ast) {
                 }
             }
         }
-        return cxpr_expr_ast_call_named_new(ast->data.function_call.name, args,
+        {
+            cxpr_expr_ast* out = cxpr_expr_ast_call_named_new(ast->data.function_call.name, args,
                                                 arg_names, ast->data.function_call.argc);
+            if (out && ast->data.function_call.instance_id)
+                cxpr_expr_ast_call_set_instance_id(out, ast->data.function_call.instance_id);
+            return out;
+        }
     }
     case CXPR_NODE_PRODUCER_ACCESS: {
         cxpr_expr_ast** args = NULL;
@@ -171,9 +176,14 @@ cxpr_expr_ast* cxpr_expr_parser_clone_ast(const cxpr_expr_ast* ast) {
                 }
             }
         }
-        return cxpr_expr_ast_producer_field_named_new(ast->data.producer_access.name, args,
+        {
+            cxpr_expr_ast* out = cxpr_expr_ast_producer_field_named_new(ast->data.producer_access.name, args,
                                                   arg_names, ast->data.producer_access.argc,
                                                   ast->data.producer_access.field);
+            if (out && ast->data.producer_access.instance_id)
+                cxpr_expr_ast_call_set_instance_id(out, ast->data.producer_access.instance_id);
+            return out;
+        }
     }
     case CXPR_NODE_INDEX: {
         cxpr_expr_ast* target = cxpr_expr_parser_clone_ast(ast->data.index.target);
@@ -289,6 +299,8 @@ cxpr_expr_ast* cxpr_expr_parser_pipe_inject_argument(cxpr_expr_parser* p, cxpr_e
                                                 new_args,
                                                 new_arg_names,
                                                 old_argc + 1u);
+        if (node && stage->data.function_call.instance_id)
+            cxpr_expr_ast_call_set_instance_id(node, stage->data.function_call.instance_id);
         cxpr_expr_ast_free(stage);
         if (!node) {
             for (size_t i = 0; i < old_argc + 1u; ++i) {
@@ -343,6 +355,8 @@ cxpr_expr_ast* cxpr_expr_parser_pipe_inject_argument(cxpr_expr_parser* p, cxpr_e
                                                   new_arg_names,
                                                   old_argc + 1u,
                                                   stage->data.producer_access.field);
+        if (node && stage->data.producer_access.instance_id)
+            cxpr_expr_ast_call_set_instance_id(node, stage->data.producer_access.instance_id);
         cxpr_expr_ast_free(stage);
         if (!node) {
             for (size_t i = 0; i < old_argc + 1u; ++i) {

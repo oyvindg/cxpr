@@ -98,6 +98,8 @@ typedef enum {
     CXPR_OP_LOOKBACK_POP,
     CXPR_OP_LOOKBACK_RESOLVE,
     CXPR_OP_STORE_LOCAL,
+    CXPR_OP_LOAD_TEMP,
+    CXPR_OP_STORE_TEMP,
     CXPR_OP_RETURN,
     CXPR_OP_INDEX
 } cxpr_opcode;
@@ -141,6 +143,7 @@ typedef struct cxpr_ir_program_tag {
     const cxpr_expr_ast* ast;
     cxpr_ir_input_descriptor* inputs;
     size_t input_count;
+    size_t temp_count;
     uint64_t binding_generation;
     unsigned char* value_kinds;
     unsigned char fast_result_kind;

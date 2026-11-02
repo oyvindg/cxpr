@@ -1,0 +1,4 @@
+model ir_static_reduce_records_manual
+in { a, b, c, d }
+result = (((0 + a * 0.25) + b * 0.50) + c * 0.75) + d
+out result

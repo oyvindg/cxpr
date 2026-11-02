@@ -206,7 +206,7 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
 
 cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   cxpr_error* err) {
-    const cxpr_struct_value* current;
+    const cxpr_struct_value* current = NULL;
     cxpr_value owned_root = cxpr_null();
     size_t start_index = 1u;
 
@@ -247,6 +247,30 @@ cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* 
                 CXPR_ERR_UNKNOWN_IDENTIFIER,
                 "Expression-scope chain has no struct prefix");
         }
+    }
+
+    {
+        char prefix[512];
+        size_t offset = 0u;
+        for (size_t i = 0u; i + 1u < ast->data.chain_access.depth; ++i) {
+            bool found = false;
+            const char* segment = ast->data.chain_access.path[i];
+            int written = snprintf(prefix + offset, sizeof(prefix) - offset,
+                                   i == 0u ? "%s" : ".%s",
+                                   segment ? segment : "");
+            if (written <= 0 || (size_t)written >= sizeof(prefix) - offset) break;
+            offset += (size_t)written;
+            cxpr_value candidate = cxpr_context_get_typed(ctx, prefix, &found);
+            if (found && candidate.type == CXPR_VALUE_STRUCT) {
+                cxpr_eval_free_composite(&owned_root);
+                owned_root = candidate;
+                current = owned_root.s;
+                start_index = i + 1u;
+            } else {
+                cxpr_eval_free_composite(&candidate);
+            }
+        }
+        if (current) goto walk_fields;
     }
 
     current = cxpr_context_get_struct(ctx, ast->data.chain_access.path[0]);
@@ -594,6 +618,8 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
                                              cxpr_error* err) {
     const cxpr_expr_ast* array;
     const cxpr_expr_ast* selector = NULL;
+    const cxpr_expr_ast* mapped_selector = NULL;
+    const char* mapped_parameter = NULL;
     const char* parameter = NULL;
     const char* name;
     double accumulated = 0.0;
@@ -610,6 +636,23 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
         ast->data.function_call.argc < 1u ||
         ast->data.function_call.argc > 2u) return false;
     array = ast->data.function_call.args[0];
+    if (array && array->type == CXPR_NODE_FUNCTION_CALL &&
+        !strcmp(array->data.function_call.name, "map") &&
+        array->data.function_call.argc == 2u &&
+        ast->data.function_call.argc == 1u) {
+        const cxpr_expr_ast* lambda = array->data.function_call.args[1];
+        if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                   "map requires a one-parameter selector");
+            return true;
+        }
+        mapped_parameter = lambda->data.function_call.args[0]->data.identifier.name;
+        mapped_selector = lambda->data.function_call.args[1];
+        array = array->data.function_call.args[0];
+    }
     if (!array || array->type != CXPR_NODE_ARRAY) return false;
     if (ast->data.function_call.argc == 2u) {
         const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
@@ -653,6 +696,19 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
             }
             cxpr_context_set_value(overlay, parameter, &element);
             value = cxpr_eval_node(selector, overlay, reg, err);
+            cxpr_value_free(&element);
+            cxpr_context_free(overlay);
+        } else if (mapped_selector) {
+            cxpr_context* overlay = cxpr_context_overlay_new(ctx);
+            cxpr_value element = cxpr_eval_node(array->data.array.elements[i], ctx, reg, err);
+            if (!overlay || (err && err->code != CXPR_OK)) {
+                cxpr_context_free(overlay);
+                cxpr_value_free(&element);
+                *out = cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                return true;
+            }
+            cxpr_context_set_value(overlay, mapped_parameter, &element);
+            value = cxpr_eval_node(mapped_selector, overlay, reg, err);
             cxpr_value_free(&element);
             cxpr_context_free(overlay);
         } else {
@@ -702,6 +758,81 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
     }
     if (!strcmp(name, "mean")) accumulated /= (double)array->data.array.count;
     *out = cxpr_num(accumulated);
+    return true;
+}
+
+static bool cxpr_eval_static_reduce(const cxpr_expr_ast* ast,
+                                    const cxpr_context* ctx,
+                                    const cxpr_registry* reg,
+                                    cxpr_value* out,
+                                    cxpr_error* err) {
+    const cxpr_expr_ast* source;
+    const cxpr_expr_ast* initial;
+    const cxpr_expr_ast* lambda;
+    const cxpr_expr_ast* mapped_selector = NULL;
+    const char* mapped_parameter = NULL;
+    const char* step_parameter;
+    cxpr_value accumulator;
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(ast->data.function_call.name, "reduce") ||
+        ast->data.function_call.argc != 3u) return false;
+    source = ast->data.function_call.args[0];
+    initial = ast->data.function_call.args[1];
+    lambda = ast->data.function_call.args[2];
+    if (source && source->type == CXPR_NODE_FUNCTION_CALL &&
+        !strcmp(source->data.function_call.name, "map") &&
+        source->data.function_call.argc == 2u) {
+        const cxpr_expr_ast* map_lambda = source->data.function_call.args[1];
+        if (!map_lambda || map_lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(map_lambda->data.function_call.name, "__cxpr_lambda") ||
+            map_lambda->data.function_call.argc != 2u ||
+            map_lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH, "map requires a one-parameter selector");
+            return true;
+        }
+        mapped_parameter = map_lambda->data.function_call.args[0]->data.identifier.name;
+        mapped_selector = map_lambda->data.function_call.args[1];
+        source = source->data.function_call.args[0];
+    }
+    if (!source || source->type != CXPR_NODE_ARRAY || !lambda ||
+        lambda->type != CXPR_NODE_FUNCTION_CALL ||
+        strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+        lambda->data.function_call.argc != 2u ||
+        lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+        *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                               "reduce requires a static collection and one-parameter step selector");
+        return true;
+    }
+    step_parameter = lambda->data.function_call.args[0]->data.identifier.name;
+    accumulator = cxpr_eval_node(initial, ctx, reg, err);
+    if (err && err->code != CXPR_OK) { *out = accumulator; return true; }
+    for (size_t i = 0u; i < source->data.array.count; ++i) {
+        cxpr_value value;
+        cxpr_value next;
+        cxpr_context* overlay = cxpr_context_overlay_new(ctx);
+        char key[256];
+        if (!overlay) { cxpr_value_free(&accumulator); *out = cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory"); return true; }
+        value = cxpr_eval_node(source->data.array.elements[i], ctx, reg, err);
+        if (mapped_selector && (!err || err->code == CXPR_OK)) {
+            cxpr_context_set_value(overlay, mapped_parameter, &value);
+            cxpr_value mapped = cxpr_eval_node(mapped_selector, overlay, reg, err);
+            cxpr_value_free(&value);
+            value = mapped;
+        }
+        snprintf(key, sizeof(key), "%s.acc", step_parameter);
+        cxpr_context_set_value(overlay, key, &accumulator);
+        snprintf(key, sizeof(key), "%s.value", step_parameter);
+        cxpr_context_set_value(overlay, key, &value);
+        snprintf(key, sizeof(key), "%s.index", step_parameter);
+        cxpr_context_set(overlay, key, (double)i);
+        next = cxpr_eval_node(lambda->data.function_call.args[1], overlay, reg, err);
+        cxpr_context_free(overlay);
+        cxpr_value_free(&value);
+        cxpr_value_free(&accumulator);
+        accumulator = next;
+        if (err && err->code != CXPR_OK) break;
+    }
+    *out = accumulator;
     return true;
 }
 
@@ -1006,6 +1137,7 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
         cxpr_value static_reduction;
 
+        if (cxpr_eval_static_reduce(ast, ctx, reg, &static_reduction, err)) return static_reduction;
         if (cxpr_eval_static_array_reduction(
                 ast, ctx, reg, &static_reduction, err)) return static_reduction;
 

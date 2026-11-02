@@ -67,6 +67,8 @@ static cxpr_ir_value_kind cxpr_ir_instruction_value_kind(
     case CXPR_OP_CALL_FUNC:
     case CXPR_OP_CALL_DEFINED:
         return cxpr_ir_function_result_kind(instr);
+    case CXPR_OP_LOAD_TEMP:
+        return CXPR_IR_VALUE_F64;
     case CXPR_OP_RETURN:
         return program->fast_result_kind == CXPR_IR_RESULT_DOUBLE ? CXPR_IR_VALUE_F64 :
                program->fast_result_kind == CXPR_IR_RESULT_INT64 ? CXPR_IR_VALUE_I64 :
@@ -78,6 +80,7 @@ static cxpr_ir_value_kind cxpr_ir_instruction_value_kind(
     case CXPR_OP_LOOKBACK_PUSH:
     case CXPR_OP_LOOKBACK_POP:
     case CXPR_OP_STORE_LOCAL:
+    case CXPR_OP_STORE_TEMP:
         return CXPR_IR_VALUE_NONE;
     default:
         return CXPR_IR_VALUE_DYNAMIC;

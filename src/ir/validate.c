@@ -14,6 +14,7 @@ static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops
     case CXPR_OP_PUSH_BOOL:
     case CXPR_OP_LOAD_LOCAL:
     case CXPR_OP_LOAD_LOCAL_SQUARE:
+    case CXPR_OP_LOAD_TEMP:
     case CXPR_OP_LOAD_VAR:
     case CXPR_OP_LOAD_VAR_SQUARE:
     case CXPR_OP_LOAD_PARAM:
@@ -76,6 +77,11 @@ static bool cxpr_ir_scalar_stack_effect(const cxpr_ir_instr* instr, size_t* pops
         return true;
     case CXPR_OP_JUMP:
         *pops = 0;
+        *pushes = 0;
+        return true;
+    case CXPR_OP_STORE_LOCAL:
+    case CXPR_OP_STORE_TEMP:
+        *pops = 1;
         *pushes = 0;
         return true;
     case CXPR_OP_RETURN:

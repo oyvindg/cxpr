@@ -178,6 +178,8 @@ static cxpr_expr_ast* cxpr_alias_make_field_from_expanded(cxpr_expr_ast* expande
             arg_names,
             expanded->data.function_call.argc,
             field);
+        if (out && expanded->data.function_call.instance_id)
+            cxpr_expr_ast_call_set_instance_id(out, expanded->data.function_call.instance_id);
         if (!out) {
             if (args) {
                 for (size_t i = 0u; i < expanded->data.function_call.argc; ++i) cxpr_expr_ast_free(args[i]);
@@ -369,6 +371,8 @@ static cxpr_expr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cx
                 args,
                 arg_names,
                 ast->data.function_call.argc);
+            if (out_call && ast->data.function_call.instance_id)
+                cxpr_expr_ast_call_set_instance_id(out_call, ast->data.function_call.instance_id);
             return out_call;
         }
         case CXPR_NODE_PRODUCER_ACCESS:
@@ -381,12 +385,17 @@ static cxpr_expr_ast* cxpr_alias_expand_ast(cxpr_alias_expand_ctx* ctx, const cx
                 cxpr_alias_set_error(ctx, "Out of memory", 0u);
                 return NULL;
             }
-            return cxpr_expr_ast_producer_field_named_new(
+            {
+            cxpr_expr_ast* out_producer = cxpr_expr_ast_producer_field_named_new(
                 ast->data.producer_access.name,
                 args,
                 arg_names,
                 ast->data.producer_access.argc,
                 ast->data.producer_access.field);
+            if (out_producer && ast->data.producer_access.instance_id)
+                cxpr_expr_ast_call_set_instance_id(out_producer, ast->data.producer_access.instance_id);
+            return out_producer;
+            }
         case CXPR_NODE_INDEX:
         {
             cxpr_expr_ast* target = cxpr_alias_expand_ast(ctx, ast->data.index.target);

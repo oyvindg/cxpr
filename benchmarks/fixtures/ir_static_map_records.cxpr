@@ -1,0 +1,9 @@
+model ir_static_map_records
+in { a, b, c, d }
+r0 = { signal = a, gain = 0.25 }
+r1 = { signal = b, gain = 0.50 }
+r2 = { signal = c, gain = 0.75 }
+r3 = { signal = d, gain = 1.00 }
+records = [r0, r1, r2, r3]
+result = reduce(map(records, item => item.signal * item.gain), 0, step => step.acc + step.value)
+out result

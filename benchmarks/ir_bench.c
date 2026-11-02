@@ -1,5 +1,6 @@
 #include <cxpr/cxpr.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,6 +56,24 @@ cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
 #ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
 #include CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
 #endif
+#ifdef CXPR_BENCH_IR_STATIC_MAP_RECORDS_MANUAL_INLINE
+#include CXPR_BENCH_IR_STATIC_MAP_RECORDS_MANUAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_MAP_RECORDS_INLINE
+#include CXPR_BENCH_IR_STATIC_MAP_RECORDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_MANUAL_INLINE
+#include CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_MANUAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE
+#include CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE
+#include CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_INSTANTIATE_INLINE
+#include CXPR_BENCH_IR_STATIC_INSTANTIATE_INLINE
+#endif
 #ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
 #include CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
 #endif
@@ -102,6 +121,12 @@ typedef enum {
     BENCH_C_MIXED_EXPR,
     BENCH_C_MIXED_PIPE,
     BENCH_C_CONTEXT_CHURN,
+    BENCH_C_STATIC_MAP_RECORDS_MANUAL,
+    BENCH_C_STATIC_MAP_RECORDS,
+    BENCH_C_STATIC_REDUCE_RECORDS_MANUAL,
+    BENCH_C_STATIC_REDUCE_RECORDS,
+    BENCH_C_STATIC_INSTANTIATE_MANUAL,
+    BENCH_C_STATIC_INSTANTIATE,
     BENCH_C_STRUCT_SCALAR_MUL,
     BENCH_C_SCALAR_STRUCT_MUL,
     BENCH_C_STRUCT_STRUCT_MUL,
@@ -174,6 +199,7 @@ typedef struct {
     char* source;
     cxpr_model* model;
     const cxpr_expr_ast* result;
+    cxpr_expr_ast* materialized_result;
 } bench_model_source;
 
 static char* read_text_file(const char* path) {
@@ -225,10 +251,34 @@ static bench_model_source load_bench_model(const char* fixture) {
         fprintf(stderr, "Benchmark fixture '%s' has no result binding\n", path);
         exit(1);
     }
+    if (strcmp(fixture, "ir_static_map_records.cxpr") == 0 ||
+        strcmp(fixture, "ir_static_reduce_records.cxpr") == 0) {
+        const char* expression =
+            strcmp(fixture, "ir_static_map_records.cxpr") == 0
+                ? "reduce(map([{signal=a, gain=0.25}, {signal=b, gain=0.50}, "
+                  "{signal=c, gain=0.75}, {signal=d, gain=1.00}], "
+                  "item => item.signal * item.gain), 0, "
+                  "step => step.acc + step.value)"
+                : "reduce([{signal=a, gain=0.25}, {signal=b, gain=0.50}, "
+                  "{signal=c, gain=0.75}, {signal=d, gain=1.00}], 0, "
+                  "step => step.acc + step.value.signal * step.value.gain)";
+        cxpr_expr_parser* parser = cxpr_expr_parser_new();
+        loaded.materialized_result = parser
+            ? cxpr_expr_ast_parse(parser, expression, &err)
+            : NULL;
+        cxpr_expr_parser_free(parser);
+        if (!loaded.materialized_result) {
+            fprintf(stderr, "Failed to materialize benchmark fixture '%s': %s\n",
+                    path, err.message ? err.message : "(null)");
+            exit(1);
+        }
+        loaded.result = loaded.materialized_result;
+    }
     return loaded;
 }
 
 static void free_bench_model(bench_model_source* loaded) {
+    cxpr_expr_ast_free(loaded->materialized_result);
     cxpr_model_free(loaded->model);
     free(loaded->source);
     *loaded = (bench_model_source){0};
@@ -282,6 +332,24 @@ static const char* bench_c_model_inline_path(bench_c_model model) {
 #endif
 #ifdef CXPR_BENCH_IR_CONTEXT_CHURN_INLINE
     case BENCH_C_CONTEXT_CHURN: return CXPR_BENCH_IR_CONTEXT_CHURN_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_MAP_RECORDS_MANUAL_INLINE
+    case BENCH_C_STATIC_MAP_RECORDS_MANUAL: return CXPR_BENCH_IR_STATIC_MAP_RECORDS_MANUAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_MAP_RECORDS_INLINE
+    case BENCH_C_STATIC_MAP_RECORDS: return CXPR_BENCH_IR_STATIC_MAP_RECORDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_MANUAL_INLINE
+    case BENCH_C_STATIC_REDUCE_RECORDS_MANUAL: return CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_MANUAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE
+    case BENCH_C_STATIC_REDUCE_RECORDS: return CXPR_BENCH_IR_STATIC_REDUCE_RECORDS_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE
+    case BENCH_C_STATIC_INSTANTIATE_MANUAL: return CXPR_BENCH_IR_STATIC_INSTANTIATE_MANUAL_INLINE;
+#endif
+#ifdef CXPR_BENCH_IR_STATIC_INSTANTIATE_INLINE
+    case BENCH_C_STATIC_INSTANTIATE: return CXPR_BENCH_IR_STATIC_INSTANTIATE_INLINE;
 #endif
 #ifdef CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE
     case BENCH_C_STRUCT_SCALAR_MUL: return CXPR_BENCH_IR_STRUCT_SCALAR_MUL_INLINE;
@@ -1415,6 +1483,36 @@ static double time_c_context_churn(size_t iterations, double* out_total) {
     return (double)(end - start) / (double)iterations;
 }
 
+#define DEFINE_STATIC_COLLECTION_C_TIMER(name_)                                    \
+    static double time_c_##name_(size_t iterations, double* out_total) {            \
+        cxpr_bench_ir_##name_##_state state = {0};                                 \
+        void (*volatile tick)(cxpr_bench_ir_##name_##_state*,                       \
+                              const cxpr_value*, const cxpr_value*, cxpr_value*) =   \
+            cxpr_bench_ir_##name_;                                                  \
+        cxpr_value inputs[5];                                                       \
+        cxpr_value outputs[1] = {0};                                                \
+        double total = 0.0;                                                         \
+        long long start, end;                                                       \
+        fill_inputs_abcde(inputs);                                                  \
+        start = now_ns();                                                           \
+        for (size_t i = 0u; i < iterations; ++i) {                                 \
+            tick(&state, inputs, NULL, outputs);                                    \
+            total += outputs[0].d;                                                  \
+        }                                                                           \
+        end = now_ns();                                                             \
+        *out_total = total;                                                         \
+        return (double)(end - start) / (double)iterations;                         \
+    }
+
+DEFINE_STATIC_COLLECTION_C_TIMER(static_map_records_manual)
+DEFINE_STATIC_COLLECTION_C_TIMER(static_map_records)
+DEFINE_STATIC_COLLECTION_C_TIMER(static_reduce_records_manual)
+DEFINE_STATIC_COLLECTION_C_TIMER(static_reduce_records)
+DEFINE_STATIC_COLLECTION_C_TIMER(static_instantiate_manual)
+DEFINE_STATIC_COLLECTION_C_TIMER(static_instantiate)
+
+#undef DEFINE_STATIC_COLLECTION_C_TIMER
+
 static double time_c_lookback_leaf(size_t iterations, double* out_total) {
     cxpr_bench_ir_lookback_leaf_state state = {0};
     void (*volatile tick)(cxpr_bench_ir_lookback_leaf_state*, const cxpr_value*, const cxpr_value*, cxpr_value*) =
@@ -1475,6 +1573,10 @@ static double time_c_model(bench_c_model model, size_t iterations, double* out_t
     case BENCH_C_MIXED_EXPR: return time_c_mixed_expr(iterations, out_total);
     case BENCH_C_MIXED_PIPE: return time_c_mixed_pipe(iterations, out_total);
     case BENCH_C_CONTEXT_CHURN: return time_c_context_churn(iterations, out_total);
+    case BENCH_C_STATIC_MAP_RECORDS_MANUAL: return time_c_static_map_records_manual(iterations, out_total);
+    case BENCH_C_STATIC_MAP_RECORDS: return time_c_static_map_records(iterations, out_total);
+    case BENCH_C_STATIC_REDUCE_RECORDS_MANUAL: return time_c_static_reduce_records_manual(iterations, out_total);
+    case BENCH_C_STATIC_REDUCE_RECORDS: return time_c_static_reduce_records(iterations, out_total);
     case BENCH_C_STRUCT_SCALAR_MUL: return time_c_struct_scalar_mul(iterations, out_total);
     case BENCH_C_SCALAR_STRUCT_MUL: return time_c_scalar_struct_mul(iterations, out_total);
     case BENCH_C_STRUCT_STRUCT_MUL: return time_c_struct_struct_mul(iterations, out_total);
@@ -1605,7 +1707,9 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
     cxpr_expr_compiled* program = NULL;
     const size_t compile_iterations =
         (strncmp(c->name, "static_any_", 11u) == 0 ||
-         strncmp(c->name, "static_all_", 11u) == 0) ? 1000u : 1u;
+         strncmp(c->name, "static_all_", 11u) == 0 ||
+         strncmp(c->name, "static_map_", 11u) == 0 ||
+         strncmp(c->name, "static_reduce_", 14u) == 0) ? 1000u : 1u;
 
     (void)parser;
 
@@ -1629,6 +1733,8 @@ static void bench_one(cxpr_expr_parser* parser, cxpr_context* ctx, cxpr_registry
         strcmp(c->name, "struct_binding") == 0 ||
         strncmp(c->name, "static_any_", 11u) == 0 ||
         strncmp(c->name, "static_all_", 11u) == 0 ||
+        strncmp(c->name, "static_map_", 11u) == 0 ||
+        strncmp(c->name, "static_reduce_", 14u) == 0 ||
         strcmp(c->name, "static_predicates") == 0) {
         const size_t instruction_count = cxpr_expr_compiled_ir_count(program);
         for (size_t i = 0u; i < instruction_count; ++i) {
@@ -2229,6 +2335,57 @@ static void print_bench_header(const char* title) {
            "case", "iters", "AST ns/eval", "IR ns/eval", ".cxpr C ns/eval", "AST/IR", "IR/C");
 }
 
+static void bench_static_instantiate(void) {
+    /* The generated calls are only a few nanoseconds each; use a long enough
+       interval to keep scheduler noise from dominating the delta. */
+    const size_t iterations = 5000000u;
+    double manual_total = 0.0;
+    double native_total = 0.0;
+    double manual_ns;
+    double native_ns;
+    char* manual_c = read_text_file(
+        bench_c_model_inline_path(BENCH_C_STATIC_INSTANTIATE_MANUAL));
+    char* native_c = read_text_file(
+        bench_c_model_inline_path(BENCH_C_STATIC_INSTANTIATE));
+
+    if (!manual_c || !native_c || strstr(manual_c, "CALL_AST") ||
+        strstr(native_c, "CALL_AST")) {
+        fprintf(stderr, "Static instantiate generated C retained CALL_AST\n");
+        free(native_c);
+        free(manual_c);
+        exit(1);
+    }
+    free(native_c);
+    free(manual_c);
+
+    manual_ns = time_c_static_instantiate_manual(iterations, &manual_total);
+    native_ns = time_c_static_instantiate(iterations, &native_total);
+    if (fabs(manual_total - native_total) >
+        1e-9 * (1.0 + fabs(manual_total))) {
+        fprintf(stderr, "Static instantiate generated-C total mismatch: %.17g vs %.17g\n",
+                manual_total, native_total);
+        exit(1);
+    }
+    g_sink += manual_total + native_total;
+    printf("\nStatic Instantiate / @label (generated C, zero fallback)\n");
+    printf("%-28s  %10s  %12s  %12s\n",
+           "case", "iters", "C ns/eval", "state bytes");
+    printf("%-28s  %10zu  %12.2f  %12zu\n",
+           "static_instantiate_manual", iterations, manual_ns,
+           sizeof(cxpr_bench_ir_static_instantiate_manual_state));
+    printf("%-28s  %10zu  %12.2f  %12zu\n",
+           "static_instantiate", iterations, native_ns,
+           sizeof(cxpr_bench_ir_static_instantiate_state));
+    printf("  delta: C=%+.2f ns (%+.2f%%), state=%+td bytes (%+.2f%%), ast_fallbacks=0\n",
+           native_ns - manual_ns,
+           100.0 * (native_ns / manual_ns - 1.0),
+           (ptrdiff_t)sizeof(cxpr_bench_ir_static_instantiate_state) -
+               (ptrdiff_t)sizeof(cxpr_bench_ir_static_instantiate_manual_state),
+           100.0 * ((double)sizeof(cxpr_bench_ir_static_instantiate_state) /
+                        (double)sizeof(cxpr_bench_ir_static_instantiate_manual_state) -
+                    1.0));
+}
+
 static int print_generated_c(const bench_case* cases, size_t case_count,
                              const typed_bench_case* typed_cases, size_t typed_case_count,
                              const lookback_bench_case* lookback_cases, size_t lookback_case_count,
@@ -2277,6 +2434,10 @@ int main(int argc, char** argv) {
         { "mixed_expr", "ir_mixed_expr.cxpr", 120000, 0, BENCH_C_MIXED_EXPR },
         { "mixed_pipe", "ir_mixed_pipe.cxpr", 120000, 0, BENCH_C_MIXED_PIPE },
         { "context_churn", "ir_context_churn.cxpr", 200000, 1, BENCH_C_CONTEXT_CHURN },
+        { "static_map_records_manual", "ir_static_map_records_manual.cxpr", 200000, 0, BENCH_C_STATIC_MAP_RECORDS_MANUAL },
+        { "static_map_records", "ir_static_map_records.cxpr", 200000, 0, BENCH_C_STATIC_MAP_RECORDS },
+        { "static_reduce_records_manual", "ir_static_reduce_records_manual.cxpr", 200000, 0, BENCH_C_STATIC_REDUCE_RECORDS_MANUAL },
+        { "static_reduce_records", "ir_static_reduce_records.cxpr", 200000, 0, BENCH_C_STATIC_REDUCE_RECORDS },
         { "static_any_early", "ir_static_any_early.cxpr", 200000, 0, BENCH_C_NONE },
         { "static_any_full", "ir_static_any_full.cxpr", 200000, 0, BENCH_C_NONE },
         { "static_all_early", "ir_static_all_early.cxpr", 200000, 0, BENCH_C_NONE },
@@ -2532,6 +2693,12 @@ int main(int argc, char** argv) {
         if (case_filter && strcmp(case_filter, lookback_cases[i].name) != 0) continue;
         case_matched = true;
         bench_one_lookback(parser, ctx, reg, &lookback_cases[i]);
+    }
+
+    if (!case_filter || strcmp(case_filter, "static_instantiate") == 0 ||
+        strcmp(case_filter, "static_instantiate_manual") == 0) {
+        case_matched = true;
+        bench_static_instantiate();
     }
 
     if (case_filter && !case_matched) {

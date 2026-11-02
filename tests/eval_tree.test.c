@@ -37,6 +37,28 @@ static void test_eval_tree_access_paths(void) {
     assert(out == 13.0);
     cxpr_expr_ast_free(ast);
 
+    ast = cxpr_expr_ast_parse(p, "sum(map([1, 2, 3], x => x * 2))", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(out == 12.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p,
+        "reduce(map([1, 2, 3], x => x * 2), 0, step => step.acc + step.value + step.index)",
+        &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(out == 15.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p,
+        "reduce([{ signal = 2, gain = 0.25 }, { signal = 4, gain = 0.5 }], "
+        "0, step => step.acc + step.value.signal * step.value.gain)", &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(out == 2.5);
+    cxpr_expr_ast_free(ast);
+
     cxpr_registry_free(reg);
     cxpr_context_free(ctx);
     cxpr_expr_parser_free(p);

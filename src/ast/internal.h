@@ -75,6 +75,7 @@ struct cxpr_expr_ast {
         } chain_access;
         struct {
             char* name;
+            char* instance_id;
             struct cxpr_expr_ast** args;
             char** arg_names;
             size_t argc;
@@ -101,6 +102,7 @@ struct cxpr_expr_ast {
         } unary_op;
         struct {
             char* name;
+            char* instance_id;
             struct cxpr_expr_ast** args;
             char** arg_names;
             size_t argc;

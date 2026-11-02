@@ -23,6 +23,7 @@ static char* to_c(const char* expr) {
     cxpr_expr_ast* ast = cxpr_expr_ast_parse(p, expr, &err);
     assert(ast && err.code == CXPR_OK);
     char* out = cxpr_expr_ast_to_c(ast, NULL, &err);
+    if (!out) fprintf(stderr, "to_c failed for %s: %s\n", expr, err.message ? err.message : "(null)");
     assert(out && err.code == CXPR_OK);
     cxpr_expr_ast_free(ast);
     cxpr_expr_parser_free(p);
@@ -60,6 +61,26 @@ static void test_array_sum_codegen(void) {
 
     code = to_c("all([])");
     assert(strcmp(code, "true") == 0);
+    free(code);
+
+    code = to_c("sum(map([1, 2, 3], x => x * 2))");
+    assert(strcmp(code, "(((1.0 * 2.0) + (2.0 * 2.0)) + (3.0 * 2.0))") == 0);
+    free(code);
+
+    code = to_c(
+        "sum(map([{ signal = a, gain = 0.25 }, "
+        "{ signal = b, gain = 0.5 }], x => x.signal * x.gain))");
+    assert(strcmp(code, "((a * 0.25) + (b * 0.5))") == 0);
+    free(code);
+
+    code = to_c("reduce(map([1, 2, 3], x => x * 2), 0, step => step.acc + step.value + step.index)");
+    assert(strcmp(code, "((((((0.0 + (1.0 * 2.0)) + 0.0) + (2.0 * 2.0)) + 1.0) + (3.0 * 2.0)) + 2.0)") == 0);
+    free(code);
+
+    code = to_c(
+        "reduce([{ signal = 2, gain = 0.25 }, { signal = 4, gain = 0.5 }], "
+        "0, step => step.acc + step.value.signal * step.value.gain)");
+    assert(strcmp(code, "((0.0 + (2.0 * 0.25)) + (4.0 * 0.5))") == 0);
     free(code);
 }
 
@@ -455,6 +476,27 @@ static void test_program_to_c_function(void) {
     printf("  program_to_c_function OK\n");
 }
 
+static void test_reduce_program_to_c_function(void) {
+    char* code = program_to_c(
+        "reduce(map([1, 2, 3], x => x * 2), 0, "
+        "step => step.acc + step.value + step.index)",
+        NULL, 0u);
+    assert(strstr(code, "double _cx_l[") != NULL);
+    assert(strstr(code, "_cx_l[0] = _cx_s[--_cx_sp]") != NULL);
+    assert(strstr(code, "return _cx_s[--_cx_sp]") != NULL);
+    free(code);
+
+    code = program_to_c(
+        "reduce(map([{ signal = 2, gain = 0.25 }, { signal = 4, gain = 0.5 }], "
+        "item => item.signal * item.gain), 0, step => step.acc + step.value)",
+        NULL, 0u);
+    assert(strstr(code, "Unsupported") == NULL);
+    assert(strstr(code, "0.25") != NULL);
+    assert(strstr(code, "0.5") != NULL);
+    free(code);
+    printf("  reduce program_to_c_function OK\n");
+}
+
 static void test_program_array_index_to_c_function(void) {
     cxpr_c_program_arg dynamic_args[] = {
         {.kind = CXPR_C_PROGRAM_ARG_PARAM, .name = "index"},
@@ -591,6 +633,7 @@ int main(void) {
     test_exprset_cycle();
     test_exprset_to_c_function();
     test_program_to_c_function();
+    test_reduce_program_to_c_function();
     test_program_array_index_to_c_function();
     test_program_to_c_function_requires_explicit_bindings();
     test_defined_fn_to_c_function();

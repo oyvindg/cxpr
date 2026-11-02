@@ -64,6 +64,8 @@ static cxpr_ir_opcode cxpr_ir_view_map_opcode(cxpr_opcode op) {
     case CXPR_OP_LOOKBACK_POP: return CXPR_IR_OP_LOOKBACK_POP;
     case CXPR_OP_LOOKBACK_RESOLVE: return CXPR_IR_OP_LOOKBACK_RESOLVE;
     case CXPR_OP_STORE_LOCAL: return CXPR_IR_OP_STORE_LOCAL;
+    case CXPR_OP_LOAD_TEMP: return CXPR_IR_OP_LOAD_TEMP;
+    case CXPR_OP_STORE_TEMP: return CXPR_IR_OP_STORE_TEMP;
     case CXPR_OP_RETURN: return CXPR_IR_OP_RETURN;
     case CXPR_OP_INDEX: return CXPR_IR_OP_INDEX;
     default: return CXPR_IR_OP_UNKNOWN;
@@ -96,6 +98,8 @@ static bool cxpr_ir_view_opcode_has_index(cxpr_opcode op) {
     case CXPR_OP_LOOKBACK_PUSH:
     case CXPR_OP_LOOKBACK_RESOLVE:
     case CXPR_OP_STORE_LOCAL:
+    case CXPR_OP_LOAD_TEMP:
+    case CXPR_OP_STORE_TEMP:
         return true;
     default:
         return false;
@@ -231,6 +235,8 @@ const char* cxpr_ir_opcode_name(cxpr_ir_opcode op) {
     case CXPR_IR_OP_LOOKBACK_POP: return "LOOKBACK_POP";
     case CXPR_IR_OP_LOOKBACK_RESOLVE: return "LOOKBACK_RESOLVE";
     case CXPR_IR_OP_STORE_LOCAL: return "STORE_LOCAL";
+    case CXPR_IR_OP_LOAD_TEMP: return "LOAD_TEMP";
+    case CXPR_IR_OP_STORE_TEMP: return "STORE_TEMP";
     case CXPR_IR_OP_RETURN: return "RETURN";
     case CXPR_IR_OP_INDEX: return "INDEX";
     case CXPR_IR_OP_UNKNOWN:

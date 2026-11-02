@@ -20,6 +20,12 @@ set(CXPR_BENCH_IR_MODELS
     mixed_expr
     mixed_pipe
     context_churn
+    static_map_records_manual
+    static_map_records
+    static_reduce_records_manual
+    static_reduce_records
+    static_instantiate_manual
+    static_instantiate
     struct_scalar_mul
     scalar_struct_mul
     struct_struct_mul
@@ -42,6 +48,7 @@ foreach(model_name IN LISTS CXPR_BENCH_IR_MODELS)
                 --output "${model_output}"
                 --qualifiers "static inline"
                 --function "cxpr_bench_ir_${model_name}"
+                --import-dir "${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
                 --specialize-defaults
         DEPENDS cxpr_model_codegen "${model_source}"
         VERBATIM

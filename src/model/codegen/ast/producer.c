@@ -450,6 +450,15 @@ bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
     switch (cxpr_expr_ast_kind_of(ast)) {
     case CXPR_NODE_RECORD:
         return true;
+    case CXPR_NODE_ARRAY:
+        if (ast->data.array.count == 0u) return false;
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            if (!cxpr_model_ast_is_record_like(
+                    program, ast->data.array.elements[i], depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
     case CXPR_NODE_IDENTIFIER:
         binding = cxpr_model_c_binding_for_name(program, cxpr_expr_ast_identifier_name(ast));
         return binding ? cxpr_model_ast_is_record_like(program, binding->ast, depth + 1u) : false;

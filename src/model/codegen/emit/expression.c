@@ -311,6 +311,39 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
     if (handled) *handled = false;
     if (!name) return NULL;
 
+    /* Static collection bindings have no runtime C representation. Expand a
+     * bound map source here so the standalone codegen can fold map + reduce
+     * while retaining its model-agnostic selector implementation. */
+    if (target_data && target_data->program && argc == 1u &&
+        (!strcmp(name, "sum") || !strcmp(name, "mean") ||
+         !strcmp(name, "min") || !strcmp(name, "max") ||
+         !strcmp(name, "any") || !strcmp(name, "all"))) {
+        const cxpr_expr_ast* map = cxpr_expr_ast_call_arg(ast, 0u);
+        if (map && cxpr_expr_ast_kind_of(map) == CXPR_NODE_FUNCTION_CALL &&
+            cxpr_model_names_match(cxpr_expr_ast_call_name(map), "map") &&
+            cxpr_expr_ast_call_arg_count(map) == 2u) {
+            const cxpr_expr_ast* source = cxpr_expr_ast_call_arg(map, 0u);
+            if (source && cxpr_expr_ast_kind_of(source) == CXPR_NODE_IDENTIFIER) {
+                const cxpr_model_compiled_binding* binding =
+                    cxpr_model_c_binding_for_name(
+                        target_data->program, cxpr_expr_ast_identifier_name(source));
+                if (binding && cxpr_expr_ast_kind_of(binding->ast) == CXPR_NODE_ARRAY) {
+                    cxpr_expr_ast map_copy = *map;
+                    cxpr_expr_ast reduce_copy = *ast;
+                    cxpr_expr_ast* map_args[2] = {
+                        binding->ast, (cxpr_expr_ast*)cxpr_expr_ast_call_arg(map, 1u)
+                    };
+                    cxpr_expr_ast* reduce_args[1] = { &map_copy };
+                    map_copy.data.function_call.args = map_args;
+                    reduce_copy.data.function_call.args = reduce_args;
+                    if (handled) *handled = true;
+                    return cxpr_expr_ast_to_c_at_offset(
+                        &reduce_copy, lookback_offset, &target, err);
+                }
+            }
+        }
+    }
+
     if (cxpr_model_names_match(name, "resample")) {
         cxpr_resample_call call = {0};
         const char* source_name;

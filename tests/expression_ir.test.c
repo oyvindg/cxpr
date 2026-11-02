@@ -55,6 +55,108 @@ static void test_formula_compile_unknown_function_fails(void) {
     printf("  ✓ test_formula_compile_unknown_function_fails\n");
 }
 
+static void test_static_map_reducer_compiles_to_ir(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    double result = 0.0;
+    assert(reg && parser && ctx);
+    cxpr_register_defaults(reg);
+    ast = cxpr_expr_ast_parse(parser, "sum(map([1, 2, 3], x => x * 2))", &err);
+    assert(ast);
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &result, &err));
+    ASSERT_DOUBLE_EQ(result, 12.0);
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+}
+
+static void test_static_reduce_compiles_to_ir(void) {
+    cxpr_registry* reg = cxpr_registry_new();
+    cxpr_expr_parser* parser = cxpr_expr_parser_new();
+    cxpr_context* ctx = cxpr_context_new();
+    cxpr_error err = {0};
+    cxpr_expr_ast* ast;
+    cxpr_expr_compiled* program;
+    double result = 0.0;
+    assert(reg && parser && ctx);
+    cxpr_register_defaults(reg);
+    ast = cxpr_expr_ast_parse(parser,
+        "reduce(map([1, 2, 3], x => x * 2), 0, step => step.acc + step.value + step.index)",
+        &err);
+    assert(ast);
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &result, &err));
+    ASSERT_DOUBLE_EQ(result, 15.0);
+    bool saw_load_temp = false;
+    bool saw_store_temp = false;
+    for (size_t i = 0u; i < cxpr_expr_compiled_ir_count(program); ++i) {
+        cxpr_ir_instruction instruction;
+        assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
+        assert(instruction.op != CXPR_IR_OP_CALL_AST);
+        saw_load_temp |= instruction.op == CXPR_IR_OP_LOAD_TEMP;
+        saw_store_temp |= instruction.op == CXPR_IR_OP_STORE_TEMP;
+    }
+    assert(saw_load_temp && saw_store_temp);
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(parser,
+        "reduce([{ signal = 2, gain = 0.25 }, { signal = 4, gain = 0.5 }], "
+        "0, step => step.acc + step.value.signal * step.value.gain)", &err);
+    assert(ast);
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &result, &err));
+    ASSERT_DOUBLE_EQ(result, 2.5);
+    for (size_t i = 0u; i < cxpr_expr_compiled_ir_count(program); ++i) {
+        cxpr_ir_instruction instruction;
+        assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
+        assert(instruction.op != CXPR_IR_OP_CALL_AST);
+        assert(instruction.op != CXPR_IR_OP_LOAD_CHAIN);
+    }
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(parser,
+        "reduce(map([{ signal = 2, gain = 0.25 }, { signal = 4, gain = 0.5 }], "
+        "item => item.signal * item.gain), 0, step => step.acc + step.value)", &err);
+    assert(ast);
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &result, &err));
+    ASSERT_DOUBLE_EQ(result, 2.5);
+    for (size_t i = 0u; i < cxpr_expr_compiled_ir_count(program); ++i) {
+        cxpr_ir_instruction instruction;
+        assert(cxpr_expr_compiled_ir_instruction(program, i, &instruction));
+        assert(instruction.op != CXPR_IR_OP_CALL_AST);
+        assert(instruction.op != CXPR_IR_OP_GET_FIELD);
+    }
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(parser,
+        "reduce([], 42, step => step.acc + step.value)", &err);
+    assert(ast);
+    program = cxpr_expr_compile(ast, reg, &err);
+    assert(program);
+    assert(cxpr_expr_compiled_eval_number(program, ctx, reg, &result, &err));
+    ASSERT_DOUBLE_EQ(result, 42.0);
+    cxpr_expr_compiled_free(program);
+    cxpr_expr_ast_free(ast);
+    cxpr_expr_parser_free(parser);
+    cxpr_context_free(ctx);
+    cxpr_registry_free(reg);
+}
+
 static void test_dotted_expression_struct_field_dependency_ir(void) {
     cxpr_registry* reg = cxpr_registry_new();
     cxpr_evaluator* evaluator = cxpr_evaluator_new(reg);
@@ -109,6 +211,8 @@ int main(void) {
     printf("Running expression IR tests...\n");
     test_formula_compile_creates_programs();
     test_formula_compile_unknown_function_fails();
+    test_static_map_reducer_compiles_to_ir();
+    test_static_reduce_compiles_to_ir();
     test_dotted_expression_struct_field_dependency_ir();
     test_dotted_expression_scope_requires_struct_prefix_ir();
     printf("All expression IR tests passed!\n");

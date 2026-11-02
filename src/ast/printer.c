@@ -333,6 +333,9 @@ static int cxpr_print_node(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, i
             return 1;
         case CXPR_NODE_PRODUCER_ACCESS:
             if (!cxpr_printer_append(p, ast->data.producer_access.name) ||
+                (ast->data.producer_access.instance_id &&
+                 (!cxpr_printer_append_char(p, '@') ||
+                  !cxpr_printer_append(p, ast->data.producer_access.instance_id))) ||
                 !cxpr_printer_append_char(p, '(') ||
                 !cxpr_print_call_args(p,
                                       ast->data.producer_access.args,
@@ -349,6 +352,9 @@ static int cxpr_print_node(cxpr_expr_ast_printer* p, const cxpr_expr_ast* ast, i
             return cxpr_print_unary(p, ast, parent_prec);
         case CXPR_NODE_FUNCTION_CALL:
             return cxpr_printer_append(p, ast->data.function_call.name) &&
+                   (!ast->data.function_call.instance_id ||
+                    (cxpr_printer_append_char(p, '@') &&
+                     cxpr_printer_append(p, ast->data.function_call.instance_id))) &&
                    cxpr_printer_append_char(p, '(') &&
                    cxpr_print_call_args(p,
                                         ast->data.function_call.args,

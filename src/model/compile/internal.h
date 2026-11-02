@@ -9,6 +9,11 @@ cxpr_model_result_kind cxpr_model_infer_result_kind(
     const cxpr_model* model,
     const cxpr_model_compiled* program);
 
+cxpr_expr_ast* cxpr_model_inline_static_collections(
+    cxpr_expr_ast* ast,
+    const cxpr_model_compiled* program,
+    cxpr_error* err);
+
 bool cxpr_model_copy_bindings_and_outputs(cxpr_model* dst,
                                           const cxpr_model* src,
                                           cxpr_error* err);

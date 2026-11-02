@@ -4,7 +4,10 @@
  */
 
 #include "internal.h"
+#include "core.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static bool cxpr_expr_ast_named_args_present(char* const* arg_names, size_t argc) {
@@ -153,6 +156,81 @@ const cxpr_expr_ast* cxpr_expr_ast_unary_operand(const cxpr_expr_ast* ast) {
 
 const char* cxpr_expr_ast_call_name(const cxpr_expr_ast* ast) {
     return (ast && ast->type == CXPR_NODE_FUNCTION_CALL) ? ast->data.function_call.name : NULL;
+}
+
+const char* cxpr_expr_ast_call_instance_id(const cxpr_expr_ast* ast) {
+    if (!ast) return NULL;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) return ast->data.function_call.instance_id;
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS) return ast->data.producer_access.instance_id;
+    return NULL;
+}
+
+bool cxpr_expr_ast_call_set_instance_id(cxpr_expr_ast* ast, const char* instance_id) {
+    char** target;
+    char* owned = instance_id ? cxpr_strdup(instance_id) : NULL;
+    if (instance_id && !owned) return false;
+    if (!ast || (ast->type != CXPR_NODE_FUNCTION_CALL &&
+                 ast->type != CXPR_NODE_PRODUCER_ACCESS)) {
+        free(owned);
+        return false;
+    }
+    target = ast->type == CXPR_NODE_FUNCTION_CALL
+                 ? &ast->data.function_call.instance_id
+                 : &ast->data.producer_access.instance_id;
+    free(*target);
+    *target = owned;
+    return true;
+}
+
+char* cxpr_expr_ast_call_identity_key(const cxpr_expr_ast* ast) {
+    const char* name;
+    const char* instance_id = cxpr_expr_ast_call_instance_id(ast);
+    size_t argc, len, pos;
+    char* out;
+    if (!ast) return NULL;
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS) {
+        name = ast->data.producer_access.name;
+        argc = ast->data.producer_access.argc;
+    } else if (ast->type == CXPR_NODE_FUNCTION_CALL) {
+        name = ast->data.function_call.name;
+        argc = ast->data.function_call.argc;
+    } else return NULL;
+    if (!name) return NULL;
+    if (instance_id) {
+        len = strlen(name) + strlen(instance_id) + 32u;
+        out = (char*)malloc(len);
+        if (!out) return NULL;
+        snprintf(out, len, "explicit:%zu:%s:%zu:%s", strlen(name), name,
+                 strlen(instance_id), instance_id);
+        return out;
+    }
+    len = strlen(name) + 3u;
+    for (size_t i = 0; i < argc; ++i) {
+        const cxpr_expr_ast* arg = ast->type == CXPR_NODE_PRODUCER_ACCESS
+            ? ast->data.producer_access.args[i] : ast->data.function_call.args[i];
+        const char* arg_name = ast->type == CXPR_NODE_PRODUCER_ACCESS
+            ? (ast->data.producer_access.arg_names ? ast->data.producer_access.arg_names[i] : NULL)
+            : (ast->data.function_call.arg_names ? ast->data.function_call.arg_names[i] : NULL);
+        char* text = cxpr_expr_ast_to_string(arg);
+        len += (arg_name ? strlen(arg_name) + 1u : 0u) + (text ? strlen(text) : 0u) + 2u;
+        free(text);
+    }
+    out = (char*)malloc(len + 1u);
+    if (!out) return NULL;
+    pos = (size_t)snprintf(out, len + 1u, "%s(", name);
+    for (size_t i = 0; i < argc; ++i) {
+        const cxpr_expr_ast* arg = ast->type == CXPR_NODE_PRODUCER_ACCESS
+            ? ast->data.producer_access.args[i] : ast->data.function_call.args[i];
+        const char* arg_name = ast->type == CXPR_NODE_PRODUCER_ACCESS
+            ? (ast->data.producer_access.arg_names ? ast->data.producer_access.arg_names[i] : NULL)
+            : (ast->data.function_call.arg_names ? ast->data.function_call.arg_names[i] : NULL);
+        char* text = cxpr_expr_ast_to_string(arg);
+        if (i) out[pos++] = ',';
+        if (arg_name) { size_t n = strlen(arg_name); memcpy(out + pos, arg_name, n); pos += n; out[pos++] = '='; }
+        if (text) { size_t n = strlen(text); memcpy(out + pos, text, n); pos += n; free(text); }
+    }
+    out[pos++] = ')'; out[pos] = '\0';
+    return out;
 }
 
 size_t cxpr_expr_ast_call_arg_count(const cxpr_expr_ast* ast) {

@@ -118,8 +118,15 @@ cxpr_expr_ast* cxpr_eval_clone_ast(const cxpr_expr_ast* ast) {
                 }
             }
         }
-        return cxpr_expr_ast_call_named_new(ast->data.function_call.name, args,
+        {
+            cxpr_expr_ast* clone = cxpr_expr_ast_call_named_new(ast->data.function_call.name, args,
                                                 arg_names, ast->data.function_call.argc);
+            if (clone && ast->data.function_call.instance_id &&
+                !cxpr_expr_ast_call_set_instance_id(clone, ast->data.function_call.instance_id)) {
+                cxpr_expr_ast_free(clone); return NULL;
+            }
+            return clone;
+        }
     }
     case CXPR_NODE_PRODUCER_ACCESS: {
         cxpr_expr_ast** args = NULL;
@@ -154,9 +161,16 @@ cxpr_expr_ast* cxpr_eval_clone_ast(const cxpr_expr_ast* ast) {
                 }
             }
         }
-        return cxpr_expr_ast_producer_field_named_new(ast->data.producer_access.name, args,
+        {
+            cxpr_expr_ast* clone = cxpr_expr_ast_producer_field_named_new(ast->data.producer_access.name, args,
                                                   arg_names, ast->data.producer_access.argc,
                                                   ast->data.producer_access.field);
+            if (clone && ast->data.producer_access.instance_id &&
+                !cxpr_expr_ast_call_set_instance_id(clone, ast->data.producer_access.instance_id)) {
+                cxpr_expr_ast_free(clone); return NULL;
+            }
+            return clone;
+        }
     }
     case CXPR_NODE_INDEX: {
         cxpr_expr_ast* target = cxpr_eval_clone_ast(ast->data.index.target);

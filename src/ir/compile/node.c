@@ -33,6 +33,16 @@ static bool cxpr_ir_index_has_scalar_literal_base(const cxpr_expr_ast* target) {
            target->type == CXPR_NODE_BOOL || target->type == CXPR_NODE_STRING;
 }
 
+static const cxpr_expr_ast* cxpr_ir_static_record_field(
+    const cxpr_expr_ast* record, const char* field) {
+    if (!record || record->type != CXPR_NODE_RECORD || !field) return NULL;
+    for (size_t i = 0u; i < record->data.record.field_count; ++i) {
+        if (!strcmp(record->data.record.field_names[i], field))
+            return record->data.record.field_values[i];
+    }
+    return NULL;
+}
+
 static cxpr_ir_lookback_payload* cxpr_ir_lookback_payload_new(
     const cxpr_expr_ast* target, const cxpr_registry* reg) {
     cxpr_ir_lookback_payload* payload =
@@ -503,8 +513,43 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                             err);
 
     case CXPR_NODE_FIELD_ACCESS:
+        if (!ast->data.field_access.base && ast->data.field_access.object) {
+            for (const cxpr_ir_subst_frame* frame = subst; frame; frame = frame->parent) {
+                if (!frame->reduce_object ||
+                    strcmp(ast->data.field_access.object, frame->reduce_object)) continue;
+                if (!strcmp(ast->data.field_access.field, "acc"))
+                    return cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_LOAD_TEMP,.index=frame->reduce_temp_index}, err);
+                if (!strcmp(ast->data.field_access.field, "value"))
+                    return cxpr_ir_compile_node(frame->reduce_value, program, reg,
+                                                local_names, local_count, frame->parent,
+                                                inline_depth, err);
+                if (!strcmp(ast->data.field_access.field, "index"))
+                    return cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_PUSH_CONST,.value=(double)frame->reduce_index}, err);
+            }
+        }
         if (ast->data.field_access.base) {
             const cxpr_expr_ast* base = ast->data.field_access.base;
+            if (base->type == CXPR_NODE_IDENTIFIER) {
+                for (const cxpr_ir_subst_frame* frame = subst; frame; frame = frame->parent) {
+                    if (!frame->reduce_object ||
+                        strcmp(base->data.identifier.name, frame->reduce_object)) continue;
+                    if (!strcmp(ast->data.field_access.field, "acc")) {
+                        return cxpr_ir_emit(program, (cxpr_ir_instr){
+                            .op = CXPR_OP_LOAD_TEMP, .index = frame->reduce_temp_index,
+                        }, err);
+                    }
+                    if (!strcmp(ast->data.field_access.field, "value")) {
+                        return cxpr_ir_compile_node(frame->reduce_value, program, reg,
+                                                    local_names, local_count,
+                                                    frame->parent, inline_depth, err);
+                    }
+                    if (!strcmp(ast->data.field_access.field, "index")) {
+                        return cxpr_ir_emit(program, (cxpr_ir_instr){
+                            .op = CXPR_OP_PUSH_CONST, .value = (double)frame->reduce_index,
+                        }, err);
+                    }
+                }
+            }
             if (base->type == CXPR_NODE_IDENTIFIER) {
                 char local_field[512];
                 int written = snprintf(local_field, sizeof(local_field), "%s.%s",
@@ -555,6 +600,14 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             const cxpr_ir_subst_frame* owner = NULL;
             const cxpr_expr_ast* mapped =
                 cxpr_ir_subst_lookup(subst, ast->data.field_access.object, &owner);
+            const cxpr_expr_ast* mapped_field = cxpr_ir_static_record_field(
+                mapped, ast->data.field_access.field);
+            if (mapped_field) {
+                return cxpr_ir_compile_node(mapped_field, program, reg,
+                                            local_names, local_count,
+                                            owner ? owner->parent : subst,
+                                            inline_depth, err);
+            }
             if (mapped && mapped->type == CXPR_NODE_IDENTIFIER) {
                 return cxpr_ir_emit(program,
                                     (cxpr_ir_instr){
@@ -591,6 +644,41 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                             err);
 
     case CXPR_NODE_CHAIN_ACCESS:
+        if (ast->data.chain_access.depth == 3u) {
+            for (const cxpr_ir_subst_frame* frame = subst; frame; frame = frame->parent) {
+                const cxpr_expr_ast* field;
+                if (!frame->reduce_object ||
+                    strcmp(ast->data.chain_access.path[0], frame->reduce_object) ||
+                    strcmp(ast->data.chain_access.path[1], "value")) continue;
+                field = cxpr_ir_static_record_field(
+                    frame->reduce_value, ast->data.chain_access.path[2]);
+                if (!field) {
+                    if (err) {
+                        err->code = CXPR_ERR_TYPE_MISMATCH;
+                        err->message =
+                            "reduce value field requires a static record element";
+                    }
+                    return false;
+                }
+                return cxpr_ir_compile_node(field, program, reg,
+                                            local_names, local_count, frame->parent,
+                                            inline_depth, err);
+            }
+        }
+        if (ast->data.chain_access.depth == 2u) {
+            for (const cxpr_ir_subst_frame* frame = subst; frame; frame = frame->parent) {
+                if (!frame->reduce_object ||
+                    strcmp(ast->data.chain_access.path[0], frame->reduce_object)) continue;
+                if (!strcmp(ast->data.chain_access.path[1], "acc"))
+                    return cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_LOAD_TEMP,.index=frame->reduce_temp_index}, err);
+                if (!strcmp(ast->data.chain_access.path[1], "value"))
+                    return cxpr_ir_compile_node(frame->reduce_value, program, reg,
+                                                local_names, local_count, frame->parent,
+                                                inline_depth, err);
+                if (!strcmp(ast->data.chain_access.path[1], "index"))
+                    return cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_PUSH_CONST,.value=(double)frame->reduce_index}, err);
+            }
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_LOAD_CHAIN,
@@ -827,17 +915,100 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
         const char* fname = ast->data.function_call.name;
+        if (!strcmp(fname, "reduce") && ast->data.function_call.argc == 3u) {
+            const cxpr_expr_ast* source = ast->data.function_call.args[0];
+            const cxpr_expr_ast* initial = ast->data.function_call.args[1];
+            const cxpr_expr_ast* lambda = ast->data.function_call.args[2];
+            const cxpr_expr_ast* mapped_selector = NULL;
+            const char* mapped_parameter = NULL;
+            const cxpr_expr_ast* array;
+            const char* step_parameter;
+            const cxpr_expr_ast* step_body;
+            size_t temp_index;
+            if (source && source->type == CXPR_NODE_FUNCTION_CALL &&
+                !strcmp(source->data.function_call.name, "map") &&
+                source->data.function_call.argc == 2u) {
+                const cxpr_expr_ast* map_lambda = source->data.function_call.args[1];
+                if (!map_lambda || map_lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                    strcmp(map_lambda->data.function_call.name, "__cxpr_lambda") ||
+                    map_lambda->data.function_call.argc != 2u ||
+                    map_lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER)
+                    goto reduce_invalid;
+                mapped_parameter = map_lambda->data.function_call.args[0]->data.identifier.name;
+                mapped_selector = map_lambda->data.function_call.args[1];
+                source = source->data.function_call.args[0];
+            }
+            if (!source || source->type != CXPR_NODE_ARRAY || !lambda ||
+                lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+                lambda->data.function_call.argc != 2u ||
+                lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER)
+                goto reduce_invalid;
+            array = source;
+            step_parameter = lambda->data.function_call.args[0]->data.identifier.name;
+            step_body = lambda->data.function_call.args[1];
+            temp_index = program->temp_count++;
+            if (program->temp_count > CXPR_IR_STACK_CAPACITY) {
+                if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Too many compiler temporaries"; }
+                return false;
+            }
+            if (!cxpr_ir_compile_node(initial, program, reg, local_names, local_count,
+                                      subst, inline_depth, err) ||
+                !cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_STORE_TEMP,.index=temp_index}, err))
+                return false;
+            for (size_t i = 0u; i < array->data.array.count; ++i) {
+                const cxpr_expr_ast* element = array->data.array.elements[i];
+                const char* map_names[] = {mapped_parameter};
+                const cxpr_expr_ast* map_args[] = {element};
+                cxpr_ir_subst_frame map_frame = {
+                    .names = map_names, .args = map_args,
+                    .count = mapped_selector ? 1u : 0u, .parent = subst,
+                };
+                cxpr_ir_subst_frame reduce_frame = {
+                    .reduce_object = step_parameter,
+                    .reduce_value = mapped_selector ? mapped_selector : element,
+                    .reduce_index = i,
+                    .reduce_temp_index = temp_index,
+                    .parent = mapped_selector ? &map_frame : subst,
+                };
+                if (!cxpr_ir_compile_node(step_body, program, reg, local_names, local_count,
+                                          &reduce_frame, inline_depth, err) ||
+                    !cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_STORE_TEMP,.index=temp_index}, err))
+                    return false;
+            }
+            return cxpr_ir_emit(program, (cxpr_ir_instr){.op=CXPR_OP_LOAD_TEMP,.index=temp_index}, err);
+reduce_invalid:
+            if (err) { err->code = CXPR_ERR_TYPE_MISMATCH; err->message = "reduce requires a static collection and one-parameter step selector"; }
+            return false;
+        }
         if (ast->data.function_call.argc >= 1u &&
             ast->data.function_call.argc <= 2u &&
             ast->data.function_call.args[0] &&
-            ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY &&
             (!strcmp(fname, "sum") || !strcmp(fname, "mean") ||
              !strcmp(fname, "min") || !strcmp(fname, "max") ||
              !strcmp(fname, "any") || !strcmp(fname, "all"))) {
             const cxpr_expr_ast* array = ast->data.function_call.args[0];
             const cxpr_expr_ast* selector = NULL;
+            const cxpr_expr_ast* mapped_selector = NULL;
             const char* parameter = NULL;
-            size_t count = array->data.array.count;
+            const char* mapped_parameter = NULL;
+            size_t count;
+            if (array->type == CXPR_NODE_FUNCTION_CALL &&
+                !strcmp(array->data.function_call.name, "map") &&
+                array->data.function_call.argc == 2u &&
+                ast->data.function_call.argc == 1u) {
+                const cxpr_expr_ast* lambda = array->data.function_call.args[1];
+                if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                    strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+                    lambda->data.function_call.argc != 2u ||
+                    lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER)
+                    return false;
+                mapped_parameter = lambda->data.function_call.args[0]->data.identifier.name;
+                mapped_selector = lambda->data.function_call.args[1];
+                array = array->data.function_call.args[0];
+            }
+            if (!array || array->type != CXPR_NODE_ARRAY) goto static_reduction_not_handled;
+            count = array->data.array.count;
             if (ast->data.function_call.argc == 2u) {
                 const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
                 if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
@@ -877,6 +1048,16 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                         };
                         compiled = cxpr_ir_compile_predicate_jumps(
                             selector, is_all ? CXPR_TOK_AND : CXPR_TOK_OR,
+                            is_all ? CXPR_OP_JUMP_IF_FALSE : CXPR_OP_JUMP_IF_TRUE,
+                            program, reg, local_names, local_count, &frame,
+                            inline_depth, &predicate_jumps, &predicate_jump_count,
+                            &predicate_jump_capacity, err);
+                    } else if (mapped_selector) {
+                        const char* names[] = {mapped_parameter};
+                        const cxpr_expr_ast* args[] = {element};
+                        cxpr_ir_subst_frame frame = {.names=names,.args=args,.count=1u,.parent=subst};
+                        compiled = cxpr_ir_compile_predicate_jumps(
+                            mapped_selector, is_all ? CXPR_TOK_AND : CXPR_TOK_OR,
                             is_all ? CXPR_OP_JUMP_IF_FALSE : CXPR_OP_JUMP_IF_TRUE,
                             program, reg, local_names, local_count, &frame,
                             inline_depth, &predicate_jumps, &predicate_jump_count,
@@ -949,6 +1130,13 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                     if (!cxpr_ir_compile_node(selector, program, reg,
                                               local_names, local_count, &frame,
                                               inline_depth, err)) return false;
+                } else if (mapped_selector) {
+                    const char* names[] = {mapped_parameter};
+                    const cxpr_expr_ast* args[] = {element};
+                    cxpr_ir_subst_frame frame = {.names=names,.args=args,.count=1u,.parent=subst};
+                    if (!cxpr_ir_compile_node(mapped_selector, program, reg,
+                                              local_names, local_count, &frame,
+                                              inline_depth, err)) return false;
                 } else if (!cxpr_ir_compile_node(
                                element, program, reg, local_names, local_count,
                                subst, inline_depth, err)) return false;
@@ -979,6 +1167,14 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
                 }
             }
             return true;
+        }
+static_reduction_not_handled:
+        if (!strcmp(fname, "map")) {
+            if (err) {
+                err->code = CXPR_ERR_TYPE_MISMATCH;
+                err->message = "map result must be consumed by a static reduction";
+            }
+            return false;
         }
         if (cxpr_expr_ast_call_uses_named_args(ast)) {
             return cxpr_ir_emit(program,

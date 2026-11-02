@@ -1,0 +1,52 @@
+# Native collection benchmark snapshot
+
+Nine-trial median snapshot. The manual forms are the pre-feature source-level
+baseline; native and manual cases run in the same optimized benchmark binary so
+the delta isolates lowering shape instead of build or machine drift.
+
+Commands:
+
+```sh
+cmake -S . -B build
+cmake --build build --target cxpr_bench_ir -j1
+for trial in 1 2 3 4 5 6 7 8 9; do
+  for case in static_map_records_manual static_map_records \
+    static_reduce_records_manual static_reduce_records static_instantiate; do
+    ./build/benchmarks/cxpr_bench_ir --case "$case"
+  done
+done
+```
+
+All collection cases use 1,000 compile/free iterations and 200,000 evaluation
+iterations. AST, IR, and generated-C totals must match, and the benchmark exits
+if an IR `CALL_AST` fallback remains.
+
+| Case | AST ns | IR ns | C ns | Compile ns | IR instructions | Fallbacks |
+|---|---:|---:|---:|---:|---:|---:|
+| map manual | 46.88 | 43.61 | 2.78 | 1,155 | 14 | 0 |
+| map native | 7,001.91 | 64.88 | 2.95 | 3,677 | 28 | 0 |
+| reduce manual | 49.49 | 45.62 | 2.91 | 1,749 | 16 | 0 |
+| reduce native | 8,239.89 | 65.63 | 2.94 | 3,367 | 28 | 0 |
+
+Native versus manual deltas from this run:
+
+- Map: IR +21.27 ns (+48.8%), generated C +0.17 ns (+6.1%), compile
+  +2,522 ns (+218.4%), and 14 additional IR instructions.
+- Reduce: IR +20.01 ns (+43.9%), generated C +0.03 ns (+1.0%), compile
+  +1,618 ns (+92.5%), and 12 additional IR instructions.
+
+The native AST path intentionally demonstrates the cost avoided by native IR;
+it is not the production target. Generated C is at parity with the manually
+expanded baseline.
+
+The static `instantiate` / `@label` generated-C comparison uses 5,000,000 ticks
+per trial because the shorter interval was dominated by scheduler noise:
+
+| Case | C ns/tick | State bytes | Fallbacks |
+|---|---:|---:|---:|
+| two explicit labeled children | 3.10 | 88 | 0 |
+| static `instantiate` | 2.96 | 88 | 0 |
+
+The median delta is -0.14 ns (-4.5%) with no state-size increase. Both
+models contain two independent scoped child states; generated output is checked
+for absence of `CALL_AST` before timing.

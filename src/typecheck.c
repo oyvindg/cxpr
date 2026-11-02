@@ -198,6 +198,7 @@ static cxpr_typecheck_static_type cxpr_typecheck_join(cxpr_typecheck_static_type
 static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
                                         const cxpr_registry* reg,
                                         cxpr_error* err);
+static bool cxpr_typecheck_is_numeric(cxpr_typecheck_static_type type);
 
 static const cxpr_expr_ast* cxpr_typecheck_resolve_static_index_value(
     const cxpr_expr_ast* ast) {
@@ -360,6 +361,55 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast*
                                    ast->data.function_call.args[2], err);
     }
 
+    if (strcmp(name, "map") == 0 && ast->data.function_call.argc == 2u &&
+        ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) {
+        const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
+        if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            cxpr_typecheck_error(err, name, "one-parameter selector", "argument",
+                                 lambda, CXPR_STATIC_UNKNOWN);
+            return CXPR_STATIC_ERROR;
+        }
+        if (cxpr_typecheck_infer(ast->data.function_call.args[0], reg, err) ==
+                CXPR_STATIC_ERROR ||
+            cxpr_typecheck_infer(lambda->data.function_call.args[1], reg, err) ==
+                CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        return CXPR_STATIC_ARRAY;
+    }
+
+    if (strcmp(name, "reduce") == 0 && ast->data.function_call.argc == 3u) {
+        const cxpr_expr_ast* source = ast->data.function_call.args[0];
+        const cxpr_expr_ast* lambda = ast->data.function_call.args[2];
+        cxpr_typecheck_static_type initial_type;
+        cxpr_typecheck_static_type result_type;
+        if (source->type == CXPR_NODE_FUNCTION_CALL &&
+            !strcmp(source->data.function_call.name, "map") &&
+            source->data.function_call.argc == 2u)
+            source = source->data.function_call.args[0];
+        if (!source || source->type != CXPR_NODE_ARRAY || !lambda ||
+            lambda->type != CXPR_NODE_FUNCTION_CALL ||
+            strcmp(lambda->data.function_call.name, "__cxpr_lambda") ||
+            lambda->data.function_call.argc != 2u ||
+            lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+            cxpr_typecheck_error(err, name, "static collection and one-parameter step selector",
+                                 "argument", lambda, CXPR_STATIC_UNKNOWN);
+            return CXPR_STATIC_ERROR;
+        }
+        initial_type = cxpr_typecheck_infer(ast->data.function_call.args[1], reg, err);
+        result_type = cxpr_typecheck_infer(lambda->data.function_call.args[1], reg, err);
+        if (initial_type == CXPR_STATIC_ERROR || result_type == CXPR_STATIC_ERROR)
+            return CXPR_STATIC_ERROR;
+        if (!cxpr_typecheck_is_numeric(initial_type) ||
+            (result_type != CXPR_STATIC_UNKNOWN && !cxpr_typecheck_is_numeric(result_type))) {
+            cxpr_typecheck_error(err, name, "numeric accumulator", "selector",
+                                 lambda->data.function_call.args[1], result_type);
+            return CXPR_STATIC_ERROR;
+        }
+        return initial_type;
+    }
+
     if ((strcmp(name, "any") == 0 || strcmp(name, "all") == 0) &&
         ast->data.function_call.argc >= 1u &&
         ast->data.function_call.argc <= 2u &&
@@ -453,7 +503,49 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer(const cxpr_expr_ast* ast,
     case CXPR_NODE_INT64: return CXPR_STATIC_INT64;
     case CXPR_NODE_BOOL: return CXPR_STATIC_BOOL;
     case CXPR_NODE_STRING: return CXPR_STATIC_STRING;
-    case CXPR_NODE_ARRAY: return CXPR_STATIC_ARRAY;
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            const cxpr_expr_ast* element = ast->data.array.elements[i];
+            cxpr_typecheck_static_type element_type = cxpr_typecheck_infer(element, reg, err);
+            if (element_type == CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+            if (i > 0u && ast->data.array.elements[0]->type == CXPR_NODE_RECORD &&
+                element->type == CXPR_NODE_RECORD) {
+                const cxpr_expr_ast* first = ast->data.array.elements[0];
+                if (first->data.record.field_count != element->data.record.field_count) {
+                    cxpr_typecheck_error(err, "array", "homogeneous record schema",
+                                         "element", element, CXPR_STATIC_STRUCT);
+                    return CXPR_STATIC_ERROR;
+                }
+                for (size_t field = 0u; field < first->data.record.field_count; ++field) {
+                    cxpr_typecheck_static_type left_type;
+                    cxpr_typecheck_static_type right_type;
+                    if (strcmp(first->data.record.field_names[field],
+                               element->data.record.field_names[field]) != 0) {
+                        cxpr_typecheck_error(err, "array", "homogeneous record field order",
+                                             "element", element, CXPR_STATIC_STRUCT);
+                        return CXPR_STATIC_ERROR;
+                    }
+                    left_type = cxpr_typecheck_infer(first->data.record.field_values[field], reg, err);
+                    right_type = cxpr_typecheck_infer(element->data.record.field_values[field], reg, err);
+                    if (left_type == CXPR_STATIC_ERROR || right_type == CXPR_STATIC_ERROR)
+                        return CXPR_STATIC_ERROR;
+                    if (left_type != CXPR_STATIC_UNKNOWN && right_type != CXPR_STATIC_UNKNOWN &&
+                        left_type != right_type &&
+                        !(cxpr_typecheck_is_numeric(left_type) && cxpr_typecheck_is_numeric(right_type))) {
+                        cxpr_typecheck_error(err, "array", "matching record field types",
+                                             "element", element->data.record.field_values[field], right_type);
+                        return CXPR_STATIC_ERROR;
+                    }
+                }
+            } else if (i > 0u &&
+                       (ast->data.array.elements[0]->type == CXPR_NODE_RECORD ||
+                        element->type == CXPR_NODE_RECORD)) {
+                cxpr_typecheck_error(err, "array", "homogeneous element types",
+                                     "element", element, element_type);
+                return CXPR_STATIC_ERROR;
+            }
+        }
+        return CXPR_STATIC_ARRAY;
     case CXPR_NODE_RECORD:
         for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
             cxpr_typecheck_static_type field_type =

@@ -263,6 +263,18 @@ domains while preserving CXPR as a small, deterministic, domain-agnostic core.
   trigger groups; the migrated render is byte-identical to its explicit OR
   chains. Benchmark evidence is recorded in
   `benchmarks/results/native_static_predicate_audio_2026-11-02.md`.
-- [ ] Generalize the bounded lowering contract to `map`, `reduce`, `find`,
-  `count`, `enumerate`, and `zip` after their empty-collection and result-type
-  contracts are specified.
+- [x] Homogeneous static record arrays support field selection in native
+  `map`/`reduce` pipelines. `reduce(collection, initial, step => expression)`
+  is a deterministic left fold with `step.acc`, `step.value`, and
+  `step.index`; a non-escaping `map` is fused into its `reduce` consumer.
+  Lowering is statically bounded and emits neither runtime callbacks nor
+  `CALL_AST` fallback. Escaping mapped collections remain unsupported.
+- [x] Fixed-size scoped instantiation uses
+  `instantiate(static_array, item => model@group(...))`. The compiler unrolls
+  the collection, derives stable per-element identities from `@group`, and
+  allocates independent state without dynamic allocation. The explicit label
+  syntax follows `../../docs/plans/cxpr-explicit-instance-identity-plan.md`;
+  `instance=` is not a model argument or language feature.
+- [ ] Generalize the bounded lowering contract to `find`, `count`,
+  `enumerate`, and `zip` after their empty-collection and result-type contracts
+  are specified.

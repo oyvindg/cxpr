@@ -3331,6 +3331,140 @@ static void test_imported_stateful_producer_calls_keep_independent_state(void) {
     printf("  ✓ test_imported_stateful_producer_calls_keep_independent_state\n");
 }
 
+static void test_explicit_instance_labels_validate_and_separate_state(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model counter(lifecycle=\"scoped\")\n"
+        "state count = 0\n"
+        "value = count\n"
+        "count := count + 1\n"
+        "out value\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import imports[1] = {{.name = "counter", .program = child_program}};
+    cxpr_model* parent = parse_model_ok(
+        "model labelled_instances\n"
+        "left = counter@left().value\n"
+        "right = counter@right().value\n"
+        "out { left, right }\n");
+    cxpr_model_compiled* program = cxpr_model_compile_with_imports(
+        parent, NULL, imports, 1u, &err);
+    cxpr_model_session* session;
+    char* code;
+
+    assert(child_program != NULL);
+    if (!program) fprintf(stderr, "labelled instance compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "left", &value) && value == 0.0);
+    assert(cxpr_model_session_get_number(session, "right", &value) && value == 0.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "left", &value) && value == 1.0);
+    assert(cxpr_model_session_get_number(session, "right", &value) && value == 1.0);
+
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "labelled_instances_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "child_call_0_state") != NULL);
+    assert(strstr(code, "child_call_1_state") != NULL);
+    assert(strstr(code, "&_cx_state->child_call_0_state") != NULL);
+    assert(strstr(code, "&_cx_state->child_call_1_state") != NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+
+    parent = parse_model_ok(
+        "model duplicate_labels\n"
+        "a = counter@voice().value\n"
+        "b = counter@voice().value\n"
+        "out { a, b }\n");
+    err = (cxpr_error){0};
+    program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
+    assert(program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message && strstr(err.message, "Duplicate explicit instance label"));
+    cxpr_model_free(parent);
+
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+
+    child = parse_model_ok(
+        "model singleton_counter(lifecycle=\"singleton\")\n"
+        "state count = 0\n"
+        "value = count\n"
+        "count := count + 1\n"
+        "out value\n");
+    child_program = cxpr_model_compile(child, NULL, &err);
+    imports[0] = (cxpr_model_import){.name = "counter", .program = child_program};
+    parent = parse_model_ok(
+        "model invalid_label_lifecycle\n"
+        "out result = counter@voice().value\n");
+    err = (cxpr_error){0};
+    program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
+    assert(program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message && strstr(err.message, "require a scoped imported model"));
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_explicit_instance_labels_validate_and_separate_state\n");
+}
+
+static void test_static_instantiate_unrolls_scoped_children(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model accumulator(lifecycle=\"scoped\")\n"
+        "in increment\n"
+        "state count = 0\n"
+        "value = count\n"
+        "count := count + increment\n"
+        "out value\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import imports[1] = {{.name = "accumulator", .program = child_program}};
+    cxpr_model* parent = parse_model_ok(
+        "model static_instantiate\n"
+        "total = reduce(instantiate([1, 1], item => "
+        "accumulator@group(increment=item).value), 0, "
+        "step => step.acc + step.value)\n"
+        "out total\n");
+    cxpr_model_compiled* program = cxpr_model_compile_with_imports(
+        parent, NULL, imports, 1u, &err);
+    cxpr_model_session* session;
+    char* code;
+
+    if (!program) fprintf(stderr, "static instantiate compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "total", &value) && value == 0.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "total", &value) && value == 2.0);
+
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "static_instantiate_tick", &err);
+    if (!code) fprintf(stderr, "static instantiate C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "child_call_0_state") != NULL);
+    assert(strstr(code, "child_call_1_state") != NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_static_instantiate_unrolls_scoped_children\n");
+}
+
 static void test_stateful_producer_history_queries_do_not_replay(void) {
     cxpr_error err = {0};
     double value = 0.0;
@@ -4233,6 +4367,69 @@ static void test_record_param_field_access_emits_c_tick(void) {
     printf("  ✓ test_record_param_field_access_emits_c_tick\n");
 }
 
+static void test_static_reduce_compiles_and_emits_c_tick(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model native_reduce\n"
+        "in { gain }\n"
+        "total = reduce(map([1, 2, 3], x => x * gain), 0, "
+        "step => step.acc + step.value + step.index)\n"
+        "out total\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    if (!program) {
+        fprintf(stderr, "native reduce compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(program, "static inline",
+                                          "native_reduce_tick", &err);
+    if (!code) {
+        fprintf(stderr, "native reduce C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "native_reduce_tick") != NULL);
+    assert(strstr(code, "_cx_input_0") != NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_static_reduce_compiles_and_emits_c_tick\n");
+}
+
+static void test_static_record_map_binding_emits_c_tick(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model static_record_map\n"
+        "in { a, b }\n"
+        "left = { signal = a, gain = 0.25 }\n"
+        "right = { signal = b, gain = 0.5 }\n"
+        "voices = [left, right]\n"
+        "result = reduce(map(voices, voice => voice.signal * voice.gain), 0, "
+        "step => step.acc + step.value)\n"
+        "out result\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "static_record_map_tick", &err);
+    if (!code) {
+        fprintf(stderr, "static record map C emit failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(code != NULL);
+    assert(strstr(code, "_cx_input_0 * 0.25") != NULL);
+    assert(strstr(code, "_cx_input_1 * 0.5") != NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_static_record_map_binding_emits_c_tick\n");
+}
+
 static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -5025,6 +5222,8 @@ int main(void) {
     test_imported_producer_repeated_calls_cache_same_args();
     test_imported_producer_output_fans_out_to_two_consumers();
     test_imported_stateful_producer_calls_keep_independent_state();
+    test_explicit_instance_labels_validate_and_separate_state();
+    test_static_instantiate_unrolls_scoped_children();
     test_stateful_producer_history_queries_do_not_replay();
     test_imported_producer_default_singleton_shares_state();
     test_imported_producer_explicit_singleton_shares_state();
@@ -5039,6 +5238,8 @@ int main(void) {
     test_function_record_shorthand_compiles_with_field_access();
     test_local_record_fields_can_reference_previous_fields();
     test_record_param_field_access_emits_c_tick();
+    test_static_reduce_compiles_and_emits_c_tick();
+    test_static_record_map_binding_emits_c_tick();
     test_window_param_bounds_drive_capacity_and_session_clamp();
     test_child_window_call_param_uses_dynamic_capacity();
     test_dynamic_lookback_uses_parameter_max();

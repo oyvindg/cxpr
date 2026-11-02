@@ -14,64 +14,7 @@ cxpr_model_session* cxpr_model_active_session(void) {
     return g_model_active_session;
 }
 static char* cxpr_model_child_cache_key(const cxpr_expr_ast* ast) {
-    size_t len;
-    char* out;
-    size_t pos;
-    const char* name;
-    size_t argc;
-    if (!ast) return NULL;
-    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS) {
-        name = cxpr_expr_ast_producer_name(ast);
-        argc = cxpr_expr_ast_producer_arg_count(ast);
-    } else if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
-        name = cxpr_expr_ast_call_name(ast);
-        argc = cxpr_expr_ast_call_arg_count(ast);
-    } else {
-        return NULL;
-    }
-    if (!name) return NULL;
-    len = strlen(name) + 3u;
-    for (size_t i = 0u; i < argc; ++i) {
-        const cxpr_expr_ast* arg_ast = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                      ? cxpr_expr_ast_producer_arg(ast, i)
-                                      : cxpr_expr_ast_call_arg(ast, i);
-        const char* arg_name = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                   ? cxpr_expr_ast_producer_arg_name(ast, i)
-                                   : cxpr_expr_ast_call_arg_name(ast, i);
-        char* arg = cxpr_expr_ast_to_string(arg_ast);
-        len += arg_name ? strlen(arg_name) + 1u : 0u;
-        len += arg ? strlen(arg) : 0u;
-        len += 2u;
-        free(arg);
-    }
-    out = (char*)malloc(len + 1u);
-    if (!out) return NULL;
-    pos = (size_t)snprintf(out, len + 1u, "%s(", name);
-    for (size_t i = 0u; i < argc; ++i) {
-        const cxpr_expr_ast* arg_ast = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                      ? cxpr_expr_ast_producer_arg(ast, i)
-                                      : cxpr_expr_ast_call_arg(ast, i);
-        const char* arg_name = cxpr_expr_ast_kind_of(ast) == CXPR_NODE_PRODUCER_ACCESS
-                                   ? cxpr_expr_ast_producer_arg_name(ast, i)
-                                   : cxpr_expr_ast_call_arg_name(ast, i);
-        char* arg = cxpr_expr_ast_to_string(arg_ast);
-        if (i > 0u && pos < len) out[pos++] = ',';
-        if (arg_name) {
-            size_t n = strlen(arg_name);
-            if (pos + n < len + 1u) memcpy(out + pos, arg_name, n);
-            pos += n;
-            if (pos < len) out[pos++] = '=';
-        }
-        if (arg) {
-            size_t n = strlen(arg);
-            if (pos + n < len + 1u) memcpy(out + pos, arg, n);
-            pos += n;
-            free(arg);
-        }
-    }
-    if (pos < len) out[pos++] = ')';
-    out[pos < len + 1u ? pos : len] = '\0';
-    return out;
+    return cxpr_expr_ast_call_identity_key(ast);
 }
 
 static size_t cxpr_model_child_call_argc(const cxpr_expr_ast* ast) {

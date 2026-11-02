@@ -72,6 +72,8 @@ bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right)
         size_t argc = cxpr_expr_ast_call_arg_count(left);
         if (!cxpr_model_names_match(cxpr_expr_ast_call_name(left),
                                     cxpr_expr_ast_call_name(right)) ||
+            !cxpr_model_nullable_name_equal(cxpr_expr_ast_call_instance_id(left),
+                                            cxpr_expr_ast_call_instance_id(right)) ||
             argc != cxpr_expr_ast_call_arg_count(right) ||
             cxpr_expr_ast_call_has_named_args(left) != cxpr_expr_ast_call_has_named_args(right)) {
             return false;
@@ -90,6 +92,8 @@ bool cxpr_model_ast_equal(const cxpr_expr_ast* left, const cxpr_expr_ast* right)
         size_t argc = cxpr_expr_ast_producer_arg_count(left);
         if (!cxpr_model_names_match(cxpr_expr_ast_producer_name(left),
                                     cxpr_expr_ast_producer_name(right)) ||
+            !cxpr_model_nullable_name_equal(cxpr_expr_ast_call_instance_id(left),
+                                            cxpr_expr_ast_call_instance_id(right)) ||
             !cxpr_model_names_match(cxpr_expr_ast_producer_field(left),
                                     cxpr_expr_ast_producer_field(right)) ||
             argc != cxpr_expr_ast_producer_arg_count(right) ||

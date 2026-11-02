@@ -257,47 +257,8 @@ size_t cxpr_model_c_child_index_for_entry(const cxpr_model_compiled* program,
 }
 
 char* cxpr_model_c_child_call_key(const cxpr_expr_ast* ast) {
-    const char* name;
-    size_t argc;
-    size_t len;
-    size_t pos;
-    char* out;
     if (!ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_PRODUCER_ACCESS) return NULL;
-    name = cxpr_expr_ast_producer_name(ast);
-    argc = cxpr_expr_ast_producer_arg_count(ast);
-    if (!name) return NULL;
-    len = strlen(name) + 3u;
-    for (size_t i = 0u; i < argc; ++i) {
-        const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, i);
-        char* arg = cxpr_expr_ast_to_string(cxpr_expr_ast_producer_arg(ast, i));
-        len += arg_name ? strlen(arg_name) + 1u : 0u;
-        len += arg ? strlen(arg) : 0u;
-        len += 2u;
-        free(arg);
-    }
-    out = (char*)malloc(len + 1u);
-    if (!out) return NULL;
-    pos = (size_t)snprintf(out, len + 1u, "%s(", name);
-    for (size_t i = 0u; i < argc; ++i) {
-        const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, i);
-        char* arg = cxpr_expr_ast_to_string(cxpr_expr_ast_producer_arg(ast, i));
-        if (i > 0u && pos < len) out[pos++] = ',';
-        if (arg_name) {
-            size_t n = strlen(arg_name);
-            if (pos + n < len + 1u) memcpy(out + pos, arg_name, n);
-            pos += n;
-            if (pos < len) out[pos++] = '=';
-        }
-        if (arg) {
-            size_t n = strlen(arg);
-            if (pos + n < len + 1u) memcpy(out + pos, arg, n);
-            pos += n;
-            free(arg);
-        }
-    }
-    if (pos < len) out[pos++] = ')';
-    out[pos < len + 1u ? pos : len] = '\0';
-    return out;
+    return cxpr_expr_ast_call_identity_key(ast);
 }
 
 size_t cxpr_model_c_child_call_index_for_key(

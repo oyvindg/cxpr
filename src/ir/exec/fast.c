@@ -158,6 +158,7 @@ double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
                                       double* locals, size_t local_count,
                                       cxpr_ir_bindings* bindings, cxpr_error* err) {
     double stack[CXPR_IR_STACK_CAPACITY];
+    double temps[CXPR_IR_STACK_CAPACITY] = {0};
     size_t sp = 0;
     size_t ip = 0;
     const bool fast_var_ctx = ctx && !ctx->parent && !ctx->expression_scope &&
@@ -236,6 +237,8 @@ double cxpr_ir_exec_scalar_fast_bound(const cxpr_ir_program* program,
         [CXPR_OP_LOOKBACK_POP] = &&op_unsupported,
         [CXPR_OP_LOOKBACK_RESOLVE] = &&op_lookback_resolve,
         [CXPR_OP_STORE_LOCAL] = &&op_store_local,
+        [CXPR_OP_LOAD_TEMP] = &&op_load_temp,
+        [CXPR_OP_STORE_TEMP] = &&op_store_temp,
         [CXPR_OP_RETURN] = &&op_return,
         [CXPR_OP_INDEX] = &&op_unsupported
     };
@@ -275,6 +278,11 @@ op_push_bool:
 op_load_local:
     if (instr->index >= local_count) return cxpr_ir_runtime_error(err, "Unknown local variable").d;
     stack[sp++] = locals[instr->index];
+    CXPR_FAST_NEXT();
+op_load_temp:
+    if (instr->index >= program->temp_count)
+        return cxpr_ir_runtime_error(err, "Unknown compiler temporary").d;
+    stack[sp++] = temps[instr->index];
     CXPR_FAST_NEXT();
 op_load_local_square:
     if (instr->index >= local_count) return cxpr_ir_runtime_error(err, "Unknown local variable").d;
@@ -618,6 +626,11 @@ op_store_local:
     if (instr->index >= local_count) return cxpr_ir_runtime_error(err, "Unknown local variable").d;
     locals[instr->index] = stack[--sp];
     CXPR_FAST_NEXT();
+op_store_temp:
+    if (instr->index >= program->temp_count)
+        return cxpr_ir_runtime_error(err, "Unknown compiler temporary").d;
+    temps[instr->index] = stack[--sp];
+    CXPR_FAST_NEXT();
 op_return:
     if (sp != 1) return cxpr_ir_runtime_error(err, "IR stack imbalance on return").d;
     return stack[--sp];
@@ -744,6 +757,8 @@ bool cxpr_ir_exec_bool_fast_bound(const cxpr_ir_program* program,
         [CXPR_OP_LOOKBACK_POP] = &&opb_unsupported,
         [CXPR_OP_LOOKBACK_RESOLVE] = &&opb_unsupported,
         [CXPR_OP_STORE_LOCAL] = &&opb_unsupported,
+        [CXPR_OP_LOAD_TEMP] = &&opb_unsupported,
+        [CXPR_OP_STORE_TEMP] = &&opb_unsupported,
         [CXPR_OP_RETURN] = &&opb_return,
         [CXPR_OP_INDEX] = &&opb_unsupported
     };
