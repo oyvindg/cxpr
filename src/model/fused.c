@@ -1,3 +1,4 @@
+#include "ir/compile/internal.h"
 #include "model/internal.h"
 #include "model/compile/internal.h"
 

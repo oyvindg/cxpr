@@ -1,8 +1,8 @@
 #ifndef CXPR_MODEL_INTERNAL_H
 #define CXPR_MODEL_INTERNAL_H
 
-#include "core.h"
-#include "ir/compile/internal.h"
+#include "ast/internal.h"
+#include "ir/internal.h"
 #include <cxpr/model/model.h>
 #include <cxpr/model/optimize.h>
 #include <cxpr/source.h>

@@ -6,23 +6,11 @@
 #include "core.h"
 #include "ast/internal.h"
 #include "ir/compile/internal.h"
-#include "lookback.h"
 #include "model/internal.h"
 #include "model/compile/internal.h"
-#include <cxpr/resample.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include <cxpr/source.h>
-#include <ctype.h>
-#include <limits.h>
-#include <math.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-
 
 static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, const char* name) {
     if (!name) return false;
