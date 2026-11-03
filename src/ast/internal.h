@@ -13,6 +13,8 @@ bool cxpr_expr_ast_call_set_instance_id(cxpr_expr_ast* ast,
                                         const char* instance_id);
 /** Return compiler-owned binding identity, or NULL before model lowering. */
 const char* cxpr_expr_ast_call_instance_id(const cxpr_expr_ast* ast);
+/** Return the precomputed runtime cache key for an identified call. */
+const char* cxpr_expr_ast_call_cached_identity_key(const cxpr_expr_ast* ast);
 
 /** @brief Internal owned AST node representation. */
 struct cxpr_expr_ast {
@@ -82,6 +84,7 @@ struct cxpr_expr_ast {
         struct {
             char* name;
             char* instance_id;
+            char* cached_identity_key;
             struct cxpr_expr_ast** args;
             char** arg_names;
             size_t argc;
@@ -109,6 +112,7 @@ struct cxpr_expr_ast {
         struct {
             char* name;
             char* instance_id;
+            char* cached_identity_key;
             struct cxpr_expr_ast** args;
             char** arg_names;
             size_t argc;

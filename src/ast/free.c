@@ -78,6 +78,7 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
         case CXPR_NODE_PRODUCER_ACCESS:
             free(ast->data.producer_access.name);
             free(ast->data.producer_access.instance_id);
+            free(ast->data.producer_access.cached_identity_key);
             free(ast->data.producer_access.field);
             free(ast->data.producer_access.full_key);
             free(ast->data.producer_access.cached_const_key);
@@ -100,6 +101,7 @@ void cxpr_expr_ast_free(cxpr_expr_ast* ast) {
         case CXPR_NODE_FUNCTION_CALL:
             free(ast->data.function_call.name);
             free(ast->data.function_call.instance_id);
+            free(ast->data.function_call.cached_identity_key);
             free(ast->data.function_call.cached_const_key);
             if (ast->data.function_call.args) {
                 for (size_t i = 0; i < ast->data.function_call.argc; ++i) {

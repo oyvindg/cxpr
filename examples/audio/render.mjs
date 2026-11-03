@@ -124,7 +124,7 @@ export function renderAudioExample(entryUrl, argv = process.argv) {
   const exampleRoot = dirname(fileURLToPath(entryUrl))
   const output = argv[2]
   if (!output) {
-    console.error("Usage: node render.mjs OUTPUT.wav [--frames=COUNT] [--sample-rate=44100] [--session]")
+    console.error("Usage: node render.mjs OUTPUT.wav [--frames=COUNT] [--sample-rate=44100] [--views]")
     return 2
   }
 

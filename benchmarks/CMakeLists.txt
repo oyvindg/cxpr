@@ -135,6 +135,9 @@ add_custom_command(
             "${CMAKE_CURRENT_SOURCE_DIR}/../tests/fixtures/strategies/rsi_state_model.cxpr"
     VERBATIM
 )
+
+add_executable(cxpr_bench_view_batch view_batch_bench.c)
+target_link_libraries(cxpr_bench_view_batch PRIVATE cxpr)
 add_custom_command(
     OUTPUT "${CXPR_BENCH_RSI_MODEL_INLINE}"
     COMMAND cxpr_model_codegen

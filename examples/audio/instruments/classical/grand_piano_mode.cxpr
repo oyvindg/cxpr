@@ -3,20 +3,40 @@ model grand_piano_mode(lifecycle = "scoped")
 
 in age, frequency, trigger
 in harmonic, gain, decay_base, decay_slope
-in inharmonicity, register
+in inharmonicity, register, key
+in ratio_one, ratio_two, ratio_three
 $sample_rate = 44100
 
-state phase = 0
+// Upper modes belong to the same one-, two- or three-string choir as the
+// fundamental. Independent phases retain the slow beating of real strings.
+state {
+    phase_one = 0,
+    phase_two = 0,
+    phase_three = 0
+}
 
 ratio = harmonic * sqrt(1 + harmonic * harmonic * inharmonicity)
-phase_now = trigger > 0 ? 0 : phase
-phase := (phase_now + frequency * ratio / $sample_rate) % 1
+one_now = trigger > 0 ? 0 : phase_one
+two_now = trigger > 0 ? 0 : phase_two
+three_now = trigger > 0 ? 0 : phase_three
+phase_one := (one_now + frequency * ratio * ratio_one / $sample_rate) % 1
+phase_two := (two_now + frequency * ratio * ratio_two / $sample_rate) % 1
+phase_three := (three_now + frequency * ratio * ratio_three / $sample_rate) % 1
 
-audible = clamp(($sample_rate * 0.48 - frequency * ratio) / 1800, 0, 1)
+audible = clamp(($sample_rate * 0.48 - frequency * ratio * ratio_three) /
+    1800, 0, 1)
 decay = decay_base - decay_slope * register
 single_envelope = exp(-age / decay)
 second_envelope = 0.76 * single_envelope +
     0.24 * exp(-age / (0.48 - 0.12 * register))
 envelope = harmonic == 2 ? second_envelope : single_envelope
 
-out sample = gain * audible * envelope * sin(2 * pi() * phase_now)
+unichord = sin(2 * pi() * two_now)
+bichord = 0.54 * sin(2 * pi() * one_now) +
+    0.46 * sin(2 * pi() * three_now)
+trichord = 0.26 * sin(2 * pi() * one_now) +
+    0.48 * sin(2 * pi() * two_now) +
+    0.26 * sin(2 * pi() * three_now)
+string_mode = key < 33 ? unichord : key < 48 ? bichord : trichord
+
+out sample = gain * audible * envelope * string_mode

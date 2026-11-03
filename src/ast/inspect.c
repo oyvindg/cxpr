@@ -167,19 +167,46 @@ const char* cxpr_expr_ast_call_instance_id(const cxpr_expr_ast* ast) {
 
 bool cxpr_expr_ast_call_set_instance_id(cxpr_expr_ast* ast, const char* instance_id) {
     char** target;
+    char** key_target;
+    const char* name;
     char* owned = instance_id ? cxpr_strdup(instance_id) : NULL;
+    char* key = NULL;
     if (instance_id && !owned) return false;
     if (!ast || (ast->type != CXPR_NODE_FUNCTION_CALL &&
                  ast->type != CXPR_NODE_PRODUCER_ACCESS)) {
         free(owned);
         return false;
     }
-    target = ast->type == CXPR_NODE_FUNCTION_CALL
-                 ? &ast->data.function_call.instance_id
-                 : &ast->data.producer_access.instance_id;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) {
+        target = &ast->data.function_call.instance_id;
+        key_target = &ast->data.function_call.cached_identity_key;
+        name = ast->data.function_call.name;
+    } else {
+        target = &ast->data.producer_access.instance_id;
+        key_target = &ast->data.producer_access.cached_identity_key;
+        name = ast->data.producer_access.name;
+    }
+    if (instance_id && name) {
+        size_t len = strlen(name) + strlen(instance_id) + 32u;
+        key = (char*)malloc(len);
+        if (!key) { free(owned); return false; }
+        snprintf(key, len, "explicit:%zu:%s:%zu:%s", strlen(name), name,
+                 strlen(instance_id), instance_id);
+    }
     free(*target);
+    free(*key_target);
     *target = owned;
+    *key_target = key;
     return true;
+}
+
+const char* cxpr_expr_ast_call_cached_identity_key(const cxpr_expr_ast* ast) {
+    if (!ast) return NULL;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL)
+        return ast->data.function_call.cached_identity_key;
+    if (ast->type == CXPR_NODE_PRODUCER_ACCESS)
+        return ast->data.producer_access.cached_identity_key;
+    return NULL;
 }
 
 char* cxpr_expr_ast_call_identity_key(const cxpr_expr_ast* ast) {

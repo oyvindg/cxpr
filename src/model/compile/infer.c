@@ -836,6 +836,10 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                         !cxpr_expr_ast_producer_has_named_args(ast)) {
                         call_supplies_source = true;
                     }
+                    if (ast->data.producer_access.argc > 0u &&
+                        !cxpr_expr_ast_producer_arg_name(ast, 0u)) {
+                        call_supplies_source = true;
+                    }
                     for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
                         const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
                         if (arg_name && cxpr_model_names_match(arg_name, child->source_arg)) {

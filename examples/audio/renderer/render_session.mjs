@@ -42,7 +42,7 @@ function render(outputPath, frameLimit, importDir) {
   const source = readFileSync(modelPath, "utf8")
   using model = compileModel(source, { name: modelPath, importDir })
   using session = model.newSession()
-  const initial = session.tickNumericBatch({ t: new Float64Array([0]) })
+  const initial = session.tickViews({ t: new Float64Array([0]) })
   const outputDuration = initial.duration[0]
   const duration = Number(outputDuration)
   if (!Number.isFinite(duration) || duration <= 0) {
@@ -51,6 +51,7 @@ function render(outputPath, frameLimit, importDir) {
 
   const songFrames = Math.round(duration * SAMPLE_RATE)
   const frames = frameLimit === undefined ? songFrames : Math.min(songFrames, frameLimit)
+  const renderStarted = performance.now()
   const file = openSync(outputPath, "w")
   const block = Buffer.alloc(BLOCK_FRAMES * CHANNELS * BYTES_PER_SAMPLE)
   let used = 0
@@ -63,8 +64,8 @@ function render(outputPath, frameLimit, importDir) {
         times[index] = (firstFrame + index) / SAMPLE_RATE
       }
       const output = firstFrame === 0
-        ? session.tickNumericBatch({ t: times.subarray(1) })
-        : session.tickNumericBatch({ t: times })
+        ? session.tickViews({ t: times.subarray(1) })
+        : session.tickViews({ t: times })
       const offset = firstFrame === 0 ? 1 : 0
       if (firstFrame === 0) {
         block.writeInt16LE(pcm16(initial.left[0], 0, 0), used)
@@ -87,7 +88,8 @@ function render(outputPath, frameLimit, importDir) {
     throw error
   }
   closeSync(file)
-  console.log(`${outputPath}: ${frames} frames, ${(frames / SAMPLE_RATE).toFixed(6)} s`)
+  const renderSeconds = (performance.now() - renderStarted) / 1_000
+  console.log(`${outputPath}: ${frames} frames, audio duration ${(frames / SAMPLE_RATE).toFixed(6)} s, render time ${renderSeconds.toFixed(3)} s`)
 }
 
 const outputPath = process.argv[2]

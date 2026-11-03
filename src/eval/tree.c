@@ -1001,6 +1001,20 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         const cxpr_expr_ast* capability_index = ast->data.index.index;
         cxpr_expr_ast flattened_index = {0};
         bool capability_handled = false;
+        if (ast->data.index.target->type == CXPR_NODE_ARRAY) {
+            cxpr_value index = cxpr_eval_node(ast->data.index.index, ctx, reg, err);
+            size_t selected;
+            if (err && err->code != CXPR_OK) return index;
+            if (index.type == CXPR_VALUE_NUMBER && isfinite(index.d) &&
+                index.d >= 0.0 && floor(index.d) == index.d &&
+                index.d < (double)ast->data.index.target->data.array.count) {
+                selected = (size_t)index.d;
+                cxpr_value_free(&index);
+                return cxpr_eval_node(
+                    ast->data.index.target->data.array.elements[selected], ctx, reg, err);
+            }
+            cxpr_value_free(&index);
+        }
         if (ast->data.index.target->type == CXPR_NODE_RECORD) {
             cxpr_value runtime_target = cxpr_eval_node(
                 ast->data.index.target, ctx, reg, err);
@@ -1192,6 +1206,29 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
         cxpr_value static_reduction;
 
+        if (strcmp(name, "__cxpr_let") == 0 && argc == 3u) {
+            const cxpr_expr_ast* binding = ast->data.function_call.args[0];
+            cxpr_context* overlay;
+            cxpr_value value;
+            cxpr_value result;
+            if (!binding || binding->type != CXPR_NODE_IDENTIFIER) {
+                return cxpr_eval_error(err, CXPR_ERR_SYNTAX,
+                                       "Expression-block binding must be an identifier");
+            }
+            value = cxpr_eval_node(ast->data.function_call.args[1], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return value;
+            overlay = cxpr_context_overlay_new(ctx);
+            if (!overlay) {
+                cxpr_value_free(&value);
+                return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            }
+            cxpr_context_set_value(overlay, binding->data.identifier.name, &value);
+            result = cxpr_eval_node(ast->data.function_call.args[2], overlay, reg, err);
+            cxpr_context_free(overlay);
+            cxpr_value_free(&value);
+            return result;
+        }
+
         if (strcmp(name, "length") == 0 && argc == 1u) {
             cxpr_value collection = cxpr_eval_node(
                 ast->data.function_call.args[0], ctx, reg, err);
@@ -1225,6 +1262,31 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             return cxpr_num((double)count);
         }
         if (strcmp(name, "upper_bound") == 0 && argc == 2u) {
+            const cxpr_expr_ast* source = ast->data.function_call.args[0];
+            if (source && source->type == CXPR_NODE_ARRAY) {
+                cxpr_value needle = cxpr_eval_node(
+                    ast->data.function_call.args[1], ctx, reg, err);
+                size_t lo = 0u, hi = source->data.array.count;
+                if (needle.type != CXPR_VALUE_NUMBER) {
+                    cxpr_value_free(&needle);
+                    return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                           "upper_bound expects a numeric value");
+                }
+                while (lo < hi) {
+                    size_t mid = lo + (hi - lo) / 2u;
+                    cxpr_value item = cxpr_eval_node(
+                        source->data.array.elements[mid], ctx, reg, err);
+                    if (item.type != CXPR_VALUE_NUMBER) {
+                        cxpr_value_free(&item); cxpr_value_free(&needle);
+                        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                               "upper_bound array must be numeric");
+                    }
+                    if (needle.d < item.d) hi = mid; else lo = mid + 1u;
+                    cxpr_value_free(&item);
+                }
+                cxpr_value_free(&needle);
+                return cxpr_num((double)lo);
+            }
             cxpr_value collection = cxpr_eval_node(
                 ast->data.function_call.args[0], ctx, reg, err);
             cxpr_value needle = cxpr_eval_node(
@@ -1267,6 +1329,10 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         if (entry->ast_func) {
             return entry->ast_func(ast, ctx, reg, entry->userdata, err);
         }
+        if (entry->model_producer) {
+            return entry->model_producer(ast, ctx, reg,
+                                         entry->model_producer_userdata, err);
+        }
         if ((entry->struct_producer || entry->typed_struct_producer) && !entry->sync_func && !entry->value_func &&
             !cxpr_expr_ast_call_uses_named_args(ast)) {
             char const_key_local[256];
@@ -1308,9 +1374,6 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         }
         if (!cxpr_eval_bind_call_args(ast, entry, ordered_args, err)) {
             return cxpr_num(NAN);
-        }
-        if (entry->model_producer) {
-            return entry->model_producer(ast, ctx, reg, entry->model_producer_userdata, err);
         }
         if (entry->defined_body || entry->defined_return_field_count > 0u) {
             return cxpr_eval_defined_function(entry, ast, ctx, reg, err);

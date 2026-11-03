@@ -1,0 +1,5 @@
+# The exploration keeps its short deterministic sequence in song.cxpr. This
+# placeholder preserves the standard audio example layout.
+model sequencer
+in t
+out step = floor(t * 4) % 8

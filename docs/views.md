@@ -1,6 +1,7 @@
 # Generic views in CXPR
 
-Status: static collection subset implemented; borrowed host views remain a design proposal
+Status: borrowed rank-one host views and static collections implemented;
+native multidimensional view ports remain planned
 
 ## Purpose
 
@@ -142,7 +143,7 @@ typedef struct cxpr_view {
 } cxpr_view;
 ```
 
-`cxpr_value` gains a view variant alongside `number`, `bool`, and `int64`.
+`cxpr_value` has a view variant alongside `number`, `bool`, and `int64`.
 Views borrow their memory: CXPR neither allocates, retains, nor frees the
 buffer.
 
@@ -261,7 +262,12 @@ Bindings are lexical, ordered, and immutable. The block is compile-time
 expression syntax: it does not introduce a host loop, mutable state, or an
 audio-specific scheduling concept.
 
-The first useful view implementation needs a deliberately small operation set:
+The first runtime implementation binds rank-one views to existing scalar model
+ports with `cxpr_model_session_tick_views`. The first dimension is processed
+in deterministic order, preserving atomic state commits between elements. This
+provides an allocation-free C hot loop and one host/native transition per
+block without introducing a second evaluator. Native `view<T, shape=...>`
+ports still need the following deliberately small operation set:
 
 - `length(view)` and shape inspection;
 - checked dynamic indexing;
@@ -338,16 +344,16 @@ mechanism that those systems can call.
 
 ## Recommended implementation sequence
 
-1. Add a borrowed primitive `cxpr_view` variant to `cxpr_value` and version the
-   generated ABI.
-2. Add descriptor metadata and standalone binding validation.
-3. Support read-only view inputs, `length`, and checked dynamic indexing.
-4. Support host-pre-bound writable output views and explicit alias rules.
-5. Add compile-time read-only views for array literals.
-6. Implement ordered search and migrate `timed_event_cursor.cxpr`.
-7. Generalize resample storage to use `cxpr_view` behind a compatibility layer.
-8. Add sequential view lowering for stateful DSP and indicator models.
-9. Verify native, Node, CPU bulk, and CUDA paths against the same descriptor
+1. [x] Add a borrowed primitive `cxpr_view` variant to `cxpr_value`.
+2. [x] Add rank-one scalar-port binding validation and ordered block execution.
+3. [ ] Add native view-port descriptor metadata and standalone binding validation.
+4. [ ] Support native read-only view inputs, `length`, and checked dynamic indexing.
+5. [x] Support host-pre-bound writable rank-one output views.
+6. [x] Add compile-time read-only views for array literals.
+7. [x] Implement ordered search and migrate `timed_event_cursor.cxpr`.
+8. [ ] Generalize resample storage to use `cxpr_view` behind a compatibility layer.
+9. [ ] Add native multidimensional sequential view lowering.
+10. [ ] Verify native view ports in Node, CPU bulk, and CUDA against the same descriptor
    contract before adding richer record or tensor syntax.
 
 This sequence delivers immediate value for events and trading series while

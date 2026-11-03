@@ -365,6 +365,7 @@ void cxpr_model_context_set_compiled_typed(cxpr_context* ctx,
 cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
                                    const cxpr_model_local_binding* locals,
                                    size_t local_count);
+cxpr_expr_ast* cxpr_model_inline_static_lets(cxpr_expr_ast* ast);
 cxpr_expr_ast* cxpr_model_inline_defined_calls(const cxpr_expr_ast* ast,
                                                const cxpr_registry* registry,
                                                cxpr_error* err);

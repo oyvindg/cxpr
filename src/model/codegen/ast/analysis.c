@@ -178,6 +178,10 @@ const cxpr_expr_ast* cxpr_model_producer_arg_for_param(const cxpr_expr_ast* ast,
                 return cxpr_expr_ast_producer_arg(ast, i);
             }
         }
+        if (cxpr_expr_ast_producer_arg_count(ast) > 0u &&
+            !cxpr_expr_ast_producer_arg_name(ast, 0u)) {
+            return cxpr_expr_ast_producer_arg(ast, 0u);
+        }
         return NULL;
     }
     return param_index < cxpr_expr_ast_producer_arg_count(ast)

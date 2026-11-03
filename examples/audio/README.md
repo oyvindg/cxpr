@@ -28,6 +28,8 @@ Shared modules:
   coloration, and delayed pitch vibrato;
 - `effects/portamento`: sample-continuous pitch transitions for legato voices;
 - `effects/saturation`: normalized soft clipping;
+- `effects/pipeline`: scalar signal stages demonstrating direct stateful model
+  composition with the existing `|>` operator;
 - `sequencing/lane`: reusable trigger/age state for song arrangements.
 - `filters/track_eq`: cascaded high-pass slopes and parametric bell EQ.
 - `instruments/classical`, including fortepiano and a register-aware modern
@@ -53,12 +55,18 @@ entrypoints only pass their own `import.meta.url`; the adapter locates
 `models/song.cxpr`, selects `examples/audio/` as the shared import root, and delegates
 WAV generation to the example-local native host under `audio/renderer`.
 
+Add `--views` to use the `cxpr-node` borrowed-view host. It sends ordered
+`Float64Array` blocks through the generic native view ABI while preserving the
+same per-sample state semantics as scalar ticks. `songs/view_stream` is the
+smallest fixture for this path; every song can use the same host.
+
 From `libs/cxpr/examples`:
 
 ```sh
 ./audio/render.mjs --example drum_solo --output "$HOME/drum-solo.wav"
 ./audio/render.mjs --example modular_synth --output /tmp/synth.wav --frames=44100
 ./audio/render.mjs --example modular_synth --output /tmp/synth.wav --play
+./audio/render.mjs --example view_stream --output /tmp/view-stream.wav --views
 ```
 
 Add `--play` to open a successfully rendered WAV directly in VLC. The output

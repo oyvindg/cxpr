@@ -60,6 +60,8 @@ cxpr_value cxpr_value_clone(const cxpr_value* value) {
         return cxpr_duration(value->i64);
     case CXPR_VALUE_ARRAY:
         return cxpr_array(value->a ? cxpr_array_value_new(value->a->values, value->a->count) : NULL);
+    case CXPR_VALUE_VIEW:
+        return cxpr_view_value(value->view);
     default:
         return cxpr_num(0.0);
     }

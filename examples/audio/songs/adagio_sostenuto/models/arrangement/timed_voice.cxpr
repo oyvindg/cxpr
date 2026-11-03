@@ -1,4 +1,4 @@
-# Stateful cursor edge tracking for one statically selected event stream.
+// Stateful cursor edge tracking for one statically selected event stream.
 model timed_voice(type = "timed_voice", lifecycle = "scoped")
 
 in t
@@ -14,8 +14,12 @@ trigger = enabled and cursor != previous_cursor ? 1 : 0
 age = enabled ? max(0, t - event_at) : 0
 frequency = 440 * pow(2, (note - 69) / 12)
 level = input_gain
-# Pianist perspective: A0 is left, C8 is right, with some center bleed.
-stereo_position = 0.86 * clamp((note - 64.5) / 43.5, -1, 1)
+// Pianist perspective: A0 is left and C8 is right. The gentle sub-linear
+// curve gives inner keys more separation while retaining center continuity.
+keyboard_position = clamp((note - 64.5) / 43.5, -1, 1)
+spread_position = keyboard_position < 0 ?
+    -pow(-keyboard_position, 0.82) : pow(keyboard_position, 0.82)
+stereo_position = 0.96 * spread_position
 
 previous_cursor := enabled ? cursor : previous_cursor
 

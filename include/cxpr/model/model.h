@@ -639,6 +639,27 @@ bool cxpr_model_session_tick_fast(const cxpr_model_compiled* program,
                                   cxpr_model_session* session,
                                   const cxpr_registry* reg,
                                   cxpr_error* err);
+
+/** One named view bound to a scalar model port for ordered block evaluation. */
+typedef struct cxpr_model_view_binding {
+    const char* name;
+    cxpr_view view;
+} cxpr_model_view_binding;
+
+/**
+ * @brief Evaluate ordered scalar ticks through borrowed rank-one views.
+ *
+ * Every view has the same first-dimension length. Inputs are read-only,
+ * outputs are writable, and this function performs no heap allocation.
+ */
+bool cxpr_model_session_tick_views(const cxpr_model_compiled* program,
+                                   cxpr_model_session* session,
+                                   const cxpr_registry* reg,
+                                   const cxpr_model_view_binding* inputs,
+                                   size_t input_count,
+                                   cxpr_model_view_binding* outputs,
+                                   size_t output_count,
+                                   cxpr_error* err);
 bool cxpr_model_session_get_bool(const cxpr_model_session* session,
                                     const char* name,
                                     bool* out_value);

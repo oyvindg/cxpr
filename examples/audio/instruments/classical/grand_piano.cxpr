@@ -55,7 +55,9 @@ phase_three := (three_now + physical_frequency * ratio_three / $sample_rate) % 1
 // instantiation gives every partial independent phase state without manual
 // phase declarations and update chains.
 inharmonicity = 0.000035 + 0.00042 * pow(register, 2)
-second_mode_weight = 0.22 + 0.08 * pow(1 - register, 2)
+// Keep enough second mode to define bass pitch without making its long tail
+// sound like broadband buzz when several low notes overlap.
+second_mode_weight = 0.22 + 0.05 * pow(1 - register, 2)
 mode_specs = {
     second = { harmonic = 2, gain = second_mode_weight,
         decay_base = 2.5, decay_slope = 1.05 },
@@ -78,6 +80,10 @@ mode_samples = map(mode_specs, mode => grand_piano_mode(
     decay_slope=mode.decay_slope,
     inharmonicity=inharmonicity,
     register=register,
+    key=key,
+    ratio_one=ratio_one,
+    ratio_two=ratio_two,
+    ratio_three=ratio_three,
     sample_rate=$sample_rate))
 
 // The two-stage fundamental envelope provides body at impact and a bounded
@@ -108,7 +114,9 @@ modes = fundamental_mode_weight * fundamental_envelope * fundamental +
 impact_envelope = exp(-note_age / (0.010 - 0.004 * register))
 impact_attack_seconds = 0.0015 + 0.0025 * (1 - register)
 impact_onset = 1 - exp(-note_age / impact_attack_seconds)
-impact = impact_onset * impact_envelope *
+// Felt absorbs more high-frequency hammer energy on the heavier bass strings.
+impact_register_gain = 0.45 + 0.55 * register
+impact = impact_register_gain * impact_onset * impact_envelope *
     (0.022 * sin(2 * pi() * 980 * note_age + key) +
     0.009 * sin(2 * pi() * 2050 * note_age + 0.37 * key))
 bridge = modes + impact

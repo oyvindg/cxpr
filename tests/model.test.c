@@ -5262,6 +5262,53 @@ static void test_int64_source_boundary_and_internal_inference(void) {
     printf("  ✓ test_int64_source_boundary_and_internal_inference\n");
 }
 
+static void test_pipe_into_imported_model_with_named_params(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model stage { source_arg = \"source\" }\n"
+        "in source\n"
+        "$multiplier = 2\n"
+        "sample = source * $multiplier\n"
+        "out sample\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import;
+    cxpr_model* parent;
+    cxpr_model_compiled* parent_program;
+    cxpr_model_session* session;
+    char* code;
+
+    assert(child_program != NULL);
+    import = (cxpr_model_import){.name = "stage", .program = child_program};
+    parent = parse_model_ok(
+        "model pipeline\n"
+        "use stage\n"
+        "in close\n"
+        "processed = close |> stage(multiplier=3).sample\n"
+        "out processed\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, &import, 1u, &err);
+    assert(parent_program != NULL);
+    assert(cxpr_model_compiled_input_count(parent_program) == 1u);
+    assert(strcmp(cxpr_model_compiled_input_name(parent_program, 0u), "close") == 0);
+    code = cxpr_model_compiled_generate_c(parent_program, "static inline",
+                                           "pipeline_tick", &err);
+    assert(code != NULL);
+    free(code);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "close", 4.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "processed", &value));
+    assert(value == 12.0);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_pipe_into_imported_model_with_named_params\n");
+}
+
 int main(void) {
     test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
@@ -5351,6 +5398,7 @@ int main(void) {
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();
     test_imported_producer_source_arg_maps_call_source();
+    test_pipe_into_imported_model_with_named_params();
     test_imported_producer_explicit_call_params_hide_internal_params();
     test_imported_producer_implicit_market_inputs_precede_no_params();
     test_imported_producer_repeated_calls_cache_same_args();

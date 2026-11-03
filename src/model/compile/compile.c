@@ -1072,6 +1072,8 @@ cxpr_model_compiled* cxpr_model_compile_full(
                       model->bindings[src_i].expr, compile_reg, err);
             program->bindings[out_i].ast = cxpr_model_inline_static_collections(
                 program->bindings[out_i].ast, program, err);
+            program->bindings[out_i].ast = cxpr_model_inline_static_lets(
+                program->bindings[out_i].ast);
             if (program->bindings[out_i].ast &&
                 !cxpr_model_assign_binding_identities(
                     program->bindings[out_i].ast, compile_reg,

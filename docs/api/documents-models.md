@@ -99,6 +99,14 @@ One session represents one mutable run. Do not share it concurrently. State
 updates are atomic across a tick: expressions observe state from the start of
 the tick, updates are staged, and commits become current on the next tick.
 
+For ordered blocks, bind borrowed rank-one `cxpr_view` values with
+`cxpr_model_session_tick_views`. Input and output bindings follow compiled port
+order and must have equal lengths. The function validates type, shape, stride,
+capacity, and writability before processing, performs no heap allocation, and
+preserves the same state transition between elements as repeated scalar ticks.
+The view contains no scheduling or domain metadata; hosts retain ownership of
+memory, clocks, devices, and backpressure.
+
 ## Model invariants and optimization
 
 Compiled parameter invariants are checked when a session is created and can be

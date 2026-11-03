@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "song.gen.c"
 
 enum { DEFAULT_SAMPLE_RATE = 44100, MIN_SAMPLE_RATE = 8000, MAX_SAMPLE_RATE = 44100 };
@@ -104,6 +105,8 @@ int main(int argc, char **argv) {
     }
     uint32_t frames = (uint32_t)llround(duration * sample_rate);
     if (requested_frames && requested_frames < frames) frames = requested_frames;
+    struct timespec render_started;
+    timespec_get(&render_started, TIME_UTC);
     unsigned char header[44] = {0};
     memcpy(header, "RIFF", 4); little32(header + 4, 36u + frames * 4u);
     memcpy(header + 8, "WAVEfmt ", 8); little32(header + 16, 16);
@@ -139,8 +142,15 @@ int main(int argc, char **argv) {
         }
     }
     if (used && fwrite(block, 1, used, file) != used) goto cleanup;
-    fprintf(stderr, "%s: %u frames, %.6f s, %zu bytes state, stereo %u Hz.\n",
-        model->name, frames, (double)frames / sample_rate, state_size, sample_rate);
+    struct timespec render_finished;
+    timespec_get(&render_finished, TIME_UTC);
+    double render_seconds = (double)(render_finished.tv_sec - render_started.tv_sec) +
+        (double)(render_finished.tv_nsec - render_started.tv_nsec) / 1000000000.0;
+    fprintf(stderr,
+        "%s: %u frames, audio duration %.6f s, render time %.3f s, "
+        "%zu bytes state, stereo %u Hz.\n",
+        model->name, frames, (double)frames / sample_rate, render_seconds,
+        state_size, sample_rate);
     result = 0;
 cleanup:
     if (fclose(file) != 0) result = 1;

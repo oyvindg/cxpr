@@ -1,0 +1,11 @@
+# Pure scalar gain stage.
+model gain {
+    source_arg = "source"
+}
+
+in source
+$level = 1
+
+sample = source * $level
+
+out sample

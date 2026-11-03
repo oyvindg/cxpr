@@ -1,0 +1,5 @@
+# This minimal streaming fixture has no arrangement. The file is retained so
+# the example follows the common audio-song layout.
+model sequencer
+in t
+out active = t < 2

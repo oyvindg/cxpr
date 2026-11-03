@@ -13,8 +13,13 @@ static CXPR_THREAD_LOCAL cxpr_model_session* g_model_active_session = NULL;
 cxpr_model_session* cxpr_model_active_session(void) {
     return g_model_active_session;
 }
-static char* cxpr_model_child_cache_key(const cxpr_expr_ast* ast) {
-    return cxpr_expr_ast_call_identity_key(ast);
+static const char* cxpr_model_child_cache_key(const cxpr_expr_ast* ast,
+                                              char** owned_key) {
+    const char* cached = cxpr_expr_ast_call_cached_identity_key(ast);
+    *owned_key = NULL;
+    if (cached) return cached;
+    *owned_key = cxpr_expr_ast_call_identity_key(ast);
+    return *owned_key;
 }
 
 static size_t cxpr_model_child_call_argc(const cxpr_expr_ast* ast) {
@@ -895,6 +900,10 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
                 return cxpr_model_child_call_arg(ast, i);
             }
         }
+        if (cxpr_model_child_call_argc(ast) > 0u &&
+            !cxpr_model_child_call_arg_name(ast, 0u)) {
+            return cxpr_model_child_call_arg(ast, 0u);
+        }
         return NULL;
     }
     for (size_t i = 0u; i < child->constant_count; ++i) {
@@ -955,7 +964,8 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     cxpr_value* fields = NULL;
     cxpr_struct_value* record = NULL;
     cxpr_value result = cxpr_num(NAN);
-    char* cache_key = NULL;
+    const char* cache_key = NULL;
+    char* owned_cache_key = NULL;
     bool found = false;
     bool transient_session = false;
 
@@ -964,7 +974,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Invalid model producer call");
     }
     child = child_ref->program;
-    cache_key = cxpr_model_child_cache_key(ast);
+    cache_key = cxpr_model_child_cache_key(ast, &owned_cache_key);
     if (!cache_key) {
         return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
     }
@@ -977,19 +987,19 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
                 (const char* const*)cached->field_names,
                 cached->field_values,
                 cached->field_count);
-            free(cache_key);
+            free(owned_cache_key);
             if (!copy) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
             return cxpr_struct(copy);
         }
         if (cached) {
             result = cxpr_struct_get_field(cached, cxpr_expr_ast_producer_field(ast), &found);
-            free(cache_key);
+            free(owned_cache_key);
             if (found) return cxpr_value_clone(&result);
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Unknown child model field");
         }
     }
     if (!cxpr_registry_find(reg, child_ref->name)) {
-        free(cache_key);
+        free(owned_cache_key);
         return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_FUNCTION, "Unknown child model producer");
     }
     if (child->lifetime == CXPR_MODEL_LIFETIME_SINGLETON) {
@@ -1003,7 +1013,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     }
     if (!child_session || !child_session->ctx) {
         if (transient_session) cxpr_model_session_free(child_session);
-        free(cache_key);
+        free(owned_cache_key);
         return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Missing child model session");
     }
     for (size_t i = 0u; i < child->input_count; ++i) {
@@ -1022,7 +1032,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
                                : cxpr_context_get_typed(ctx, child->inputs[i], &input_found);
         if ((named_input_arg || source_arg) && err && err->code != CXPR_OK) {
             if (transient_session) cxpr_model_session_free(child_session);
-            free(cache_key);
+            free(owned_cache_key);
             return cxpr_num(NAN);
         }
         if (named_input_arg || source_arg) {
@@ -1031,7 +1041,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         }
         if (!input_found) {
             if (transient_session) cxpr_model_session_free(child_session);
-            free(cache_key);
+            free(owned_cache_key);
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Missing child model input");
         }
         if (value.type == CXPR_VALUE_NUMBER) {
@@ -1050,7 +1060,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         value = cxpr_eval_node(arg, ctx, reg, err);
         if (err && err->code != CXPR_OK) {
             if (transient_session) cxpr_model_session_free(child_session);
-            free(cache_key);
+            free(owned_cache_key);
             return cxpr_num(NAN);
         }
         cxpr_context_set_param_value(child_session->ctx, child->constants[i].name, &value);
@@ -1058,14 +1068,14 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     }
     if (!cxpr_model_session_tick(child, child_session, reg, err)) {
         if (transient_session) cxpr_model_session_free(child_session);
-        free(cache_key);
+        free(owned_cache_key);
         return cxpr_num(NAN);
     }
 
     fields = (cxpr_value*)calloc(child->output_count, sizeof(cxpr_value));
     if (!fields) {
         if (transient_session) cxpr_model_session_free(child_session);
-        free(cache_key);
+        free(owned_cache_key);
         return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
     }
     for (size_t i = 0u; i < child->output_count; ++i) {
@@ -1090,7 +1100,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     free(fields);
     if (!record) {
         if (transient_session) cxpr_model_session_free(child_session);
-        free(cache_key);
+        free(owned_cache_key);
         return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
     }
     if (transient_session) {
@@ -1098,7 +1108,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         child_session = NULL;
     }
     cxpr_context_set_cached_struct((cxpr_context*)ctx, cache_key, record);
-    free(cache_key);
+    free(owned_cache_key);
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
         result = cxpr_struct(record);
         record = NULL;
@@ -1404,4 +1414,157 @@ bool cxpr_model_session_tick_fast(const cxpr_model_compiled* program,
         g_model_active_session = previous_active_session;
         return ok;
     }
+}
+
+static size_t cxpr_view_element_size(cxpr_value_type type) {
+    if (type == CXPR_VALUE_NUMBER) return sizeof(double);
+    if (type == CXPR_VALUE_BOOL) return sizeof(bool);
+    if (type == CXPR_VALUE_INT64) return sizeof(int64_t);
+    return 0u;
+}
+
+static bool cxpr_model_validate_block_view(const cxpr_view* view,
+                                           bool writable,
+                                           size_t expected_count,
+                                           cxpr_error* err) {
+    size_t element_size;
+    size_t required;
+    if (!view || view->rank != 1u || view->shape[0] != expected_count) {
+        cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                             "Model block bindings require equal-length rank-one views", 0, 0);
+        return false;
+    }
+    element_size = cxpr_view_element_size(view->element_type);
+    if (!element_size || (expected_count && (!view->data || view->strides[0] <= 0))) {
+        cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                             "Model block view has an unsupported element type or layout", 0, 0);
+        return false;
+    }
+    if (writable && !(view->flags & CXPR_VIEW_WRITABLE)) {
+        cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                             "Model block output view is not writable", 0, 0);
+        return false;
+    }
+    if (!writable && !(view->flags & CXPR_VIEW_READ_ONLY)) {
+        cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                             "Model block input view is not read-only", 0, 0);
+        return false;
+    }
+    required = expected_count
+        ? (expected_count - 1u) * (size_t)view->strides[0] + element_size
+        : 0u;
+    if (required > view->capacity_bytes) {
+        cxpr_model_set_error(err, CXPR_ERR_INDEX_OUT_OF_RANGE,
+                             "Model block view capacity is smaller than its shape", 0, 0);
+        return false;
+    }
+    return true;
+}
+
+static bool cxpr_model_views_overlap(const cxpr_view* left, const cxpr_view* right) {
+    if (!left->capacity_bytes || !right->capacity_bytes) return false;
+    const unsigned char* left_begin = (const unsigned char*)left->data;
+    const unsigned char* right_begin = (const unsigned char*)right->data;
+    const unsigned char* left_end = left_begin + left->capacity_bytes;
+    const unsigned char* right_end = right_begin + right->capacity_bytes;
+    return left_begin < right_end && right_begin < left_end;
+}
+
+bool cxpr_model_session_tick_views(const cxpr_model_compiled* program,
+                                   cxpr_model_session* session,
+                                   const cxpr_registry* reg,
+                                   const cxpr_model_view_binding* inputs,
+                                   size_t input_count,
+                                   cxpr_model_view_binding* outputs,
+                                   size_t output_count,
+                                   cxpr_error* err) {
+    size_t row_count = input_count ? inputs[0].view.shape[0]
+                                   : (output_count ? outputs[0].view.shape[0] : 0u);
+    if (err) *err = (cxpr_error){0};
+    if (!program || !session || input_count != program->input_count ||
+        output_count != program->output_count ||
+        (input_count && !inputs) || (output_count && !outputs)) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Model block bindings do not match the compiled ports", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < input_count; ++i) {
+        if (!inputs[i].name || strcmp(inputs[i].name, program->inputs[i]) != 0 ||
+            !cxpr_model_validate_block_view(&inputs[i].view, false, row_count, err)) return false;
+        if ((program->input_declared_types[i] == CXPR_MODEL_DECL_BOOL &&
+             inputs[i].view.element_type != CXPR_VALUE_BOOL) ||
+            (program->input_declared_types[i] == CXPR_MODEL_DECL_INT &&
+             inputs[i].view.element_type != CXPR_VALUE_INT64) ||
+            (program->input_declared_types[i] != CXPR_MODEL_DECL_BOOL &&
+             program->input_declared_types[i] != CXPR_MODEL_DECL_INT &&
+             inputs[i].view.element_type != CXPR_VALUE_NUMBER)) {
+            cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                 "Model input type does not match its bound view", 0, 0);
+            return false;
+        }
+    }
+    for (size_t i = 0u; i < output_count; ++i) {
+        if (!outputs[i].name || strcmp(outputs[i].name, program->outputs[i]) != 0 ||
+            !cxpr_model_validate_block_view(&outputs[i].view, true, row_count, err)) return false;
+        {
+            cxpr_model_result_kind kind = cxpr_model_compiled_output_result_kind(program, i);
+            cxpr_value_type expected = kind == CXPR_MODEL_RESULT_BOOL ? CXPR_VALUE_BOOL
+                : kind == CXPR_MODEL_RESULT_INT64 ? CXPR_VALUE_INT64 : CXPR_VALUE_NUMBER;
+            if (outputs[i].view.element_type != expected) {
+                cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                     "Model output type does not match its bound view", 0, 0);
+                return false;
+            }
+        }
+    }
+    for (size_t output_i = 0u; output_i < output_count; ++output_i) {
+        for (size_t input_i = 0u; input_i < input_count; ++input_i) {
+            if (cxpr_model_views_overlap(&outputs[output_i].view, &inputs[input_i].view) &&
+                (!(outputs[output_i].view.flags & CXPR_VIEW_ALLOW_ALIAS) ||
+                 !(inputs[input_i].view.flags & CXPR_VIEW_ALLOW_ALIAS))) {
+                cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                     "Overlapping model views require explicit alias permission", 0, 0);
+                return false;
+            }
+        }
+        for (size_t other_i = output_i + 1u; other_i < output_count; ++other_i) {
+            if (cxpr_model_views_overlap(&outputs[output_i].view, &outputs[other_i].view) &&
+                (!(outputs[output_i].view.flags & CXPR_VIEW_ALLOW_ALIAS) ||
+                 !(outputs[other_i].view.flags & CXPR_VIEW_ALLOW_ALIAS))) {
+                cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                     "Overlapping output views require explicit alias permission", 0, 0);
+                return false;
+            }
+        }
+    }
+    for (size_t row = 0u; row < row_count; ++row) {
+        for (size_t i = 0u; i < input_count; ++i) {
+            const unsigned char* data = (const unsigned char*)inputs[i].view.data +
+                                        row * (size_t)inputs[i].view.strides[0];
+            if (inputs[i].view.element_type == CXPR_VALUE_NUMBER)
+                cxpr_context_set(session->ctx, inputs[i].name, *(const double*)data);
+            else if (inputs[i].view.element_type == CXPR_VALUE_BOOL)
+                cxpr_context_set_bool(session->ctx, inputs[i].name, *(const bool*)data);
+            else
+                cxpr_context_set_int64(session->ctx, inputs[i].name, *(const int64_t*)data);
+        }
+        if (!cxpr_model_session_tick(program, session, reg, err)) return false;
+        for (size_t i = 0u; i < output_count; ++i) {
+            unsigned char* data = (unsigned char*)outputs[i].view.data +
+                                  row * (size_t)outputs[i].view.strides[0];
+            bool found;
+            if (outputs[i].view.element_type == CXPR_VALUE_NUMBER)
+                found = cxpr_model_session_get_number(session, outputs[i].name, (double*)data);
+            else if (outputs[i].view.element_type == CXPR_VALUE_BOOL)
+                found = cxpr_model_session_get_bool(session, outputs[i].name, (bool*)data);
+            else
+                found = cxpr_model_session_get_int64(session, outputs[i].name, (int64_t*)data);
+            if (!found) {
+                cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                     "Model output type does not match its bound view", 0, 0);
+                return false;
+            }
+        }
+    }
+    return true;
 }

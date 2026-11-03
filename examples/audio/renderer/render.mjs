@@ -72,12 +72,12 @@ const outputPath = process.argv[2]
 const options = process.argv.slice(3).filter((option) =>
   !option.startsWith("--model=") && !option.startsWith("--import-dir="))
 if (!outputPath || !modelPath || !importDir) {
-  console.error("Usage: node render.mjs OUTPUT.wav --model=FILE [--import-dir=DIR] [--frames=COUNT] [--session]")
+  console.error("Usage: node render.mjs OUTPUT.wav --model=FILE [--import-dir=DIR] [--frames=COUNT] [--views]")
   process.exitCode = 2
-} else if (options.includes("--session")) {
+} else if (options.includes("--views") || options.includes("--session")) {
   run(process.execPath, [join(here, "render_session.mjs"), outputPath,
     `--model=${modelPath}`, `--import-dir=${importDir}`,
-    ...options.filter((option) => option !== "--session")])
+    ...options.filter((option) => option !== "--views" && option !== "--session")])
 } else {
   const codegen = findCodegen()
   const cacheDir = join(tmpdir(), "cxpr-native-audio-cache")

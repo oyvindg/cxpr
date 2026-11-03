@@ -51,6 +51,17 @@ typedef struct cxpr_evaluator cxpr_evaluator;
 typedef struct cxpr_struct_value cxpr_struct_value;
 /** @brief Opaque/public array-value handle. */
 typedef struct cxpr_array_value cxpr_array_value;
+/** @brief Borrowed, typed strided memory view. */
+typedef struct cxpr_view cxpr_view;
+
+#define CXPR_VIEW_MAX_RANK 4u
+
+typedef enum cxpr_view_flags {
+    CXPR_VIEW_READ_ONLY = 1u << 0,
+    CXPR_VIEW_WRITABLE = 1u << 1,
+    CXPR_VIEW_CONTIGUOUS = 1u << 2,
+    CXPR_VIEW_ALLOW_ALIAS = 1u << 3
+} cxpr_view_flags;
 
 /** @brief Error codes returned by cxpr APIs. */
 typedef enum {
@@ -80,7 +91,8 @@ typedef enum {
     CXPR_VALUE_TIMESTAMP = 5,
     CXPR_VALUE_DURATION = 6,
     CXPR_VALUE_ARRAY = 7,
-    CXPR_VALUE_INT64 = 8
+    CXPR_VALUE_INT64 = 8,
+    CXPR_VALUE_VIEW = 9
 } cxpr_value_type;
 
 /** @brief Typed runtime value used by evaluation and struct fields. */
@@ -93,6 +105,7 @@ typedef struct cxpr_value {
         const char* str;
         int64_t i64;
         cxpr_array_value* a;
+        cxpr_view* view;
     };
 } cxpr_value;
 
@@ -133,6 +146,17 @@ struct cxpr_struct_value {
 struct cxpr_array_value {
     cxpr_value* values;
     size_t count;
+};
+
+/** Borrowed multidimensional memory with byte strides and explicit capacity. */
+struct cxpr_view {
+    void* data;
+    cxpr_value_type element_type;
+    size_t rank;
+    size_t shape[CXPR_VIEW_MAX_RANK];
+    ptrdiff_t strides[CXPR_VIEW_MAX_RANK];
+    size_t capacity_bytes;
+    unsigned flags;
 };
 
 /**
@@ -234,6 +258,14 @@ static CXPR_HOST_DEVICE inline cxpr_value cxpr_array(cxpr_array_value* a) {
     cxpr_value value = {0};
     value.type = CXPR_VALUE_ARRAY;
     value.a = a;
+    return value;
+}
+
+/** @brief Construct a borrowed view value. */
+static CXPR_HOST_DEVICE inline cxpr_value cxpr_view_value(cxpr_view* view) {
+    cxpr_value value = {0};
+    value.type = CXPR_VALUE_VIEW;
+    value.view = view;
     return value;
 }
 #endif

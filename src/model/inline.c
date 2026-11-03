@@ -311,6 +311,83 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
     }
 }
 
+cxpr_expr_ast* cxpr_model_inline_static_lets(cxpr_expr_ast* ast) {
+    if (!ast) return NULL;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL &&
+        ast->data.function_call.name &&
+        strcmp(ast->data.function_call.name, "__cxpr_let") == 0 &&
+        ast->data.function_call.argc == 3u &&
+        ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER &&
+        (ast->data.function_call.args[1]->type == CXPR_NODE_RECORD ||
+         ast->data.function_call.args[1]->type == CXPR_NODE_ARRAY)) {
+        cxpr_model_local_binding local = {
+            ast->data.function_call.args[0]->data.identifier.name,
+            ast->data.function_call.args[1]
+        };
+        cxpr_expr_ast* replacement = cxpr_model_inline_locals(
+            ast->data.function_call.args[2], &local, 1u);
+        cxpr_expr_ast_free(ast);
+        return replacement ? cxpr_model_inline_static_lets(replacement) : NULL;
+    }
+    switch (ast->type) {
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            ast->data.record.field_values[i] = cxpr_model_inline_static_lets(
+                ast->data.record.field_values[i]);
+            if (!ast->data.record.field_values[i]) goto fail;
+        }
+        break;
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            ast->data.array.elements[i] = cxpr_model_inline_static_lets(
+                ast->data.array.elements[i]);
+            if (!ast->data.array.elements[i]) goto fail;
+        }
+        break;
+    case CXPR_NODE_FUNCTION_CALL:
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
+            ast->data.function_call.args[i] = cxpr_model_inline_static_lets(
+                ast->data.function_call.args[i]);
+            if (!ast->data.function_call.args[i]) goto fail;
+        }
+        break;
+    case CXPR_NODE_PRODUCER_ACCESS:
+        for (size_t i = 0u; i < ast->data.producer_access.argc; ++i) {
+            ast->data.producer_access.args[i] = cxpr_model_inline_static_lets(
+                ast->data.producer_access.args[i]);
+            if (!ast->data.producer_access.args[i]) goto fail;
+        }
+        break;
+    case CXPR_NODE_BINARY_OP:
+        ast->data.binary_op.left = cxpr_model_inline_static_lets(ast->data.binary_op.left);
+        ast->data.binary_op.right = cxpr_model_inline_static_lets(ast->data.binary_op.right);
+        if (!ast->data.binary_op.left || !ast->data.binary_op.right) goto fail;
+        break;
+    case CXPR_NODE_UNARY_OP:
+        ast->data.unary_op.operand = cxpr_model_inline_static_lets(ast->data.unary_op.operand);
+        if (!ast->data.unary_op.operand) goto fail;
+        break;
+    case CXPR_NODE_INDEX:
+        ast->data.index.target = cxpr_model_inline_static_lets(ast->data.index.target);
+        ast->data.index.index = cxpr_model_inline_static_lets(ast->data.index.index);
+        if (!ast->data.index.target || !ast->data.index.index) goto fail;
+        break;
+    case CXPR_NODE_TERNARY:
+        ast->data.ternary.condition = cxpr_model_inline_static_lets(ast->data.ternary.condition);
+        ast->data.ternary.true_branch = cxpr_model_inline_static_lets(ast->data.ternary.true_branch);
+        ast->data.ternary.false_branch = cxpr_model_inline_static_lets(ast->data.ternary.false_branch);
+        if (!ast->data.ternary.condition || !ast->data.ternary.true_branch ||
+            !ast->data.ternary.false_branch) goto fail;
+        break;
+    default:
+        break;
+    }
+    return ast;
+fail:
+    cxpr_expr_ast_free(ast);
+    return NULL;
+}
+
 static bool cxpr_model_defined_body_is_series_aware(const cxpr_expr_ast* ast,
                                                      const cxpr_registry* registry,
                                                      size_t depth) {

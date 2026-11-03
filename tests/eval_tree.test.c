@@ -44,6 +44,14 @@ static void test_eval_tree_access_paths(void) {
     cxpr_expr_ast_free(ast);
 
     ast = cxpr_expr_ast_parse(p,
+        "sum([1, 2, 3], x => { doubled = x * 2; shifted = doubled + 1; return shifted; })",
+        &err);
+    assert(ast);
+    assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
+    assert(out == 15.0);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p,
         "reduce(map([1, 2, 3], x => x * 2), 0, step => step.acc + step.value + step.index)",
         &err);
     assert(ast);
