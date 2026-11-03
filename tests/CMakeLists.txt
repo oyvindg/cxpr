@@ -109,6 +109,61 @@ add_dependencies(test_int64_generated_parity generate_cxpr_int64_parity)
 add_test(NAME int64_generated_parity COMMAND test_int64_generated_parity)
 
 if(TARGET cxpr_model_codegen)
+    set(CXPR_STATIC_STATEFUL_MAP_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_static_stateful_map.c")
+    add_custom_command(
+        OUTPUT "${CXPR_STATIC_STATEFUL_MAP_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/static_stateful_map/root.cxpr"
+            --output "${CXPR_STATIC_STATEFUL_MAP_GENERATED}"
+            --function static_stateful_map_tick
+        DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/static_stateful_map/root.cxpr"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/static_stateful_map/voice.cxpr"
+        VERBATIM)
+    add_library(test_static_stateful_map_codegen OBJECT
+        "${CXPR_STATIC_STATEFUL_MAP_GENERATED}")
+    target_include_directories(test_static_stateful_map_codegen PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+    add_test(NAME static_stateful_map_local_cse
+        COMMAND ${CMAKE_COMMAND}
+            -DGENERATED=${CXPR_STATIC_STATEFUL_MAP_GENERATED}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/assert_static_map_locals.cmake")
+
+    set(CXPR_IMPORTED_STATIC_MAP_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_imported_static_map.c")
+    add_custom_command(
+        OUTPUT "${CXPR_IMPORTED_STATIC_MAP_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_static_map/root.cxpr"
+            --output "${CXPR_IMPORTED_STATIC_MAP_GENERATED}"
+            --function imported_static_map_tick
+        DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_static_map/root.cxpr"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_static_map/source.cxpr"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_static_map/worker.cxpr"
+        VERBATIM)
+    add_library(test_imported_static_map_codegen OBJECT
+        "${CXPR_IMPORTED_STATIC_MAP_GENERATED}")
+    target_include_directories(test_imported_static_map_codegen PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
+    set(CXPR_STATIC_VIEW_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_static_view.c")
+    add_custom_command(
+        OUTPUT "${CXPR_STATIC_VIEW_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/events/static_record_view.cxpr"
+            --output "${CXPR_STATIC_VIEW_GENERATED}"
+            --function static_record_view_tick
+        DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/events/static_record_view.cxpr"
+        VERBATIM)
+    add_library(test_static_record_view_codegen OBJECT
+        "${CXPR_STATIC_VIEW_GENERATED}")
+    target_include_directories(test_static_record_view_codegen PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
     add_test(NAME model_codegen_import_diagnostic
         COMMAND ${CMAKE_COMMAND}
             -DCODEGEN=$<TARGET_FILE:cxpr_model_codegen>

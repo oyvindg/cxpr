@@ -311,6 +311,149 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
     if (handled) *handled = false;
     if (!name) return NULL;
 
+    if (target_data && cxpr_model_names_match(name, "__cxpr_let") && argc == 3u &&
+        cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0u)) == CXPR_NODE_IDENTIFIER) {
+        const char* local = cxpr_expr_ast_identifier_name(cxpr_expr_ast_call_arg(ast, 0u));
+        char* value = cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, 1u), lookback_offset, &target, err);
+        char temp[64];
+        char** names;
+        char** exprs;
+        cxpr_model_ast_c_target nested;
+        cxpr_c_target nested_target = target;
+        char* result;
+        size_t base = target_data->param_count;
+        cxpr_model_local_cse* cse = target_data->local_cse;
+        if (!value || !target_data->local_declarations) {
+            if (err && !value) { err->code = CXPR_ERR_SYNTAX; err->message = "let value C emission failed"; }
+            free(value); return NULL;
+        }
+        temp[0] = '\0';
+        for (size_t i = 0u; cse && i < cse->count; ++i)
+            if (strcmp(cse->exprs[i], value) == 0) {
+                snprintf(temp, sizeof(temp), "%s", cse->names[i]);
+                break;
+            }
+        if (!temp[0]) {
+            char** exprs_grown;
+            char** names_grown;
+            if (!cse) { free(value); return NULL; }
+            if (cse->count == cse->capacity) {
+                size_t capacity = cse->capacity ? cse->capacity * 2u : 16u;
+                exprs_grown = (char**)realloc(
+                    cse->exprs, capacity * sizeof(*exprs_grown));
+                if (!exprs_grown) { free(value); return NULL; }
+                cse->exprs = exprs_grown;
+                names_grown = (char**)realloc(
+                    cse->names, capacity * sizeof(*names_grown));
+                if (!names_grown) { free(value); return NULL; }
+                cse->names = names_grown;
+                cse->capacity = capacity;
+            }
+            snprintf(temp, sizeof(temp), "_cx_local_%zu", cse->next_temp++);
+            cxpr_model_c_printf(target_data->local_declarations,
+                                "    const double %s = %s;\n", temp, value);
+            cse->exprs[cse->count] = cxpr_strdup(value);
+            cse->names[cse->count] = cxpr_strdup(temp);
+            if (!cse->exprs[cse->count] || !cse->names[cse->count]) { free(value); return NULL; }
+            cse->count++;
+        }
+        free(value);
+        names = (char**)calloc(base + 1u, sizeof(*names));
+        exprs = (char**)calloc(base + 1u, sizeof(*exprs));
+        if (!names || !exprs) { free(names); free(exprs); return NULL; }
+        for (size_t i = 0u; i < base; ++i) {
+            names[i] = target_data->param_names[i];
+            exprs[i] = target_data->param_exprs ? target_data->param_exprs[i] : NULL;
+        }
+        names[base] = (char*)local;
+        exprs[base] = temp;
+        nested = *target_data;
+        nested.param_names = names;
+        nested.param_exprs = exprs;
+        nested.param_count = base + 1u;
+        nested_target.userdata = &nested;
+        result = cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, 2u), lookback_offset, &nested_target, err);
+        free(names);
+        free(exprs);
+        if (!result && err && err->code == CXPR_OK) { err->code = CXPR_ERR_SYNTAX; err->message = "let body C emission failed"; }
+        if (handled) *handled = true;
+        return result;
+    }
+
+    if (target_data && target_data->program &&
+        cxpr_model_names_match(name, "length") && argc == 1u) {
+        const cxpr_expr_ast* collection = cxpr_model_c_static_collection(
+            target_data->program, cxpr_expr_ast_call_arg(ast, 0u), 0u);
+        size_t count = 0u;
+        char raw[64];
+        if (collection && cxpr_expr_ast_kind_of(collection) == CXPR_NODE_ARRAY) {
+            count = cxpr_expr_ast_array_count(collection);
+        } else if (collection && cxpr_expr_ast_kind_of(collection) == CXPR_NODE_RECORD &&
+                   cxpr_expr_ast_record_field_count(collection) > 0u) {
+            const cxpr_expr_ast* first = cxpr_model_c_static_collection(
+                target_data->program,
+                cxpr_expr_ast_record_field_value(collection, 0u), 0u);
+            if (!first || cxpr_expr_ast_kind_of(first) != CXPR_NODE_ARRAY) return NULL;
+            count = cxpr_expr_ast_array_count(first);
+            for (size_t i = 1u; i < cxpr_expr_ast_record_field_count(collection); ++i) {
+                const cxpr_expr_ast* field = cxpr_model_c_static_collection(
+                    target_data->program,
+                    cxpr_expr_ast_record_field_value(collection, i), 0u);
+                if (!field || cxpr_expr_ast_kind_of(field) != CXPR_NODE_ARRAY ||
+                    cxpr_expr_ast_array_count(field) != count) {
+                    cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                        "Static record view fields must have equal array lengths", 0, 0);
+                    return NULL;
+                }
+            }
+        } else return NULL;
+        if (handled) *handled = true;
+        snprintf(raw, sizeof(raw), "%zu.0", count);
+        return cxpr_strdup(raw);
+    }
+
+    if (target_data && target_data->program &&
+        cxpr_model_names_match(name, "upper_bound") && (argc == 2u || argc == 3u)) {
+        const cxpr_expr_ast* collection = cxpr_model_c_static_collection(
+            target_data->program, cxpr_expr_ast_call_arg(ast, 0u), 0u);
+        const char* selector_field = NULL;
+        char* value;
+        if (!collection || cxpr_expr_ast_kind_of(collection) != CXPR_NODE_ARRAY)
+            return NULL;
+        if (argc == 3u) {
+            const cxpr_expr_ast* selector = cxpr_expr_ast_call_arg(ast, 2u);
+            const cxpr_expr_ast* body;
+            if (!selector || cxpr_expr_ast_kind_of(selector) != CXPR_NODE_FUNCTION_CALL ||
+                !cxpr_model_names_match(cxpr_expr_ast_call_name(selector), "__cxpr_lambda") ||
+                cxpr_expr_ast_call_arg_count(selector) != 2u) return NULL;
+            body = cxpr_expr_ast_call_arg(selector, 1u);
+            if (!body || cxpr_expr_ast_kind_of(body) != CXPR_NODE_FIELD_ACCESS) return NULL;
+            selector_field = cxpr_expr_ast_field_name(body);
+        }
+        value = cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, 1u), lookback_offset, &target, err);
+        if (!value) return NULL;
+        if (handled) *handled = true;
+        cxpr_model_c_puts(&b, "(");
+        for (size_t i = 0u; i < cxpr_expr_ast_array_count(collection); ++i) {
+            const cxpr_expr_ast* key = cxpr_expr_ast_array_element(collection, i);
+            if (selector_field) key = cxpr_model_c_static_record_field(
+                target_data->program, key, selector_field, 0u);
+            char* element = cxpr_expr_ast_to_c_at_offset(
+                key, lookback_offset, &target, err);
+            if (!element) { free(value); free(b.data); return NULL; }
+            cxpr_model_c_printf(&b, "((%s) < (%s)) ? %zu.0 : ", value, element, i);
+            free(element);
+        }
+        cxpr_model_c_printf(&b, "%zu.0)", cxpr_expr_ast_array_count(collection));
+        free(value);
+        if (b.oom) { free(b.data); cxpr_model_set_error(
+            err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0); return NULL; }
+        return b.data;
+    }
+
     /* Static collection bindings have no runtime C representation. Expand a
      * bound map source here so the standalone codegen can fold map + reduce
      * while retaining its model-agnostic selector implementation. */
@@ -441,6 +584,7 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 target_data->child_call_keys,
                 target_data->child_call_child_indices,
                 target_data->child_call_count,
+                target_data,
                 err);
         }
     }

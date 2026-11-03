@@ -31,6 +31,8 @@ PARAMS(p_basket_expression, "expression");
 PARAMS(p_collection_selector, "values", "selector");
 PARAMS(p_collection_mapper, "values", "mapper");
 PARAMS(p_collection_initial_reducer, "values", "initial", "reducer");
+PARAMS(p_collection, "values");
+PARAMS(p_sorted_value, "values", "value", "selector");
 
 static const cxpr_function_info builtins[] = {
     INFO("min", "min(value, ...values)", "Returns the smallest value. Accepts numeric arguments, a static array with an optional selector, or a trailing expression window such as min(window(expression, period)).", p_values, 1u, 8u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
@@ -114,6 +116,8 @@ static const cxpr_function_info builtins[] = {
     INFO("all", "all(values, selector)", "Returns true when a basket expression or static array selector is true for every member.", p_collection_selector, 1u, 2u, CXPR_VALUE_BOOL, CXPR_BUILTIN_DEFAULT | CXPR_BUILTIN_BASKET),
     INFO("map", "map(values, mapper)", "Maps a statically bounded array or named record while preserving its shape. Stateful model callbacks receive one independent instance per element.", p_collection_mapper, 2u, 2u, CXPR_VALUE_ARRAY, CXPR_BUILTIN_SYNTAX),
     INFO("reduce", "reduce(values, initial, reducer)", "Folds a statically bounded collection from the supplied numeric initial value.", p_collection_initial_reducer, 3u, 3u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
+    INFO("length", "length(values)", "Returns the compile-time length of a static array or static record view.", p_collection, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
+    INFO("upper_bound", "upper_bound(values, value, selector)", "Returns the insertion index after equal elements in a sorted static array. Records may supply a key selector.", p_sorted_value, 2u, 3u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
     INFO("count", "count(expression)", "Counts matching basket members.", p_basket_expression, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_BASKET),
     INFO("window", "window(expression, period)", "Creates a compile-time trailing expression window for reducers such as mean and stddev; no runtime array is created.", p_expression_period, 2u, 2u, CXPR_VALUE_ARRAY, CXPR_BUILTIN_SYNTAX),
     INFO("stddev", "stddev(window(expression, period))", "Computes the standard deviation over a trailing expression window.", p_expression_period, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),

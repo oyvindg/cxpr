@@ -1,5 +1,5 @@
-# Shared topology-preserving state-variable filter with smoothed controls.
-model state_variable_filter(lifecycle = "scoped")
+// Smoothed resonant filter exposing simultaneous low, band and high outputs.
+model resonance(lifecycle = "scoped")
 
 in source
 
@@ -8,17 +8,23 @@ $cutoff = 1800
 $resonance = 0.25
 $smoothing_seconds = 0.004
 
+// Two topology-preserving integrators retain stable filter state per voice.
 state integrator_one = 0
 state integrator_two = 0
 state smoothed_cutoff = 1800
 state smoothed_resonance = 0.25
 
+// Smooth automation before converting cutoff to the trapezoidal integrator gain.
 smooth = 1 - exp(-1 / (max(0.0001, $smoothing_seconds) * $sample_rate))
-cutoff = smoothed_cutoff + smooth * (clamp($cutoff, 20, $sample_rate * 0.45) - smoothed_cutoff)
-resonance = smoothed_resonance + smooth * (clamp($resonance, 0, 0.96) - smoothed_resonance)
+cutoff = smoothed_cutoff +
+    smooth * (clamp($cutoff, 20, $sample_rate * 0.45) - smoothed_cutoff)
+resonance_amount = smoothed_resonance +
+    smooth * (clamp($resonance, 0, 0.96) - smoothed_resonance)
 g = tan(pi() * cutoff / $sample_rate)
-damping = 2 - 1.9 * resonance
+damping = 2 - 1.9 * resonance_amount
 normalizer = 1 / (1 + g * (g + damping))
+
+// All three responses share the same state and remain phase-coherent.
 band = normalizer * (integrator_one + g * (source - integrator_two))
 low = integrator_two + g * band
 high = source - damping * band - low
@@ -26,9 +32,8 @@ high = source - damping * band - low
 integrator_one := 2 * band - integrator_one
 integrator_two := 2 * low - integrator_two
 smoothed_cutoff := cutoff
-smoothed_resonance := resonance
+smoothed_resonance := resonance_amount
 
 out {
     low, band, high
 }
-

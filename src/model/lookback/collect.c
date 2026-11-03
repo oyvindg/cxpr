@@ -69,6 +69,42 @@ static bool cxpr_model_index_target_is_local_alias(
     return false;
 }
 
+static const cxpr_expr_ast* cxpr_model_static_collection(
+    const cxpr_model* model, const cxpr_expr_ast* ast, unsigned depth) {
+    if (!model || !ast || depth > 32u) return NULL;
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_ARRAY ||
+        cxpr_expr_ast_kind_of(ast) == CXPR_NODE_RECORD) return ast;
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_IDENTIFIER) {
+        const char* name = cxpr_expr_ast_identifier_name(ast);
+        for (size_t i = 0u; i < model->binding_count; ++i)
+            if (cxpr_model_names_match(model->bindings[i].name, name))
+                return cxpr_model_static_collection(model, model->bindings[i].expr, depth + 1u);
+    }
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
+        const cxpr_expr_ast* base = cxpr_expr_ast_field_base(ast);
+        const char* object = cxpr_expr_ast_field_object(ast);
+        const char* field = cxpr_expr_ast_field_name(ast);
+        const cxpr_expr_ast* record = base
+            ? cxpr_model_static_collection(model, base, depth + 1u) : NULL;
+        if (!record && object) {
+            for (size_t i = 0u; i < model->binding_count; ++i)
+                if (cxpr_model_names_match(model->bindings[i].name, object)) {
+                    record = cxpr_model_static_collection(
+                        model, model->bindings[i].expr, depth + 1u);
+                    break;
+                }
+        }
+        if (record && cxpr_expr_ast_kind_of(record) == CXPR_NODE_RECORD) {
+            for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i)
+                if (cxpr_model_names_match(
+                        cxpr_expr_ast_record_field_name(record, i), field))
+                    return cxpr_model_static_collection(
+                        model, cxpr_expr_ast_record_field_value(record, i), depth + 1u);
+        }
+    }
+    return NULL;
+}
+
 bool cxpr_model_lookback_target_key(const cxpr_expr_ast* target,
                                     char** out_key,
                                     cxpr_error* err) {
@@ -281,6 +317,10 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
         unsigned literal_offset = 0u;
         size_t offset = 0u;
         size_t dynamic_bound = 0u;
+        if (cxpr_model_static_collection(model, target, 0u)) {
+            return cxpr_model_collect_lookbacks_in_ast(
+                model, registry, index, enclosing_offset, specs, count, err);
+        }
         if (registry && !cxpr_model_index_target_is_local_alias(model, target) &&
             cxpr_registry_index_target_info(
                             registry, target, &capability_name,
@@ -347,6 +387,45 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
     case CXPR_NODE_UNARY_OP:
         return cxpr_model_collect_lookbacks_in_ast(model, registry, cxpr_expr_ast_unary_operand(ast), enclosing_offset, specs, count, err);
     case CXPR_NODE_FUNCTION_CALL:
+        if (cxpr_model_names_match(cxpr_expr_ast_call_name(ast), "map") &&
+            cxpr_expr_ast_call_arg_count(ast) == 2u) {
+            const cxpr_expr_ast* source = cxpr_expr_ast_call_arg(ast, 0u);
+            const cxpr_expr_ast* collection =
+                cxpr_model_static_collection(model, source, 0u);
+            if (collection && (cxpr_expr_ast_kind_of(collection) == CXPR_NODE_ARRAY ||
+                               cxpr_expr_ast_kind_of(collection) == CXPR_NODE_RECORD)) {
+                cxpr_expr_ast* concrete = cxpr_expr_ast_clone(ast);
+                cxpr_expr_ast* expanded;
+                bool ok;
+                if (!concrete) {
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0, 0);
+                    return false;
+                }
+                cxpr_expr_ast_free(concrete->data.function_call.args[0]);
+                concrete->data.function_call.args[0] =
+                    cxpr_expr_ast_clone(collection);
+                if (!concrete->data.function_call.args[0]) {
+                    cxpr_expr_ast_free(concrete);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0, 0);
+                    return false;
+                }
+                expanded = cxpr_model_inline_defined_calls(concrete, registry, err);
+                cxpr_expr_ast_free(concrete);
+                if (!expanded) return false;
+                if (cxpr_expr_ast_kind_of(expanded) == CXPR_NODE_FUNCTION_CALL &&
+                    cxpr_model_names_match(
+                        cxpr_expr_ast_call_name(expanded), "map")) {
+                    cxpr_expr_ast_free(expanded);
+                } else {
+                    ok = cxpr_model_collect_lookbacks_in_ast(
+                        model, registry, expanded, enclosing_offset, specs, count, err);
+                    cxpr_expr_ast_free(expanded);
+                    return ok;
+                }
+            }
+        }
         if (cxpr_model_window_is_function(cxpr_expr_ast_call_name(ast)) &&
             !cxpr_model_window_collect_call(
                 model, ast, enclosing_offset, specs, count, err)) {

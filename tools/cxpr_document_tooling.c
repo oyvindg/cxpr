@@ -658,10 +658,16 @@ static int tooling_inside_metadata_block(const char* source, size_t offset) {
         if (ch == '\n') { line_start = i + 1u; continue; }
         if (ch == '{' && depth < 128u) {
             size_t cursor = line_start;
+            size_t before = i;
+            int lambda_block;
             while (cursor < i && isspace((unsigned char)source[cursor])) cursor++;
+            while (before > cursor && isspace((unsigned char)source[before - 1u])) before--;
+            lambda_block = before >= 2u && source[before - 2u] == '=' &&
+                source[before - 1u] == '>';
             metadata_stack[depth] = (depth > 0u && metadata_stack[depth - 1u]) ||
-                (i - cursor >= 4u && strncmp(source + cursor, "out ", 4u) == 0) ||
-                (i - cursor >= 6u && strncmp(source + cursor, "model ", 6u) == 0);
+                (!lambda_block &&
+                 ((i - cursor >= 4u && strncmp(source + cursor, "out ", 4u) == 0) ||
+                  (i - cursor >= 6u && strncmp(source + cursor, "model ", 6u) == 0)));
             depth++;
         } else if (ch == '}' && depth > 0u) {
             depth--;
@@ -701,6 +707,9 @@ static void emit_source_tokens(const char* source,
     int expect_function_name = 0;
     int expect_function_params = 0;
     int in_function_params = 0;
+    size_t paren_depth = 0u;
+    size_t brace_depth = 0u;
+    size_t brace_paren_depth[128] = {0u};
     while (source && source[i]) {
         size_t start = i;
         size_t start_col = col;
@@ -782,7 +791,10 @@ static void emit_source_tokens(const char* source,
             } else if (in_use) {
                 type = after_from ? "importPath" : "import";
             } else {
-                int begins_line_assignment = begins_line;
+                int begins_line_assignment = begins_line &&
+                    (paren_depth == 0u ||
+                     (brace_depth > 0u &&
+                      paren_depth <= brace_paren_depth[brace_depth - 1u]));
                 size_t line_start;
                 line_start = start;
                 while (line_start > 0u && source[line_start - 1u] != '\n') line_start--;
@@ -852,6 +864,18 @@ static void emit_source_tokens(const char* source,
         } else if (ch == ')' && in_function_params) {
             in_function_params = 0;
         }
+        if (ch == '(') {
+            paren_depth++;
+        } else if (ch == ')' && paren_depth > 0u) {
+            paren_depth--;
+        } else if (ch == '{') {
+            if (brace_depth < 128u) {
+                brace_paren_depth[brace_depth] = paren_depth;
+                brace_depth++;
+            }
+        } else if (ch == '}' && brace_depth > 0u) {
+            brace_depth--;
+        }
         if (in_flat_input_list) {
             if (ch == ',') expect_flat_input = 1;
             else if (ch == '{' || ch == '=') {
@@ -877,6 +901,7 @@ static void emit_source_tokens(const char* source,
         emit_source_token(line, start_col, 1u,
             strchr("()[]{},.;:", ch) ? "punctuation" :
             ch == '=' ? (tooling_inside_metadata_block(source, start)
+                || (paren_depth > 0u && brace_depth == 0u)
                 ? "namedArgument" : "assignment") : "operator", comma);
     }
 }

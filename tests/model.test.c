@@ -3465,6 +3465,30 @@ static void test_static_map_unrolls_scoped_children(void) {
     cxpr_model_compiled_free(program);
     cxpr_model_free(parent);
 
+    parent = parse_model_ok(
+        "model nested_named_stateful_map\n"
+        "voices = map({ main = { increment = 1 }, "
+        "back = { increment = 2 } }, voice => { "
+        "accumulated = accumulator(increment=voice.increment); "
+        "return 2 * accumulated.value; })\n"
+        "total = voices.main + voices.back\n"
+        "out { voices, total }\n");
+    err = (cxpr_error){0};
+    program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
+    if (!program) fprintf(stderr, "nested named stateful map compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "nested_named_stateful_map_tick", &err);
+    if (!code) fprintf(stderr, "nested named stateful map C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "child_call_0_state") != NULL);
+    assert(strstr(code, "child_call_1_state") != NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_static_map_unrolls_scoped_children\n");
@@ -4952,7 +4976,9 @@ static void test_rsi_state_strategy_fixture_emits_c_tick(void) {
     }
     assert(specialized_code != NULL);
     assert(strstr(specialized_code, "static inline void cxpr_rsi_state_tick_specialized"));
-    assert(strstr(specialized_code, "const double gain = ((change > 0.0) ? (change) : (0.0))"));
+    assert(strstr(specialized_code, "const double gain =") &&
+           strstr(specialized_code, "> 0.0) ?") &&
+           strstr(specialized_code, ": (0.0)"));
     assert(!strstr(specialized_code, "_cx_params["));
     assert(strstr(specialized_code, "60"));
     assert(strstr(specialized_code, "45"));

@@ -5,7 +5,7 @@ use oscillator from oscillators
 use vibrato from effects
 use portamento from effects
 use rounded_ar from envelopes
-use state_variable_filter from filters
+use resonance from filters
 
 in age, frequency, trigger
 $sample_rate = 44100
@@ -22,7 +22,7 @@ fundamental = oscillator(frequency=glide * pitch.ratio, reset=0,
     sample_rate=$sample_rate, waveform=2, drift=0.00020)
 second = oscillator(frequency=2.001 * glide, reset=0,
     sample_rate=$sample_rate, waveform=2, drift=0.00014)
-body = state_variable_filter(source=0.88 * fundamental + 0.12 * second,
+body = resonance(source=0.88 * fundamental + 0.12 * second,
     sample_rate=$sample_rate, cutoff=820, resonance=0.14)
 envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     attack=$attack, hold=$hold, release=$release)

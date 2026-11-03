@@ -304,6 +304,38 @@ static void test_source_tokens_and_completion_contract(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_multiline_call_named_arguments_are_not_assignments(void) {
+    const char* source =
+        "hall = reverb(source_left=0.34 * dry_left,\n"
+        "    sample_rate=$sample_rate, decay_seconds=5.2)\n";
+    char* json = cxpr_document_analyze_json(source, "multiline-call.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":4,\"length\":11,\"type\":\"namedArgument\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":15,\"length\":1,\"type\":\"namedArgument\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
+static void test_lambda_block_bindings_are_assignments_inside_call(void) {
+    const char* source =
+        "out voices = map(streams, stream => {\n"
+        "    cursor = upper_bound(stream.at, t) - 1;\n"
+        "    index = clamp(cursor, 0, length(stream.at) - 1);\n"
+        "    return timed_voice(\n"
+        "        t=t, cursor=cursor);\n"
+        "})\n";
+    char* json = cxpr_document_analyze_json(source, "lambda-bindings.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":4,\"length\":6,\"type\":\"assignment\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":2,\"start\":4,\"length\":5,\"type\":\"assignment\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":4,\"start\":8,\"length\":1,\"type\":\"namedArgument\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
 static void test_function_declaration_parameters_are_semantic_parameters(void) {
     const char* source =
         "fn hz(note) = 440 * pow(2, (note - 69) / 12)\n"
@@ -809,6 +841,8 @@ int main(void) {
     test_registry_catalog();
     test_host_builtin_catalog_merge();
     test_source_tokens_and_completion_contract();
+    test_multiline_call_named_arguments_are_not_assignments();
+    test_lambda_block_bindings_are_assignments_inside_call();
     test_function_declaration_parameters_are_semantic_parameters();
     test_lambda_parameters_and_arrows_have_semantic_colors();
     test_declared_symbol_references_keep_semantic_colors();

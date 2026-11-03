@@ -361,6 +361,12 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast*
                                    ast->data.function_call.args[2], err);
     }
 
+    if (strcmp(name, "__cxpr_let") == 0 && ast->data.function_call.argc == 3u) {
+        if (cxpr_typecheck_infer(ast->data.function_call.args[1], reg, err) ==
+            CXPR_STATIC_ERROR) return CXPR_STATIC_ERROR;
+        return cxpr_typecheck_infer(ast->data.function_call.args[2], reg, err);
+    }
+
     if (strcmp(name, "map") == 0 && ast->data.function_call.argc == 2u &&
         ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) {
         const cxpr_expr_ast* lambda = ast->data.function_call.args[1];

@@ -120,6 +120,124 @@ static bool cxpr_parse_substitute_identifier(cxpr_expr_ast** slot,
     return true;
 }
 
+static bool cxpr_parse_identifier_is(const cxpr_token* token, const char* text) {
+    size_t length = strlen(text);
+    return token && token->type == CXPR_TOK_IDENTIFIER &&
+           token->length == length && memcmp(token->start, text, length) == 0;
+}
+
+static bool cxpr_parse_is_lambda_block(const cxpr_expr_parser* p) {
+    cxpr_lexer lookahead;
+    size_t depth = 1u;
+    if (!p || !cxpr_expr_parser_check(p, CXPR_TOK_LBRACE)) return false;
+    lookahead = p->lexer;
+    while (depth > 0u) {
+        cxpr_token token = cxpr_lexer_next(&lookahead);
+        if (token.type == CXPR_TOK_EOF || token.type == CXPR_TOK_ERROR) return false;
+        if (token.type == CXPR_TOK_LBRACE) ++depth;
+        else if (token.type == CXPR_TOK_RBRACE) --depth;
+        else if (depth == 1u && (token.type == CXPR_TOK_SEMICOLON ||
+                 cxpr_parse_identifier_is(&token, "return"))) return true;
+    }
+    return false;
+}
+
+/* Retain lexical bindings as nested let expressions for code generation. */
+static cxpr_expr_ast* cxpr_parse_lambda_body(cxpr_expr_parser* p) {
+    char** names = NULL;
+    cxpr_expr_ast** values = NULL;
+    size_t count = 0u;
+    cxpr_expr_ast* body = NULL;
+    if (!cxpr_parse_is_lambda_block(p))
+        return cxpr_parse_expression(p);
+    cxpr_expr_parser_advance(p);
+    while (!p->had_error && !cxpr_expr_parser_check(p, CXPR_TOK_RBRACE)) {
+        if (cxpr_parse_identifier_is(&p->current, "return")) {
+            cxpr_expr_parser_advance(p);
+            body = cxpr_parse_expression(p);
+            if (!body) break;
+            (void)cxpr_expr_parser_match(p, CXPR_TOK_SEMICOLON);
+            break;
+        }
+        if (!cxpr_expr_parser_check(p, CXPR_TOK_IDENTIFIER)) {
+            cxpr_expr_parser_set_error(p, "Expected local binding or return in lambda block");
+            break;
+        }
+        {
+            char* name = cxpr_expr_parser_token_to_string(&p->current);
+            char** next_names;
+            cxpr_expr_ast** next_values;
+            cxpr_expr_ast* value;
+            cxpr_expr_parser_advance(p);
+            if (!name || !cxpr_expr_parser_expect(
+                    p, CXPR_TOK_ASSIGN, "Expected '=' after lambda local")) {
+                free(name);
+                break;
+            }
+            value = cxpr_parse_expression(p);
+            if (!value) { free(name); break; }
+            if (!value || !cxpr_expr_parser_expect(
+                    p, CXPR_TOK_SEMICOLON, "Expected ';' after lambda local")) {
+                free(name);
+                cxpr_expr_ast_free(value);
+                break;
+            }
+            next_names = (char**)malloc((count + 1u) * sizeof(*names));
+            next_values = (cxpr_expr_ast**)malloc(
+                (count + 1u) * sizeof(*values));
+            if (!next_names || !next_values) {
+                free(next_names);
+                free(next_values);
+                free(name);
+                cxpr_expr_ast_free(value);
+                p->had_error = true;
+                p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+                p->last_error.message = "Out of memory";
+                break;
+            }
+            if (count) {
+                memcpy(next_names, names, count * sizeof(*names));
+                memcpy(next_values, values, count * sizeof(*values));
+            }
+            free(names);
+            free(values);
+            names = next_names;
+            values = next_values;
+            names[count] = name;
+            values[count++] = value;
+        }
+    }
+    if (!body && !p->had_error)
+        cxpr_expr_parser_set_error(p, "Expected return in lambda block");
+    if (!p->had_error && !cxpr_expr_parser_expect(
+            p, CXPR_TOK_RBRACE, "Expected '}' after lambda block")) {
+        cxpr_expr_ast_free(body);
+        body = NULL;
+    }
+    for (size_t i = count; body && i > 0u; --i) {
+        cxpr_expr_ast** args = (cxpr_expr_ast**)calloc(3u, sizeof(*args));
+        cxpr_expr_ast* let;
+        if (!args) { cxpr_expr_ast_free(body); body = NULL; break; }
+        args[0] = cxpr_expr_ast_identifier_new(names[i - 1u]);
+        args[1] = values[i - 1u];
+        values[i - 1u] = NULL;
+        args[2] = body;
+        let = args[0] ? cxpr_expr_ast_call_new("__cxpr_let", args, 3u) : NULL;
+        if (!let) {
+            cxpr_expr_ast_free(args[0]); cxpr_expr_ast_free(args[1]);
+            cxpr_expr_ast_free(args[2]); free(args); body = NULL; break;
+        }
+        body = let;
+    }
+    for (size_t i = 0u; i < count; ++i) {
+        free(names[i]);
+        cxpr_expr_ast_free(values[i]);
+    }
+    free(names);
+    free(values);
+    return body;
+}
+
 static cxpr_expr_ast* cxpr_parse_lower_static_array_reduction(cxpr_expr_ast* node) {
     cxpr_expr_ast* array;
     cxpr_expr_ast* lambda = NULL;
@@ -353,7 +471,7 @@ static bool cxpr_parse_call_argument(cxpr_expr_parser* p, cxpr_expr_ast** out_ar
         free(parameter);
         cxpr_expr_parser_advance(p);
         cxpr_expr_parser_advance(p);
-        lambda_args[1] = cxpr_parse_expression(p);
+        lambda_args[1] = cxpr_parse_lambda_body(p);
         if (!lambda_args[0] || !lambda_args[1] || p->had_error) {
             cxpr_expr_ast_free(lambda_args[0]);
             cxpr_expr_ast_free(lambda_args[1]);
@@ -385,7 +503,7 @@ static bool cxpr_parse_call_argument(cxpr_expr_parser* p, cxpr_expr_ast** out_ar
             cxpr_expr_parser_advance(p);
             cxpr_expr_parser_advance(p);
             cxpr_expr_parser_advance(p);
-            lambda_args[1] = cxpr_parse_expression(p);
+            lambda_args[1] = cxpr_parse_lambda_body(p);
             if (!lambda_args[0] || !lambda_args[1] || p->had_error) {
                 cxpr_expr_ast_free(lambda_args[0]);
                 cxpr_expr_ast_free(lambda_args[1]);

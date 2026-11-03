@@ -1,0 +1,10 @@
+model source(type = "fixture")
+
+in seed
+
+voices = {
+    low = { value = seed, pan = -0.5 },
+    high = { value = seed + 1, pan = 0.5 }
+}
+
+out { voices }

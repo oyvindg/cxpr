@@ -3,7 +3,7 @@ model stacked_bass(lifecycle = "scoped")
 
 use oscillator from oscillators
 use adsr from envelopes
-use state_variable_filter from filters
+use resonance from filters
 
 in age, frequency, trigger
 $sample_rate = 44100
@@ -22,9 +22,9 @@ source = 0.34 * first_saw.sample + 0.34 * second_saw.sample +
     0.32 * square_sub.sample
 # Cascading two 12 dB state-variable low-pass sections yields the required
 # 24 dB/octave bass filter while retaining independent scoped state.
-first_filter = state_variable_filter(source=source, sample_rate=$sample_rate,
+first_filter = resonance(source=source, sample_rate=$sample_rate,
                                      cutoff=$cutoff, resonance=0.20)
-second_filter = state_variable_filter(source=first_filter.low,
+second_filter = resonance(source=first_filter.low,
                                       sample_rate=$sample_rate,
                                       cutoff=$cutoff, resonance=0.20)
 gate = age < 0.21 ? 1 : 0

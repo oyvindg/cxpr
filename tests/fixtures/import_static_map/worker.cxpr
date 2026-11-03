@@ -1,0 +1,7 @@
+model worker(type = "fixture")
+
+in value
+
+sample = value * 2
+
+out { sample }

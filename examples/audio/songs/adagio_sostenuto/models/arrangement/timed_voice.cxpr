@@ -1,0 +1,28 @@
+# Stateful cursor edge tracking for one statically selected event stream.
+model timed_voice(type = "timed_voice", lifecycle = "scoped")
+
+in t
+in cursor
+in event_at
+in note
+in input_gain
+
+state previous_cursor = -1
+
+enabled = cursor >= 0
+trigger = enabled and cursor != previous_cursor ? 1 : 0
+age = enabled ? max(0, t - event_at) : 0
+frequency = 440 * pow(2, (note - 69) / 12)
+level = input_gain
+# Pianist perspective: A0 is left, C8 is right, with some center bleed.
+stereo_position = 0.86 * clamp((note - 64.5) / 43.5, -1, 1)
+
+previous_cursor := enabled ? cursor : previous_cursor
+
+out {
+    trigger,
+    age,
+    frequency,
+    gain = level,
+    pan = stereo_position
+}

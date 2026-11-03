@@ -2,7 +2,7 @@
 model trombone(lifecycle = "scoped")
 
 use oscillator from oscillators
-use state_variable_filter from filters
+use resonance from filters
 use saturation from effects
 use rounded_ar from envelopes
 use vibrato from effects
@@ -29,11 +29,11 @@ excitation = saturation(source=0.72 * saw + 0.28 * pulse,
 
 # Two broad resonances suggest the bell and bore without making the distant
 # voice unnaturally bright.
-lower_formant = state_variable_filter(source=excitation,
+lower_formant = resonance(source=excitation,
                                       sample_rate=$sample_rate,
                                       cutoff=430 + 90 * bloom,
                                       resonance=1.15)
-upper_formant = state_variable_filter(source=excitation,
+upper_formant = resonance(source=excitation,
                                       sample_rate=$sample_rate,
                                       cutoff=920 + 180 * bloom,
                                       resonance=0.92)

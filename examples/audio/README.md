@@ -7,7 +7,7 @@ shared dependencies below that root without knowing the repository layout:
 ```cxpr
 use oscillator from oscillators
 use adsr from envelopes
-use state_variable_filter from filters
+use resonance from filters
 use pan, master from effects
 ```
 
@@ -20,7 +20,7 @@ Shared modules:
 - `oscillators/oscillator`: PolyBLEP saw and pulse plus sine, PWM, and drift;
 - `envelopes/adsr`: exponential attack, decay, sustain, and release;
 - `envelopes/rounded_ar`: sine-squared attack/release for smooth acoustic phrasing;
-- `filters/state_variable_filter`: smoothed resonant low/band/high-pass;
+- `filters/resonance`: smoothed resonant low/band/high-pass;
 - `effects/pan`, `effects/master`, `effects/reverb` with optional explicit T60
   decay time, and two deliberately distinct delay designs;
 - `effects/lfo`, `effects/chorus`, `effects/phaser`, chamber processing, gated
@@ -58,5 +58,9 @@ From `libs/cxpr/examples`:
 ```sh
 ./audio/render.mjs --example drum_solo --output "$HOME/drum-solo.wav"
 ./audio/render.mjs --example modular_synth --output /tmp/synth.wav --frames=44100
+./audio/render.mjs --example modular_synth --output /tmp/synth.wav --play
 ```
+
+Add `--play` to open a successfully rendered WAV directly in VLC. The output
+path then only needs to be supplied once.
 

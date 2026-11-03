@@ -2,7 +2,7 @@
 model bassoon(lifecycle = "scoped")
 
 use oscillator from oscillators
-use state_variable_filter from filters
+use resonance from filters
 use rounded_ar from envelopes
 use vibrato from effects
 use portamento from effects
@@ -19,7 +19,7 @@ pitch = vibrato(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     rate=4.20, depth=0.0013, delay=0.11, fade=0.26, initial_phase=0.27)
 reed = oscillator(frequency=glide * pitch.ratio, reset=0, sample_rate=$sample_rate,
     waveform=0, drift=0.00018)
-body = state_variable_filter(source=reed, sample_rate=$sample_rate,
+body = resonance(source=reed, sample_rate=$sample_rate,
     cutoff=920, resonance=0.24)
 envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     attack=0.15, hold=$hold, release=$release)

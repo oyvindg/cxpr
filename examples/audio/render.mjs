@@ -29,7 +29,7 @@ function discoverExamples() {
  * @param {string[]} availableExamples Discovered example names.
  */
 function printUsage(availableExamples) {
-  console.error("Usage: ./audio/render.mjs --example NAME --output FILE.wav [--frames=COUNT] [--sample-rate=44100]")
+  console.error("Usage: ./audio/render.mjs --example NAME --output FILE.wav [--frames COUNT] [--sample-rate 44100] [--play]")
   console.error(`Examples: ${availableExamples.join(", ")}`)
 }
 
@@ -60,11 +60,36 @@ function rendererOptions(args) {
     const argument = args[index]
     if (argument === "--example" || argument === "--output") {
       index += 1
-    } else if (!argument.startsWith("--example=") && !argument.startsWith("--output=")) {
+    } else if (argument === "--frames" || argument === "--sample-rate") {
+      const value = args[index + 1]
+      if (value !== undefined) {
+        forwarded.push(`${argument}=${value}`)
+        index += 1
+      } else {
+        forwarded.push(argument)
+      }
+    } else if (argument !== "--play" &&
+      !argument.startsWith("--example=") && !argument.startsWith("--output=")) {
       forwarded.push(argument)
     }
   }
   return forwarded
+}
+
+/**
+ * Opens a rendered WAV in VLC and waits until the player exits.
+ *
+ * @param {string} output Rendered WAV path.
+ * @returns {number} VLC exit status.
+ */
+function play(output) {
+  const result = spawnSync("vlc", [output], { stdio: "inherit" })
+  if (result.error?.code === "ENOENT") {
+    console.error("Cannot play audio: VLC is not installed. See https://www.videolan.org/vlc/")
+    return 127
+  }
+  if (result.error) throw result.error
+  return result.status ?? 1
 }
 
 /**
@@ -103,7 +128,7 @@ export function renderAudioExample(entryUrl, argv = process.argv) {
     return 2
   }
 
-  return render(exampleRoot, output, argv.slice(3))
+  return render(exampleRoot, output, rendererOptions(argv.slice(3)))
 }
 
 /** Runs the shared `--example` command-line interface. */
@@ -122,7 +147,9 @@ function main() {
     console.error(`Audio example has no models/song.cxpr: ${example}`)
     return 2
   }
-  return render(exampleRoot, output, rendererOptions(args))
+  const renderStatus = render(exampleRoot, output, rendererOptions(args))
+  if (renderStatus !== 0 || !args.includes("--play")) return renderStatus
+  return play(output)
 }
 
 if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {

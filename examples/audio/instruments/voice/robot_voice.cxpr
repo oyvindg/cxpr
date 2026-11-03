@@ -2,7 +2,7 @@
 model robot_voice(lifecycle = "scoped")
 
 use oscillator from oscillators
-use state_variable_filter from filters
+use resonance from filters
 use saturation from effects
 
 in t, pitch, gate, phoneme, motion
@@ -64,13 +64,13 @@ noise_low := colored_noise
 hiss = 0.58 * white_noise + 0.42 * colored_noise
 excitation = shaped_gate * (voiced * buzz + noise * hiss)
 
-first = state_variable_filter(source=excitation, sample_rate=$sample_rate,
+first = resonance(source=excitation, sample_rate=$sample_rate,
     cutoff=f1, resonance=0.72, smoothing_seconds=0.020)
-second = state_variable_filter(source=excitation, sample_rate=$sample_rate,
+second = resonance(source=excitation, sample_rate=$sample_rate,
     cutoff=f2, resonance=0.76, smoothing_seconds=0.020)
-third = state_variable_filter(source=excitation, sample_rate=$sample_rate,
+third = resonance(source=excitation, sample_rate=$sample_rate,
     cutoff=f3, resonance=0.56, smoothing_seconds=0.020)
-nasal_body = state_variable_filter(source=shaped_gate * buzz,
+nasal_body = resonance(source=shaped_gate * buzz,
     sample_rate=$sample_rate, cutoff=260, resonance=0.64,
     smoothing_seconds=0.018)
 

@@ -277,6 +277,19 @@ static void test_dynamic_index_is_evaluated_once(void) {
     cxpr_expr_parser_free(parser);
 }
 
+static void test_static_record_views(void) {
+    cxpr_error error = {0};
+    cxpr_value result = eval("length([0, 1, 3])", NULL, &error);
+    assert(error.code == CXPR_OK);
+    assert(result.type == CXPR_VALUE_NUMBER && result.d == 3.0);
+    cxpr_value_free(&result);
+
+    result = eval("upper_bound([0, 1, 1, 3], 1)", NULL, &error);
+    assert(error.code == CXPR_OK);
+    assert(result.type == CXPR_VALUE_NUMBER && result.d == 3.0);
+    cxpr_value_free(&result);
+}
+
 static void expect_index_error(const char* source, cxpr_error_code expected) {
     cxpr_error error = {0};
     cxpr_value result = eval(source, NULL, &error);
@@ -305,6 +318,7 @@ int main(void) {
     test_literal_and_nested_array_index();
     test_context_array_and_owned_struct_result();
     test_dynamic_index_is_evaluated_once();
+    test_static_record_views();
     expect_index_error("[1][-1]", CXPR_ERR_INVALID_INDEX);
     expect_index_error("[1][0.5]", CXPR_ERR_INVALID_INDEX);
     expect_index_error("[][0]", CXPR_ERR_INDEX_OUT_OF_RANGE);

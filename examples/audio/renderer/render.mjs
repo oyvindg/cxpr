@@ -14,6 +14,15 @@ const importDir = importOption
   ? resolve(importOption.slice("--import-dir=".length))
   : modelPath ? dirname(modelPath) : undefined
 const hostPath = join(here, "render_native.c")
+const nativeCompileFlags = [
+  "-std=c11",
+  "-O3",
+  // Generated models diagnose non-finite samples explicitly and never inspect
+  // errno or floating-point traps. Tell the C optimizer so repeated pure math
+  // expressions can be folded and shared without weakening value semantics.
+  "-fno-math-errno",
+  "-fno-trapping-math"
+]
 
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit" })
@@ -46,7 +55,7 @@ function nativeCacheKey(codegen) {
     .filter((path) => path.endsWith(".cxpr"))
     .sort()
   hash.update(process.env.CC ?? "cc")
-  hash.update("-std=c11 -O1")
+  hash.update(nativeCompileFlags.join(" "))
   // The import tree can be shared by several root songs. Include the selected
   // root explicitly so one example can never reuse another example's binary.
   hash.update(modelPath)
@@ -84,7 +93,7 @@ if (!outputPath || !modelPath || !importDir) {
         "--output", generatedPath
       ])
       run(process.env.CC ?? "cc", [
-        "-std=c11", "-O1",
+        ...nativeCompileFlags,
         "-I", join(cxprRoot, "include"),
         "-I", buildDir,
         hostPath,

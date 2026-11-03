@@ -4,7 +4,7 @@ model song(type = "dsp")
 use sequencer from arrangement
 use arp, atmospheric_pad, drums, stacked_bass, tom from instruments/retrowave
 use pulse_saw_lead from instruments/lead
-use track_eq, state_variable_filter from filters
+use track_eq, resonance from filters
 use kick_sidechain, gated_hall_reverb, portamento from effects
 use chorus, pan, reverb, master from effects
 
@@ -40,14 +40,14 @@ snare = track_eq(source=snare_raw, sample_rate=$sample_rate,
                  bell_hz=1350, bell_gain_db=3, bell_q=0.7)
 # The required presence EQ runs first; this post-EQ low-pass removes only the
 # top octave of random noise that measured as backbeat crackle.
-snare_tone = state_variable_filter(source=snare.sample,
+snare_tone = resonance(source=snare.sample,
                                    sample_rate=$sample_rate, cutoff=6500,
                                    resonance=0.08, smoothing_seconds=0.002)
 snare_soft = 0.78 * snare_tone.low
 # The raw metallic noise is intentionally bright; a dedicated low-pass removes
 # digital fizz while preserving the sequencer's accents and open-hat lifts.
 hat_source = seq.hat_level * drum.hat + seq.open_hat_level * drum.open_hat
-hat_tone = state_variable_filter(source=hat_source,
+hat_tone = resonance(source=hat_source,
                                  sample_rate=$sample_rate, cutoff=9000,
                                  resonance=0.05, smoothing_seconds=0.002)
 hat_raw = hat_tone.low
@@ -61,7 +61,7 @@ transition_tone = track_eq(source=transition_tom.sample,
                            bell_gain_db=1.5, bell_q=1.1)
 # The bridge transition is narrowed around the tom body so it remains clear
 # against the sustained synth bed without adding ambience or extra hits.
-transition_focus = state_variable_filter(
+transition_focus = resonance(
     source=transition_tone.sample, sample_rate=$sample_rate,
     cutoff=seq.transition_bridge ? 760 : 2400,
     resonance=seq.transition_bridge ? 0.24 : 0.06,
@@ -80,7 +80,7 @@ transition_low_tone = track_eq(
     source=0.78 * transition_low_tom.sample,
     sample_rate=$sample_rate, high_pass_hz=65, high_pass_stages=2,
     bell_hz=145, bell_gain_db=1, bell_q=1.2)
-transition_low_focus = state_variable_filter(
+transition_low_focus = resonance(
     source=transition_low_tone.sample, sample_rate=$sample_rate,
     cutoff=seq.transition_bridge ? 620 : 2100,
     resonance=seq.transition_bridge ? 0.22 : 0.05,
@@ -198,7 +198,7 @@ arp_eq = track_eq(source=seq.arp_level * arp_voice.sample,
                   bell_gain_db=-1.5, bell_q=0.9)
 # A smoothed low-pass rounds off the pulse transient and keeps the arp behind
 # the lead without changing its rhythmic definition.
-arp_soft = state_variable_filter(source=arp_eq.sample,
+arp_soft = resonance(source=arp_eq.sample,
                                  sample_rate=$sample_rate, cutoff=4300,
                                  resonance=0.08, smoothing_seconds=0.004)
 arp_ducked = kick_sidechain(source=arp_soft.low, trigger=seq.kick_trigger,

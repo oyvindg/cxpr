@@ -10,7 +10,7 @@ use bass from instruments/native
 use lead from instruments/native
 use arp, drums from instruments/retrowave
 use chamber, chorus, eighth_note_delay, pan, phaser, reverb, stereo_delay from effects
-use state_variable_filter from filters
+use resonance from filters
 
 in t
 $sample_rate = 44100
@@ -176,14 +176,14 @@ drum_center = sequence.drum_kick * drum_voice.kick +
 drum_hat_mono = sequence.drum_hat * drum_voice.hat +
     sequence.drum_open_hat * drum_voice.open_hat
 drum_filter_motion = 0.5 + 0.5 * sin(2 * pi() * 0.037 * max(0, t - 16))
-drum_filter = state_variable_filter(source=drum_center,
+drum_filter = resonance(source=drum_center,
                                     sample_rate=$sample_rate,
                                     cutoff=1100 + 5600 * drum_filter_motion,
                                     resonance=0.72 + 0.18 * drum_filter_motion)
 drum_center_tone = 0.18 * drum_center + 0.82 *
     (0.82 * drum_filter.low + 0.38 * drum_filter.band)
 hat_filter_motion = 0.5 + 0.5 * sin(2 * pi() * 0.061 * max(0, t - 16) + pi() / 2)
-hat_filter = state_variable_filter(source=drum_hat_mono,
+hat_filter = resonance(source=drum_hat_mono,
                                    sample_rate=$sample_rate,
                                    cutoff=2600 + 3900 * hat_filter_motion,
                                    resonance=0.54)

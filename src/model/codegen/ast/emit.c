@@ -19,6 +19,80 @@ static size_t cxpr_model_c_state_slot_for_name(const cxpr_model_compiled* progra
     return (size_t)-1;
 }
 
+const cxpr_expr_ast* cxpr_model_c_static_collection(
+    const cxpr_model_compiled* program, const cxpr_expr_ast* ast, unsigned depth) {
+    if (!program || !ast || depth > 32u) return NULL;
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_ARRAY ||
+        cxpr_expr_ast_kind_of(ast) == CXPR_NODE_RECORD) return ast;
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_IDENTIFIER) {
+        const cxpr_model_compiled_binding* binding = cxpr_model_c_binding_for_name(
+            program, cxpr_expr_ast_identifier_name(ast));
+        return binding
+            ? cxpr_model_c_static_collection(program, binding->ast, depth + 1u) : NULL;
+    }
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
+        const cxpr_expr_ast* base = cxpr_expr_ast_field_base(ast);
+        const char* object = cxpr_expr_ast_field_object(ast);
+        const char* field = cxpr_expr_ast_field_name(ast);
+        const cxpr_expr_ast* record = base
+            ? cxpr_model_c_static_collection(program, base, depth + 1u) : NULL;
+        if (!record && object) {
+            const cxpr_model_compiled_binding* binding =
+                cxpr_model_c_binding_for_name(program, object);
+            if (binding) record = cxpr_model_c_static_collection(
+                program, binding->ast, depth + 1u);
+        }
+        if (record && cxpr_expr_ast_kind_of(record) == CXPR_NODE_RECORD) {
+            for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i)
+                if (cxpr_model_names_match(
+                        cxpr_expr_ast_record_field_name(record, i), field))
+                    return cxpr_model_c_static_collection(
+                        program, cxpr_expr_ast_record_field_value(record, i), depth + 1u);
+        }
+    }
+    return NULL;
+}
+
+const cxpr_expr_ast* cxpr_model_c_static_record_field(
+    const cxpr_model_compiled* program, const cxpr_expr_ast* ast,
+    const char* field, unsigned depth) {
+    const cxpr_expr_ast* record = cxpr_model_c_static_collection(program, ast, depth);
+    if (!record || cxpr_expr_ast_kind_of(record) != CXPR_NODE_RECORD || !field) return NULL;
+    for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i)
+        if (cxpr_model_names_match(cxpr_expr_ast_record_field_name(record, i), field))
+            return cxpr_expr_ast_record_field_value(record, i);
+    return NULL;
+}
+
+char* cxpr_model_c_static_array_index(
+    const cxpr_model_compiled* program, const cxpr_expr_ast* array,
+    const cxpr_expr_ast* index, const cxpr_c_target* target, cxpr_error* err) {
+    cxpr_model_c_buf b = {0};
+    char* index_expr;
+    size_t count;
+    (void)program;
+    if (!array || cxpr_expr_ast_kind_of(array) != CXPR_NODE_ARRAY || !index || !target)
+        return NULL;
+    count = cxpr_expr_ast_array_count(array);
+    index_expr = cxpr_expr_ast_to_c(index, target, err);
+    if (!index_expr) return NULL;
+    cxpr_model_c_printf(&b,
+        "((isfinite(%s) && (%s) >= 0.0 && floor(%s) == (%s) && (size_t)(%s) < %zuu) ? ((const double[]){",
+        index_expr, index_expr, index_expr, index_expr, index_expr, count);
+    for (size_t i = 0u; i < count; ++i) {
+        char* element = cxpr_expr_ast_to_c(cxpr_expr_ast_array_element(array, i), target, err);
+        if (!element) { free(index_expr); free(b.data); return NULL; }
+        if (i) cxpr_model_c_puts(&b, ", ");
+        cxpr_model_c_printf(&b, "(%s)", element);
+        free(element);
+    }
+    cxpr_model_c_printf(&b, "})[(size_t)(%s)] : NAN)", index_expr);
+    free(index_expr);
+    if (b.oom) { free(b.data); cxpr_model_set_error(
+        err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0); return NULL; }
+    return b.data;
+}
+
 static size_t cxpr_model_c_state_slot_for_fused_slot(const cxpr_model_compiled* program,
                                                      size_t fused_slot) {
     if (!program || fused_slot >= program->fused_slot_count) return (size_t)-1;
@@ -337,6 +411,7 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
             target ? target->child_call_keys : NULL,
             target ? target->child_call_child_indices : NULL,
             target ? target->child_call_count : 0u,
+            target,
             err);
     }
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_CHAIN_ACCESS) {
@@ -515,6 +590,21 @@ char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
     if (!data || !program || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_INDEX) return NULL;
     target_ast = cxpr_expr_ast_index_target(ast);
     index_ast = cxpr_expr_ast_index_expression(ast);
+    {
+        const cxpr_expr_ast* collection =
+            cxpr_model_c_static_collection(program, target_ast, 0u);
+        if (collection && cxpr_expr_ast_kind_of(collection) == CXPR_NODE_ARRAY) {
+            target = (cxpr_c_target){
+                .api_version = CXPR_C_TARGET_API_VERSION,
+                .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+                .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
+                .userdata = data,
+            };
+            return cxpr_model_c_static_array_index(
+                program, collection, index_ast, &target, err);
+        }
+    }
     if (!cxpr_model_lookback_target_key(target_ast, &key, err)) return NULL;
     for (size_t i = 0u; i < program->state_default_count; ++i) {
         const cxpr_model_compiled_binding* state = &program->state_defaults[i];

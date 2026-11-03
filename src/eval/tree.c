@@ -106,6 +106,45 @@ static cxpr_value cxpr_eval_array_index(const cxpr_value* array,
     return result;
 }
 
+static cxpr_value cxpr_eval_record_array_index(const cxpr_struct_value* record,
+                                               const cxpr_expr_ast* index_ast,
+                                               const cxpr_context* ctx,
+                                               const cxpr_registry* reg,
+                                               cxpr_error* err) {
+    cxpr_value index_value = cxpr_eval_node(index_ast, ctx, reg, err);
+    cxpr_value* fields;
+    cxpr_struct_value* result;
+    size_t index;
+    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+    if (!record || index_value.type != CXPR_VALUE_NUMBER || !isfinite(index_value.d) ||
+        index_value.d < 0.0 || floor(index_value.d) != index_value.d ||
+        index_value.d > (double)SIZE_MAX) {
+        cxpr_value_free(&index_value);
+        return cxpr_eval_error(err, CXPR_ERR_INVALID_INDEX,
+                               "Record view index must be a finite non-negative integer");
+    }
+    index = (size_t)index_value.d;
+    cxpr_value_free(&index_value);
+    fields = (cxpr_value*)calloc(record->field_count ? record->field_count : 1u,
+                                 sizeof(*fields));
+    if (!fields) return cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+    for (size_t i = 0u; i < record->field_count; ++i) {
+        const cxpr_value* field = &record->field_values[i];
+        if (field->type != CXPR_VALUE_ARRAY || !field->a || index >= field->a->count) {
+            for (size_t j = 0u; j < i; ++j) cxpr_value_free(&fields[j]);
+            free(fields);
+            return cxpr_eval_error(err, CXPR_ERR_INDEX_OUT_OF_RANGE,
+                "Record view fields must be arrays containing the selected index");
+        }
+        fields[i] = cxpr_value_clone(&field->a->values[index]);
+    }
+    result = cxpr_struct_value_new(record->field_names, fields, record->field_count);
+    for (size_t i = 0u; i < record->field_count; ++i) cxpr_value_free(&fields[i]);
+    free(fields);
+    return result ? cxpr_struct(result)
+                  : cxpr_eval_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+}
+
 cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* ctx,
                                   const cxpr_registry* reg, cxpr_error* err) {
     bool found = false;
@@ -962,6 +1001,16 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         const cxpr_expr_ast* capability_index = ast->data.index.index;
         cxpr_expr_ast flattened_index = {0};
         bool capability_handled = false;
+        if (ast->data.index.target->type == CXPR_NODE_RECORD) {
+            cxpr_value runtime_target = cxpr_eval_node(
+                ast->data.index.target, ctx, reg, err);
+            cxpr_value indexed = runtime_target.type == CXPR_VALUE_STRUCT
+                ? cxpr_eval_record_array_index(runtime_target.s, ast->data.index.index,
+                                               ctx, reg, err)
+                : cxpr_num(NAN);
+            cxpr_value_free(&runtime_target);
+            return indexed;
+        }
         /* A runtime array is a core value and takes precedence over a host
          * capability registered for the same identifier. */
         if (ast->data.index.target->type == CXPR_NODE_IDENTIFIER) {
@@ -971,6 +1020,12 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             if (found && runtime_target.type == CXPR_VALUE_ARRAY) {
                 cxpr_value indexed = cxpr_eval_array_index(
                     &runtime_target, ast->data.index.index, ctx, reg, err);
+                cxpr_value_free(&runtime_target);
+                return indexed;
+            }
+            if (found && runtime_target.type == CXPR_VALUE_STRUCT) {
+                cxpr_value indexed = cxpr_eval_record_array_index(
+                    runtime_target.s, ast->data.index.index, ctx, reg, err);
                 cxpr_value_free(&runtime_target);
                 return indexed;
             }
@@ -1136,6 +1191,65 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         const cxpr_expr_ast* ordered_args[CXPR_MAX_CALL_ARGS] = {0};
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
         cxpr_value static_reduction;
+
+        if (strcmp(name, "length") == 0 && argc == 1u) {
+            cxpr_value collection = cxpr_eval_node(
+                ast->data.function_call.args[0], ctx, reg, err);
+            size_t count = 0u;
+            if (collection.type == CXPR_VALUE_ARRAY && collection.a) {
+                count = collection.a->count;
+            } else if (collection.type == CXPR_VALUE_STRUCT && collection.s &&
+                       collection.s->field_count > 0u) {
+                const cxpr_value* first = &collection.s->field_values[0];
+                if (first->type != CXPR_VALUE_ARRAY || !first->a) {
+                    cxpr_value_free(&collection);
+                    return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                           "length expects an array or record view");
+                }
+                count = first->a->count;
+                for (size_t i = 1u; i < collection.s->field_count; ++i) {
+                    const cxpr_value* field = &collection.s->field_values[i];
+                    if (field->type != CXPR_VALUE_ARRAY || !field->a ||
+                        field->a->count != count) {
+                        cxpr_value_free(&collection);
+                        return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                            "Record view fields must have equal array lengths");
+                    }
+                }
+            } else {
+                cxpr_value_free(&collection);
+                return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                       "length expects an array or record view");
+            }
+            cxpr_value_free(&collection);
+            return cxpr_num((double)count);
+        }
+        if (strcmp(name, "upper_bound") == 0 && argc == 2u) {
+            cxpr_value collection = cxpr_eval_node(
+                ast->data.function_call.args[0], ctx, reg, err);
+            cxpr_value needle = cxpr_eval_node(
+                ast->data.function_call.args[1], ctx, reg, err);
+            size_t lo = 0u, hi;
+            if (collection.type != CXPR_VALUE_ARRAY || !collection.a ||
+                needle.type != CXPR_VALUE_NUMBER) {
+                cxpr_value_free(&collection); cxpr_value_free(&needle);
+                return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                    "upper_bound expects a numeric array and numeric value");
+            }
+            hi = collection.a->count;
+            while (lo < hi) {
+                size_t mid = lo + (hi - lo) / 2u;
+                const cxpr_value* item = &collection.a->values[mid];
+                if (item->type != CXPR_VALUE_NUMBER) {
+                    cxpr_value_free(&collection); cxpr_value_free(&needle);
+                    return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                           "upper_bound array must be numeric");
+                }
+                if (needle.d < item->d) hi = mid; else lo = mid + 1u;
+            }
+            cxpr_value_free(&collection); cxpr_value_free(&needle);
+            return cxpr_num((double)lo);
+        }
 
         if (cxpr_eval_static_reduce(ast, ctx, reg, &static_reduction, err)) return static_reduction;
         if (cxpr_eval_static_array_reduction(

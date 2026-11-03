@@ -120,15 +120,33 @@ bool cxpr_model_c_used_child_outputs(const cxpr_model_compiled* program,
         found_child_binding = true;
         for (size_t field_i = 0u; field_i < flat_output_count; ++field_i) {
             char needle[768];
+            size_t root_prefix_len;
             bool used = false;
             if (!flat_outputs[field_i].name ||
                 snprintf(needle, sizeof(needle), "%s.%s", root->name,
                          flat_outputs[field_i].name) < 0) {
                 continue;
             }
+            root_prefix_len = strlen(root->name) + 1u;
             for (size_t binding_i = 0u; binding_i < program->binding_count; ++binding_i) {
                 char* source = cxpr_expr_ast_to_string(program->bindings[binding_i].ast);
                 used = source && strstr(source, needle) != NULL;
+                if (!used && source && flat_outputs[field_i].name) {
+                    const char* dot = strchr(flat_outputs[field_i].name, '.');
+                    while (dot && !used) {
+                        size_t field_prefix_len = (size_t)(dot - flat_outputs[field_i].name);
+                        size_t prefix_len = root_prefix_len + field_prefix_len;
+                        if (prefix_len < sizeof(needle)) {
+                            memcpy(needle, root->name, root_prefix_len - 1u);
+                            needle[root_prefix_len - 1u] = '.';
+                            memcpy(needle + root_prefix_len,
+                                   flat_outputs[field_i].name, field_prefix_len);
+                            needle[prefix_len] = '\0';
+                            used = strstr(source, needle) != NULL;
+                        }
+                        dot = strchr(dot + 1, '.');
+                    }
+                }
                 free(source);
                 if (used) break;
             }

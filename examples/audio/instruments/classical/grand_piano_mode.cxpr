@@ -1,0 +1,22 @@
+// One independently phased stiff-string mode in a scoped grand-piano voice.
+model grand_piano_mode(lifecycle = "scoped")
+
+in age, frequency, trigger
+in harmonic, gain, decay_base, decay_slope
+in inharmonicity, register
+$sample_rate = 44100
+
+state phase = 0
+
+ratio = harmonic * sqrt(1 + harmonic * harmonic * inharmonicity)
+phase_now = trigger > 0 ? 0 : phase
+phase := (phase_now + frequency * ratio / $sample_rate) % 1
+
+audible = clamp(($sample_rate * 0.48 - frequency * ratio) / 1800, 0, 1)
+decay = decay_base - decay_slope * register
+single_envelope = exp(-age / decay)
+second_envelope = 0.76 * single_envelope +
+    0.24 * exp(-age / (0.48 - 0.12 * register))
+envelope = harmonic == 2 ? second_envelope : single_envelope
+
+out sample = gain * audible * envelope * sin(2 * pi() * phase_now)

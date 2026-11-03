@@ -1,6 +1,6 @@
 # Generic views in CXPR
 
-Status: design proposal
+Status: static collection subset implemented; borrowed host views remain a design proposal
 
 ## Purpose
 
@@ -218,6 +218,48 @@ Binding validation is not another evaluator. After successful validation, the
 host continues to call the same generated tick.
 
 ## Language operations
+
+The compile-time subset already supports array literals and records whose
+fields are equally sized arrays. Such a record is a static row view: indexing
+it selects the same checked index from every field, so fields may retain
+different scalar types without an array-of-union representation.
+
+```cxpr
+events = {
+    at = [0.0, 0.5, 1.5],
+    note = [37, 56, 61],
+    active = [true, true, false]
+}
+
+cursor = upper_bound(events.at, position) - 1
+current = events[clamp(cursor, 0, length(events) - 1)]
+```
+
+`length` is folded at compile time. `upper_bound` accepts a sorted numeric
+array and returns the first index whose element is greater than the search
+value. Dynamic indexing checks that the index is finite, integral, and within
+bounds; generated numeric expressions produce `NAN` for an invalid index.
+The optional `upper_bound(records, value, row => row.key)` form supports
+static arrays of records.
+
+This subset does not change the host ABI and does not schedule iteration. It
+is static model data lowered by the compiler. Runtime-borrowed `cxpr_view`
+values described below are still future work.
+
+Static callbacks may use an expression block when intermediate values improve
+clarity:
+
+```cxpr
+map(events, event => {
+    cursor = upper_bound(event.at, position) - 1;
+    index = clamp(cursor, 0, length(event.at) - 1);
+    return event.value[index];
+})
+```
+
+Bindings are lexical, ordered, and immutable. The block is compile-time
+expression syntax: it does not introduce a host loop, mutable state, or an
+audio-specific scheduling concept.
 
 The first useful view implementation needs a deliberately small operation set:
 

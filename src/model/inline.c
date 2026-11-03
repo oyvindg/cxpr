@@ -4,6 +4,84 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const cxpr_expr_ast* cxpr_model_let_result(const cxpr_expr_ast* ast) {
+    while (ast && ast->type == CXPR_NODE_FUNCTION_CALL &&
+           ast->data.function_call.name &&
+           strcmp(ast->data.function_call.name, "__cxpr_let") == 0 &&
+           ast->data.function_call.argc == 3u)
+        ast = ast->data.function_call.args[2];
+    return ast;
+}
+
+static cxpr_expr_ast** cxpr_model_let_result_slot(cxpr_expr_ast** slot) {
+    while (slot && *slot && (*slot)->type == CXPR_NODE_FUNCTION_CALL &&
+           (*slot)->data.function_call.name &&
+           strcmp((*slot)->data.function_call.name, "__cxpr_let") == 0 &&
+           (*slot)->data.function_call.argc == 3u)
+        slot = &(*slot)->data.function_call.args[2];
+    return slot;
+}
+
+static bool cxpr_model_assign_mapped_let_identities(
+    cxpr_expr_ast* ast, const cxpr_registry* registry, const char* identity) {
+    char nested_identity[128];
+    const char* binding_name;
+    cxpr_expr_ast* value;
+    cxpr_func_entry* entry;
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL ||
+        !ast->data.function_call.name ||
+        strcmp(ast->data.function_call.name, "__cxpr_let") != 0 ||
+        ast->data.function_call.argc != 3u) return true;
+    binding_name = ast->data.function_call.args[0] &&
+        ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER
+        ? ast->data.function_call.args[0]->data.identifier.name : "local";
+    value = ast->data.function_call.args[1];
+    entry = value && value->type == CXPR_NODE_FUNCTION_CALL && registry
+        ? cxpr_registry_find(registry, value->data.function_call.name) : NULL;
+    if (entry && entry->model_producer &&
+        !cxpr_expr_ast_call_instance_id(value)) {
+        snprintf(nested_identity, sizeof(nested_identity), "%s_%s",
+                 identity, binding_name);
+        if (!cxpr_expr_ast_call_set_instance_id(value, nested_identity))
+            return false;
+    }
+    return cxpr_model_assign_mapped_let_identities(
+        ast->data.function_call.args[2], registry, identity);
+}
+
+static cxpr_expr_ast* cxpr_model_distribute_let_record(cxpr_expr_ast* ast) {
+    const cxpr_expr_ast* result = cxpr_model_let_result(ast);
+    size_t count;
+    const char** names;
+    cxpr_expr_ast** values;
+    if (!ast || ast->type != CXPR_NODE_FUNCTION_CALL || !result ||
+        result->type != CXPR_NODE_RECORD) return ast;
+    count = result->data.record.field_count;
+    names = (const char**)calloc(count ? count : 1u, sizeof(*names));
+    values = (cxpr_expr_ast**)calloc(count ? count : 1u, sizeof(*values));
+    if (!names || !values) { free(names); free(values); return NULL; }
+    for (size_t i = 0u; i < count; ++i) {
+        cxpr_expr_ast** slot;
+        names[i] = result->data.record.field_names[i];
+        values[i] = cxpr_expr_ast_clone(ast);
+        slot = cxpr_model_let_result_slot(&values[i]);
+        if (!values[i] || !slot) goto fail;
+        cxpr_expr_ast_free(*slot);
+        *slot = cxpr_expr_ast_clone(result->data.record.field_values[i]);
+        if (!*slot) goto fail;
+    }
+    {
+        cxpr_expr_ast* record = cxpr_expr_ast_record_new(names, values, count);
+        cxpr_expr_ast_free(ast);
+        ast = record;
+    }
+    free(names);
+    return ast;
+fail:
+    for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(values[i]);
+    free(values); free(names); return NULL;
+}
+
 const cxpr_expr_ast* cxpr_model_local_lookup(const cxpr_model_local_binding* locals,
                                         size_t count,
                                         const char* name) {
@@ -331,6 +409,7 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
             const cxpr_expr_ast* parameter;
             const cxpr_expr_ast* body;
             const char* implicit_output = NULL;
+            const cxpr_model_compiled* mapped_program = NULL;
             cxpr_expr_ast** elements;
             const char** field_names = NULL;
             bool record_source;
@@ -361,25 +440,22 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
             }
             parameter = lambda->data.function_call.args[0];
             body = lambda->data.function_call.args[1];
-            if (body->type == CXPR_NODE_FUNCTION_CALL) {
+            {
+                const cxpr_expr_ast* result = cxpr_model_let_result(body);
+            if (result && result->type == CXPR_NODE_FUNCTION_CALL) {
                 cxpr_func_entry* mapped_entry = registry
-                    ? cxpr_registry_find(registry, body->data.function_call.name)
+                    ? cxpr_registry_find(registry, result->data.function_call.name)
                     : NULL;
                 cxpr_model_child_program* mapped_child =
                     mapped_entry && mapped_entry->model_producer
                         ? (cxpr_model_child_program*)mapped_entry->model_producer_userdata
                         : NULL;
                 if (mapped_child && mapped_child->program) {
-                    if (mapped_child->program->output_count != 1u) {
-                        cxpr_expr_ast_free(ast);
-                        cxpr_model_set_error(
-                            err, CXPR_ERR_SYNTAX,
-                            "map callback must select an output from a multi-output model",
-                            0u, 0u);
-                        return NULL;
-                    }
-                    implicit_output = mapped_child->program->outputs[0];
+                    mapped_program = mapped_child->program;
+                    if (mapped_child->program->output_count == 1u)
+                        implicit_output = mapped_child->program->outputs[0];
                 }
+            }
             }
             count = record_source ? source->data.record.field_count : source->data.array.count;
             elements = (cxpr_expr_ast**)calloc(count ? count : 1u, sizeof(*elements));
@@ -406,10 +482,16 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
                     snprintf(derived_identity, sizeof(derived_identity), "%zu", i);
                 }
                 elements[i] = cxpr_model_inline_locals(body, &local, 1u);
-                if (elements[i] && implicit_output &&
-                    elements[i]->type == CXPR_NODE_FUNCTION_CALL) {
-                    cxpr_expr_ast* call = elements[i];
-                    elements[i] = cxpr_expr_ast_producer_field_named_new(
+                if (elements[i] && !cxpr_model_assign_mapped_let_identities(
+                        elements[i], registry, derived_identity)) {
+                    cxpr_expr_ast_free(elements[i]);
+                    elements[i] = NULL;
+                }
+                cxpr_expr_ast** result_slot = cxpr_model_let_result_slot(&elements[i]);
+                if (result_slot && *result_slot && implicit_output &&
+                    (*result_slot)->type == CXPR_NODE_FUNCTION_CALL) {
+                    cxpr_expr_ast* call = *result_slot;
+                    *result_slot = cxpr_expr_ast_producer_field_named_new(
                         call->data.function_call.name,
                         call->data.function_call.args,
                         call->data.function_call.arg_names,
@@ -420,11 +502,62 @@ static cxpr_expr_ast* cxpr_model_expand_defined_owned(cxpr_expr_ast* ast,
                     call->data.function_call.argc = 0u;
                     cxpr_expr_ast_free(call);
                 }
+                if (elements[i] && mapped_program &&
+                    mapped_program->output_count > 1u &&
+                    result_slot && *result_slot &&
+                    (*result_slot)->type == CXPR_NODE_FUNCTION_CALL) {
+                    cxpr_expr_ast* call = *result_slot;
+                    size_t output_count = mapped_program->output_count;
+                    const char** output_names = (const char**)calloc(
+                        output_count, sizeof(*output_names));
+                    cxpr_expr_ast** output_values = (cxpr_expr_ast**)calloc(
+                        output_count, sizeof(*output_values));
+                    if (!output_names || !output_values) {
+                        free(output_names);
+                        free(output_values);
+                        *result_slot = NULL;
+                    } else {
+                        bool complete = true;
+                        for (size_t output_i = 0u; output_i < output_count; ++output_i) {
+                            cxpr_expr_ast* call_copy = cxpr_expr_ast_clone(call);
+                            output_names[output_i] = mapped_program->outputs[output_i];
+                            if (!call_copy) { complete = false; break; }
+                            output_values[output_i] = cxpr_expr_ast_producer_field_named_new(
+                                call_copy->data.function_call.name,
+                                call_copy->data.function_call.args,
+                                call_copy->data.function_call.arg_names,
+                                call_copy->data.function_call.argc,
+                                output_names[output_i]);
+                            call_copy->data.function_call.args = NULL;
+                            call_copy->data.function_call.arg_names = NULL;
+                            call_copy->data.function_call.argc = 0u;
+                            cxpr_expr_ast_free(call_copy);
+                            if (!output_values[output_i] ||
+                                !cxpr_expr_ast_call_set_instance_id(
+                                    output_values[output_i], derived_identity)) {
+                                complete = false;
+                                break;
+                            }
+                        }
+                        *result_slot = complete ? cxpr_expr_ast_record_new(
+                            output_names, output_values, output_count) : NULL;
+                        free(output_names);
+                        if (!*result_slot) {
+                            for (size_t output_i = 0u; output_i < output_count; ++output_i)
+                                cxpr_expr_ast_free(output_values[output_i]);
+                            free(output_values);
+                        }
+                    }
+                    cxpr_expr_ast_free(call);
+                }
+                if (elements[i] && elements[i]->type == CXPR_NODE_FUNCTION_CALL)
+                    elements[i] = cxpr_model_distribute_let_record(elements[i]);
                 if (!elements[i] ||
-                    ((elements[i]->type == CXPR_NODE_FUNCTION_CALL ||
-                      elements[i]->type == CXPR_NODE_PRODUCER_ACCESS) &&
+                    (result_slot && *result_slot &&
+                     ((*result_slot)->type == CXPR_NODE_FUNCTION_CALL ||
+                      (*result_slot)->type == CXPR_NODE_PRODUCER_ACCESS) &&
                      !cxpr_expr_ast_call_set_instance_id(
-                         elements[i], derived_identity))) {
+                         *result_slot, derived_identity))) {
                     for (size_t j = 0u; j <= i; ++j) cxpr_expr_ast_free(elements[j]);
                     free(elements);
                     free(field_names);

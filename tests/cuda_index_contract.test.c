@@ -130,7 +130,7 @@ static void test_cuda_rejects_dynamic_aggregate_index(void) {
     assert(err.code != CXPR_OK);
     assert(err.message != NULL);
     assert(strcmp(err.message,
-                  "Model C backend requires runnable fused scalar IR fallback") == 0);
+                  "CUDA backend does not support dynamic static collection indexing") == 0);
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
 }

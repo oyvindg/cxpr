@@ -3,6 +3,23 @@
 
 #include "model/codegen/ast/internal.h"
 
+static bool cxpr_model_c_contains_static_array(
+    const cxpr_model_compiled* program,
+    const cxpr_expr_ast* ast,
+    unsigned depth) {
+    const cxpr_expr_ast* collection;
+    if (!program || !ast || depth > 32u) return false;
+    collection = cxpr_model_c_static_collection(program, ast, depth);
+    if (!collection) return false;
+    if (cxpr_expr_ast_kind_of(collection) == CXPR_NODE_ARRAY) return true;
+    if (cxpr_expr_ast_kind_of(collection) != CXPR_NODE_RECORD) return false;
+    for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(collection); ++i)
+        if (cxpr_model_c_contains_static_array(
+                program, cxpr_expr_ast_record_field_value(collection, i), depth + 1u))
+            return true;
+    return false;
+}
+
 static bool cxpr_model_c_emit_record_leaves(
     cxpr_model_c_buf* b,
     const cxpr_model_compiled* program,
@@ -68,11 +85,14 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     cxpr_model_ast_c_target ast_target_data = {0};
     cxpr_c_target ast_target = {0};
     size_t child_call_capacity = 0u;
+    cxpr_model_local_cse local_cse = {0};
     bool typed_resample = false;
 
     if (out_source) *out_source = NULL;
     if (!program || !program->has_fused_layout || !function_name || !out_source) return false;
     ast_target_data.program = program;
+    ast_target_data.local_declarations = &b;
+    ast_target_data.local_cse = &local_cse;
     ast_target_data.function_prefix = function_name;
     ast_target_data.literal_param_values = literal_param_values;
     ast_target_data.literal_param_count = literal_param_count;
@@ -406,6 +426,19 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         bool owns_name = false;
         if (!needed_bindings[i] || skip_bindings[i]) continue;
         if (cxpr_expr_ast_kind_of(program->bindings[i].ast) == CXPR_NODE_RECORD) {
+            if (cxpr_model_c_contains_static_array(
+                    program, program->bindings[i].ast, 0u)) continue;
+            bool static_view = cxpr_expr_ast_record_field_count(
+                                   program->bindings[i].ast) > 0u;
+            for (size_t field_i = 0u;
+                 static_view && field_i < cxpr_expr_ast_record_field_count(
+                     program->bindings[i].ast); ++field_i) {
+                const cxpr_expr_ast* field = cxpr_model_c_static_collection(
+                    program, cxpr_expr_ast_record_field_value(
+                        program->bindings[i].ast, field_i), 0u);
+                static_view = field && cxpr_expr_ast_kind_of(field) == CXPR_NODE_ARRAY;
+            }
+            if (static_view) continue;
             if (!cxpr_model_c_emit_record_leaves(
                     &b, program, program->bindings[i].ast, program->bindings[i].ast,
                     program->bindings[i].name, "", &ast_target, err)) {
@@ -715,6 +748,12 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     }
     free(ast_target_data.child_call_keys);
     free(ast_target_data.child_call_child_indices);
+    for (size_t i = 0u; i < local_cse.count; ++i) {
+        free(local_cse.exprs[i]);
+        free(local_cse.names[i]);
+    }
+    free(local_cse.exprs);
+    free(local_cse.names);
     free(ast_target_data.resample_cse);
     free(safe_name);
     cxpr_model_window_plan_free(&window_plan);
@@ -740,6 +779,12 @@ fail:
     }
     free(ast_target_data.child_call_keys);
     free(ast_target_data.child_call_child_indices);
+    for (size_t i = 0u; i < local_cse.count; ++i) {
+        free(local_cse.exprs[i]);
+        free(local_cse.names[i]);
+    }
+    free(local_cse.exprs);
+    free(local_cse.names);
     free(ast_target_data.resample_cse);
     cxpr_model_window_plan_free(&window_plan);
     free(b.data);

@@ -19,6 +19,14 @@ typedef struct {
     size_t uses;
 } cxpr_model_resample_cse;
 
+typedef struct {
+    size_t next_temp;
+    char** exprs;
+    char** names;
+    size_t count;
+    size_t capacity;
+} cxpr_model_local_cse;
+
 /**
  * @brief Aggregated context for emitting one model-derived target function.
  */
@@ -37,6 +45,8 @@ typedef struct {
     size_t child_call_count;
     cxpr_model_resample_cse* resample_cse;
     size_t resample_cse_count;
+    cxpr_model_c_buf* local_declarations;
+    cxpr_model_local_cse* local_cse;
 } cxpr_model_ast_c_target;
 
 /** @brief Temporary emission state used while converting AST to C. */
@@ -73,6 +83,17 @@ const cxpr_expr_ast* cxpr_model_child_call_param_arg(
     const cxpr_model_compiled* child,
     const cxpr_expr_ast* ast,
     size_t param_index);
+
+const cxpr_expr_ast* cxpr_model_c_static_collection(
+    const cxpr_model_compiled* program, const cxpr_expr_ast* ast, unsigned depth);
+
+char* cxpr_model_c_static_array_index(
+    const cxpr_model_compiled* program, const cxpr_expr_ast* array,
+    const cxpr_expr_ast* index, const cxpr_c_target* target, cxpr_error* err);
+
+const cxpr_expr_ast* cxpr_model_c_static_record_field(
+    const cxpr_model_compiled* program, const cxpr_expr_ast* ast,
+    const char* field, unsigned depth);
 
 size_t cxpr_model_c_child_index_for_entry(const cxpr_model_compiled* program,
                                           const cxpr_func_entry* entry);
@@ -166,6 +187,7 @@ char* cxpr_model_ast_producer_access_to_c(
     char** child_call_keys,
     size_t* child_call_child_indices,
     size_t child_call_count,
+    const cxpr_model_ast_c_target* inherited,
     cxpr_error* err);
 
 /** Resolve the generated reduction opcode for a window function. */

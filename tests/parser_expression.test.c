@@ -48,6 +48,12 @@ static void test_parser_expression_forms(void) {
     free(text);
     cxpr_expr_ast_free(ast);
 
+    ast = cxpr_expr_ast_parse(p,
+        "map(streams, stream => { cursor = upper_bound(stream.at, t) - 1; index = clamp(cursor, 0, length(stream.at) - 1); return timed_voice(t=t, cursor=cursor, event_at=stream.at[index], note=stream.note[index], input_gain=stream.gain, input_pan=stream.pan); })",
+        &err);
+    assert(ast);
+    cxpr_expr_ast_free(ast);
+
     ast = cxpr_expr_ast_parse(p, "18 <= age < 65", &err);
     assert(ast);
     text = cxpr_expr_ast_to_string(ast);
@@ -97,6 +103,15 @@ static void test_parser_expression_forms(void) {
 
     ast = cxpr_expr_ast_parse(p, "sum([1, 2], (x) => x + 1)", &err);
     assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(
+        p, "map([1], x => { cursor = x + 1; index = cursor * 2; return index + cursor; })",
+        &err);
+    assert(ast && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL);
+    assert(strcmp(cxpr_expr_ast_call_name(ast), "map") == 0);
+    assert(strcmp(cxpr_expr_ast_call_name(
+        cxpr_expr_ast_call_arg(cxpr_expr_ast_call_arg(ast, 1), 1)), "__cxpr_let") == 0);
     cxpr_expr_ast_free(ast);
 
     ast = cxpr_expr_ast_parse(p, "sum([])", &err);

@@ -200,6 +200,84 @@ static const cxpr_expr_ast* cxpr_model_static_value_binding(
     return NULL;
 }
 
+static cxpr_expr_ast* cxpr_model_project_static_shape(
+    const cxpr_expr_ast* shape,
+    const cxpr_expr_ast* access,
+    cxpr_error* err) {
+    if (!shape || !access) return NULL;
+    if (shape->type == CXPR_NODE_RECORD) {
+        size_t count = shape->data.record.field_count;
+        const char** names = (const char**)calloc(count ? count : 1u, sizeof(*names));
+        cxpr_expr_ast** values = (cxpr_expr_ast**)calloc(count ? count : 1u, sizeof(*values));
+        cxpr_expr_ast* result;
+        if (!names || !values) goto oom;
+        for (size_t i = 0u; i < count; ++i) {
+            cxpr_expr_ast* field_access = NULL;
+            names[i] = shape->data.record.field_names[i];
+            field_access = cxpr_expr_ast_field_expr_new(
+                cxpr_expr_ast_clone(access), names[i]);
+            if (!field_access) {
+                for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(values[j]);
+                free(values);
+                free(names);
+                goto oom;
+            }
+            values[i] = cxpr_model_project_static_shape(
+                shape->data.record.field_values[i], field_access, err);
+            cxpr_expr_ast_free(field_access);
+            if (!values[i]) {
+                for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(values[j]);
+                free(values);
+                free(names);
+                return NULL;
+            }
+        }
+        result = cxpr_expr_ast_record_new(names, values, count);
+        free(names);
+        if (!result) {
+            for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(values[i]);
+            free(values);
+            goto oom;
+        }
+        return result;
+    }
+    return cxpr_expr_ast_clone(access);
+
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+    return NULL;
+}
+
+static cxpr_expr_ast* cxpr_model_imported_static_shape(
+    const cxpr_model_compiled* program,
+    const cxpr_expr_ast* access,
+    cxpr_error* err) {
+    const cxpr_expr_ast* base;
+    const cxpr_expr_ast* call = NULL;
+    const cxpr_expr_ast* shape;
+    const char* object;
+    const char* field;
+    cxpr_func_entry* entry;
+    const cxpr_model_child_program* child;
+    if (!program || !access || access->type != CXPR_NODE_FIELD_ACCESS) return NULL;
+    base = access->data.field_access.base;
+    object = access->data.field_access.object;
+    field = access->data.field_access.field;
+    if (base && base->type == CXPR_NODE_IDENTIFIER)
+        call = cxpr_model_static_value_binding(program, base->data.identifier.name);
+    else if (!base && object)
+        call = cxpr_model_static_value_binding(program, object);
+    if (!call || call->type != CXPR_NODE_FUNCTION_CALL || !field) return NULL;
+    entry = program->registry
+        ? cxpr_registry_find(program->registry, call->data.function_call.name) : NULL;
+    child = entry && entry->model_producer
+        ? (const cxpr_model_child_program*)entry->model_producer_userdata : NULL;
+    if (!child || !child->program) return NULL;
+    shape = cxpr_model_static_value_binding(child->program, field);
+    if (!shape || shape->type != CXPR_NODE_RECORD) return NULL;
+    return cxpr_model_project_static_shape(shape, access, err);
+}
+
 static bool cxpr_model_materialize_static_value(
     cxpr_expr_ast** value,
     const cxpr_model_compiled* program,
@@ -208,6 +286,15 @@ static bool cxpr_model_materialize_static_value(
     const cxpr_expr_ast* replacement;
     cxpr_expr_ast* clone;
     if (!value || !*value || depth > CXPR_IR_INFER_DEPTH_LIMIT) return true;
+    if ((*value)->type == CXPR_NODE_FIELD_ACCESS) {
+        clone = cxpr_model_imported_static_shape(program, *value, err);
+        if (clone) {
+            cxpr_expr_ast_free(*value);
+            *value = clone;
+        } else if (err && err->code != CXPR_OK) {
+            return false;
+        }
+    }
     if ((*value)->type == CXPR_NODE_IDENTIFIER &&
         (replacement = cxpr_model_static_value_binding(
              program, (*value)->data.identifier.name)) != NULL) {
@@ -274,6 +361,71 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
                 &ast->data.function_call.args[0], program, err)) {
             cxpr_expr_ast_free(ast);
             return NULL;
+        }
+        if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
+                     !strcmp(name, "min") || !strcmp(name, "max") ||
+                     !strcmp(name, "any") || !strcmp(name, "all")) &&
+            ast->data.function_call.argc > 0u &&
+            !cxpr_model_inline_static_collection_source(
+                &ast->data.function_call.args[0], program, err)) {
+            cxpr_expr_ast_free(ast);
+            return NULL;
+        }
+        if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
+                     !strcmp(name, "min") || !strcmp(name, "max") ||
+                     !strcmp(name, "any") || !strcmp(name, "all")) &&
+            ast->data.function_call.argc > 0u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_RECORD) {
+            const cxpr_expr_ast* record = ast->data.function_call.args[0];
+            size_t count = record->data.record.field_count;
+            cxpr_expr_ast** elements = (cxpr_expr_ast**)calloc(
+                count ? count : 1u, sizeof(*elements));
+            cxpr_expr_ast* array;
+            if (!elements) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            for (size_t i = 0u; i < count; ++i) {
+                elements[i] = cxpr_expr_ast_clone(record->data.record.field_values[i]);
+                if (!elements[i]) {
+                    for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(elements[j]);
+                    free(elements);
+                    cxpr_expr_ast_free(ast);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0u, 0u);
+                    return NULL;
+                }
+            }
+            array = cxpr_expr_ast_array_new(elements, count);
+            if (!array) {
+                for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(elements[i]);
+                free(elements);
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            cxpr_expr_ast_free(ast->data.function_call.args[0]);
+            ast->data.function_call.args[0] = array;
+        }
+        if (name && strcmp(name, "map") == 0 &&
+            ast->data.function_call.argc == 2u &&
+            (ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY ||
+             ast->data.function_call.args[0]->type == CXPR_NODE_RECORD)) {
+            cxpr_expr_ast* expanded = cxpr_model_inline_defined_calls(
+                ast, program ? program->registry : NULL, err);
+            if (!expanded) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+            cxpr_expr_ast_free(ast);
+            ast = expanded;
+            if (ast->type != CXPR_NODE_FUNCTION_CALL) {
+                return cxpr_model_inline_static_collections(ast, program, err);
+            }
+            name = ast->data.function_call.name;
         }
         for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
             ast->data.function_call.args[i] = cxpr_model_inline_static_collections(

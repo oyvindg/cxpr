@@ -1,0 +1,13 @@
+model root(type = "fixture")
+
+use source
+use worker
+
+in seed
+
+seq = source(seed=seed)
+rendered = map(seq.voices, voice => worker(value=voice.value))
+low = rendered.low
+sum = sum(rendered)
+
+out { low, sum }

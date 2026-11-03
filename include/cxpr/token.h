@@ -57,6 +57,7 @@ typedef enum {
     CXPR_TOK_LBRACE,            /**< { */
     CXPR_TOK_RBRACE,            /**< } */
     CXPR_TOK_COMMA,             /**< , */
+    CXPR_TOK_SEMICOLON,         /**< ; */
     CXPR_TOK_DOT,               /**< . */
     CXPR_TOK_PIPE,              /**< |> */
     CXPR_TOK_QUESTION,          /**< ? */

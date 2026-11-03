@@ -1,0 +1,20 @@
+model static_record_view(type = "fixture", lifecycle = "scoped")
+
+in position
+
+events = {
+    at = [0.0, 0.5, 1.5, 3.0],
+    value = [37, 56, 61, 64],
+    active = [true, true, false, true]
+}
+
+cursor = upper_bound(events.at, position) - 1
+index = clamp(cursor, 0, length(events) - 1)
+current = events[index]
+
+out {
+    cursor,
+    event_position = current.at,
+    value = current.value,
+    active = current.active
+}

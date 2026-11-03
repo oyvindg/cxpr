@@ -7,8 +7,11 @@ has been removed completely.
 
 The 1,142 note-on events are compiled from Stewart Holmes' Mutopia MIDI edition
 (CC BY-SA 2.5) into twelve overlapping physical `grand_piano` voices. MIDI is
-not parsed at runtime. Hall resonance and the soft-limited master add no
-pitches.
+not parsed at runtime. Keys are spread across the stereo field from bass on the
+left to treble on the right, using pianist perspective. Hall resonance and the
+soft-limited master add no pitches. Asymmetric early reflections place the
+listener close to the keyboard, while a softer hall tail supplies room behind
+the direct piano image.
 
 Source: <https://piano.org/songs/moonlight-sonata/>. The page documents the
 original C-sharp-minor score and its meter, tempo, opening notes, continuous

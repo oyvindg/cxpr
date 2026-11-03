@@ -348,6 +348,14 @@ static bool cxpr_model_expr_binds_lambda_reference(const cxpr_expr_ast* ast,
                 reference, ast->data.function_call.args[0]->data.identifier.name)) {
             return true;
         }
+        if (ast->data.function_call.name &&
+            !strcmp(ast->data.function_call.name, "__cxpr_let") &&
+            ast->data.function_call.argc == 3u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER &&
+            cxpr_model_reference_matches_symbol(
+                reference, ast->data.function_call.args[0]->data.identifier.name)) {
+            return true;
+        }
         for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
             if (cxpr_model_expr_binds_lambda_reference(
                     ast->data.function_call.args[i], reference)) return true;

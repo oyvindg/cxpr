@@ -6,7 +6,7 @@ use pizzicato_section, violin_section, viola, cello, double_bass from instrument
 use flute, oboe, clarinet, bassoon from instruments/woodwind
 use trumpet, trombone, horn_section from instruments/brass
 use timpani from instruments/percussion
-use state_variable_filter from filters
+use resonance from filters
 use pan, chamber, reverb, stereo_compressor, master from effects
 
 in t
@@ -72,31 +72,31 @@ opening_timpani_voice = timpani(trigger=seq.opening_timpani_trigger,
     frequency=seq.opening_timpani_frequency, sample_rate=$sample_rate,
     gain=0.78, decay=0.82)
 
-ostinato_tone = state_variable_filter(
+ostinato_tone = resonance(
     source=seq.ostinato_level * ostinato_voice.sample,
     sample_rate=$sample_rate, cutoff=2600, resonance=0.10)
-arp_tone = state_variable_filter(source=seq.arp_level * arp_voice.sample,
+arp_tone = resonance(source=seq.arp_level * arp_voice.sample,
     sample_rate=$sample_rate, cutoff=3200, resonance=0.06)
-strings_tone = state_variable_filter(
+strings_tone = resonance(
     source=seq.expression * seq.violin_level * violins_voice.sample,
     sample_rate=$sample_rate, cutoff=3300, resonance=0.06)
-inner_tone = state_variable_filter(
+inner_tone = resonance(
     source=0.86 * viola_voice.sample + 0.82 * cello_voice.sample +
         0.58 * bass_voice.sample,
     sample_rate=$sample_rate, cutoff=1850, resonance=0.04)
-flute_tone = state_variable_filter(source=seq.wind_level * flute_voice.sample,
+flute_tone = resonance(source=seq.wind_level * flute_voice.sample,
     sample_rate=$sample_rate, cutoff=3900, resonance=0.04)
-oboe_tone = state_variable_filter(source=seq.wind_level * oboe_voice.sample,
+oboe_tone = resonance(source=seq.wind_level * oboe_voice.sample,
     sample_rate=$sample_rate, cutoff=2800, resonance=0.05)
-clarinet_tone = state_variable_filter(source=seq.wind_level * clarinet_voice.sample,
+clarinet_tone = resonance(source=seq.wind_level * clarinet_voice.sample,
     sample_rate=$sample_rate, cutoff=2700, resonance=0.05)
-bassoon_tone = state_variable_filter(source=0.72 * seq.wind_level * bassoon_voice.sample,
+bassoon_tone = resonance(source=0.72 * seq.wind_level * bassoon_voice.sample,
     sample_rate=$sample_rate, cutoff=1800, resonance=0.05)
-horn_tone = state_variable_filter(source=seq.brass_level * horn_voice.sample,
+horn_tone = resonance(source=seq.brass_level * horn_voice.sample,
     sample_rate=$sample_rate, cutoff=2200, resonance=0.07)
-trumpet_tone = state_variable_filter(source=seq.brass_level * trumpet_voice.sample,
+trumpet_tone = resonance(source=seq.brass_level * trumpet_voice.sample,
     sample_rate=$sample_rate, cutoff=3000, resonance=0.05)
-trombone_tone = state_variable_filter(source=seq.brass_level * trombone_voice.sample,
+trombone_tone = resonance(source=seq.brass_level * trombone_voice.sample,
     sample_rate=$sample_rate, cutoff=1900, resonance=0.07)
 
 ostinato = pan(source=ostinato_tone.low, position=-0.34)

@@ -1,0 +1,48 @@
+// Complete Bach-Busoni transcription rendered by sixteen grand-piano voices.
+model song(type = "dsp")
+
+use sequencer from arrangement
+use grand_piano from instruments/classical
+use pan, chamber, reverb, master from effects
+use resonance from filters
+
+in t
+$sample_rate = 44100
+
+seq = sequencer(t=t)
+stereo_voices = map(seq.voices, voice => {
+    piano = grand_piano(
+        age=voice.age,
+        frequency=voice.frequency,
+        trigger=voice.trigger,
+        sample_rate=$sample_rate,
+        gain=0.0625 * voice.gain,
+        delay_samples=floor($sample_rate / voice.frequency));
+    return pan(source=piano, position=voice.pan);
+})
+raw_left = sum(stereo_voices, voice => voice.left)
+raw_right = sum(stereo_voices, voice => voice.right)
+left_tone = resonance(source=raw_left, sample_rate=$sample_rate,
+    cutoff=4600, resonance=0.022)
+right_tone = resonance(source=raw_right, sample_rate=$sample_rate,
+    cutoff=4600, resonance=0.022)
+dry_left = left_tone.low
+dry_right = right_tone.low
+
+near_room = chamber(source_left=0.50 * dry_left, source_right=0.50 * dry_right,
+    sample_rate=$sample_rate, feedback=0.18)
+hall = reverb(source_left=0.16 * dry_left + 0.08 * near_room.left,
+    source_right=0.16 * dry_right + 0.08 * near_room.right,
+    sample_rate=$sample_rate, decay_seconds=3.6, damping=2300)
+finished = master(source_left=dry_left + 0.22 * near_room.left + 0.18 * hall.left,
+    source_right=dry_right + 0.22 * near_room.right + 0.18 * hall.right,
+    t=t, sample_rate=$sample_rate, gain=1.30, duration=seq.duration,
+    fade_seconds=8.0, fade_in_seconds=0.25, ceiling=0.90)
+
+left = finished.left
+right = finished.right
+duration = seq.duration
+
+out {
+    left, right, duration
+}

@@ -1,0 +1,12 @@
+model voice(type = "fixture", lifecycle = "scoped")
+
+in cursor
+in item
+
+state previous = -1
+
+trigger = cursor >= 0 and cursor != previous ? 1 : 0
+value = item
+previous := cursor >= 0 ? cursor : previous
+
+out { trigger, value }

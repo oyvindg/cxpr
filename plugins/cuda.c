@@ -344,6 +344,17 @@ char* cxpr_cuda_plugin_source_from_program(
         function_name,
         err);
     if (!code) return NULL;
+    if (strstr(code, "((const double[]){") != NULL) {
+        free(code);
+        if (err) {
+            err->code = CXPR_ERR_UNAVAILABLE;
+            err->message =
+                "CUDA backend does not support dynamic static collection indexing";
+            err->line = 0u;
+            err->column = 0u;
+        }
+        return NULL;
+    }
 
     patched = cxpr_cuda_replace_all(
         code,

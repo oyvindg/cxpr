@@ -10,6 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void cxpr_model_c_inherit_locals(cxpr_model_ast_c_target* target,
+                                         const cxpr_model_ast_c_target* inherited) {
+    if (!target || !inherited) return;
+    target->param_names = inherited->param_names;
+    target->param_exprs = inherited->param_exprs;
+    target->param_count = inherited->param_count;
+    target->local_declarations = inherited->local_declarations;
+    target->local_cse = inherited->local_cse;
+}
+
 char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                                             const cxpr_expr_ast* ast,
                                             const char* field,
@@ -25,6 +35,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                                                  char** child_call_keys,
                                                  size_t* child_call_child_indices,
                                                  size_t child_call_count,
+                                          const cxpr_model_ast_c_target* inherited,
                                                  cxpr_error* err) {
     cxpr_func_entry* entry;
     const char* producer;
@@ -151,6 +162,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
             .child_call_child_indices = child_call_child_indices,
             .child_call_count = child_call_count,
         };
+        cxpr_model_c_inherit_locals(&target_data, inherited);
         target = (cxpr_c_target){
             .api_version = CXPR_C_TARGET_API_VERSION,
             .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
@@ -252,6 +264,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                 .child_call_child_indices = child_call_child_indices,
                 .child_call_count = child_call_count,
             };
+            cxpr_model_c_inherit_locals(&target_data, inherited);
             target = (cxpr_c_target){
                 .api_version = CXPR_C_TARGET_API_VERSION,
                 .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
@@ -294,6 +307,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
             .child_call_child_indices = child_call_child_indices,
             .child_call_count = child_call_count,
         };
+        cxpr_model_c_inherit_locals(&target_data, inherited);
         target = (cxpr_c_target){
             .api_version = CXPR_C_TARGET_API_VERSION,
             .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
@@ -356,6 +370,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
         .userdata = &target_data,
     };
+    cxpr_model_c_inherit_locals(&target_data, inherited);
     for (size_t i = 0u; i < entry->defined_param_count; ++i) {
         const cxpr_expr_ast* arg = cxpr_model_producer_arg_for_param(
             ast, entry->defined_param_names ? entry->defined_param_names[i] : NULL, i);
@@ -462,7 +477,31 @@ bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
     case CXPR_NODE_IDENTIFIER:
         binding = cxpr_model_c_binding_for_name(program, cxpr_expr_ast_identifier_name(ast));
         return binding ? cxpr_model_ast_is_record_like(program, binding->ast, depth + 1u) : false;
+    case CXPR_NODE_INDEX: {
+        const cxpr_expr_ast* collection = cxpr_model_c_static_collection(
+            program, cxpr_expr_ast_index_target(ast), 0u);
+        if (!collection) return false;
+        if (cxpr_expr_ast_kind_of(collection) == CXPR_NODE_RECORD) return true;
+        if (cxpr_expr_ast_kind_of(collection) != CXPR_NODE_ARRAY ||
+            cxpr_expr_ast_array_count(collection) == 0u) return false;
+        for (size_t i = 0u; i < cxpr_expr_ast_array_count(collection); ++i)
+            if (!cxpr_model_ast_is_record_like(
+                    program, cxpr_expr_ast_array_element(collection, i), depth + 1u))
+                return false;
+        return true;
+    }
     case CXPR_NODE_FUNCTION_CALL:
+        if (cxpr_model_names_match(cxpr_expr_ast_call_name(ast), "__cxpr_let") &&
+            cxpr_expr_ast_call_arg_count(ast) == 3u)
+            return cxpr_model_ast_is_record_like(
+                program, cxpr_expr_ast_call_arg(ast, 2u), depth + 1u);
+        if (cxpr_model_names_match(cxpr_expr_ast_call_name(ast), "map") &&
+            cxpr_expr_ast_call_arg_count(ast) == 2u) {
+            const cxpr_expr_ast* source = cxpr_expr_ast_call_arg(ast, 0u);
+            return source && (cxpr_expr_ast_kind_of(source) == CXPR_NODE_RECORD ||
+                              cxpr_model_ast_is_record_like(
+                                  program, source, depth + 1u));
+        }
         entry = program->registry
                     ? cxpr_registry_find(program->registry, cxpr_expr_ast_call_name(ast))
                     : NULL;
@@ -537,6 +576,7 @@ static char* cxpr_model_ast_record_function_field_to_c(
             target_data ? target_data->child_call_keys : NULL,
             target_data ? target_data->child_call_child_indices : NULL,
             target_data ? target_data->child_call_count : 0u,
+            target_data,
             err);
     }
 
@@ -795,6 +835,68 @@ char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                          program, binding->ast, field, target, err, depth + 1u)
                    : NULL;
     }
+    case CXPR_NODE_INDEX: {
+        const cxpr_expr_ast* record = cxpr_model_c_static_collection(
+            program, cxpr_expr_ast_index_target(ast), 0u);
+        if (record && cxpr_expr_ast_kind_of(record) == CXPR_NODE_RECORD) {
+            for (size_t i = 0u; i < cxpr_expr_ast_record_field_count(record); ++i) {
+                if (!cxpr_model_names_match(
+                        cxpr_expr_ast_record_field_name(record, i), field)) continue;
+                const cxpr_expr_ast* array = cxpr_model_c_static_collection(
+                    program, cxpr_expr_ast_record_field_value(record, i), 0u);
+                return cxpr_model_c_static_array_index(
+                    program, array, cxpr_expr_ast_index_expression(ast), target, err);
+            }
+        }
+        if (record && cxpr_expr_ast_kind_of(record) == CXPR_NODE_ARRAY) {
+            cxpr_model_c_buf b = {0};
+            char* index_expr = cxpr_expr_ast_to_c(
+                cxpr_expr_ast_index_expression(ast), target, err);
+            size_t count = cxpr_expr_ast_array_count(record);
+            if (!index_expr) return NULL;
+            cxpr_model_c_printf(&b,
+                "((isfinite(%s) && (%s) >= 0.0 && floor(%s) == (%s) && (size_t)(%s) < %zuu) ? ((const double[]){",
+                index_expr, index_expr, index_expr, index_expr, index_expr, count);
+            for (size_t i = 0u; i < count; ++i) {
+                const cxpr_expr_ast* value = cxpr_model_c_static_record_field(
+                    program, cxpr_expr_ast_array_element(record, i), field, 0u);
+                char* value_expr = value ? cxpr_expr_ast_to_c(value, target, err) : NULL;
+                if (!value_expr) { free(index_expr); free(b.data); return NULL; }
+                if (i) cxpr_model_c_puts(&b, ", ");
+                cxpr_model_c_printf(&b, "(%s)", value_expr);
+                free(value_expr);
+            }
+            cxpr_model_c_printf(&b, "})[(size_t)(%s)] : NAN)", index_expr);
+            free(index_expr);
+            if (b.oom) { free(b.data); return NULL; }
+            return b.data;
+        }
+        return NULL;
+    }
+    case CXPR_NODE_FIELD_ACCESS: {
+        const cxpr_expr_ast* base = cxpr_expr_ast_field_base(ast);
+        const char* existing = cxpr_expr_ast_field_name(ast);
+        size_t length;
+        char* nested;
+        char* result;
+        if (!existing) return NULL;
+        length = strlen(existing) + strlen(field) + 2u;
+        nested = (char*)malloc(length);
+        if (!nested) return NULL;
+        snprintf(nested, length, "%s.%s", existing, field);
+        if (base) {
+            result = cxpr_model_ast_field_expr_to_c(
+                program, base, nested, target, err, depth + 1u);
+        } else {
+            const cxpr_model_compiled_binding* binding =
+                cxpr_model_c_binding_for_name(
+                    program, cxpr_expr_ast_field_object(ast));
+            result = binding ? cxpr_model_ast_field_expr_to_c(
+                program, binding->ast, nested, target, err, depth + 1u) : NULL;
+        }
+        free(nested);
+        return result;
+    }
     case CXPR_NODE_VARIABLE: {
         const char* variable_name = cxpr_expr_ast_param_name(ast);
         const char* dot = variable_name ? strchr(variable_name, '.') : NULL;
@@ -820,6 +922,20 @@ char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                    : NULL;
     }
     case CXPR_NODE_FUNCTION_CALL: {
+        if (cxpr_model_names_match(cxpr_expr_ast_call_name(ast), "__cxpr_let") &&
+            cxpr_expr_ast_call_arg_count(ast) == 3u) {
+            cxpr_expr_ast* let = cxpr_expr_ast_clone(ast);
+            cxpr_expr_ast* selected;
+            char* result;
+            if (!let) return NULL;
+            selected = cxpr_expr_ast_field_expr_new(
+                let->data.function_call.args[2], field);
+            if (!selected) { cxpr_expr_ast_free(let); return NULL; }
+            let->data.function_call.args[2] = selected;
+            result = cxpr_expr_ast_to_c(let, target, err);
+            cxpr_expr_ast_free(let);
+            return result;
+        }
         char* expression = cxpr_model_ast_record_function_field_to_c(
             program, ast, field, target, err, depth + 1u);
         cxpr_model_ast_c_target* target_data;
@@ -840,6 +956,7 @@ char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
             target_data ? target_data->child_call_keys : NULL,
             target_data ? target_data->child_call_child_indices : NULL,
             target_data ? target_data->child_call_count : 0u,
+            target_data,
             err);
     }
     case CXPR_NODE_BINARY_OP: {
