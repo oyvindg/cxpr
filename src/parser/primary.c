@@ -238,7 +238,12 @@ static cxpr_expr_ast* cxpr_parse_lambda_body(cxpr_expr_parser* p) {
     return body;
 }
 
-static cxpr_expr_ast* cxpr_parse_lower_static_array_reduction(cxpr_expr_ast* node) {
+#if defined(__GNUC__) || defined(__clang__)
+static __attribute__((unused)) cxpr_expr_ast*
+#else
+static cxpr_expr_ast*
+#endif
+cxpr_parse_lower_static_array_reduction(cxpr_expr_ast* node) {
     cxpr_expr_ast* array;
     cxpr_expr_ast* lambda = NULL;
     const char* parameter = NULL;

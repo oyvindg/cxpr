@@ -22,14 +22,13 @@ stereo_voices = map(seq.voices, voice => {
         delay_samples=floor($sample_rate / voice.frequency));
     return pan(source=piano, position=voice.pan);
 })
-// Selector reductions preserve the named record while removing manual v0-v11 sums.
 raw_left = sum(stereo_voices, voice => voice.left)
 raw_right = sum(stereo_voices, voice => voice.right)
 // A gentle post-sum low-pass removes brittle modal energy without narrowing stereo.
 left_tone = resonance(source=raw_left, sample_rate=$sample_rate,
-    cutoff=4200, resonance=0.025)
+    cutoff=4600, resonance=0.025)
 right_tone = resonance(source=raw_right, sample_rate=$sample_rate,
-    cutoff=4200, resonance=0.025)
+    cutoff=4600, resonance=0.025)
 dry_left = left_tone.low
 dry_right = right_tone.low
 
@@ -40,10 +39,10 @@ near_room = chamber(source_left=0.52 * dry_left, source_right=0.52 * dry_right,
 // The hall is a quiet send fed by both direct piano and early reflections.
 hall = reverb(source_left=0.18 * dry_left + 0.10 * near_room.left,
     source_right=0.18 * dry_right + 0.10 * near_room.right,
-    sample_rate=$sample_rate, decay_seconds=3.2, damping=2400)
+    sample_rate=$sample_rate, decay_seconds=2.2, damping=2000)
 // Keep the pianist-position direct signal dominant over both wet returns.
-finished = master(source_left=dry_left + 0.25 * near_room.left + 0.20 * hall.left,
-    source_right=dry_right + 0.25 * near_room.right + 0.20 * hall.right,
+finished = master(source_left=dry_left + 0.22 * near_room.left + 0.16 * hall.left,
+    source_right=dry_right + 0.22 * near_room.right + 0.16 * hall.right,
     t=t, sample_rate=$sample_rate, gain=1.45, duration=seq.duration,
     // The seven-second fade begins at the final bass event and reaches zero.
     fade_seconds=7.0, fade_in_seconds=0.35, ceiling=0.90)

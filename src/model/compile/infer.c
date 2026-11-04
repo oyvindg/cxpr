@@ -247,14 +247,23 @@ static cxpr_expr_ast* cxpr_model_imported_static_shape(
     const char* field;
     cxpr_func_entry* entry;
     const cxpr_model_child_program* child;
-    if (!program || !access || access->type != CXPR_NODE_FIELD_ACCESS) return NULL;
-    base = access->data.field_access.base;
-    object = access->data.field_access.object;
-    field = access->data.field_access.field;
-    if (base && base->type == CXPR_NODE_IDENTIFIER)
-        call = cxpr_model_static_value_binding(program, base->data.identifier.name);
-    else if (!base && object)
+    if (!program || !access) return NULL;
+    if (access->type == CXPR_NODE_CHAIN_ACCESS) {
+        if (access->data.chain_access.depth != 2u) return NULL;
+        object = access->data.chain_access.path[0];
+        field = access->data.chain_access.path[1];
         call = cxpr_model_static_value_binding(program, object);
+    } else if (access->type == CXPR_NODE_FIELD_ACCESS) {
+        base = access->data.field_access.base;
+        object = access->data.field_access.object;
+        field = access->data.field_access.field;
+        if (base && base->type == CXPR_NODE_IDENTIFIER)
+            call = cxpr_model_static_value_binding(program, base->data.identifier.name);
+        else if (!base && object)
+            call = cxpr_model_static_value_binding(program, object);
+    } else {
+        return NULL;
+    }
     if (!call || call->type != CXPR_NODE_FUNCTION_CALL || !field) return NULL;
     entry = program->registry
         ? cxpr_registry_find(program->registry, call->data.function_call.name) : NULL;
@@ -274,7 +283,8 @@ static bool cxpr_model_materialize_static_value(
     const cxpr_expr_ast* replacement;
     cxpr_expr_ast* clone;
     if (!value || !*value || depth > CXPR_IR_INFER_DEPTH_LIMIT) return true;
-    if ((*value)->type == CXPR_NODE_FIELD_ACCESS) {
+    if ((*value)->type == CXPR_NODE_FIELD_ACCESS ||
+        (*value)->type == CXPR_NODE_CHAIN_ACCESS) {
         clone = cxpr_model_imported_static_shape(program, *value, err);
         if (clone) {
             cxpr_expr_ast_free(*value);
@@ -398,6 +408,81 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
             cxpr_expr_ast_free(ast->data.function_call.args[0]);
             ast->data.function_call.args[0] = array;
         }
+        if (name && (!strcmp(name, "sum") || !strcmp(name, "mean") ||
+                     !strcmp(name, "min") || !strcmp(name, "max") ||
+                     !strcmp(name, "any") || !strcmp(name, "all")) &&
+            ast->data.function_call.argc == 2u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) {
+            const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
+            const cxpr_expr_ast* parameter;
+            const cxpr_expr_ast* body;
+            const size_t count = ast->data.function_call.args[0]->data.array.count;
+            cxpr_expr_ast** elements;
+            cxpr_expr_ast** args;
+            cxpr_expr_ast* lowered;
+            if (!lambda || lambda->type != CXPR_NODE_FUNCTION_CALL ||
+                strcmp(lambda->data.function_call.name, "__cxpr_lambda") != 0 ||
+                lambda->data.function_call.argc != 2u ||
+                lambda->data.function_call.args[0]->type != CXPR_NODE_IDENTIFIER) {
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                     "Static reduction requires a one-parameter selector",
+                                     0u, 0u);
+                return NULL;
+            }
+            parameter = lambda->data.function_call.args[0];
+            body = lambda->data.function_call.args[1];
+            elements = (cxpr_expr_ast**)calloc(
+                count ? count : 1u, sizeof(*elements));
+            args = (cxpr_expr_ast**)calloc(1u, sizeof(*args));
+            if (!elements || !args) {
+                free(elements);
+                free(args);
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            for (size_t i = 0u; i < count; ++i) {
+                cxpr_model_local_binding local = {
+                    .name = parameter->data.identifier.name,
+                    .expr = ast->data.function_call.args[0]->data.array.elements[i],
+                };
+                elements[i] = cxpr_model_inline_locals(body, &local, 1u);
+                if (!elements[i]) {
+                    for (size_t j = 0u; j < i; ++j)
+                        cxpr_expr_ast_free(elements[j]);
+                    free(elements);
+                    free(args);
+                    cxpr_expr_ast_free(ast);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0u, 0u);
+                    return NULL;
+                }
+            }
+            args[0] = cxpr_expr_ast_array_new(elements, count);
+            if (!args[0]) {
+                for (size_t i = 0u; i < count; ++i)
+                    cxpr_expr_ast_free(elements[i]);
+                free(elements);
+                free(args);
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            lowered = cxpr_expr_ast_call_new(name, args, 1u);
+            if (!lowered) {
+                cxpr_expr_ast_free(args[0]);
+                free(args);
+                cxpr_expr_ast_free(ast);
+                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                     "Out of memory", 0u, 0u);
+                return NULL;
+            }
+            cxpr_expr_ast_free(ast);
+            return cxpr_model_inline_static_collections(lowered, program, err);
+        }
         if (name && strcmp(name, "map") == 0 &&
             ast->data.function_call.argc == 2u &&
             (ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY ||
@@ -436,6 +521,45 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
         ast->data.unary_op.operand = cxpr_model_inline_static_collections(
             ast->data.unary_op.operand, program, err);
         if (!ast->data.unary_op.operand) {
+            cxpr_expr_ast_free(ast);
+            return NULL;
+        }
+    } else if (ast->type == CXPR_NODE_ARRAY) {
+        for (size_t i = 0u; i < ast->data.array.count; ++i) {
+            ast->data.array.elements[i] = cxpr_model_inline_static_collections(
+                ast->data.array.elements[i], program, err);
+            if (!ast->data.array.elements[i]) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+        }
+    } else if (ast->type == CXPR_NODE_RECORD) {
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
+            ast->data.record.field_values[i] = cxpr_model_inline_static_collections(
+                ast->data.record.field_values[i], program, err);
+            if (!ast->data.record.field_values[i]) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+        }
+    } else if (ast->type == CXPR_NODE_INDEX) {
+        ast->data.index.target = cxpr_model_inline_static_collections(
+            ast->data.index.target, program, err);
+        ast->data.index.index = cxpr_model_inline_static_collections(
+            ast->data.index.index, program, err);
+        if (!ast->data.index.target || !ast->data.index.index) {
+            cxpr_expr_ast_free(ast);
+            return NULL;
+        }
+    } else if (ast->type == CXPR_NODE_TERNARY) {
+        ast->data.ternary.condition = cxpr_model_inline_static_collections(
+            ast->data.ternary.condition, program, err);
+        ast->data.ternary.true_branch = cxpr_model_inline_static_collections(
+            ast->data.ternary.true_branch, program, err);
+        ast->data.ternary.false_branch = cxpr_model_inline_static_collections(
+            ast->data.ternary.false_branch, program, err);
+        if (!ast->data.ternary.condition || !ast->data.ternary.true_branch ||
+            !ast->data.ternary.false_branch) {
             cxpr_expr_ast_free(ast);
             return NULL;
         }
@@ -898,6 +1022,51 @@ static bool cxpr_model_constant_name_exists(const cxpr_model* model, const char*
     return false;
 }
 
+static bool cxpr_model_expr_binds_reference(const cxpr_expr_ast* ast,
+                                            const char* reference) {
+    if (!ast || !reference) return false;
+    if (ast->type == CXPR_NODE_FUNCTION_CALL) {
+        const char* name = ast->data.function_call.name;
+        if (name && (!strcmp(name, "__cxpr_lambda") ||
+                     !strcmp(name, "__cxpr_let")) &&
+            ast->data.function_call.argc >= 2u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER &&
+            cxpr_model_names_match(
+                ast->data.function_call.args[0]->data.identifier.name,
+                reference)) return true;
+        for (size_t i = 0u; i < ast->data.function_call.argc; ++i)
+            if (cxpr_model_expr_binds_reference(
+                    ast->data.function_call.args[i], reference)) return true;
+        return false;
+    }
+    switch (ast->type) {
+    case CXPR_NODE_ARRAY:
+        for (size_t i = 0u; i < ast->data.array.count; ++i)
+            if (cxpr_model_expr_binds_reference(
+                    ast->data.array.elements[i], reference)) return true;
+        return false;
+    case CXPR_NODE_RECORD:
+        for (size_t i = 0u; i < ast->data.record.field_count; ++i)
+            if (cxpr_model_expr_binds_reference(
+                    ast->data.record.field_values[i], reference)) return true;
+        return false;
+    case CXPR_NODE_BINARY_OP:
+        return cxpr_model_expr_binds_reference(ast->data.binary_op.left, reference) ||
+               cxpr_model_expr_binds_reference(ast->data.binary_op.right, reference);
+    case CXPR_NODE_UNARY_OP:
+        return cxpr_model_expr_binds_reference(ast->data.unary_op.operand, reference);
+    case CXPR_NODE_INDEX:
+        return cxpr_model_expr_binds_reference(ast->data.index.target, reference) ||
+               cxpr_model_expr_binds_reference(ast->data.index.index, reference);
+    case CXPR_NODE_TERNARY:
+        return cxpr_model_expr_binds_reference(ast->data.ternary.condition, reference) ||
+               cxpr_model_expr_binds_reference(ast->data.ternary.true_branch, reference) ||
+               cxpr_model_expr_binds_reference(ast->data.ternary.false_branch, reference);
+    default:
+        return false;
+    }
+}
+
 bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
                                                 const cxpr_model_import* imports,
                                                 size_t import_count,
@@ -935,6 +1104,8 @@ bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
         if (!infer_direct_refs) continue;
         nrefs = cxpr_expr_ast_references(model->bindings[i].expr, refs, CXPR_ARRAY_COUNT(refs));
         for (size_t j = 0u; j < nrefs && j < CXPR_ARRAY_COUNT(refs); ++j) {
+            if (cxpr_model_expr_binds_reference(
+                    model->bindings[i].expr, refs[j])) continue;
             if (cxpr_model_binding_name_exists(model, refs[j]) ||
                 cxpr_model_constant_name_exists(model, refs[j])) {
                 continue;

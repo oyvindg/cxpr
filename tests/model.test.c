@@ -3597,6 +3597,157 @@ static void test_static_map_prelowering_has_ast_parity(void) {
     cxpr_expr_parser_free(parser);
 }
 
+static void test_nested_collection_lambda_captures_outer_record(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* model = parse_model_ok(
+        "model lexical_capture\n"
+        "in gain\n"
+        "voices = { older = { frequency = 440, age = 2, level = 3 }, "
+        "newer = { frequency = 440, age = 1, level = 5 }, "
+        "other = { frequency = 220, age = 0, level = 7 } }\n"
+        "result = sum(voices, voice => { "
+        "newer_same_key = sum(voices, other => "
+        "(abs(other.frequency - voice.frequency) < 0.01 "
+        "and other.age < voice.age) ? 1 : 0); "
+        "return voice.level * gain + newer_same_key; })\n"
+        "out result\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    cxpr_model_session* session;
+    char* code;
+
+    if (!program) fprintf(stderr, "lexical capture compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "gain", 2.0);
+    err = (cxpr_error){0};
+    if (!cxpr_model_session_tick(program, session, NULL, &err))
+        fprintf(stderr, "lexical capture tick failed: %s\n",
+                err.message ? err.message : "(null)");
+    assert(err.code == CXPR_OK);
+    assert(cxpr_model_session_get_number(session, "result", &value));
+    assert(value == 31.0);
+
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "lexical_capture_tick", &err);
+    if (!code) fprintf(stderr, "lexical capture C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "__cxpr_let") == NULL);
+    assert(strstr(code, "__cxpr_lambda") == NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+
+    err = (cxpr_error){0};
+    model = parse_model_ok(
+        "model lexical_shadowing\n"
+        "result = sum([1, 2], item => sum([10, 20], item => item))\n"
+        "out result\n");
+    program = cxpr_model_compile(model, NULL, &err);
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    err = (cxpr_error){0};
+    if (!cxpr_model_session_tick(program, session, NULL, &err))
+        fprintf(stderr, "lexical shadowing tick failed: %s\n",
+                err.message ? err.message : "(null)");
+    assert(err.code == CXPR_OK);
+    assert(cxpr_model_session_get_number(session, "result", &value));
+    assert(value == 60.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "lexical_shadowing_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "__cxpr_lambda") == NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_nested_collection_lambda_captures_outer_record\n");
+}
+
+static void test_imported_collection_lambda_captures_outer_record(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model voice_sequencer { lifecycle = \"scoped\" }\n"
+        "state ticks = 0\n"
+        "voices = { older = { frequency = 440, age = 2, level = 3 + 0 * ticks }, "
+        "newer = { frequency = 440, age = 1, level = 5 }, "
+        "other = { frequency = 220, age = 0, level = 7 } }\n"
+        "ticks := ticks + 1\n"
+        "out voices\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model* processor = parse_model_ok(
+        "model voice_gain { lifecycle = \"scoped\" }\n"
+        "in source, gain\n"
+        "state ticks = 0\n"
+        "sample = source * gain + 0 * ticks\n"
+        "ticks := ticks + 1\n"
+        "out sample\n");
+    cxpr_model_compiled* processor_program =
+        cxpr_model_compile(processor, NULL, &err);
+    cxpr_model_import imports[2];
+    cxpr_model* parent;
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+    char* code;
+
+    assert(child_program != NULL);
+    assert(processor_program != NULL);
+    imports[0] = (cxpr_model_import){
+        .name = "arrangement/voice_sequencer", .program = child_program};
+    imports[1] = (cxpr_model_import){
+        .name = "instruments/voice_gain", .program = processor_program};
+    parent = parse_model_ok(
+        "model imported_lexical_capture\n"
+        "use voice_sequencer from arrangement\n"
+        "use voice_gain from instruments\n"
+        "seq = voice_sequencer()\n"
+        "processed = map(seq.voices, voice => { "
+        "newer_same_key = sum(seq.voices, other => "
+        "(abs(other.frequency - voice.frequency) < 0.01 "
+        "and other.age < voice.age) ? 1 : 0); "
+        "return { level = voice.level, restruck = newer_same_key }; })\n"
+        "rendered = map(processed, voice => voice_gain("
+        "source=voice.level, gain=voice.restruck > 0 ? 0.5 : 1).sample)\n"
+        "result = sum(rendered, sample => sample)\n"
+        "out result\n");
+    program = cxpr_model_compile_with_imports(parent, NULL, imports, 2u, &err);
+    if (!program) fprintf(stderr, "imported lexical capture compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "result", &value));
+    assert(value == 13.5);
+
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "imported_lexical_capture_tick", &err);
+    if (!code) fprintf(stderr, "imported lexical capture C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "__cxpr_let") == NULL);
+    assert(strstr(code, "__cxpr_lambda") == NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(processor_program);
+    cxpr_model_free(processor);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_collection_lambda_captures_outer_record\n");
+}
+
 static void test_stateful_producer_history_queries_do_not_replay(void) {
     cxpr_error err = {0};
     double value = 0.0;
@@ -5408,6 +5559,8 @@ int main(void) {
     test_static_map_unrolls_scoped_children();
     test_named_map_materializes_pure_values();
     test_static_map_prelowering_has_ast_parity();
+    test_nested_collection_lambda_captures_outer_record();
+    test_imported_collection_lambda_captures_outer_record();
     test_stateful_producer_history_queries_do_not_replay();
     test_imported_producer_default_singleton_shares_state();
     test_imported_producer_explicit_singleton_shares_state();

@@ -1,10 +1,28 @@
-/* Minimal offline-vert: klokke -> generert cxpr -> PCM16 stereo WAV.
- * Sang, instrumenter, miks, effekter, gain og fade ligger i cxpr-modellene.
+/* Minimal offline host: clock -> generated CXPR -> PCM16 stereo WAV.
+ * Songs, instruments, mixing, effects, gain, and fades live in CXPR models.
  */
+#include <stdio.h>
+
+#if defined(__has_include)
+#  if __has_include("song.gen.c")
+#    define CXPR_AUDIO_HAS_GENERATED_SONG 1
+#  endif
+#else
+#  define CXPR_AUDIO_HAS_GENERATED_SONG 1
+#endif
+
+#ifndef CXPR_AUDIO_HAS_GENERATED_SONG
+int main(void) {
+    fprintf(stderr,
+        "song.gen.c is missing. Run this host through "
+        "examples/audio/render.mjs so the CXPR model is generated first.\n");
+    return 1;
+}
+#else
+
 #include <cxpr/generated.h>
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -29,7 +47,7 @@ static void little32(unsigned char *bytes, uint32_t value) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "Bruk: render-native OUTPUT.wav [--frames=COUNT] [--sample-rate=44100]\n");
+        fprintf(stderr, "Usage: render-native OUTPUT.wav [--frames=COUNT] [--sample-rate=44100]\n");
         return 2;
     }
     uint32_t sample_rate = DEFAULT_SAMPLE_RATE;
@@ -45,11 +63,11 @@ int main(int argc, char **argv) {
         else if (strncmp(argv[argument], rate_prefix, strlen(rate_prefix)) == 0)
             value = argv[argument] + strlen(rate_prefix);
         else {
-            fprintf(stderr, "Ukjent valg: %s\n", argv[argument]); return 2;
+            fprintf(stderr, "Unknown option: %s\n", argv[argument]); return 2;
         }
         parsed = strtoul(value, &end, 10);
         if (!end || *end != '\0' || parsed == 0 || parsed > UINT32_MAX) {
-            fprintf(stderr, "Ugyldig heltallsverdi: %s\n", value); return 2;
+            fprintf(stderr, "Invalid integer value: %s\n", value); return 2;
         }
         if (strncmp(argv[argument], frame_prefix, strlen(frame_prefix)) == 0)
             requested_frames = (uint32_t)parsed;
@@ -57,13 +75,13 @@ int main(int argc, char **argv) {
             sample_rate = (uint32_t)parsed;
     }
     if (sample_rate < MIN_SAMPLE_RATE || sample_rate > MAX_SAMPLE_RATE) {
-        fprintf(stderr, "Sample rate må være mellom %u og %u Hz.\n",
+        fprintf(stderr, "Sample rate must be between %u and %u Hz.\n",
                 MIN_SAMPLE_RATE, MAX_SAMPLE_RATE);
         return 2;
     }
     const cxpr_generated_model_descriptor *model = &cxpr_model_tick_descriptor;
     if (!cxpr_generated_model_descriptor_abi_valid(model)) {
-        fprintf(stderr, "Ugyldig generert cxpr-ABI.\n"); return 1;
+        fprintf(stderr, "Invalid generated CXPR ABI.\n"); return 1;
     }
     size_t time_slot = find_name(model->input_names, model->input_count, "t");
     size_t left_slot = find_name(model->output_names, model->output_count, "left");
@@ -72,7 +90,7 @@ int main(int argc, char **argv) {
     if (model->input_count != 1 || time_slot == SIZE_MAX ||
         model->input_types[time_slot] != CXPR_GENERATED_VALUE_NUMBER ||
         left_slot == SIZE_MAX || right_slot == SIZE_MAX || duration_slot == SIZE_MAX) {
-        fprintf(stderr, "Modellen må ha input t og outputs left, right, duration.\n"); return 1;
+        fprintf(stderr, "The model must have input t and outputs left, right, duration.\n"); return 1;
     }
     cxpr_value inputs[CXPR_GENERATED_MODEL_MAX_INPUTS] = {0};
     cxpr_value params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {0};
@@ -80,7 +98,7 @@ int main(int argc, char **argv) {
     size_t sample_rate_slot = SIZE_MAX;
     for (size_t i = 0; i < model->param_count; ++i) {
         if (!model->param_has_default[i]) {
-            fprintf(stderr, "Parameter uten default: %s\n", model->param_names[i]); return 1;
+            fprintf(stderr, "Parameter has no default: %s\n", model->param_names[i]); return 1;
         }
         params[i] = model->param_defaults[i];
         if (strcmp(model->param_names[i], "sample_rate") == 0) {
@@ -89,11 +107,11 @@ int main(int argc, char **argv) {
         }
     }
     if (sample_rate_slot == SIZE_MAX) {
-        fprintf(stderr, "Modellen må eksponere parameteren $sample_rate.\n"); return 1;
+        fprintf(stderr, "The model must expose the $sample_rate parameter.\n"); return 1;
     }
     size_t state_size = model->state_size();
     void *state = calloc(1, state_size ? state_size : 1);
-    if (!state) { fprintf(stderr, "Kunne ikke allokere modellstate.\n"); return 1; }
+    if (!state) { fprintf(stderr, "Could not allocate model state.\n"); return 1; }
     if (model->reset) model->reset(state);
     inputs[time_slot] = cxpr_num(0);
     model->tick(state, inputs, params, outputs);
@@ -101,7 +119,7 @@ int main(int argc, char **argv) {
         ? outputs[duration_slot].d : NAN;
     if (!isfinite(duration) || duration <= 0 ||
         duration * sample_rate > (UINT32_MAX - 36u) / 4u) {
-        fprintf(stderr, "Ugyldig varighet for PCM16 RIFF/WAV.\n"); free(state); return 1;
+        fprintf(stderr, "Invalid duration for PCM16 RIFF/WAV.\n"); free(state); return 1;
     }
     uint32_t frames = (uint32_t)llround(duration * sample_rate);
     if (requested_frames && requested_frames < frames) frames = requested_frames;
@@ -120,6 +138,8 @@ int main(int argc, char **argv) {
     if (fwrite(header, 1, sizeof(header), file) != sizeof(header)) goto cleanup;
     unsigned char block[4096 * 4];
     size_t used = 0;
+    const uint32_t progress_step = frames >= sample_rate * 10u ? frames / 10u : 0u;
+    uint32_t next_progress = progress_step;
     for (uint32_t frame = 0; frame < frames; ++frame) {
         if (frame != 0) {
             inputs[time_slot] = cxpr_num((double)frame / sample_rate);
@@ -129,7 +149,7 @@ int main(int argc, char **argv) {
         for (unsigned channel = 0; channel < 2; ++channel) {
             cxpr_value sample = outputs[channels[channel]];
             if (sample.type != CXPR_VALUE_NUMBER || !isfinite(sample.d) || fabs(sample.d) > 1) {
-                fprintf(stderr, "Ugyldig sample ved ramme %u, kanal %u.\n", frame, channel);
+                fprintf(stderr, "Invalid sample at frame %u, channel %u.\n", frame, channel);
                 goto cleanup;
             }
             int16_t pcm = (int16_t)lround(sample.d * 32767);
@@ -139,6 +159,11 @@ int main(int argc, char **argv) {
         if (used == sizeof(block)) {
             if (fwrite(block, 1, used, file) != used) goto cleanup;
             used = 0;
+        }
+        if (progress_step && frame + 1u >= next_progress) {
+            fprintf(stderr, "%s: rendering %u%%\n", model->name,
+                    (unsigned)(((uint64_t)(frame + 1u) * 100u) / frames));
+            next_progress += progress_step;
         }
     }
     if (used && fwrite(block, 1, used, file) != used) goto cleanup;
@@ -155,6 +180,7 @@ int main(int argc, char **argv) {
 cleanup:
     if (fclose(file) != 0) result = 1;
     free(state);
-    if (result != 0) { remove(argv[1]); fprintf(stderr, "WAV-renderingen mislyktes.\n"); }
+    if (result != 0) { remove(argv[1]); fprintf(stderr, "WAV rendering failed.\n"); }
     return result;
 }
+#endif

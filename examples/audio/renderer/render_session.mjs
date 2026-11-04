@@ -2,7 +2,7 @@ import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:f
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { compileModel } from "../../../../cxpr-node/dist/index.js"
+import { loadCxprNode } from "./load_cxpr_node.mjs"
 
 const SAMPLE_RATE = 44_100
 const CHANNELS = 2
@@ -38,7 +38,8 @@ function pcm16(sample, frame, channel) {
   return Math.round(sample * 32_767)
 }
 
-function render(outputPath, frameLimit, importDir) {
+async function render(outputPath, frameLimit, importDir) {
+  const { compileModel } = await loadCxprNode()
   const source = readFileSync(modelPath, "utf8")
   using model = compileModel(source, { name: modelPath, importDir })
   using session = model.newSession()
@@ -105,5 +106,5 @@ if (!outputPath || !modelPath || !importDir) {
   console.error("--frames must be a positive integer")
   process.exitCode = 2
 } else {
-  render(resolve(outputPath), frameLimit, importDir)
+  await render(resolve(outputPath), frameLimit, importDir)
 }

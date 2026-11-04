@@ -1,7 +1,7 @@
 import { closeSync, openSync, unlinkSync, writeSync } from "node:fs"
 import { resolve } from "node:path"
 
-import { loadGeneratedModel } from "../../../../cxpr-node/dist/index.js"
+import { loadCxprNode } from "./load_cxpr_node.mjs"
 
 const SAMPLE_RATE = 44_100
 const CHANNELS = 2
@@ -41,7 +41,8 @@ function pcm16(sample, frame, channel) {
  * @param {string} outputPath Destination WAV path.
  * @param {number | undefined} frameLimit Optional smoke-test frame limit.
  */
-function render(artifactPath, outputPath, frameLimit) {
+async function render(artifactPath, outputPath, frameLimit) {
+  const { loadGeneratedModel } = await loadCxprNode()
   using model = loadGeneratedModel({ artifactPath })
   using session = model.newSession()
   const initial = session.tickBatch({ t: new Float64Array([0]) })
@@ -112,5 +113,5 @@ if (!outputPath || !artifactPath) {
   console.error(`--generated-node currently requires the model default sample rate (${SAMPLE_RATE})`)
   process.exitCode = 2
 } else {
-  render(artifactPath, resolve(outputPath), frameLimit)
+  await render(artifactPath, resolve(outputPath), frameLimit)
 }

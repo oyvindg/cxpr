@@ -226,8 +226,29 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
     }
     case CXPR_NODE_FUNCTION_CALL: {
         size_t argc = cxpr_expr_ast_call_arg_count(ast);
-        cxpr_expr_ast** args = cxpr_model_inline_args(ast, argc, locals, local_count, false);
+        const cxpr_model_local_binding* call_locals = locals;
+        size_t call_local_count = local_count;
+        cxpr_model_local_binding* filtered_locals = NULL;
+        if (cxpr_model_names_match(cxpr_expr_ast_call_name(ast), "__cxpr_lambda") &&
+            argc == 2u &&
+            cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0u)) ==
+                CXPR_NODE_IDENTIFIER) {
+            const char* parameter = cxpr_expr_ast_identifier_name(
+                cxpr_expr_ast_call_arg(ast, 0u));
+            filtered_locals = (cxpr_model_local_binding*)calloc(
+                local_count ? local_count : 1u, sizeof(*filtered_locals));
+            if (!filtered_locals) return NULL;
+            call_local_count = 0u;
+            for (size_t i = 0u; i < local_count; ++i) {
+                if (!cxpr_model_names_match(locals[i].name, parameter))
+                    filtered_locals[call_local_count++] = locals[i];
+            }
+            call_locals = filtered_locals;
+        }
+        cxpr_expr_ast** args = cxpr_model_inline_args(
+            ast, argc, call_locals, call_local_count, false);
         char** arg_names = cxpr_model_clone_arg_names_from_call(ast, argc);
+        free(filtered_locals);
         if (argc > 0u && (!args || (cxpr_expr_ast_call_has_named_args(ast) && !arg_names))) {
             if (args) {
                 for (size_t i = 0; i < argc; ++i) cxpr_expr_ast_free(args[i]);
@@ -274,6 +295,11 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
                             replacement->data.record.field_values[i]);
                 }
             }
+            if (replacement) {
+                cxpr_expr_ast* expanded = cxpr_expr_ast_clone(replacement);
+                return expanded ? cxpr_expr_ast_field_expr_new(
+                    expanded, cxpr_expr_ast_field_name(ast)) : NULL;
+            }
             return cxpr_expr_ast_clone(ast);
         }
         {
@@ -283,6 +309,19 @@ cxpr_expr_ast* cxpr_model_inline_locals(const cxpr_expr_ast* ast,
             return cxpr_expr_ast_field_expr_new(
                 expanded, cxpr_expr_ast_field_name(ast));
         }
+    }
+    case CXPR_NODE_CHAIN_ACCESS: {
+        const char* const* path = (const char* const*)ast->data.chain_access.path;
+        const size_t depth = ast->data.chain_access.depth;
+        const cxpr_expr_ast* replacement = depth > 0u
+            ? cxpr_model_local_lookup(locals, local_count, path[0]) : NULL;
+        cxpr_expr_ast* expanded;
+        if (!replacement) return cxpr_expr_ast_clone(ast);
+        expanded = cxpr_expr_ast_clone(replacement);
+        for (size_t i = 1u; expanded && i < depth; ++i) {
+            expanded = cxpr_expr_ast_field_expr_new(expanded, path[i]);
+        }
+        return expanded;
     }
     case CXPR_NODE_INDEX: {
         cxpr_expr_ast* target = cxpr_model_inline_locals(cxpr_expr_ast_index_target(ast), locals, local_count);

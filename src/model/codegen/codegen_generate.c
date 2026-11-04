@@ -651,7 +651,6 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             free(field_name);
         } else {
             char* local_name = NULL;
-            const char* dot = name ? strchr(name, '.') : NULL;
             local_name = cxpr_model_c_safe_name(name);
             if (!local_name) {
                 static CXPR_THREAD_LOCAL char output_error[512];
