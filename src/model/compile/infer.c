@@ -338,6 +338,119 @@ static bool cxpr_model_inline_static_collection_source(
     return true;
 }
 
+static bool cxpr_model_structural_sum_shapes_match(const cxpr_expr_ast* left,
+                                                   const cxpr_expr_ast* right) {
+    if (!left || !right || left->type != right->type) return false;
+    if (left->type != CXPR_NODE_RECORD) return true;
+    if (left->data.record.field_count != right->data.record.field_count) return false;
+    for (size_t i = 0u; i < left->data.record.field_count; ++i) {
+        if (strcmp(left->data.record.field_names[i],
+                   right->data.record.field_names[i]) != 0 ||
+            !cxpr_model_structural_sum_shapes_match(
+                left->data.record.field_values[i],
+                right->data.record.field_values[i])) return false;
+    }
+    return true;
+}
+
+static cxpr_expr_ast* cxpr_model_build_structural_sum_record(
+    const cxpr_expr_ast* array,
+    size_t depth,
+    cxpr_error* err) {
+    const cxpr_expr_ast* shape;
+    const size_t count = array ? array->data.array.count : 0u;
+    const char** names;
+    cxpr_expr_ast** values;
+    cxpr_expr_ast* result;
+
+    if (!array || array->type != CXPR_NODE_ARRAY || count == 0u ||
+        depth > CXPR_IR_INFER_DEPTH_LIMIT) {
+        cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                             "Invalid structural sum shape", 0u, 0u);
+        return NULL;
+    }
+    shape = array->data.array.elements[0];
+    if (!shape || shape->type != CXPR_NODE_RECORD ||
+        shape->data.record.field_count == 0u) {
+        cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                             "Structural sum requires a non-empty record", 0u, 0u);
+        return NULL;
+    }
+    for (size_t i = 1u; i < count; ++i) {
+        if (!cxpr_model_structural_sum_shapes_match(shape, array->data.array.elements[i])) {
+            cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                 "sum requires identical record shapes and field order",
+                                 0u, 0u);
+            return NULL;
+        }
+    }
+    names = (const char**)calloc(shape->data.record.field_count, sizeof(*names));
+    values = (cxpr_expr_ast**)calloc(shape->data.record.field_count, sizeof(*values));
+    if (!names || !values) goto oom;
+
+    for (size_t field = 0u; field < shape->data.record.field_count; ++field) {
+        cxpr_expr_ast** elements = (cxpr_expr_ast**)calloc(count, sizeof(*elements));
+        cxpr_expr_ast* field_array;
+        if (!elements) goto oom_fields;
+        names[field] = shape->data.record.field_names[field];
+        for (size_t i = 0u; i < count; ++i) {
+            elements[i] = cxpr_expr_ast_clone(
+                array->data.array.elements[i]->data.record.field_values[field]);
+            if (!elements[i]) {
+                for (size_t j = 0u; j < i; ++j) cxpr_expr_ast_free(elements[j]);
+                free(elements);
+                goto oom_fields;
+            }
+        }
+        field_array = cxpr_expr_ast_array_new(elements, count);
+        if (!field_array) {
+            for (size_t i = 0u; i < count; ++i) cxpr_expr_ast_free(elements[i]);
+            free(elements);
+            goto oom_fields;
+        }
+        if (shape->data.record.field_values[field]->type == CXPR_NODE_RECORD) {
+            values[field] = cxpr_model_build_structural_sum_record(
+                field_array, depth + 1u, err);
+            cxpr_expr_ast_free(field_array);
+            if (!values[field]) goto fail_fields;
+        } else {
+            cxpr_expr_ast** args = (cxpr_expr_ast**)calloc(1u, sizeof(*args));
+            if (!args) { cxpr_expr_ast_free(field_array); goto oom_fields; }
+            args[0] = field_array;
+            values[field] = cxpr_expr_ast_call_new("sum", args, 1u);
+            if (!values[field]) {
+                cxpr_expr_ast_free(field_array);
+                free(args);
+                goto oom_fields;
+            }
+        }
+    }
+    result = cxpr_expr_ast_record_new(
+        names, values, shape->data.record.field_count);
+    free(names);
+    if (!result) goto oom_values;
+    return result;
+
+oom_fields:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+fail_fields:
+    for (size_t i = 0u; i < shape->data.record.field_count; ++i)
+        cxpr_expr_ast_free(values[i]);
+    free(values);
+    free(names);
+    return NULL;
+oom_values:
+    for (size_t i = 0u; i < shape->data.record.field_count; ++i)
+        cxpr_expr_ast_free(values[i]);
+    free(values);
+    return NULL;
+oom:
+    free(names);
+    free(values);
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+    return NULL;
+}
+
 /**
  * Materialize named static collection bindings at native collection sites.
  *
@@ -507,6 +620,21 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
                 cxpr_expr_ast_free(ast);
                 return NULL;
             }
+        }
+        if (name && !strcmp(name, "sum") &&
+            ast->data.function_call.argc == 1u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY &&
+            ast->data.function_call.args[0]->data.array.count > 0u &&
+            ast->data.function_call.args[0]->data.array.elements[0]->type ==
+                CXPR_NODE_RECORD) {
+            cxpr_expr_ast* lowered = cxpr_model_build_structural_sum_record(
+                ast->data.function_call.args[0], 0u, err);
+            if (!lowered) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+            cxpr_expr_ast_free(ast);
+            return cxpr_model_inline_static_collections(lowered, program, err);
         }
     } else if (ast->type == CXPR_NODE_BINARY_OP) {
         ast->data.binary_op.left = cxpr_model_inline_static_collections(

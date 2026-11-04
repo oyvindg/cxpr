@@ -4713,6 +4713,37 @@ static void test_static_record_map_binding_emits_c_tick(void) {
     printf("  ✓ test_static_record_map_binding_emits_c_tick\n");
 }
 
+static void test_structural_sum_emits_nested_record_c(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model structural_sum\n"
+        "in { a, b }\n"
+        "first = { dry = { left = a, right = 2 * a }, wet = { room = { left = 3 * a, right = 4 * a } } }\n"
+        "second = { dry = { left = b, right = 2 * b }, wet = { room = { left = 3 * b, right = 4 * b } } }\n"
+        "voices = [first, second]\n"
+        "out mixed = sum(voices)\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    if (!program) fprintf(stderr, "structural sum compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "structural_sum_tick", &err);
+    if (!code) fprintf(stderr, "structural sum C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "mixed_dry_left") != NULL);
+    assert(strstr(code, "mixed_dry_right") != NULL);
+    assert(strstr(code, "mixed_wet_room_left") != NULL);
+    assert(strstr(code, "mixed_wet_room_right") != NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_structural_sum_emits_nested_record_c\n");
+}
+
 static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -5577,6 +5608,7 @@ int main(void) {
     test_record_param_field_access_emits_c_tick();
     test_static_reduce_compiles_and_emits_c_tick();
     test_static_record_map_binding_emits_c_tick();
+    test_structural_sum_emits_nested_record_c();
     test_window_param_bounds_drive_capacity_and_session_clamp();
     test_child_window_call_param_uses_dynamic_capacity();
     test_dynamic_lookback_uses_parameter_max();

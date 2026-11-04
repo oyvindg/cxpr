@@ -22,8 +22,9 @@ stereo_voices = map(seq.voices, voice => {
         delay_samples=floor($sample_rate / voice.frequency));
     return pan(source=piano, position=voice.pan);
 })
-raw_left = sum(stereo_voices, voice => voice.left)
-raw_right = sum(stereo_voices, voice => voice.right)
+stereo_mix = sum(stereo_voices)
+raw_left = stereo_mix.left
+raw_right = stereo_mix.right
 // A gentle post-sum low-pass removes brittle modal energy without narrowing stereo.
 left_tone = resonance(source=raw_left, sample_rate=$sample_rate,
     cutoff=4600, resonance=0.025)

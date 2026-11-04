@@ -650,6 +650,114 @@ static cxpr_value cxpr_eval_ternary_op(const cxpr_expr_ast* ast, const cxpr_cont
                           ctx, reg, err);
 }
 
+static bool cxpr_eval_structural_sum_error(cxpr_error* err,
+                                           const char* path,
+                                           const char* detail) {
+    static CXPR_THREAD_LOCAL char message[384];
+    snprintf(message, sizeof(message),
+             "sum requires numeric record leaves; field '%s' %s",
+             path && path[0] ? path : "<root>", detail);
+    if (err) {
+        err->code = CXPR_ERR_TYPE_MISMATCH;
+        err->message = message;
+    }
+    return false;
+}
+
+static bool cxpr_eval_structural_sum_accumulate(cxpr_value* accumulator,
+                                                const cxpr_value* value,
+                                                char* path,
+                                                size_t path_cap,
+                                                size_t path_len,
+                                                size_t depth,
+                                                bool initialize,
+                                                cxpr_error* err) {
+    if (!accumulator || !value) return false;
+    if (depth > CXPR_IR_INFER_DEPTH_LIMIT) {
+        return cxpr_eval_structural_sum_error(
+            err, path, "exceeds the supported structure depth");
+    }
+    if (value->type == CXPR_VALUE_NUMBER || value->type == CXPR_VALUE_INT64) {
+        const double number = value->type == CXPR_VALUE_INT64
+            ? (double)value->i64 : value->d;
+        if (initialize) {
+            *accumulator = cxpr_num(number);
+        } else if (accumulator->type == CXPR_VALUE_NUMBER) {
+            accumulator->d += number;
+        } else {
+            return cxpr_eval_structural_sum_error(err, path, "has an incompatible type");
+        }
+        return true;
+    }
+    if (value->type != CXPR_VALUE_STRUCT || !value->s) {
+        return cxpr_eval_structural_sum_error(err, path, "is not numeric");
+    }
+    if (value->s->field_count == 0u) {
+        return cxpr_eval_structural_sum_error(err, path, "is an empty record");
+    }
+    if (initialize) {
+        cxpr_value* fields = (cxpr_value*)calloc(value->s->field_count, sizeof(*fields));
+        cxpr_struct_value* record;
+        if (!fields) {
+            if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+            return false;
+        }
+        for (size_t i = 0u; i < value->s->field_count; ++i) {
+            const char* name = value->s->field_names[i];
+            const size_t name_len = strlen(name);
+            const size_t separator = path_len > 0u ? 1u : 0u;
+            if (path_len + separator + name_len + 1u > path_cap) {
+                for (size_t j = 0u; j < i; ++j) cxpr_value_free(&fields[j]);
+                free(fields);
+                return cxpr_eval_structural_sum_error(err, path, "has an excessively long path");
+            }
+            if (separator) path[path_len] = '.';
+            memcpy(path + path_len + separator, name, name_len + 1u);
+            if (!cxpr_eval_structural_sum_accumulate(
+                    &fields[i], &value->s->field_values[i], path, path_cap,
+                    path_len + separator + name_len, depth + 1u, true, err)) {
+                for (size_t j = 0u; j <= i; ++j) cxpr_value_free(&fields[j]);
+                free(fields);
+                return false;
+            }
+            path[path_len] = '\0';
+        }
+        record = cxpr_struct_value_new(
+            (const char* const*)value->s->field_names, fields, value->s->field_count);
+        for (size_t i = 0u; i < value->s->field_count; ++i) cxpr_value_free(&fields[i]);
+        free(fields);
+        if (!record) {
+            if (err) { err->code = CXPR_ERR_OUT_OF_MEMORY; err->message = "Out of memory"; }
+            return false;
+        }
+        *accumulator = cxpr_struct(record);
+        return true;
+    }
+    if (accumulator->type != CXPR_VALUE_STRUCT || !accumulator->s ||
+        accumulator->s->field_count != value->s->field_count) {
+        return cxpr_eval_structural_sum_error(err, path, "has an incompatible record shape");
+    }
+    for (size_t i = 0u; i < value->s->field_count; ++i) {
+        const char* name = value->s->field_names[i];
+        const size_t name_len = strlen(name);
+        const size_t separator = path_len > 0u ? 1u : 0u;
+        if (strcmp(accumulator->s->field_names[i], name) != 0) {
+            return cxpr_eval_structural_sum_error(err, path, "has an incompatible record shape");
+        }
+        if (path_len + separator + name_len + 1u > path_cap) {
+            return cxpr_eval_structural_sum_error(err, path, "has an excessively long path");
+        }
+        if (separator) path[path_len] = '.';
+        memcpy(path + path_len + separator, name, name_len + 1u);
+        if (!cxpr_eval_structural_sum_accumulate(
+                &accumulator->s->field_values[i], &value->s->field_values[i],
+                path, path_cap, path_len + separator + name_len,
+                depth + 1u, false, err)) return false;
+        path[path_len] = '\0';
+    }
+    return true;
+}
+
 static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
                                              const cxpr_context* ctx,
                                              const cxpr_registry* reg,
@@ -662,6 +770,8 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
     const char* parameter = NULL;
     const char* name;
     double accumulated = 0.0;
+    cxpr_value structural_accumulator = {0};
+    bool structural_sum = false;
     bool predicate_accumulated;
     bool is_any;
     bool is_all;
@@ -773,8 +883,31 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
                 (is_all && !predicate_accumulated)) break;
             continue;
         }
+        if (!strcmp(name, "sum") &&
+            (structural_sum || value.type == CXPR_VALUE_STRUCT)) {
+            char path[256] = {0};
+            if (!structural_sum && i > 0u) {
+                cxpr_value_free(&value);
+                *out = cxpr_eval_error(
+                    err, CXPR_ERR_TYPE_MISMATCH,
+                    "sum requires one homogeneous scalar or record shape");
+                return true;
+            }
+            if (!cxpr_eval_structural_sum_accumulate(
+                    &structural_accumulator, &value, path, sizeof(path), 0u, 0u,
+                    !structural_sum, err)) {
+                cxpr_value_free(&value);
+                cxpr_value_free(&structural_accumulator);
+                *out = cxpr_num(NAN);
+                return true;
+            }
+            structural_sum = true;
+            cxpr_value_free(&value);
+            continue;
+        }
         if (value.type != CXPR_VALUE_NUMBER && value.type != CXPR_VALUE_INT64) {
             cxpr_value_free(&value);
+            cxpr_value_free(&structural_accumulator);
             *out = cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
                                    "Static reduction selector must return a number");
             return true;
@@ -793,6 +926,10 @@ static bool cxpr_eval_static_array_reduction(const cxpr_expr_ast* ast,
     }
     if (is_any || is_all) {
         *out = cxpr_bool(predicate_accumulated);
+        return true;
+    }
+    if (structural_sum) {
+        *out = structural_accumulator;
         return true;
     }
     if (!strcmp(name, "mean")) accumulated /= (double)array->data.array.count;

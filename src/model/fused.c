@@ -139,6 +139,108 @@ static const cxpr_model_binding* cxpr_model_record_binding(
     return NULL;
 }
 
+static bool cxpr_model_is_record_binding(const cxpr_model_compiled* program,
+                                         const cxpr_model* model,
+                                         const char* name) {
+    if (cxpr_model_record_binding(model, name)) return true;
+    if (!program || !name) return false;
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        if (cxpr_model_names_match(program->bindings[i].name, name)) {
+            return program->bindings[i].ast &&
+                   program->bindings[i].ast->type == CXPR_NODE_RECORD;
+        }
+    }
+    return false;
+}
+
+static bool cxpr_model_binding_is_structural_sum(const cxpr_model* model,
+                                                 const char* name) {
+    if (!model || !name) return false;
+    for (size_t i = 0u; i < model->binding_count; ++i) {
+        const cxpr_expr_ast* expr = model->bindings[i].expr;
+        if (cxpr_model_names_match(model->bindings[i].name, name) && expr &&
+            expr->type == CXPR_NODE_FUNCTION_CALL &&
+            expr->data.function_call.name &&
+            strcmp(expr->data.function_call.name, "sum") == 0) return true;
+    }
+    return false;
+}
+
+static size_t cxpr_model_fused_record_leaf_count(const cxpr_expr_ast* record,
+                                                 size_t depth) {
+    size_t count = 0u;
+    if (!record || record->type != CXPR_NODE_RECORD || depth > 32u) return 0u;
+    for (size_t i = 0u; i < record->data.record.field_count; ++i) {
+        const cxpr_expr_ast* value = record->data.record.field_values[i];
+        count += value && value->type == CXPR_NODE_RECORD
+            ? cxpr_model_fused_record_leaf_count(value, depth + 1u) : 1u;
+    }
+    return count;
+}
+
+static bool cxpr_model_fused_record_add_leaves(
+    cxpr_model_compiled* program,
+    const cxpr_model* model,
+    const char* binding_name,
+    const cxpr_expr_ast* record,
+    const char* prefix,
+    const cxpr_registry* reg,
+    cxpr_model_fused_record* out,
+    size_t* next,
+    size_t depth,
+    cxpr_error* err) {
+    if (!record || record->type != CXPR_NODE_RECORD || depth > 32u) return false;
+    for (size_t i = 0u; i < record->data.record.field_count; ++i) {
+        const char* field = record->data.record.field_names[i];
+        const cxpr_expr_ast* value = record->data.record.field_values[i];
+        char relative[512];
+        char qualified[768];
+        int written = prefix && prefix[0]
+            ? snprintf(relative, sizeof(relative), "%s.%s", prefix, field)
+            : snprintf(relative, sizeof(relative), "%s", field);
+        if (written <= 0 || (size_t)written >= sizeof(relative)) return false;
+        if (value && value->type == CXPR_NODE_RECORD) {
+            if (!cxpr_model_fused_record_add_leaves(
+                    program, model, binding_name, value, relative, reg, out,
+                    next, depth + 1u, err)) return false;
+            continue;
+        }
+        written = snprintf(qualified, sizeof(qualified), "%s.%s",
+                           binding_name, relative);
+        if (written <= 0 || (size_t)written >= sizeof(qualified) ||
+            !cxpr_model_fused_slot_add(
+                program, qualified, &out->field_slots[*next], err)) return false;
+        out->field_names[*next] = cxpr_strdup(relative);
+        out->field_kinds[*next] = cxpr_model_infer_result_kind(
+            value, reg, model, program);
+        if (!out->field_names[*next]) return false;
+        (*next)++;
+    }
+    return true;
+}
+
+static const cxpr_expr_ast* cxpr_model_fused_record_leaf(
+    const cxpr_expr_ast* record,
+    const char* path) {
+    const cxpr_expr_ast* current = record;
+    const char* cursor = path;
+    while (current && current->type == CXPR_NODE_RECORD && cursor && cursor[0]) {
+        const char* dot = strchr(cursor, '.');
+        const size_t length = dot ? (size_t)(dot - cursor) : strlen(cursor);
+        const cxpr_expr_ast* next = NULL;
+        for (size_t i = 0u; i < current->data.record.field_count; ++i) {
+            const char* name = current->data.record.field_names[i];
+            if (strlen(name) == length && strncmp(name, cursor, length) == 0) {
+                next = current->data.record.field_values[i];
+                break;
+            }
+        }
+        current = next;
+        cursor = dot ? dot + 1u : NULL;
+    }
+    return current;
+}
+
 static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
                                         const cxpr_model* model,
                                         const char* binding_name,
@@ -154,13 +256,21 @@ static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
     memset(out, 0, sizeof(*out));
     program->fused_record_count++;
     out->name = cxpr_strdup(binding_name);
-    out->field_count = record->data.record.field_count;
+    out->field_count = cxpr_model_binding_is_structural_sum(model, binding_name)
+        ? cxpr_model_fused_record_leaf_count(record, 0u)
+        : record->data.record.field_count;
     out->field_names = (char**)calloc(out->field_count, sizeof(*out->field_names));
     out->field_slots = (size_t*)calloc(out->field_count, sizeof(*out->field_slots));
     out->field_kinds = (cxpr_model_result_kind*)calloc(
         out->field_count, sizeof(*out->field_kinds));
     if (!out->name || (out->field_count > 0u &&
         (!out->field_names || !out->field_slots || !out->field_kinds))) goto oom;
+    if (cxpr_model_binding_is_structural_sum(model, binding_name)) {
+        size_t next = 0u;
+        return cxpr_model_fused_record_add_leaves(
+            program, model, binding_name, record, "", reg, out, &next, 0u, err) &&
+            next == out->field_count;
+    }
     for (size_t i = 0u; i < out->field_count; ++i) {
         char field_name[512];
         int written = snprintf(field_name, sizeof(field_name), "%s.%s",
@@ -422,7 +532,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
     }
 
     for (size_t i = 0; i < program->output_count; ++i) {
-        if (cxpr_model_record_binding(model, program->outputs[i])) continue;
+        if (cxpr_model_is_record_binding(program, model, program->outputs[i])) continue;
         size_t slot = cxpr_model_fused_slot_find(
             program->fused_slot_names, program->fused_slot_count, program->outputs[i]);
         cxpr_model_result_kind result_kind;
@@ -494,8 +604,10 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                 for (size_t prior = 0u; prior < field; ++prior)
                     aliases[layout->field_slots[prior]] = layout->field_names[prior];
                 {
-                    bool compiled = cxpr_ir_compile_node(
-                        record->data.record.field_values[field],
+                    const cxpr_expr_ast* leaf = cxpr_model_fused_record_leaf(
+                        record, layout->field_names[field]);
+                    bool compiled = leaf && cxpr_ir_compile_node(
+                        leaf,
                         &program->fused_ir, compile_reg, aliases,
                         program->fused_slot_count, NULL, 0u, err);
                     free(aliases);

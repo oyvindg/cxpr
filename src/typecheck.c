@@ -179,6 +179,81 @@ static bool cxpr_typecheck_is_bool(cxpr_typecheck_static_type type) {
     return type == CXPR_STATIC_BOOL || type == CXPR_STATIC_UNKNOWN;
 }
 
+static cxpr_typecheck_static_type cxpr_typecheck_infer(
+    const cxpr_expr_ast* ast, const cxpr_registry* reg, cxpr_error* err);
+
+static bool cxpr_typecheck_structural_sum_shape(const cxpr_expr_ast* shape,
+                                                const cxpr_registry* reg,
+                                                char* path,
+                                                size_t path_cap,
+                                                size_t path_len,
+                                                size_t depth,
+                                                cxpr_error* err) {
+    static _Thread_local char message[384];
+    if (!shape || depth > 32u) {
+        snprintf(message, sizeof(message),
+                 "sum record field '%s' exceeds the supported structure depth",
+                 path_len ? path : "<root>");
+        goto invalid;
+    }
+    if (shape->type != CXPR_NODE_RECORD) {
+        cxpr_typecheck_static_type type = cxpr_typecheck_infer(shape, reg, err);
+        if (type == CXPR_STATIC_ERROR) return false;
+        if (cxpr_typecheck_is_numeric(type)) return true;
+        snprintf(message, sizeof(message),
+                 "sum requires numeric record leaves; field '%s' has type %s",
+                 path_len ? path : "<root>", cxpr_typecheck_type_name(type));
+        goto invalid;
+    }
+    if (shape->data.record.field_count == 0u) {
+        snprintf(message, sizeof(message),
+                 "sum requires numeric record leaves; field '%s' is an empty record",
+                 path_len ? path : "<root>");
+        goto invalid;
+    }
+    for (size_t i = 0u; i < shape->data.record.field_count; ++i) {
+        const char* name = shape->data.record.field_names[i];
+        const size_t name_len = strlen(name);
+        const size_t separator = path_len ? 1u : 0u;
+        if (path_len + separator + name_len + 1u > path_cap) {
+            snprintf(message, sizeof(message), "sum record field path is too long");
+            goto invalid;
+        }
+        if (separator) path[path_len] = '.';
+        memcpy(path + path_len + separator, name, name_len + 1u);
+        if (!cxpr_typecheck_structural_sum_shape(
+                shape->data.record.field_values[i], reg, path, path_cap,
+                path_len + separator + name_len, depth + 1u, err)) return false;
+        path[path_len] = '\0';
+    }
+    return true;
+
+invalid:
+    if (err) {
+        *err = (cxpr_error){0};
+        err->code = CXPR_ERR_TYPE_MISMATCH;
+        err->message = message;
+    }
+    return false;
+}
+
+static bool cxpr_typecheck_structural_sum_shapes_match(
+    const cxpr_expr_ast* expected,
+    const cxpr_expr_ast* actual) {
+    if (!expected || !actual) return false;
+    if (expected->type != CXPR_NODE_RECORD || actual->type != CXPR_NODE_RECORD)
+        return expected->type != CXPR_NODE_RECORD && actual->type != CXPR_NODE_RECORD;
+    if (expected->data.record.field_count != actual->data.record.field_count) return false;
+    for (size_t i = 0u; i < expected->data.record.field_count; ++i) {
+        if (strcmp(expected->data.record.field_names[i],
+                   actual->data.record.field_names[i]) != 0 ||
+            !cxpr_typecheck_structural_sum_shapes_match(
+                expected->data.record.field_values[i],
+                actual->data.record.field_values[i])) return false;
+    }
+    return true;
+}
+
 static cxpr_typecheck_static_type cxpr_typecheck_join(cxpr_typecheck_static_type a,
                                        cxpr_typecheck_static_type b,
                                        const cxpr_expr_ast* node,
@@ -414,6 +489,57 @@ static cxpr_typecheck_static_type cxpr_typecheck_infer_call(const cxpr_expr_ast*
             return CXPR_STATIC_ERROR;
         }
         return initial_type;
+    }
+
+    if (strcmp(name, "sum") == 0 && ast->data.function_call.argc >= 1u &&
+        ast->data.function_call.argc <= 2u) {
+        const cxpr_expr_ast* source = ast->data.function_call.args[0];
+        const cxpr_expr_ast* shape = NULL;
+        if (ast->data.function_call.argc == 2u) {
+            const cxpr_expr_ast* lambda = ast->data.function_call.args[1];
+            if (lambda && lambda->type == CXPR_NODE_FUNCTION_CALL &&
+                !strcmp(lambda->data.function_call.name, "__cxpr_lambda") &&
+                lambda->data.function_call.argc == 2u) {
+                shape = lambda->data.function_call.args[1];
+            }
+        } else if (source && source->type == CXPR_NODE_FUNCTION_CALL &&
+            !strcmp(source->data.function_call.name, "map") &&
+            source->data.function_call.argc == 2u) {
+            const cxpr_expr_ast* lambda = source->data.function_call.args[1];
+            if (lambda && lambda->type == CXPR_NODE_FUNCTION_CALL &&
+                !strcmp(lambda->data.function_call.name, "__cxpr_lambda") &&
+                lambda->data.function_call.argc == 2u) {
+                shape = lambda->data.function_call.args[1];
+            }
+        } else if (source && source->type == CXPR_NODE_ARRAY &&
+                   source->data.array.count > 0u) {
+            shape = source->data.array.elements[0];
+            if (shape && shape->type == CXPR_NODE_RECORD) {
+                for (size_t i = 1u; i < source->data.array.count; ++i) {
+                    if (!cxpr_typecheck_structural_sum_shapes_match(
+                            shape, source->data.array.elements[i])) {
+                        cxpr_typecheck_struct_shape_error(err, "sum");
+                        return CXPR_STATIC_ERROR;
+                    }
+                    {
+                        char element_path[256] = {0};
+                        if (!cxpr_typecheck_structural_sum_shape(
+                                source->data.array.elements[i], reg,
+                                element_path, sizeof(element_path), 0u, 0u, err)) {
+                            return CXPR_STATIC_ERROR;
+                        }
+                    }
+                }
+            }
+        }
+        if (shape && shape->type == CXPR_NODE_RECORD) {
+            char path[256] = {0};
+            if (!cxpr_typecheck_structural_sum_shape(
+                    shape, reg, path, sizeof(path), 0u, 0u, err)) {
+                return CXPR_STATIC_ERROR;
+            }
+            return CXPR_STATIC_STRUCT;
+        }
     }
 
     if ((strcmp(name, "any") == 0 || strcmp(name, "all") == 0) &&

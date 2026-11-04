@@ -1,6 +1,7 @@
 #include <cxpr/cxpr.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_eval_tree_access_paths(void) {
     cxpr_expr_parser* p = cxpr_expr_parser_new();
@@ -65,6 +66,35 @@ static void test_eval_tree_access_paths(void) {
     assert(ast);
     assert(cxpr_eval_ast_number(ast, ctx, reg, &out, &err));
     assert(out == 2.5);
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p,
+        "sum([{ dry = { left = 1, right = 2 }, wet = { room = { left = 3, right = 4 } } }, "
+        "     { dry = { left = 5, right = 6 }, wet = { room = { left = 7, right = 8 } } }])",
+        &err);
+    assert(ast);
+    {
+        cxpr_value value = {0};
+        assert(cxpr_eval_ast(ast, ctx, reg, &value, &err));
+        assert(value.type == CXPR_VALUE_STRUCT && value.s);
+        assert(value.s->field_values[0].s->field_values[0].d == 6.0);
+        assert(value.s->field_values[0].s->field_values[1].d == 8.0);
+        assert(value.s->field_values[1].s->field_values[0].s->field_values[0].d == 10.0);
+        assert(value.s->field_values[1].s->field_values[0].s->field_values[1].d == 12.0);
+        cxpr_value_free(&value);
+    }
+    cxpr_expr_ast_free(ast);
+
+    ast = cxpr_expr_ast_parse(p,
+        "sum([{ sample = 1, metadata = { name = \"lead\" } }, "
+        "     { sample = 2, metadata = { name = \"bass\" } }])", &err);
+    assert(ast);
+    {
+        cxpr_value value = {0};
+        assert(!cxpr_eval_ast(ast, ctx, reg, &value, &err));
+        assert(err.code == CXPR_ERR_TYPE_MISMATCH);
+        assert(err.message && strstr(err.message, "metadata.name"));
+    }
     cxpr_expr_ast_free(ast);
 
     cxpr_registry_free(reg);

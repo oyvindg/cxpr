@@ -70,10 +70,9 @@ pan_two = { left=p2.left, right=p2.right }
 pan_three = { left=p3.left, right=p3.right }
 pan_four = { left=p4.left, right=p4.right }
 pan_voices = [pan_one, pan_two, pan_three, pan_four]
-pad_left = reduce(map(pan_voices, voice => voice.left), 0,
-    step => step.acc + step.value)
-pad_right = reduce(map(pan_voices, voice => voice.right), 0,
-    step => step.acc + step.value)
+pad_mix = sum(pan_voices)
+pad_left = pad_mix.left
+pad_right = pad_mix.right
 phase_left = phaser(source=pad_left, sample_rate=$sample_rate, rate=0.13, depth=0.78, mix=0.32)
 phase_right = phaser(source=pad_right, sample_rate=$sample_rate, rate=0.17, depth=0.78, mix=0.32)
 
