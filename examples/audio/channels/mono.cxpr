@@ -4,6 +4,4 @@ model mono(source_arg = "source")
 in source { left, right }
 $gain = 0.5
 
-out {
-    sample = $gain * (source.left + source.right)
-}
+out sample = $gain * (source.left + source.right)

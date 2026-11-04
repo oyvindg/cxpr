@@ -2,6 +2,7 @@
 #include <cxpr/context.h>
 #include <cxpr/generated.h>
 #include <cxpr/model/model.h>
+#include "model/codegen/internal.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -174,10 +175,12 @@ char* cxpr_c_plugin_artifact_from_program(
         options && options->function_name ? options->function_name : default_function_name;
     const size_t input_count = cxpr_model_compiled_input_count(program);
     const size_t model_output_count = cxpr_model_compiled_output_count(program);
-    const size_t output_count =
-        options && options->output_count > 0u ? options->output_count : model_output_count;
     const size_t param_count = cxpr_model_compiled_call_param_count(program);
     const size_t* output_indices = options ? options->output_indices : NULL;
+    cxpr_model_slot_ref* flat_outputs = NULL;
+    const cxpr_model_slot_ref** descriptor_outputs = NULL;
+    size_t flat_output_count = 0u;
+    size_t output_count = 0u;
     cxpr_context* defaults_ctx = NULL;
     char* evaluator = NULL;
     cxpr_c_buf out = {0};
@@ -186,13 +189,6 @@ char* cxpr_c_plugin_artifact_from_program(
     if (!program || !model_name || !model_name[0]) {
         cxpr_c_set_error(
             err, CXPR_ERR_SYNTAX, "cxpr C artifact requires program and model name");
-        return NULL;
-    }
-    if (input_count > CXPR_GENERATED_MODEL_MAX_INPUTS ||
-        output_count > CXPR_GENERATED_MODEL_MAX_OUTPUTS ||
-        param_count > CXPR_GENERATED_MODEL_MAX_PARAMS) {
-        cxpr_c_set_error(
-            err, CXPR_ERR_SYNTAX, "generated descriptor exceeds ABI limits");
         return NULL;
     }
     if (options && options->output_count > 0u && !output_indices) {
@@ -206,6 +202,44 @@ char* cxpr_c_plugin_artifact_from_program(
                 err, CXPR_ERR_SYNTAX, "selected output index is out of range");
             return NULL;
         }
+    }
+    if (!cxpr_model_c_flatten_outputs(
+            program, &flat_outputs, &flat_output_count, err)) {
+        return NULL;
+    }
+    descriptor_outputs = (const cxpr_model_slot_ref**)calloc(
+        flat_output_count ? flat_output_count : 1u, sizeof(*descriptor_outputs));
+    if (!descriptor_outputs) {
+        cxpr_c_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "out of memory");
+        goto fail;
+    }
+    if (options && options->output_count > 0u) {
+        for (i = 0u; i < options->output_count; ++i) {
+            const char* selected = cxpr_model_compiled_output_name(
+                program, output_indices[i]);
+            const size_t selected_length = selected ? strlen(selected) : 0u;
+            size_t flat_i;
+            for (flat_i = 0u; flat_i < flat_output_count; ++flat_i) {
+                const char* flat = flat_outputs[flat_i].name;
+                if (flat && selected &&
+                    (strcmp(flat, selected) == 0 ||
+                     (strncmp(flat, selected, selected_length) == 0 &&
+                      flat[selected_length] == '.'))) {
+                    descriptor_outputs[output_count++] = &flat_outputs[flat_i];
+                }
+            }
+        }
+    } else {
+        for (i = 0u; i < flat_output_count; ++i) {
+            descriptor_outputs[output_count++] = &flat_outputs[i];
+        }
+    }
+    if (input_count > CXPR_GENERATED_MODEL_MAX_INPUTS ||
+        output_count > CXPR_GENERATED_MODEL_MAX_OUTPUTS ||
+        param_count > CXPR_GENERATED_MODEL_MAX_PARAMS) {
+        cxpr_c_set_error(
+            err, CXPR_ERR_SYNTAX, "generated descriptor exceeds ABI limits");
+        goto fail;
     }
 
     evaluator = cxpr_c_plugin_source_from_program(program, options, err);
@@ -284,15 +318,13 @@ char* cxpr_c_plugin_artifact_from_program(
         goto oom;
     }
     for (i = 0u; i < output_count; ++i) {
-        const size_t model_index = output_indices ? output_indices[i] : i;
         if (!cxpr_c_appendf(
                 &out,
                 "    .output_names[%zu] = \"%s\",\n"
                 "    .output_types[%zu] = %s,\n",
-                i, cxpr_model_compiled_output_name(program, model_index),
+                i, descriptor_outputs[i]->name,
                 i, cxpr_c_generated_type_name(
-                       cxpr_model_compiled_output_result_kind(
-                           program, model_index)))) {
+                       descriptor_outputs[i]->result_kind))) {
             goto oom;
         }
     }
@@ -315,6 +347,8 @@ char* cxpr_c_plugin_artifact_from_program(
     }
 
     free(evaluator);
+    free(descriptor_outputs);
+    cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
     cxpr_context_free(defaults_ctx);
     if (err) err->code = CXPR_OK;
     return out.data;
@@ -324,6 +358,8 @@ oom:
 fail:
     free(evaluator);
     free(out.data);
+    free(descriptor_outputs);
+    cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
     cxpr_context_free(defaults_ctx);
     return NULL;
 }

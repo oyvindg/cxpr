@@ -17,7 +17,7 @@ sample timing, audio devices, buffers, and polyphonic voice allocation.
 
 Shared modules:
 
-- `channels/mono`: explicit stereo-to-mono conversion for
+- `channels/mono`: explicit stereo-to-scalar conversion for
   `stereo |> mono(gain=0.5)` composition;
 - `oscillators/oscillator`: PolyBLEP saw and pulse plus sine, PWM, and drift;
 - `envelopes/adsr`: exponential attack, decay, sustain, and release;
@@ -54,11 +54,11 @@ resolution: `audio/` remains the import root, so a model under
 Song folders contain only composition and arrangement models; reusable DSP and
 instrument voices belong in the shared namespaces above.
 
-Audio composition roots expose `duration` plus the scalar columns
-`stereo_left` and `stereo_right`. Mono effect chains keep `{ sample }` until a
-mono master explicitly places the same final sample in both stereo channels.
-The WAV hosts also accept `mono` and legacy `left`/`right` outputs for
-compatibility, but complete songs use the stable stereo contract.
+Audio composition roots expose `duration` plus exactly one audio value: scalar
+`mono`, or rooted `stereo = { left, right }`. Mono effect chains remain scalar.
+Generated hosts see stereo as `stereo.left` and `stereo.right`; WAV sinks alone
+duplicate `mono` into two output channels. Hosts intentionally reject legacy
+top-level `left`/`right` and `stereo_left`/`stereo_right` layouts.
 
 `render.mjs` is the common CLI adapter used by every audio example. Local
 entrypoints only pass their own `import.meta.url`; the adapter locates

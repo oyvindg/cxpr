@@ -1,6 +1,6 @@
 model song(type = "dsp")
 
-use master from effects
+use master from effects/stereo
 
 in t
 $sample_rate = 44100
@@ -8,14 +8,14 @@ $frequency = 220
 
 carrier = 0.32 * sin(2 * pi() * $frequency * t)
 overtone = 0.10 * sin(2 * pi() * $frequency * 2.01 * t)
-stereo = 0.04 * sin(2 * pi() * 0.25 * t)
-finished = master(source_left=carrier + overtone,
-                  source_right=carrier + overtone + stereo,
-                  t=t, sample_rate=$sample_rate, gain=1,
-                  duration=2, fade_seconds=0.15, ceiling=0.9)
+stereo_motion = 0.04 * sin(2 * pi() * 0.25 * t)
+sample = {
+    left = carrier + overtone,
+    right = carrier + overtone + stereo_motion
+}
+stereo = sample |> master(t=t, sample_rate=$sample_rate, gain=1,
+                          duration=2, fade_seconds=0.15, ceiling=0.9)
 
-left = finished.left
-right = finished.right
 duration = 2
 
-out { left, right, duration }
+out stereo, duration

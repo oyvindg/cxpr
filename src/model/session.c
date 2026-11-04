@@ -1109,6 +1109,12 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
             input_found = true;
             owns_value = true;
         }
+        if (source_arg && value.type == CXPR_VALUE_STRUCT && value.s &&
+            value.s->field_count == 1u) {
+            cxpr_value scalar = cxpr_value_clone(&value.s->field_values[0]);
+            cxpr_value_free(&value);
+            value = scalar;
+        }
         if (!input_found) {
             if (has_rooted_source) cxpr_value_free(&rooted_source);
             if (transient_session) cxpr_model_session_free(child_session);

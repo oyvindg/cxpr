@@ -72,6 +72,27 @@ bool cxpr_model_c_flatten_outputs(const cxpr_model_compiled* program,
                 break;
             }
         }
+        if (binding && cxpr_expr_ast_kind_of(binding->ast) ==
+                           CXPR_NODE_FUNCTION_CALL) {
+            bool used_fused_shape = false;
+            const size_t output_name_length = strlen(program->outputs[i]);
+            for (size_t fused_i = 0u;
+                 fused_i < program->fused_output_count; ++fused_i) {
+                const char* fused_name = program->fused_outputs[fused_i].name;
+                if (fused_name &&
+                    strncmp(fused_name, program->outputs[i],
+                            output_name_length) == 0 &&
+                    fused_name[output_name_length] == '.') {
+                    if (!cxpr_model_c_append_output_leaf(
+                            &outputs, &count, fused_name,
+                            program->fused_outputs[fused_i].result_kind, err)) {
+                        goto fail;
+                    }
+                    used_fused_shape = true;
+                }
+            }
+            if (used_fused_shape) continue;
+        }
         if (binding && cxpr_expr_ast_kind_of(binding->ast) == CXPR_NODE_RECORD) {
             if (!cxpr_model_c_flatten_record(
                     binding->ast, program->outputs[i], &outputs, &count, err)) goto fail;

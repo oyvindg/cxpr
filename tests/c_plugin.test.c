@@ -78,6 +78,34 @@ static void test_complete_artifact_descriptor_metadata(void) {
     cxpr_model_free(model);
 }
 
+static void test_record_output_descriptor_is_flattened(void) {
+    static const char source[] =
+        "model record_artifact\n"
+        "in source\n"
+        "stereo = { left = source, right = -source }\n"
+        "duration = 1\n"
+        "out stereo, duration\n";
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_model_parse(source, &err);
+    cxpr_model_compiled* program;
+    char* artifact;
+
+    assert(model != NULL);
+    program = cxpr_model_compile(model, NULL, &err);
+    assert(program != NULL);
+    artifact = cxpr_c_plugin_artifact_from_program(
+        program, cxpr_model_name(model), NULL, &err);
+    assert(artifact != NULL);
+    assert(strstr(artifact, ".output_count = 3") != NULL);
+    assert(strstr(artifact, ".output_names[0] = \"stereo.left\"") != NULL);
+    assert(strstr(artifact, ".output_names[1] = \"stereo.right\"") != NULL);
+    assert(strstr(artifact, ".output_names[2] = \"duration\"") != NULL);
+
+    cxpr_c_plugin_source_free(artifact);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+}
+
 static void test_host_binding_schema_diagnostics(void) {
     static const char source[] =
         "model host_schema\n"
@@ -118,6 +146,7 @@ static void test_host_binding_schema_diagnostics(void) {
 
 int main(void) {
     test_complete_artifact_descriptor_metadata();
+    test_record_output_descriptor_is_flattened();
     test_host_binding_schema_diagnostics();
     puts("C plugin artifact tests passed");
     return 0;

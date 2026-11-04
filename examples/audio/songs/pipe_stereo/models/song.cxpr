@@ -19,13 +19,11 @@ spatial = {
 }
 
 # Rooted record piping binds both channels to each authored stage once.
-finished = spatial
+stereo = spatial
     |> delay(sample_rate=$sample_rate, time=0.25, feedback=0.30, mix=0.38)
     |> reverb(sample_rate=$sample_rate, mix=0.20, decay=0.70)
     |> gain(level=0.80)
     |> master(t=t, sample_rate=$sample_rate, gain=2.2, duration=4, fade_seconds=0.5, ceiling=0.90)
-stereo_left = finished.left
-stereo_right = finished.right
 duration = 4
 
-out { stereo_left, stereo_right, duration }
+out stereo, duration

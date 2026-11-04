@@ -144,6 +144,11 @@ static bool cxpr_model_is_record_binding(const cxpr_model_compiled* program,
                                          const char* name) {
     if (cxpr_model_record_binding(model, name)) return true;
     if (!program || !name) return false;
+    for (size_t i = 0u; i < program->fused_record_count; ++i) {
+        if (cxpr_model_names_match(program->fused_records[i].name, name)) {
+            return true;
+        }
+    }
     for (size_t i = 0u; i < program->binding_count; ++i) {
         if (cxpr_model_names_match(program->bindings[i].name, name)) {
             return program->bindings[i].ast &&
@@ -286,6 +291,78 @@ static bool cxpr_model_fused_record_add(cxpr_model_compiled* program,
     return true;
 oom:
     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+    return false;
+}
+
+static bool cxpr_model_fused_producer_record_add(
+    cxpr_model_compiled* program,
+    const char* binding_name,
+    const cxpr_expr_ast* call,
+    const cxpr_registry* reg,
+    cxpr_error* err) {
+    cxpr_func_entry* entry;
+    const cxpr_model_child_program* child;
+    cxpr_model_fused_record* grown;
+    cxpr_model_fused_record* out;
+    if (!program || !binding_name || !call ||
+        call->type != CXPR_NODE_FUNCTION_CALL || !reg) return false;
+    entry = cxpr_registry_find(reg, call->data.function_call.name);
+    child = entry && entry->model_producer_userdata
+        ? (const cxpr_model_child_program*)entry->model_producer_userdata : NULL;
+    if (!child || !child->program || child->program->output_count < 2u) return false;
+    grown = (cxpr_model_fused_record*)realloc(
+        program->fused_records,
+        (program->fused_record_count + 1u) * sizeof(*program->fused_records));
+    if (!grown) goto oom;
+    program->fused_records = grown;
+    out = &grown[program->fused_record_count++];
+    memset(out, 0, sizeof(*out));
+    out->name = cxpr_strdup(binding_name);
+    out->field_count = child->program->output_count;
+    out->field_names = (char**)calloc(out->field_count, sizeof(*out->field_names));
+    out->field_slots = (size_t*)calloc(out->field_count, sizeof(*out->field_slots));
+    out->field_kinds = (cxpr_model_result_kind*)calloc(
+        out->field_count, sizeof(*out->field_kinds));
+    if (!out->name || !out->field_names || !out->field_slots ||
+        !out->field_kinds) goto oom;
+    for (size_t i = 0u; i < out->field_count; ++i) {
+        const char* field = child->program->outputs[i];
+        char qualified[768];
+        const int written = snprintf(
+            qualified, sizeof(qualified), "%s.%s", binding_name, field);
+        if (!field || written <= 0 || (size_t)written >= sizeof(qualified) ||
+            !cxpr_model_fused_slot_add(
+                program, qualified, &out->field_slots[i], err)) return false;
+        out->field_names[i] = cxpr_strdup(field);
+        out->field_kinds[i] = cxpr_model_compiled_output_result_kind(
+            child->program, i);
+        if (!out->field_names[i]) goto oom;
+    }
+    return true;
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+    return false;
+}
+
+static bool cxpr_model_fused_producer_is_record(
+    const cxpr_expr_ast* call,
+    const cxpr_registry* reg) {
+    cxpr_func_entry* entry;
+    const cxpr_model_child_program* child;
+    if (!call || call->type != CXPR_NODE_FUNCTION_CALL || !reg) return false;
+    entry = cxpr_registry_find(reg, call->data.function_call.name);
+    child = entry && entry->model_producer_userdata
+        ? (const cxpr_model_child_program*)entry->model_producer_userdata : NULL;
+    return child && child->program && child->program->output_count > 1u;
+}
+
+static bool cxpr_model_binding_is_output(
+    const cxpr_model_compiled* program,
+    const char* name) {
+    if (!program || !name) return false;
+    for (size_t i = 0u; i < program->output_count; ++i) {
+        if (cxpr_model_names_match(program->outputs[i], name)) return true;
+    }
     return false;
 }
 
@@ -502,6 +579,16 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                 cxpr_model_fused_program_clear(program);
                 return false;
             }
+        } else if (cxpr_model_binding_is_output(
+                       program, model->bindings[i].name) &&
+                   cxpr_model_fused_producer_is_record(
+                       model->bindings[i].expr, compile_reg)) {
+            if (!cxpr_model_fused_producer_record_add(
+                    program, model->bindings[i].name, model->bindings[i].expr,
+                    compile_reg, err)) {
+                cxpr_model_fused_program_clear(program);
+                return false;
+            }
         } else if (!cxpr_model_fused_slot_add(
                        program, model->bindings[i].name, NULL, err)) {
             cxpr_model_fused_program_clear(program);
@@ -532,7 +619,54 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
     }
 
     for (size_t i = 0; i < program->output_count; ++i) {
-        if (cxpr_model_is_record_binding(program, model, program->outputs[i])) continue;
+        if (cxpr_model_is_record_binding(program, model, program->outputs[i])) {
+            const cxpr_model_fused_record* record = NULL;
+            const cxpr_model_binding* output_binding = NULL;
+            for (size_t binding_i = 0u;
+                 binding_i < model->binding_count; ++binding_i) {
+                if (cxpr_model_names_match(
+                        model->bindings[binding_i].name,
+                        program->outputs[i])) {
+                    output_binding = &model->bindings[binding_i];
+                    break;
+                }
+            }
+            if (!output_binding || !cxpr_model_fused_producer_is_record(
+                    output_binding->expr, compile_reg)) {
+                continue;
+            }
+            for (size_t record_i = 0u;
+                 record_i < program->fused_record_count; ++record_i) {
+                if (cxpr_model_names_match(
+                        program->fused_records[record_i].name,
+                        program->outputs[i])) {
+                    record = &program->fused_records[record_i];
+                    break;
+                }
+            }
+            if (!record) {
+                cxpr_model_fused_program_clear(program);
+                return true;
+            }
+            for (size_t field_i = 0u; field_i < record->field_count; ++field_i) {
+                char output_name[768];
+                const int written = snprintf(
+                    output_name, sizeof(output_name), "%s.%s",
+                    program->outputs[i], record->field_names[field_i]);
+                if (written <= 0 || (size_t)written >= sizeof(output_name) ||
+                    !cxpr_model_slot_ref_append(
+                        &program->fused_outputs,
+                        &program->fused_output_count,
+                        output_name,
+                        record->field_slots[field_i],
+                        record->field_kinds[field_i],
+                        err)) {
+                    cxpr_model_fused_program_clear(program);
+                    return false;
+                }
+            }
+            continue;
+        }
         size_t slot = cxpr_model_fused_slot_find(
             program->fused_slot_names, program->fused_slot_count, program->outputs[i]);
         cxpr_model_result_kind result_kind;
@@ -569,6 +703,13 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
     for (size_t i = 0u; i < model->binding_count; ++i) {
         if (model->bindings[i].kind == CXPR_MODEL_BINDING_STATE &&
             model->bindings[i].declared_type == CXPR_MODEL_DECL_BUFFER) {
+            program->has_fused_ir = false;
+            return true;
+        }
+        if (cxpr_model_binding_is_output(program, model->bindings[i].name) &&
+            cxpr_model_fused_producer_is_record(
+                model->bindings[i].expr,
+                compile_reg)) {
             program->has_fused_ir = false;
             return true;
         }

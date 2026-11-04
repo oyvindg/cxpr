@@ -39,10 +39,15 @@ function pcm16(sample, frame, channel) {
 }
 
 function channels(output) {
-  if (output.stereo_left && output.stereo_right)
-    return { left: output.stereo_left, right: output.stereo_right }
-  if (output.mono) return { left: output.mono, right: output.mono }
-  return { left: output.left, right: output.right }
+  const keys = Object.keys(output).sort()
+  if (keys.length === 2 && keys[0] === "duration" && keys[1] === "mono") {
+    return { left: output.mono, right: output.mono }
+  }
+  if (keys.length === 3 && keys[0] === "duration" &&
+      keys[1] === "stereo.left" && keys[2] === "stereo.right") {
+    return { left: output["stereo.left"], right: output["stereo.right"] }
+  }
+  throw new Error("The song model must output mono and duration, or stereo { left, right } and duration")
 }
 
 async function render(outputPath, frameLimit, importDir) {

@@ -1,6 +1,6 @@
 model delay(source_arg = "source", lifecycle = "scoped")
 
-in source { sample }
+in source
 $sample_rate = 44100
 $time = 0.25
 $feedback = 0.30
@@ -18,6 +18,6 @@ raw = $time < 0.1875 ? line[index_125] :
 wet = isnan(raw) ? 0 : raw
 feedback = clamp($feedback, 0, 0.95)
 mix = clamp($mix, 0, 1)
-line := source.sample + feedback * wet
+line := source + feedback * wet
 
-out { sample = (1 - mix) * source.sample + mix * wet }
+out sample = (1 - mix) * source + mix * wet

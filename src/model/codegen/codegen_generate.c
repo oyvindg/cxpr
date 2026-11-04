@@ -446,7 +446,57 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             }
             continue;
         }
-        if (cxpr_model_ast_is_record_like(program, program->bindings[i].ast, 0u)) continue;
+        if (cxpr_model_ast_is_record_like(program, program->bindings[i].ast, 0u)) {
+            cxpr_model_fused_record* layout = NULL;
+            for (size_t record_i = 0u;
+                 record_i < program->fused_record_count; ++record_i) {
+                if (cxpr_model_names_match(
+                        program->fused_records[record_i].name,
+                        program->bindings[i].name)) {
+                    layout = &program->fused_records[record_i];
+                    break;
+                }
+            }
+            if (layout && cxpr_expr_ast_kind_of(program->bindings[i].ast) ==
+                              CXPR_NODE_FUNCTION_CALL) {
+                for (size_t field_i = 0u;
+                     field_i < layout->field_count; ++field_i) {
+                    char qualified[768];
+                    char* local_name;
+                    char* expression;
+                    const int written = snprintf(
+                        qualified, sizeof(qualified), "%s.%s",
+                        program->bindings[i].name,
+                        layout->field_names[field_i]);
+                    if (written <= 0 ||
+                        (size_t)written >= sizeof(qualified)) goto fail;
+                    local_name = cxpr_model_c_safe_name(qualified);
+                    expression = cxpr_model_ast_field_expr_to_c(
+                        program, program->bindings[i].ast,
+                        layout->field_names[field_i], &ast_target, err, 0u);
+                    if (!local_name || !expression) {
+                        free(local_name);
+                        free(expression);
+                        goto fail;
+                    }
+                    cxpr_model_c_printf(
+                        &b, "    const %s %s = (%s)(%s);\n",
+                        layout->field_kinds[field_i] == CXPR_MODEL_RESULT_BOOL
+                            ? "bool"
+                            : layout->field_kinds[field_i] == CXPR_MODEL_RESULT_INT64
+                                  ? "int64_t" : "double",
+                        local_name,
+                        layout->field_kinds[field_i] == CXPR_MODEL_RESULT_BOOL
+                            ? "bool"
+                            : layout->field_kinds[field_i] == CXPR_MODEL_RESULT_INT64
+                                  ? "int64_t" : "double",
+                        expression);
+                    free(local_name);
+                    free(expression);
+                }
+            }
+            continue;
+        }
         if (program->bindings[i].kind == CXPR_MODEL_BINDING_STATE_UPDATE) {
             size_t slot = cxpr_model_fused_slot_find(program->fused_slot_names,
                                                      program->fused_slot_count,

@@ -1,6 +1,6 @@
 model gain(source_arg = "source")
 
-in source { sample }
+in source
 $level = 1
 
-out { sample = source.sample * $level }
+out sample = source * $level
