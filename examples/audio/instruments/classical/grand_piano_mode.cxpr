@@ -31,12 +31,15 @@ second_envelope = 0.76 * single_envelope +
     0.24 * exp(-age / (0.48 - 0.12 * register))
 envelope = harmonic == 2 ? second_envelope : single_envelope
 
+// Match the fundamental's slowly settling unison so modal beating does not
+// outlive the more stable center string in exposed note tails.
+unison_tail = 0.80 + 0.20 * exp(-age / 3.5)
 unichord = sin(2 * pi() * two_now)
-bichord = 0.54 * sin(2 * pi() * one_now) +
-    0.46 * sin(2 * pi() * three_now)
-trichord = 0.26 * sin(2 * pi() * one_now) +
-    0.48 * sin(2 * pi() * two_now) +
-    0.26 * sin(2 * pi() * three_now)
+bichord = (0.54 + 0.46 * (1 - unison_tail)) * sin(2 * pi() * one_now) +
+    0.46 * unison_tail * sin(2 * pi() * three_now)
+trichord = 0.26 * unison_tail * sin(2 * pi() * one_now) +
+    (0.48 + 0.52 * (1 - unison_tail)) * sin(2 * pi() * two_now) +
+    0.26 * unison_tail * sin(2 * pi() * three_now)
 string_mode = key < 33 ? unichord : key < 48 ? bichord : trichord
 
 out sample = gain * audible * envelope * string_mode

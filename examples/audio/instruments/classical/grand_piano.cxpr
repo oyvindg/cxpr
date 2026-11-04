@@ -94,12 +94,16 @@ fundamental_envelope = hammer_onset *
      0.20 * exp(-note_age / (0.72 - 0.22 * register)))
 
 // Select the physical string choir used by each keyboard register.
+// Let the outer detuned strings settle slightly faster than the center string.
+// This preserves the lively unison at the attack while keeping long exposed
+// tails from developing an exaggerated vibrato-like beat.
+unison_tail = 0.80 + 0.20 * exp(-note_age / 3.5)
 unichord = sin(2 * pi() * two_now)
-bichord = 0.54 * sin(2 * pi() * one_now) +
-    0.46 * sin(2 * pi() * three_now)
-trichord = 0.26 * sin(2 * pi() * one_now) +
-    0.48 * sin(2 * pi() * two_now) +
-    0.26 * sin(2 * pi() * three_now)
+bichord = (0.54 + 0.46 * (1 - unison_tail)) * sin(2 * pi() * one_now) +
+    0.46 * unison_tail * sin(2 * pi() * three_now)
+trichord = 0.26 * unison_tail * sin(2 * pi() * one_now) +
+    (0.48 + 0.52 * (1 - unison_tail)) * sin(2 * pi() * two_now) +
+    0.26 * unison_tail * sin(2 * pi() * three_now)
 fundamental = key < 33 ? unichord : key < 48 ? bichord : trichord
 
 // The strike point suppresses selected upper modes instead of feeding a bright
