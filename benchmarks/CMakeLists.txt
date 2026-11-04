@@ -155,5 +155,6 @@ add_executable(cxpr_bench_model model_bench.c "${CXPR_BENCH_RSI_MODEL_C}" "${CXP
 target_link_libraries(cxpr_bench_model PRIVATE cxpr)
 set_property(TARGET cxpr_bench_model PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 target_compile_definitions(cxpr_bench_model PRIVATE
+    CXPR_GENERATED_MODEL_NO_ENTRYPOINT
     CXPR_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../tests"
     CXPR_BENCH_RSI_MODEL_INLINE="${CXPR_BENCH_RSI_MODEL_INLINE}")

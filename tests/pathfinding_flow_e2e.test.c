@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define CXPR_GENERATED_MODEL_NO_ENTRYPOINT
 #include "pathfinding_grid4.gen.c"
 #include "pathfinding_grid8.gen.c"
 

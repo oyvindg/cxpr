@@ -29,7 +29,7 @@ function discoverExamples() {
  * @param {string[]} availableExamples Discovered example names.
  */
 function printUsage(availableExamples) {
-  console.error("Usage: ./audio/render.mjs --example NAME --output FILE.wav [--frames COUNT] [--sample-rate 44100] [--play]")
+  console.error("Usage: ./audio/render.mjs --example NAME --output FILE.wav [--frames COUNT] [--sample-rate 44100] [--views|--generated-node] [--play]")
   console.error(`Examples: ${availableExamples.join(", ")}`)
 }
 
@@ -124,7 +124,7 @@ export function renderAudioExample(entryUrl, argv = process.argv) {
   const exampleRoot = dirname(fileURLToPath(entryUrl))
   const output = argv[2]
   if (!output) {
-    console.error("Usage: node render.mjs OUTPUT.wav [--frames=COUNT] [--sample-rate=44100] [--views]")
+    console.error("Usage: node render.mjs OUTPUT.wav [--frames=COUNT] [--sample-rate=44100] [--views|--generated-node]")
     return 2
   }
 

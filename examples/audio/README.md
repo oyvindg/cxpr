@@ -60,6 +60,13 @@ Add `--views` to use the `cxpr-node` borrowed-view host. It sends ordered
 same per-sample state semantics as scalar ticks. `songs/view_stream` is the
 smallest fixture for this path; every song can use the same host.
 
+Add `--generated-node` to generate and compile a temporary shared artifact,
+load it through `cxpr-node`, and render ordered blocks through the generated
+descriptor. This tests the same Node/WAV host shape as `--views` while removing
+tree-evaluator work from the per-sample path. Generated source and build files
+stay under the system temporary directory; the compiled artifact is reused
+from the content-addressed native audio cache.
+
 From `libs/cxpr/examples`:
 
 ```sh
@@ -67,6 +74,7 @@ From `libs/cxpr/examples`:
 ./audio/render.mjs --example modular_synth --output /tmp/synth.wav --frames=44100
 ./audio/render.mjs --example modular_synth --output /tmp/synth.wav --play
 ./audio/render.mjs --example view_stream --output /tmp/view-stream.wav --views
+./audio/render.mjs --example view_stream --output /tmp/view-stream-generated.wav --generated-node --frames=4096
 ```
 
 Add `--play` to open a successfully rendered WAV directly in VLC. The output

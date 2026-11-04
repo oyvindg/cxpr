@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -14,6 +14,7 @@ const importDir = importOption
   ? resolve(importOption.slice("--import-dir=".length))
   : modelPath ? dirname(modelPath) : undefined
 const hostPath = join(here, "render_native.c")
+const generatedNodeRendererPath = join(here, "render_generated.mjs")
 const nativeCompileFlags = [
   "-std=c11",
   "-O3",
@@ -55,6 +56,7 @@ function nativeCacheKey(codegen) {
     .filter((path) => path.endsWith(".cxpr"))
     .sort()
   hash.update(process.env.CC ?? "cc")
+  hash.update("cxpr-generated-model-entrypoint-v1")
   hash.update(nativeCompileFlags.join(" "))
   // The import tree can be shared by several root songs. Include the selected
   // root explicitly so one example can never reuse another example's binary.
@@ -72,7 +74,7 @@ const outputPath = process.argv[2]
 const options = process.argv.slice(3).filter((option) =>
   !option.startsWith("--model=") && !option.startsWith("--import-dir="))
 if (!outputPath || !modelPath || !importDir) {
-  console.error("Usage: node render.mjs OUTPUT.wav --model=FILE [--import-dir=DIR] [--frames=COUNT] [--views]")
+  console.error("Usage: node render.mjs OUTPUT.wav --model=FILE [--import-dir=DIR] [--frames=COUNT] [--views|--generated-node]")
   process.exitCode = 2
 } else if (options.includes("--views") || options.includes("--session")) {
   run(process.execPath, [join(here, "render_session.mjs"), outputPath,
@@ -85,7 +87,35 @@ if (!outputPath || !modelPath || !importDir) {
   const rendererPath = join(cacheDir, nativeCacheKey(codegen))
   const buildDir = mkdtempSync(join(tmpdir(), "cxpr-native-song-"))
   try {
-    if (!existsSync(rendererPath)) {
+    if (options.includes("--generated-node")) {
+      if (process.platform === "win32") {
+        throw new Error("--generated-node currently requires Linux or macOS with a C compiler")
+      }
+      const generatedPath = join(buildDir, "song.gen.c")
+      const artifactPath = `${rendererPath}${process.platform === "darwin" ? ".dylib" : ".so"}`
+      if (!existsSync(artifactPath)) {
+        const unpublishedArtifactPath = join(buildDir,
+          process.platform === "darwin" ? "song.dylib" : "song.so")
+        run(codegen, [
+          "--model", modelPath,
+          "--import-dir", importDir,
+          "--output", generatedPath
+        ])
+        run(process.env.CC ?? "cc", [
+          ...nativeCompileFlags,
+          "-fPIC",
+          process.platform === "darwin" ? "-dynamiclib" : "-shared",
+          "-I", join(cxprRoot, "include"),
+          generatedPath,
+          "-lm",
+          "-o", unpublishedArtifactPath
+        ])
+        renameSync(unpublishedArtifactPath, artifactPath)
+      }
+      run(process.execPath, [generatedNodeRendererPath, resolve(outputPath),
+        `--artifact=${artifactPath}`,
+        ...options.filter((option) => option !== "--generated-node")])
+    } else if (!existsSync(rendererPath)) {
       const generatedPath = join(buildDir, "song.gen.c")
       run(codegen, [
         "--model", modelPath,
@@ -101,7 +131,9 @@ if (!outputPath || !modelPath || !importDir) {
         "-o", rendererPath
       ])
     }
-    run(rendererPath, [resolve(outputPath), ...options])
+    if (!options.includes("--generated-node")) {
+      run(rendererPath, [resolve(outputPath), ...options])
+    }
   } finally {
     rmSync(buildDir, { recursive: true, force: true })
   }

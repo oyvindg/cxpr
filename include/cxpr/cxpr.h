@@ -19,6 +19,7 @@
 #include <cxpr/expr/compiled.h>
 #include <cxpr/codegen.h>
 #include <cxpr/generated.h>
+#include <cxpr/generated_batch.h>
 #include <cxpr/execution.h>
 #include <cxpr/doc.h>
 #include <cxpr/doc_tooling.h>

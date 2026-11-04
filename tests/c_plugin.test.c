@@ -68,6 +68,10 @@ static void test_complete_artifact_descriptor_metadata(void) {
     assert(strstr(artifact, ".output_names[1]") == NULL);
     assert(strstr(artifact,
                   ".abi_version = CXPR_GENERATED_MODEL_ABI_VERSION") != NULL);
+    assert(strstr(artifact,
+                  "cxpr_generated_model_v1(void)") != NULL);
+    assert(strstr(artifact,
+                  "#ifndef CXPR_GENERATED_MODEL_NO_ENTRYPOINT") != NULL);
 
     cxpr_c_plugin_source_free(artifact);
     cxpr_model_compiled_free(program);

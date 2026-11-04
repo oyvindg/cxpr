@@ -23,6 +23,9 @@ extern "C" {
 /** @brief Maximum number of parameters represented by a descriptor. */
 #define CXPR_GENERATED_MODEL_MAX_PARAMS 64u
 
+/** Stable symbol exported by loadable generated-model artifacts. */
+#define CXPR_GENERATED_MODEL_ENTRYPOINT "cxpr_generated_model_v1"
+
 /** @brief Evaluate one generated-model tick. */
 typedef void (*cxpr_generated_tick_fn)(
     void* state,
@@ -173,6 +176,10 @@ typedef struct cxpr_generated_model_descriptor {
     /** Non-zero for parameters with an entry in @ref param_defaults. */
     unsigned char param_has_default[CXPR_GENERATED_MODEL_MAX_PARAMS];
 } cxpr_generated_model_descriptor;
+
+/** Entry-point signature used by dynamic artifact hosts. */
+typedef const cxpr_generated_model_descriptor*
+    (*cxpr_generated_model_entrypoint_fn)(void);
 
 /**
  * @brief Validate the ABI and bounds of a generated model descriptor.

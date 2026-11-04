@@ -6,6 +6,8 @@
 #include <string.h>
 #include <time.h>
 
+#define CXPR_GENERATED_MODEL_NO_ENTRYPOINT
+
 /* Internal registration hook used only to construct the struct-call microbench. */
 cxpr_error cxpr_registry_define_record_fn(cxpr_registry* reg, const char* name,
                                           const char* const* param_names,

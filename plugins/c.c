@@ -299,7 +299,18 @@ char* cxpr_c_plugin_artifact_from_program(
     if (!cxpr_c_append(
             &out,
             "    .abi_version = CXPR_GENERATED_MODEL_ABI_VERSION,\n"
-            "};\n")) {
+            "};\n"
+            "#ifndef CXPR_GENERATED_MODEL_NO_ENTRYPOINT\n"
+            "#if defined(_WIN32)\n"
+            "__declspec(dllexport)\n"
+            "#else\n"
+            "__attribute__((visibility(\"default\")))\n"
+            "#endif\n"
+            "const cxpr_generated_model_descriptor* cxpr_generated_model_v1(void) {\n"
+            "    return &")) {
+        goto oom;
+    }
+    if (!cxpr_c_appendf(&out, "%s_descriptor;\n}\n#endif\n", function_name)) {
         goto oom;
     }
 
