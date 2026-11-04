@@ -889,7 +889,8 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
                                                         const cxpr_expr_ast* ast) {
     size_t call_param_count = 0u;
     if (!child_ref || !child || !ast ||
-        child_ref->source_input_index == (size_t)-1 ||
+        (child_ref->source_input_index == (size_t)-1 &&
+         child_ref->source_field_count == 0u) ||
         !child_ref->source_arg) {
         return NULL;
     }
@@ -913,6 +914,40 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
     return cxpr_model_child_call_argc(ast) == call_param_count + 1u
                ? cxpr_model_child_call_arg(ast, 0u)
                : NULL;
+}
+
+static const char* cxpr_model_child_rooted_field_for_input(
+    const cxpr_model_child_program* child_ref,
+    size_t input_index) {
+    if (!child_ref) return NULL;
+    for (size_t i = 0u; i < child_ref->source_field_count; ++i) {
+        if (child_ref->source_field_input_indices[i] == input_index)
+            return child_ref->source_field_paths[i];
+    }
+    return NULL;
+}
+
+static const cxpr_value* cxpr_model_child_struct_field_path(
+    const cxpr_value* root,
+    const char* path) {
+    const cxpr_value* current = root;
+    const char* cursor = path;
+    while (current && current->type == CXPR_VALUE_STRUCT && current->s &&
+           cursor && cursor[0]) {
+        const char* dot = strchr(cursor, '.');
+        const size_t length = dot ? (size_t)(dot - cursor) : strlen(cursor);
+        const cxpr_value* next = NULL;
+        for (size_t i = 0u; i < current->s->field_count; ++i) {
+            const char* name = current->s->field_names[i];
+            if (strlen(name) == length && strncmp(name, cursor, length) == 0) {
+                next = &current->s->field_values[i];
+                break;
+            }
+        }
+        current = next;
+        cursor = dot ? dot + 1u : NULL;
+    }
+    return cursor == NULL ? current : NULL;
 }
 
 static const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_program* child_ref,
@@ -968,6 +1003,8 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     char* owned_cache_key = NULL;
     bool found = false;
     bool transient_session = false;
+    cxpr_value rooted_source = {0};
+    bool has_rooted_source = false;
 
     if (!ast || !ctx || !child_ref || !child_ref->program || !parent ||
         child_ref->registry_index >= parent->child_session_count) {
@@ -1016,30 +1053,64 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         free(owned_cache_key);
         return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Missing child model session");
     }
+    if (child_ref->source_field_count > 0u) {
+        const cxpr_expr_ast* source_arg =
+            cxpr_model_child_call_source_arg(child_ref, child, ast);
+        if (!source_arg) {
+            if (transient_session) cxpr_model_session_free(child_session);
+            free(owned_cache_key);
+            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                                   "Missing rooted child model source");
+        }
+        rooted_source = cxpr_eval_node(source_arg, ctx, reg, err);
+        if ((err && err->code != CXPR_OK) ||
+            rooted_source.type != CXPR_VALUE_STRUCT || !rooted_source.s) {
+            cxpr_value_free(&rooted_source);
+            if (transient_session) cxpr_model_session_free(child_session);
+            free(owned_cache_key);
+            return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                   "Rooted child model source must be a record");
+        }
+        has_rooted_source = true;
+    }
     for (size_t i = 0u; i < child->input_count; ++i) {
         bool input_found = false;
         bool owns_value = false;
         const cxpr_expr_ast* named_input_arg = cxpr_model_child_call_named_arg(ast, child->inputs[i]);
+        const char* rooted_field = cxpr_model_child_rooted_field_for_input(child_ref, i);
         const cxpr_expr_ast* source_arg =
             (!named_input_arg && i == child_ref->source_input_index)
                 ? cxpr_model_child_call_source_arg(child_ref, child, ast)
                 : NULL;
-        cxpr_value value = (named_input_arg || source_arg)
+        const cxpr_value* rooted_value = rooted_field
+            ? cxpr_model_child_struct_field_path(&rooted_source, rooted_field) : NULL;
+        cxpr_value value = rooted_value
+                               ? cxpr_value_clone(rooted_value)
+                               : (named_input_arg || source_arg)
                                ? cxpr_eval_node(named_input_arg ? named_input_arg : source_arg,
                                                 ctx,
                                                 reg,
                                                 err)
                                : cxpr_context_get_typed(ctx, child->inputs[i], &input_found);
         if ((named_input_arg || source_arg) && err && err->code != CXPR_OK) {
+            if (has_rooted_source) cxpr_value_free(&rooted_source);
             if (transient_session) cxpr_model_session_free(child_session);
             free(owned_cache_key);
             return cxpr_num(NAN);
         }
-        if (named_input_arg || source_arg) {
+        if (rooted_field && !rooted_value) {
+            cxpr_value_free(&rooted_source);
+            if (transient_session) cxpr_model_session_free(child_session);
+            free(owned_cache_key);
+            return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                                   "Rooted child model source is missing a required field");
+        }
+        if (named_input_arg || source_arg || rooted_value) {
             input_found = true;
             owns_value = true;
         }
         if (!input_found) {
+            if (has_rooted_source) cxpr_value_free(&rooted_source);
             if (transient_session) cxpr_model_session_free(child_session);
             free(owned_cache_key);
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, "Missing child model input");
@@ -1051,6 +1122,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         }
         if (owns_value) cxpr_value_free(&value);
     }
+    if (has_rooted_source) cxpr_value_free(&rooted_source);
     for (size_t i = 0u; i < child->constant_count; ++i) {
         const cxpr_expr_ast* arg = cxpr_model_child_call_param_arg(child_ref, child, ast, i);
         cxpr_value value;

@@ -6,6 +6,4 @@ model gain {
 in source
 $level = 1
 
-sample = source * $level
-
-out sample
+out sample = source * $level

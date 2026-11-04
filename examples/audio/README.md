@@ -17,19 +17,23 @@ sample timing, audio devices, buffers, and polyphonic voice allocation.
 
 Shared modules:
 
+- `channels/mono`: explicit stereo-to-mono conversion for
+  `stereo |> mono(gain=0.5)` composition;
 - `oscillators/oscillator`: PolyBLEP saw and pulse plus sine, PWM, and drift;
 - `envelopes/adsr`: exponential attack, decay, sustain, and release;
 - `envelopes/rounded_ar`: sine-squared attack/release for smooth acoustic phrasing;
-- `filters/resonance`: smoothed resonant low/band/high-pass;
+- `filters/resonance`: scalar smoothed resonant low/band/high-pass, with a
+  shape-preserving rooted-record stereo variant under `filters/stereo`;
 - `effects/pan`, `effects/master`, `effects/reverb` with optional explicit T60
-  decay time, and two deliberately distinct delay designs;
+  decay time, and two deliberately distinct delay designs; `effects/stereo/master`
+  accepts a rooted `{ left, right }` source record;
 - `effects/lfo`, `effects/chorus`, `effects/phaser`, chamber processing, gated
   reverb, gated hall, kick sidechain, tempo delay, stereo compression, tape
   coloration, and delayed pitch vibrato;
 - `effects/portamento`: sample-continuous pitch transitions for legato voices;
 - `effects/saturation`: normalized soft clipping;
-- `effects/pipeline`: scalar signal stages demonstrating direct stateful model
-  composition with the existing `|>` operator;
+- `effects/{mono,stereo}`: shape-preserving delay, reverb, gain, and master
+  models usable through ordinary calls or direct stateful `|>` composition;
 - `sequencing/lane`: reusable trigger/age state for song arrangements.
 - `filters/track_eq`: cascaded high-pass slopes and parametric bell EQ.
 - `instruments/classical`, including fortepiano and a register-aware modern
@@ -49,6 +53,12 @@ resolution: `audio/` remains the import root, so a model under
 `songs/drum_solo/models/` imports a shared filter with `from filters`.
 Song folders contain only composition and arrangement models; reusable DSP and
 instrument voices belong in the shared namespaces above.
+
+Audio composition roots expose `duration` plus the scalar columns
+`stereo_left` and `stereo_right`. Mono effect chains keep `{ sample }` until a
+mono master explicitly places the same final sample in both stereo channels.
+The WAV hosts also accept `mono` and legacy `left`/`right` outputs for
+compatibility, but complete songs use the stable stereo contract.
 
 `render.mjs` is the common CLI adapter used by every audio example. Local
 entrypoints only pass their own `import.meta.url`; the adapter locates
@@ -75,8 +85,11 @@ From `libs/cxpr/examples`:
 ./audio/render.mjs --example modular_synth --output /tmp/synth.wav --play
 ./audio/render.mjs --example view_stream --output /tmp/view-stream.wav --views
 ./audio/render.mjs --example view_stream --output /tmp/view-stream-generated.wav --generated-node --frames=4096
+./audio/render.mjs --example pipe_mono --output /tmp/pipe-mono.wav --frames=4096
+./audio/render.mjs --example pipe_stereo --output /tmp/pipe-stereo.wav --frames=4096
 ```
 
-Add `--play` to open a successfully rendered WAV directly in VLC. The output
-path then only needs to be supplied once.
+Add `--play` to open a successfully rendered WAV in FFplay, with VLC as a
+fallback. The output path then only needs to be supplied once. FFplay also
+works when the output is under `/tmp`, which Snap-packaged VLC cannot access.
 

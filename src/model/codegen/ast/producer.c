@@ -20,6 +20,44 @@ static void cxpr_model_c_inherit_locals(cxpr_model_ast_c_target* target,
     target->local_cse = inherited->local_cse;
 }
 
+static const char* cxpr_model_c_child_rooted_field_for_input(
+    const cxpr_model_child_program* child_ref,
+    size_t input_index) {
+    if (!child_ref) return NULL;
+    for (size_t i = 0u; i < child_ref->source_field_count; ++i)
+        if (child_ref->source_field_input_indices[i] == input_index)
+            return child_ref->source_field_paths[i];
+    return NULL;
+}
+
+static cxpr_expr_ast* cxpr_model_c_project_rooted_source(
+    const cxpr_expr_ast* source,
+    const char* path) {
+    cxpr_expr_ast* projected = cxpr_expr_ast_clone(source);
+    const char* cursor = path;
+    if (!projected || !cursor) return projected;
+    while (cursor[0]) {
+        const char* dot = strchr(cursor, '.');
+        const size_t length = dot ? (size_t)(dot - cursor) : strlen(cursor);
+        char field[256];
+        cxpr_expr_ast* next;
+        if (length == 0u || length >= sizeof(field)) {
+            cxpr_expr_ast_free(projected);
+            return NULL;
+        }
+        memcpy(field, cursor, length);
+        field[length] = '\0';
+        next = cxpr_expr_ast_field_expr_new(projected, field);
+        if (!next) {
+            cxpr_expr_ast_free(projected);
+            return NULL;
+        }
+        projected = next;
+        cursor = dot ? dot + 1u : cursor + length;
+    }
+    return projected;
+}
+
 char* cxpr_model_ast_field_expr_to_c(const cxpr_model_compiled* program,
                                             const cxpr_expr_ast* ast,
                                             const char* field,
@@ -235,6 +273,9 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         for (size_t i = 0u; i < child->input_count; ++i) {
             size_t input_index = 0u;
             const cxpr_expr_ast* source_arg = NULL;
+            cxpr_expr_ast* rooted_projection = NULL;
+            const char* rooted_field = cxpr_model_c_child_rooted_field_for_input(
+                &program->children[child_index], i);
             for (size_t arg_i = 0u;
                  arg_i < cxpr_expr_ast_producer_arg_count(ast);
                  ++arg_i) {
@@ -253,6 +294,20 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                 i == program->children[child_index].source_input_index &&
                 i < cxpr_expr_ast_producer_arg_count(ast)) {
                 source_arg = cxpr_expr_ast_producer_arg(ast, i);
+            }
+            if (!source_arg && rooted_field) {
+                const cxpr_expr_ast* rooted_source = cxpr_model_child_call_source_arg(
+                    &program->children[child_index], child, ast);
+                rooted_projection = cxpr_model_c_project_rooted_source(
+                    rooted_source, rooted_field);
+                if (!rooted_projection) {
+                    free(call.data);
+                    cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
+                    cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                         "Invalid rooted child source field", 0, 0);
+                    return NULL;
+                }
+                source_arg = rooted_projection;
             }
             char* source_expr = NULL;
             target_data = (cxpr_model_ast_c_target){
@@ -275,12 +330,14 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
             if (source_arg) {
                 source_expr = cxpr_expr_ast_to_c_at_offset(source_arg, 0u, &target, err);
                 if (!source_expr) {
+                    cxpr_expr_ast_free(rooted_projection);
                     free(call.data);
                     cxpr_model_c_flatten_outputs_free(flat_outputs, flat_output_count);
                     return NULL;
                 }
                 cxpr_model_c_printf(&call, ", %s", source_expr);
                 free(source_expr);
+                cxpr_expr_ast_free(rooted_projection);
                 continue;
             }
             if (!cxpr_model_c_symbol_is_input(program, child->inputs[i], &input_index)) {

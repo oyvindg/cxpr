@@ -1015,6 +1015,18 @@ static bool cxpr_model_child_accepts_named_arg(const cxpr_model_compiled* child,
     return false;
 }
 
+static bool cxpr_model_child_input_is_rooted_source(
+    const cxpr_model_compiled* child,
+    const char* input) {
+    size_t root_len;
+    if (!child || !child->source_arg || !input) return false;
+    for (size_t i = 0u; i < child->input_count; ++i)
+        if (cxpr_model_names_match(child->inputs[i], child->source_arg)) return false;
+    root_len = strlen(child->source_arg);
+    return strncmp(input, child->source_arg, root_len) == 0 &&
+           input[root_len] == '.' && input[root_len + 1u] != '\0';
+}
+
 static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                                                    const cxpr_model* model,
                                                    const cxpr_model_import* imports,
@@ -1100,7 +1112,9 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                     if (call_supplies_input) continue;
                     if (call_supplies_source &&
                         child->source_arg &&
-                        cxpr_model_names_match(child->inputs[i], child->source_arg)) {
+                        (cxpr_model_names_match(child->inputs[i], child->source_arg) ||
+                         cxpr_model_child_input_is_rooted_source(
+                             child, child->inputs[i]))) {
                         continue;
                     }
                     if (!cxpr_model_append_inferred_input(

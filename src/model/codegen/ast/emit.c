@@ -417,6 +417,9 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_CHAIN_ACCESS) {
         const char* full_key = cxpr_expr_ast_full_reference(ast);
         const char* dot = full_key ? strchr(full_key, '.') : NULL;
+        if (full_key && cxpr_model_c_symbol_is_binding(program, full_key)) {
+            return cxpr_model_c_safe_name(full_key);
+        }
         if (target && full_key) {
             for (size_t i = 0u; i < target->param_count; ++i) {
                 if (target->param_names[i] && target->param_exprs &&
@@ -562,8 +565,11 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
                      ast->data.field_access.object ? ast->data.field_access.object : "?",
                      ast->data.field_access.field ? ast->data.field_access.field : "?");
         } else {
-            snprintf(message, sizeof(message), "Unsupported model C leaf kind %d",
-                     (int)cxpr_expr_ast_kind_of(ast));
+            snprintf(message, sizeof(message), "Unsupported model C leaf kind %d%s%s",
+                     (int)cxpr_expr_ast_kind_of(ast),
+                     cxpr_expr_ast_kind_of(ast) == CXPR_NODE_CHAIN_ACCESS ? " '" : "",
+                     cxpr_expr_ast_kind_of(ast) == CXPR_NODE_CHAIN_ACCESS
+                         ? cxpr_expr_ast_full_reference(ast) : "");
         }
         err->message = message;
     }

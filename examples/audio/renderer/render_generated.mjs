@@ -35,6 +35,13 @@ function pcm16(sample, frame, channel) {
   return Math.round(sample * 32_767)
 }
 
+function channels(output) {
+  if (output.stereo_left && output.stereo_right)
+    return { left: output.stereo_left, right: output.stereo_right }
+  if (output.mono) return { left: output.mono, right: output.mono }
+  return { left: output.left, right: output.right }
+}
+
 /**
  * Renders a trusted generated artifact through cxpr-node.
  * @param {string} artifactPath Compiled shared-library artifact.
@@ -46,6 +53,7 @@ async function render(artifactPath, outputPath, frameLimit) {
   using model = loadGeneratedModel({ artifactPath })
   using session = model.newSession()
   const initial = session.tickBatch({ t: new Float64Array([0]) })
+  const initialChannels = channels(initial)
   const duration = Number(initial.duration[0])
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error("The generated song model returned an invalid duration")
@@ -69,16 +77,17 @@ async function render(artifactPath, outputPath, frameLimit) {
         ? session.tickBatch({ t: times.subarray(1) })
         : session.tickBatch({ t: times })
       const offset = firstFrame === 0 ? 1 : 0
+      const outputChannels = channels(output)
       if (firstFrame === 0) {
-        block.writeInt16LE(pcm16(initial.left[0], 0, 0), used)
-        block.writeInt16LE(pcm16(initial.right[0], 0, 1), used + 2)
+        block.writeInt16LE(pcm16(initialChannels.left[0], 0, 0), used)
+        block.writeInt16LE(pcm16(initialChannels.right[0], 0, 1), used + 2)
         used += 4
       }
       for (let index = offset; index < count; index += 1) {
         const outputIndex = index - offset
         const frame = firstFrame + index
-        block.writeInt16LE(pcm16(output.left[outputIndex], frame, 0), used)
-        block.writeInt16LE(pcm16(output.right[outputIndex], frame, 1), used + 2)
+        block.writeInt16LE(pcm16(outputChannels.left[outputIndex], frame, 0), used)
+        block.writeInt16LE(pcm16(outputChannels.right[outputIndex], frame, 1), used + 2)
         used += 4
       }
       writeSync(file, block.subarray(0, used))

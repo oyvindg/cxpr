@@ -38,12 +38,20 @@ function pcm16(sample, frame, channel) {
   return Math.round(sample * 32_767)
 }
 
+function channels(output) {
+  if (output.stereo_left && output.stereo_right)
+    return { left: output.stereo_left, right: output.stereo_right }
+  if (output.mono) return { left: output.mono, right: output.mono }
+  return { left: output.left, right: output.right }
+}
+
 async function render(outputPath, frameLimit, importDir) {
   const { compileModel } = await loadCxprNode()
   const source = readFileSync(modelPath, "utf8")
   using model = compileModel(source, { name: modelPath, importDir })
   using session = model.newSession()
   const initial = session.tickViews({ t: new Float64Array([0]) })
+  const initialChannels = channels(initial)
   const outputDuration = initial.duration[0]
   const duration = Number(outputDuration)
   if (!Number.isFinite(duration) || duration <= 0) {
@@ -68,16 +76,17 @@ async function render(outputPath, frameLimit, importDir) {
         ? session.tickViews({ t: times.subarray(1) })
         : session.tickViews({ t: times })
       const offset = firstFrame === 0 ? 1 : 0
+      const outputChannels = channels(output)
       if (firstFrame === 0) {
-        block.writeInt16LE(pcm16(initial.left[0], 0, 0), used)
-        block.writeInt16LE(pcm16(initial.right[0], 0, 1), used + 2)
+        block.writeInt16LE(pcm16(initialChannels.left[0], 0, 0), used)
+        block.writeInt16LE(pcm16(initialChannels.right[0], 0, 1), used + 2)
         used += 4
       }
       for (let index = offset; index < count; index += 1) {
         const outputIndex = index - offset
         const frame = firstFrame + index
-        block.writeInt16LE(pcm16(output.left[outputIndex], frame, 0), used)
-        block.writeInt16LE(pcm16(output.right[outputIndex], frame, 1), used + 2)
+        block.writeInt16LE(pcm16(outputChannels.left[outputIndex], frame, 0), used)
+        block.writeInt16LE(pcm16(outputChannels.right[outputIndex], frame, 1), used + 2)
         used += 4
       }
       writeSync(file, block.subarray(0, used))

@@ -84,13 +84,18 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Invalid generated CXPR ABI.\n"); return 1;
     }
     size_t time_slot = find_name(model->input_names, model->input_count, "t");
-    size_t left_slot = find_name(model->output_names, model->output_count, "left");
-    size_t right_slot = find_name(model->output_names, model->output_count, "right");
+    size_t left_slot = find_name(model->output_names, model->output_count, "stereo_left");
+    size_t right_slot = find_name(model->output_names, model->output_count, "stereo_right");
+    size_t mono_slot = find_name(model->output_names, model->output_count, "mono");
+    if (left_slot == SIZE_MAX) left_slot = find_name(model->output_names, model->output_count, "left");
+    if (right_slot == SIZE_MAX) right_slot = find_name(model->output_names, model->output_count, "right");
+    if (left_slot == SIZE_MAX && mono_slot != SIZE_MAX) left_slot = mono_slot;
+    if (right_slot == SIZE_MAX && mono_slot != SIZE_MAX) right_slot = mono_slot;
     size_t duration_slot = find_name(model->output_names, model->output_count, "duration");
     if (model->input_count != 1 || time_slot == SIZE_MAX ||
         model->input_types[time_slot] != CXPR_GENERATED_VALUE_NUMBER ||
         left_slot == SIZE_MAX || right_slot == SIZE_MAX || duration_slot == SIZE_MAX) {
-        fprintf(stderr, "The model must have input t and outputs left, right, duration.\n"); return 1;
+        fprintf(stderr, "The model must output stereo_left/stereo_right or mono, plus duration.\n"); return 1;
     }
     cxpr_value inputs[CXPR_GENERATED_MODEL_MAX_INPUTS] = {0};
     cxpr_value params[CXPR_GENERATED_MODEL_MAX_PARAMS] = {0};

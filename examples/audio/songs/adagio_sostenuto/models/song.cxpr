@@ -3,8 +3,9 @@ model song(type = "dsp")
 
 use sequencer from arrangement
 use grand_piano from instruments/classical
-use pan, chamber, reverb, master from effects
-use resonance from filters
+use pan, chamber, reverb from effects
+use master from effects/stereo
+use resonance from filters/stereo
 
 in t
 $sample_rate = 44100
@@ -23,15 +24,11 @@ stereo_voices = map(seq.voices, voice => {
     return pan(source=piano, position=voice.pan);
 })
 stereo_mix = sum(stereo_voices)
-raw_left = stereo_mix.left
-raw_right = stereo_mix.right
 // A gentle post-sum low-pass removes brittle modal energy without narrowing stereo.
-left_tone = resonance(source=raw_left, sample_rate=$sample_rate,
+tone = resonance(source=stereo_mix, sample_rate=$sample_rate,
     cutoff=4600, resonance=0.025)
-right_tone = resonance(source=raw_right, sample_rate=$sample_rate,
-    cutoff=4600, resonance=0.025)
-dry_left = left_tone.low
-dry_right = right_tone.low
+dry_left = tone.low.left
+dry_right = tone.low.right
 
 // Close asymmetric reflections preserve the keyboard width and place the
 // listener at the bench; the softer hall return sits behind that near field.
@@ -42,8 +39,11 @@ hall = reverb(source_left=0.18 * dry_left + 0.10 * near_room.left,
     source_right=0.18 * dry_right + 0.10 * near_room.right,
     sample_rate=$sample_rate, decay_seconds=2.2, damping=2000)
 // Keep the pianist-position direct signal dominant over both wet returns.
-finished = master(source_left=dry_left + 0.22 * near_room.left + 0.16 * hall.left,
-    source_right=dry_right + 0.22 * near_room.right + 0.16 * hall.right,
+master_source = {
+    left = dry_left + 0.22 * near_room.left + 0.16 * hall.left,
+    right = dry_right + 0.22 * near_room.right + 0.16 * hall.right
+}
+finished = master_source |> master(
     t=t, sample_rate=$sample_rate, gain=1.45, duration=seq.duration,
     // The seven-second fade begins at the final bass event and reaches zero.
     fade_seconds=7.0, fade_in_seconds=0.35, ceiling=0.90)

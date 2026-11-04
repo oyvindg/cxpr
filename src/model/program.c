@@ -105,6 +105,13 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     for (size_t i = 0; i < program->child_count; ++i) {
         free(program->children[i].name);
         free(program->children[i].source_arg);
+        for (size_t field = 0u;
+             field < program->children[i].source_field_count;
+             ++field) {
+            free(program->children[i].source_field_paths[field]);
+        }
+        free(program->children[i].source_field_paths);
+        free(program->children[i].source_field_input_indices);
     }
     free(program->children);
     for (size_t i = 0; i < program->history_spec_count; ++i) {

@@ -77,15 +77,21 @@ function rendererOptions(args) {
 }
 
 /**
- * Opens a rendered WAV in VLC and waits until the player exits.
+ * Opens a rendered WAV and waits until the player exits.
+ *
+ * FFplay is preferred because Snap-packaged VLC cannot access WAV files in
+ * the host's `/tmp` directory, which is the documented render destination.
  *
  * @param {string} output Rendered WAV path.
- * @returns {number} VLC exit status.
+ * @returns {number} Audio player exit status.
  */
 function play(output) {
-  const result = spawnSync("vlc", [output], { stdio: "inherit" })
+  let result = spawnSync("ffplay", ["-nodisp", "-autoexit", "-loglevel", "error", output],
+    { stdio: "inherit" })
+  if (result.error?.code === "ENOENT")
+    result = spawnSync("vlc", ["--play-and-exit", output], { stdio: "inherit" })
   if (result.error?.code === "ENOENT") {
-    console.error("Cannot play audio: VLC is not installed. See https://www.videolan.org/vlc/")
+    console.error("Cannot play audio: install FFmpeg/ffplay or VLC. See https://ffmpeg.org/download.html")
     return 127
   }
   if (result.error) throw result.error
@@ -117,18 +123,22 @@ function render(exampleRoot, output, options) {
  * where the `audio` namespace lives.
  *
  * @param {string} entryUrl `import.meta.url` from the example entrypoint.
- * @param {string[]} argv Process arguments, including the output WAV path.
+ * @param {string[]} argv Process arguments, including the output WAV path and
+ * optional `--play` flag.
  * @returns {number} Renderer exit status suitable for `process.exitCode`.
  */
 export function renderAudioExample(entryUrl, argv = process.argv) {
   const exampleRoot = dirname(fileURLToPath(entryUrl))
   const output = argv[2]
   if (!output) {
-    console.error("Usage: node render.mjs OUTPUT.wav [--frames=COUNT] [--sample-rate=44100] [--views|--generated-node]")
+    console.error("Usage: node render.mjs OUTPUT.wav [--frames=COUNT] [--sample-rate=44100] [--views|--generated-node] [--play]")
     return 2
   }
 
-  return render(exampleRoot, output, rendererOptions(argv.slice(3)))
+  const args = argv.slice(3)
+  const renderStatus = render(exampleRoot, output, rendererOptions(args))
+  if (renderStatus !== 0 || !args.includes("--play")) return renderStatus
+  return play(output)
 }
 
 /** Runs the shared `--example` command-line interface. */

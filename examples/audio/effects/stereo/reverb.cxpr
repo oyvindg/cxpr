@@ -1,0 +1,40 @@
+// Rooted-record stereo room stage with one coupled model lifecycle.
+model reverb(source_arg = "source", lifecycle = "scoped")
+
+in source { left, right }
+
+$sample_rate = 44100
+$mix = 0.20
+$decay = 0.72
+
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Pipeline reverb supports sample rates from 8000 through 44100 Hz"
+}
+
+state left_short_room: buffer<number, samples = 2205>
+state left_long_room: buffer<number, samples = 2867>
+state right_short_room: buffer<number, samples = 2205>
+state right_long_room: buffer<number, samples = 2867>
+
+short_index = max(0, floor(2205 * $sample_rate / 44100) - 1)
+long_index = max(0, floor(2867 * $sample_rate / 44100) - 1)
+left_short_raw = left_short_room[short_index]
+left_long_raw = left_long_room[long_index]
+right_short_raw = right_short_room[short_index]
+right_long_raw = right_long_room[long_index]
+left_short_wet = isnan(left_short_raw) ? 0 : left_short_raw
+left_long_wet = isnan(left_long_raw) ? 0 : left_long_raw
+right_short_wet = isnan(right_short_raw) ? 0 : right_short_raw
+right_long_wet = isnan(right_long_raw) ? 0 : right_long_raw
+decay = clamp($decay, 0, 0.92)
+mix = clamp($mix, 0, 1)
+
+left_short_room := source.left + decay * left_long_wet
+left_long_room := 0.72 * source.left + decay * left_short_wet
+right_short_room := source.right + decay * right_long_wet
+right_long_room := 0.72 * source.right + decay * right_short_wet
+
+out {
+    left = (1 - mix) * source.left + mix * 0.5 * (left_short_wet + left_long_wet),
+    right = (1 - mix) * source.right + mix * 0.5 * (right_short_wet + right_long_wet)
+}

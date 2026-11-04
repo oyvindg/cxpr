@@ -193,7 +193,8 @@ const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_pro
                                                         const cxpr_model_compiled* child,
                                                         const cxpr_expr_ast* ast) {
     if (!child_ref || !child || !ast ||
-        child_ref->source_input_index == (size_t)-1 ||
+        (child_ref->source_input_index == (size_t)-1 &&
+         child_ref->source_field_count == 0u) ||
         !child_ref->source_arg) {
         return NULL;
     }
@@ -203,6 +204,10 @@ const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_pro
             if (name && cxpr_model_names_match(name, child_ref->source_arg)) {
                 return cxpr_expr_ast_producer_arg(ast, i);
             }
+        }
+        if (cxpr_expr_ast_producer_arg_count(ast) > 0u &&
+            !cxpr_expr_ast_producer_arg_name(ast, 0u)) {
+            return cxpr_expr_ast_producer_arg(ast, 0u);
         }
         return NULL;
     }
@@ -228,7 +233,9 @@ const cxpr_expr_ast* cxpr_model_child_call_param_arg(const cxpr_model_child_prog
     }
     {
         size_t offset =
-            (child_ref && child_ref->source_input_index != (size_t)-1 &&
+            (child_ref &&
+             (child_ref->source_input_index != (size_t)-1 ||
+              child_ref->source_field_count > 0u) &&
              cxpr_expr_ast_producer_arg_count(ast) == child->constant_count + 1u)
                 ? 1u
                 : 0u;

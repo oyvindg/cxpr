@@ -2969,6 +2969,112 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
     printf("  ✓ test_imported_producer_source_arg_maps_call_source\n");
 }
 
+static void test_imported_producer_rooted_record_source(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model stereo_gain { source_arg = \"source\" }\n"
+        "in source { left, right }\n"
+        "$level = 1\n"
+        "out { left = source.left * $level, right = source.right * $level }\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import = {.name = "stereo_gain", .program = child_program};
+    cxpr_model* parent;
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+    cxpr_context* context;
+    char* code;
+
+    if (!child_program) fprintf(stderr, "rooted child compile failed: %s\n",
+                                err.message ? err.message : "(null)");
+    assert(child_program != NULL);
+    parent = parse_model_ok(
+        "model rooted_parent\n"
+        "use stereo_gain\n"
+        "in { a, b }\n"
+        "source = { left = a, right = b, ignored = 99 }\n"
+        "processed = stereo_gain(source=source, level=2)\n"
+        "out value = processed.left + processed.right\n");
+    program = cxpr_model_compile_with_imports(parent, NULL, &import, 1u, &err);
+    if (!program) fprintf(stderr, "rooted parent compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    assert(cxpr_model_compiled_input_count(program) == 2u);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    context = cxpr_model_session_context(session);
+    cxpr_context_set(context, "a", 3.0);
+    cxpr_context_set(context, "b", 5.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 16.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "rooted_parent_tick", &err);
+    if (!code) fprintf(stderr, "rooted source C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "stereo_gain") != NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_rooted_record_source\n");
+}
+
+static void test_pipe_rooted_record_through_imported_models(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model stereo_gain { source_arg = \"source\" }\n"
+        "in source { left, right }\n"
+        "$level = 1\n"
+        "out { left = source.left * $level, right = source.right * $level }\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import imports[2] = {
+        {.name = "first", .program = child_program},
+        {.name = "second", .program = child_program},
+    };
+    cxpr_model* parent;
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+    char* code;
+
+    assert(child_program != NULL);
+    parent = parse_model_ok(
+        "model rooted_pipeline\n"
+        "use first\n"
+        "use second\n"
+        "in { a, b }\n"
+        "source = { left = a, right = b }\n"
+        "processed = source |> first(level=2) |> second(level=3)\n"
+        "out value = processed.left + processed.right\n");
+    program = cxpr_model_compile_with_imports(parent, NULL, imports, 2u, &err);
+    if (!program) fprintf(stderr, "rooted pipeline compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "a", 3.0);
+    cxpr_context_set(cxpr_model_session_context(session), "b", 5.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 48.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "rooted_pipeline_tick", &err);
+    if (!code) fprintf(stderr, "rooted pipeline C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_pipe_rooted_record_through_imported_models\n");
+}
+
 static void test_imported_producer_explicit_call_params_hide_internal_params(void) {
     cxpr_error err = {0};
     double value = 0.0;
@@ -5580,6 +5686,8 @@ int main(void) {
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();
     test_imported_producer_source_arg_maps_call_source();
+    test_imported_producer_rooted_record_source();
+    test_pipe_rooted_record_through_imported_models();
     test_pipe_into_imported_model_with_named_params();
     test_imported_producer_explicit_call_params_hide_internal_params();
     test_imported_producer_implicit_market_inputs_precede_no_params();

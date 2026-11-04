@@ -51,6 +51,48 @@ static bool cxpr_model_compiled_inputs_are_implicit_market(
     return true;
 }
 
+static const char* cxpr_model_rooted_source_field(const char* input,
+                                                  const char* source_arg) {
+    size_t root_len;
+    if (!input || !source_arg) return NULL;
+    root_len = strlen(source_arg);
+    return strncmp(input, source_arg, root_len) == 0 && input[root_len] == '.' &&
+                   input[root_len + 1u] != '\0'
+        ? input + root_len + 1u : NULL;
+}
+
+static bool cxpr_model_child_build_rooted_source(
+    cxpr_model_child_program* child_ref,
+    const cxpr_model_compiled* child,
+    cxpr_error* err) {
+    size_t count = 0u;
+    if (!child_ref || !child || !child_ref->source_arg ||
+        child_ref->source_input_index != (size_t)-1) return true;
+    for (size_t i = 0u; i < child->input_count; ++i)
+        if (cxpr_model_rooted_source_field(child->inputs[i], child_ref->source_arg)) ++count;
+    if (count == 0u) return true;
+    child_ref->source_field_paths = (char**)calloc(count, sizeof(char*));
+    child_ref->source_field_input_indices = (size_t*)calloc(count, sizeof(size_t));
+    if (!child_ref->source_field_paths || !child_ref->source_field_input_indices) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < child->input_count; ++i) {
+        const char* field = cxpr_model_rooted_source_field(
+            child->inputs[i], child_ref->source_arg);
+        if (!field) continue;
+        child_ref->source_field_paths[child_ref->source_field_count] =
+            cxpr_strdup(field);
+        if (!child_ref->source_field_paths[child_ref->source_field_count]) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        child_ref->source_field_input_indices[child_ref->source_field_count] = i;
+        child_ref->source_field_count++;
+    }
+    return true;
+}
+
 static char* cxpr_model_join_namespace(const char* ns, const char* name) {
     size_t ns_len;
     size_t name_len;
@@ -368,6 +410,8 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
                     break;
                 }
             }
+            if (!cxpr_model_child_build_rooted_source(
+                    &program->children[i], child, err)) return false;
         }
         entry = cxpr_registry_find(program->registry, namespace_name);
         if (entry) {
@@ -389,6 +433,9 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
         entry->model_producer_userdata = &program->children[i];
         entry->min_args = 0u;
         entry->max_args = exposed_input_count + exposed_param_count;
+        if (program->children[i].source_field_count > 0u) {
+            entry->max_args -= program->children[i].source_field_count - 1u;
+        }
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
         entry->defined_return_field_names = cxpr_registry_clone_param_names(
@@ -401,7 +448,26 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
+            if (program->children[i].source_field_count > 0u) {
+                entry->defined_param_names[name_index++] =
+                    cxpr_strdup(program->children[i].source_arg);
+                if (!entry->defined_param_names[name_index - 1u]) {
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0, 0);
+                    return false;
+                }
+            }
             for (size_t in_i = 0u; in_i < exposed_input_count; ++in_i) {
+                bool rooted = false;
+                for (size_t field = 0u;
+                     field < program->children[i].source_field_count;
+                     ++field) {
+                    if (program->children[i].source_field_input_indices[field] == in_i) {
+                        rooted = true;
+                        break;
+                    }
+                }
+                if (rooted) continue;
                 entry->defined_param_names[name_index++] = cxpr_strdup(child->inputs[in_i]);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);

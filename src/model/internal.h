@@ -233,6 +233,9 @@ typedef struct {
     size_t registry_index;
     char* source_arg;
     size_t source_input_index;
+    char** source_field_paths;
+    size_t* source_field_input_indices;
+    size_t source_field_count;
 } cxpr_model_child_program;
 
 typedef enum {

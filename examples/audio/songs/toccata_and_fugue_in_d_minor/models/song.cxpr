@@ -3,8 +3,9 @@ model song(type = "dsp")
 
 use sequencer from arrangement
 use grand_piano from instruments/classical
-use pan, chamber, reverb, master from effects
-use resonance from filters
+use pan, chamber, reverb from effects
+use master from effects/stereo
+use resonance from filters/stereo
 
 in t
 $sample_rate = 44100
@@ -21,22 +22,21 @@ stereo_voices = map(seq.voices, voice => {
     return pan(source=piano, position=voice.pan);
 })
 stereo_mix = sum(stereo_voices)
-raw_left = stereo_mix.left
-raw_right = stereo_mix.right
-left_tone = resonance(source=raw_left, sample_rate=$sample_rate,
+tone = resonance(source=stereo_mix, sample_rate=$sample_rate,
     cutoff=4600, resonance=0.022)
-right_tone = resonance(source=raw_right, sample_rate=$sample_rate,
-    cutoff=4600, resonance=0.022)
-dry_left = left_tone.low
-dry_right = right_tone.low
+dry_left = tone.low.left
+dry_right = tone.low.right
 
 near_room = chamber(source_left=0.50 * dry_left, source_right=0.50 * dry_right,
     sample_rate=$sample_rate, feedback=0.18)
 hall = reverb(source_left=0.16 * dry_left + 0.08 * near_room.left,
     source_right=0.16 * dry_right + 0.08 * near_room.right,
     sample_rate=$sample_rate, decay_seconds=2.4, damping=2000)
-finished = master(source_left=dry_left + 0.22 * near_room.left + 0.15 * hall.left,
-    source_right=dry_right + 0.22 * near_room.right + 0.15 * hall.right,
+master_source = {
+    left = dry_left + 0.22 * near_room.left + 0.15 * hall.left,
+    right = dry_right + 0.22 * near_room.right + 0.15 * hall.right
+}
+finished = master_source |> master(
     t=t, sample_rate=$sample_rate, gain=1.30, duration=seq.duration,
     fade_seconds=8.0, fade_in_seconds=0.25, ceiling=0.90)
 
