@@ -1,0 +1,17 @@
+// Mid/side width control followed by bounded analogue-style stereo drive.
+model width_drive(pipe = "stereo")
+
+in stereo { left, right }
+$width = 1.15
+$drive = 1.35
+$level = 0.82
+
+mid = 0.5 * (stereo.left + stereo.right)
+side = 0.5 * (stereo.left - stereo.right) * clamp($width, 0, 1.8)
+drive = max(0.01, $drive)
+normalizer = tanh(drive)
+
+out {
+    left = $level * tanh(drive * (mid + side)) / normalizer,
+    right = $level * tanh(drive * (mid - side)) / normalizer
+}

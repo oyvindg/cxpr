@@ -1,0 +1,13 @@
+// Add three stereo sends to a piped stereo foundation.
+model dry_mix(pipe = "stereo")
+
+in stereo { left, right }
+in hats_left, hats_right
+in riff_left, riff_right
+in stabs_left, stabs_right
+in room_left, room_right
+
+out {
+    left = stereo.left + hats_left + riff_left + stabs_left + room_left,
+    right = stereo.right + hats_right + riff_right + stabs_right + room_right
+}

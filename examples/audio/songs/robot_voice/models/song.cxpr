@@ -2,9 +2,11 @@
 model song(type = "dsp")
 
 use sequencer from arrangement
-use robot_voice from instruments/voice
-use resonance from filters
-use pan, phaser, reverb, master from effects
+use robot_voice from instruments.voice
+use resonance from mono.filters
+use phaser from mono.effects
+use pan from stereo.effects
+use hall, master from stereo.effects
 
 in t
 $sample_rate = 44100
@@ -38,25 +40,25 @@ voice_pitch_right = robot_voice(t=t, pitch=1.02 * seq_pitch.pitch,
     gate=seq_pitch.gate, phoneme=seq_pitch.phoneme,
     motion=seq_pitch.motion, sample_rate=$sample_rate)
 
-bright_filter = resonance(source=voice_bright,
+bright_filter = resonance(mono=voice_bright,
     sample_rate=$sample_rate, cutoff=3600, resonance=0.12,
     smoothing_seconds=0.020)
-radio_filter = resonance(source=voice_radio,
+radio_filter = resonance(mono=voice_radio,
     sample_rate=$sample_rate, cutoff=1350, resonance=0.42,
     smoothing_seconds=0.020)
-dark_filter = resonance(source=voice_dark,
+dark_filter = resonance(mono=voice_dark,
     sample_rate=$sample_rate, cutoff=1850, resonance=0.18,
     smoothing_seconds=0.020)
-side_left_filter = resonance(source=voice_side_left,
+side_left_filter = resonance(mono=voice_side_left,
     sample_rate=$sample_rate, cutoff=2800, resonance=0.16,
     smoothing_seconds=0.020)
-side_right_filter = resonance(source=voice_side_right,
+side_right_filter = resonance(mono=voice_side_right,
     sample_rate=$sample_rate, cutoff=3300, resonance=0.12,
     smoothing_seconds=0.020)
-pitch_left_filter = resonance(source=voice_pitch_left,
+pitch_left_filter = resonance(mono=voice_pitch_left,
     sample_rate=$sample_rate, cutoff=2400, resonance=0.18,
     smoothing_seconds=0.020)
-pitch_right_filter = resonance(source=voice_pitch_right,
+pitch_right_filter = resonance(mono=voice_pitch_right,
     sample_rate=$sample_rate, cutoff=2800, resonance=0.06,
     smoothing_seconds=0.020)
 
@@ -92,9 +94,8 @@ dry = {
 articulation_send = active_phoneme == 1 ? 0.07 :
     active_phoneme == 21 ? 0.16 : 0.44
 room_send = articulation_send * (0.80 + 0.45 * rear_depth)
-room = reverb(source_left=room_send * dry.left,
-    source_right=room_send * dry.right,
-    sample_rate=$sample_rate, decay_seconds=2.50, damping=4200)
+room = { left = room_send * dry.left, right = room_send * dry.right }
+    |> hall(sample_rate=$sample_rate, decay_seconds=2.50, damping=4200)
 room_left = phaser(source=room.left, sample_rate=$sample_rate,
     rate=0.10, depth=0.62, mix=0.36)
 room_right = phaser(source=room.right, sample_rate=$sample_rate,
@@ -106,13 +107,12 @@ moving_room = pan(source=0.5 * (room_left + room_right), position=room_motion)
 space_left = wide_left.left + 0.28 * wide_right.left
 space_right = wide_right.right + 0.28 * wide_left.right
 duration = 25.00
-finished = master(source_left=dry.left + 0.44 * room.left +
+stereo = {
+    left = dry.left + 0.44 * room.left +
         0.52 * space_left + 0.34 * moving_room.left,
-    source_right=dry.right + 0.44 * room.right +
-        0.52 * space_right + 0.34 * moving_room.right,
-    t=t, sample_rate=$sample_rate, gain=1.40, duration=duration,
-    fade_seconds=1.20, fade_in_seconds=0.08, ceiling=0.90)
+    right = dry.right + 0.44 * room.right +
+        0.52 * space_right + 0.34 * moving_room.right
+} |> master(t=t, sample_rate=$sample_rate, gain=1.40, duration=duration,
+            fade_seconds=1.20, fade_in_seconds=0.08, ceiling=0.90)
 
-left = finished.left
-right = finished.right
-out { left, right, duration }
+out stereo, duration

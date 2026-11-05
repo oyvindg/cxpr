@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "examples": [
+    {
+      "id": "fundamentals_expression",
+      "tier": "minimal",
+      "domain": "fundamentals",
+      "capabilities": [
+        "model-loading",
+        "parameters",
+        "named-dependencies",
+        "programmatic-expression-api"
+      ],
+      "backends": {
+        "model-session": "supported",
+        "expression-ir": "supported",
+        "generated-c": "not-applicable",
+        "bulk": "not-applicable",
+        "cuda": "not-applicable"
+      },
+      "readme": "fundamentals/expression/README.md",
+      "model": "fundamentals/expression/model.cxpr",
+      "host": "fundamentals/expression/host.c",
+      "test": "examples_fundamentals_expression"
+    },
+    {
+      "id": "physics_oscillator",
+      "tier": "integrated",
+      "domain": "physics",
+      "capabilities": [
+        "model-loading",
+        "state",
+        "atomic-updates",
+        "compile-once-run-many",
+        "numeric-invariants",
+        "session-lifecycle-reset"
+      ],
+      "backends": {
+        "model-session": "supported",
+        "expression-ir": "not-applicable",
+        "generated-c": "planned",
+        "bulk": "planned",
+        "cuda": "expected-rejection"
+      },
+      "readme": "domains/physics/oscillator/README.md",
+      "model": "domains/physics/oscillator/model.cxpr",
+      "host": "domains/physics/oscillator/host.c",
+      "test": "examples_physics_oscillator"
+    }
+  ]
+}

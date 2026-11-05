@@ -1,6 +1,0 @@
-model gain(source_arg = "source")
-
-in source
-$level = 1
-
-out sample = source * $level

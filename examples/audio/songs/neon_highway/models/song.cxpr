@@ -2,11 +2,13 @@
 model song(type = "dsp")
 
 use sequencer from arrangement
-use arp, atmospheric_pad, drums, stacked_bass, tom from instruments/retrowave
-use pulse_saw_lead from instruments/lead
-use track_eq, resonance from filters
-use kick_sidechain, gated_hall_reverb, portamento from effects
-use chorus, pan, reverb, master from effects
+use arp, atmospheric_pad, drums, stacked_bass, tom from instruments.retrowave
+use pulse_saw_lead from instruments.lead
+use track_eq, resonance from mono.filters
+use portamento from effects
+use kick_sidechain from mono.effects
+use chorus, gated_hall_reverb, pan from stereo.effects
+use hall, master from stereo.effects
 
 in t
 $sample_rate = 44100
@@ -40,14 +42,14 @@ snare = track_eq(source=snare_raw, sample_rate=$sample_rate,
                  bell_hz=1350, bell_gain_db=3, bell_q=0.7)
 # The required presence EQ runs first; this post-EQ low-pass removes only the
 # top octave of random noise that measured as backbeat crackle.
-snare_tone = resonance(source=snare.sample,
+snare_tone = resonance(mono=snare.sample,
                                    sample_rate=$sample_rate, cutoff=6500,
                                    resonance=0.08, smoothing_seconds=0.002)
 snare_soft = 0.78 * snare_tone.low
 # The raw metallic noise is intentionally bright; a dedicated low-pass removes
 # digital fizz while preserving the sequencer's accents and open-hat lifts.
 hat_source = seq.hat_level * drum.hat + seq.open_hat_level * drum.open_hat
-hat_tone = resonance(source=hat_source,
+hat_tone = resonance(mono=hat_source,
                                  sample_rate=$sample_rate, cutoff=9000,
                                  resonance=0.05, smoothing_seconds=0.002)
 hat_raw = hat_tone.low
@@ -142,10 +144,9 @@ shadow_pad_left = sqrt(1 - shadow_pad_pan) * shadow_pad_stereo.left
 shadow_pad_right = sqrt(1 + shadow_pad_pan) * shadow_pad_stereo.right
 # This dark, long room carries most of the shadow layer. A very small dry path
 # remains below so the harmony stays intelligible while sounding far away.
-shadow_pad_room = reverb(source_left=0.76 * shadow_pad_left,
-                         source_right=0.76 * shadow_pad_right,
-                         sample_rate=$sample_rate,
-                         feedback=0.92, damping=1550)
+shadow_pad_room = { left = 0.76 * shadow_pad_left,
+                    right = 0.76 * shadow_pad_right }
+    |> hall(sample_rate=$sample_rate, feedback=0.92, damping=1550)
 
 # Main lead: short portamento connects phrase notes, delayed vibrato animates
 # sustained notes, and direct equal-power pan replaces chorus coloration. Its
@@ -198,7 +199,7 @@ arp_eq = track_eq(source=seq.arp_level * arp_voice.sample,
                   bell_gain_db=-1.5, bell_q=0.9)
 # A smoothed low-pass rounds off the pulse transient and keeps the arp behind
 # the lead without changing its rhythmic definition.
-arp_soft = resonance(source=arp_eq.sample,
+arp_soft = resonance(mono=arp_eq.sample,
                                  sample_rate=$sample_rate, cutoff=4300,
                                  resonance=0.08, smoothing_seconds=0.004)
 arp_ducked = kick_sidechain(source=arp_soft.low, trigger=seq.kick_trigger,
@@ -206,9 +207,9 @@ arp_ducked = kick_sidechain(source=arp_soft.low, trigger=seq.kick_trigger,
                             attack_ms=0.8, release_ms=90)
 arp_stereo = pan(source=arp_ducked.sample,
                  position=0.46 * sin(2 * pi() * 0.055 * t))
-arp_room = reverb(source_left=0.48 * arp_stereo.left,
-                  source_right=0.48 * arp_stereo.right,
-                  sample_rate=$sample_rate, decay_seconds=0.85, damping=2900)
+arp_room = { left = 0.48 * arp_stereo.left,
+             right = 0.48 * arp_stereo.right }
+    |> hall(sample_rate=$sample_rate, decay_seconds=0.85, damping=2900)
 hat_stereo = pan(source=hat_raw, position=0.24)
 
 # Snare uses two distinct spaces: a contract-specific post-reverb gate for the
@@ -216,24 +217,22 @@ hat_stereo = pan(source=hat_raw, position=0.24)
 hall = gated_hall_reverb(source=snare_soft, trigger=seq.snare_trigger,
                          sample_rate=$sample_rate, decay_seconds=3.2,
                          gate_seconds=seq.eighth_seconds)
-snare_room = reverb(source_left=0.30 * snare_soft,
-                    source_right=0.30 * snare_soft,
-                    sample_rate=$sample_rate, feedback=0.90, damping=3200)
+snare_room = { left = 0.30 * snare_soft, right = 0.30 * snare_soft }
+    |> hall(sample_rate=$sample_rate, feedback=0.90, damping=3200)
 # Reverb now supplies only subtle depth; the long audible fade belongs to the
 # oscillator envelope and its narrowing stereo image above.
-lead_room = reverb(source_left=0.35 * lead_left,
-                   source_right=0.35 * lead_right,
-                   sample_rate=$sample_rate, decay_seconds=0.75, damping=3200)
+lead_room = { left = 0.35 * lead_left, right = 0.35 * lead_right }
+    |> hall(sample_rate=$sample_rate, decay_seconds=0.75, damping=3200)
 # The shared music room glues pads and leads together. Rhythm ambience stays on
 # dedicated snare/hall buses so diagnostic gain controls isolate cleanly.
-room = reverb(
-    source_left=$pad_gain * seq.pad_section_level * 0.52 * pad_left +
+room = {
+    left = $pad_gain * seq.pad_section_level * 0.52 * pad_left +
         $lead_gain * seq.lead_mix_level * 0.04 * lead_left +
         $background_gain * 0.28 * background_pan.left,
-    source_right=$pad_gain * seq.pad_section_level * 0.52 * pad_right +
+    right = $pad_gain * seq.pad_section_level * 0.52 * pad_right +
         $lead_gain * seq.lead_mix_level * 0.04 * lead_right +
-        $background_gain * 0.28 * background_pan.right,
-    sample_rate=$sample_rate, feedback=0.88, damping=2400)
+        $background_gain * 0.28 * background_pan.right
+} |> hall(sample_rate=$sample_rate, feedback=0.88, damping=2400)
 
 drum_center = 0.7071067811865476 *
     (0.92 * kick.sample + 0.62 * snare_soft)
@@ -271,12 +270,8 @@ music_right = seq.music_section_level *
 left_mix = $rhythm_gain * rhythm_left + $music_gain * music_left
 right_mix = $rhythm_gain * rhythm_right + $music_gain * music_right
 
-finished = master(source_left=left_mix, source_right=right_mix,
-                  t=t, sample_rate=$sample_rate, gain=1.05,
-                  duration=seq.duration, fade_seconds=1.2, ceiling=0.86)
-
-out {
-    left = finished.left,
-    right = finished.right,
-    duration = seq.duration
-}
+stereo = { left = left_mix, right = right_mix }
+    |> master(t=t, sample_rate=$sample_rate, gain=1.05,
+              duration=seq.duration, fade_seconds=1.2, ceiling=0.86)
+duration = seq.duration
+out stereo, duration

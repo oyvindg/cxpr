@@ -2,7 +2,7 @@
 model french_horn(lifecycle = "scoped")
 
 use oscillator from oscillators
-use resonance from filters
+use resonance from mono.filters
 use rounded_ar from envelopes
 use vibrato from effects
 
@@ -17,7 +17,7 @@ pitch = vibrato(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     rate=4.40, depth=0.0017, delay=0.18, fade=0.34, initial_phase=0.53)
 source = oscillator(frequency=frequency * pitch.ratio,
     reset=0, sample_rate=$sample_rate, waveform=0, drift=0.0004)
-bell = resonance(source=tanh((0.72 + 0.38 * bloom) * source),
+bell = resonance(mono=tanh((0.72 + 0.38 * bloom) * source),
     sample_rate=$sample_rate, cutoff=760 + 240 * bloom, resonance=0.72)
 envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     attack=0.16, hold=$hold, release=$release)

@@ -1,0 +1,42 @@
+# Shared dotted eighth at 108 BPM and 44100 Hz: 18375 samples.
+# Bare wet returneres. Foreldremodellen bestemmer send og dry/wet-forhold.
+model filtered_delay(pipe = "stereo", lifecycle = "scoped")
+
+in stereo { left as source_left, right as source_right }
+
+$sample_rate = 44100
+$feedback = 0.30
+$cutoff = 2600
+
+assert $sample_rate >= 8000 and $sample_rate <= 44100 {
+    description = "Delay buffers support sample rates from 8000 through 44100 Hz"
+}
+
+state memory_left: buffer<number, samples = 18375>
+state memory_right: buffer<number, samples = 18375>
+state damp_left = 0
+state damp_right = 0
+
+# [0] er forrige sample; [18374] gir 18375 samples forsinkelse.
+delay_index = max(0, floor(18375 * $sample_rate / 44100) - 1)
+tap_left = memory_left[delay_index]
+tap_right = memory_right[delay_index]
+delayed_left = isnan(tap_left) ? 0 : tap_left
+delayed_right = isnan(tap_right) ? 0 : tap_right
+
+coefficient = 1 - exp(-2 * pi() * clamp($cutoff, 20, $sample_rate * 0.45) / $sample_rate)
+filtered_left = damp_left + coefficient * (delayed_left - damp_left)
+filtered_right = damp_right + coefficient * (delayed_right - damp_right)
+feedback = clamp($feedback, 0, 0.90)
+
+damp_left := filtered_left
+damp_right := filtered_right
+memory_left := source_left + feedback * filtered_right
+memory_right := source_right + feedback * filtered_left
+
+left = filtered_left
+right = filtered_right
+
+out {
+    left, right
+}

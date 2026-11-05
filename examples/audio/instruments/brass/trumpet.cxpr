@@ -2,7 +2,7 @@
 model trumpet(lifecycle = "scoped")
 
 use oscillator from oscillators
-use resonance from filters
+use resonance from mono.filters
 use rounded_ar from envelopes
 use vibrato from effects
 
@@ -16,7 +16,7 @@ pitch = vibrato(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     rate=5.05, depth=0.0022, delay=0.12, fade=0.26, initial_phase=0.34)
 source = oscillator(frequency=frequency * pitch.ratio, reset=0, sample_rate=$sample_rate,
     waveform=0, drift=0.00022)
-bell = resonance(source=source, sample_rate=$sample_rate,
+bell = resonance(mono=source, sample_rate=$sample_rate,
     cutoff=1850, resonance=0.24)
 envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     attack=0.13, hold=$hold, release=$release)

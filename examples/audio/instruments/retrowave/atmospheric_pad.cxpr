@@ -3,7 +3,7 @@ model atmospheric_pad(lifecycle = "scoped")
 
 use oscillator from oscillators
 use adsr from envelopes
-use resonance from filters
+use resonance from mono.filters
 
 in age, frequency, trigger
 $sample_rate = 44100
@@ -37,7 +37,7 @@ cutoff = 720 + 1050 * shape.value +
     190 * sin(2 * pi() * filter_lfo_now)
 # Envelope motion opens the filter with each chord; the slow LFO adds movement
 # across sustained notes without changing their pitch.
-filtered = resonance(source=source, sample_rate=$sample_rate,
+filtered = resonance(mono=source, sample_rate=$sample_rate,
                                  cutoff=cutoff, resonance=0.22,
                                  smoothing_seconds=0.014)
 filter_lfo_phase := (filter_lfo_now + 0.075 / $sample_rate) % 1

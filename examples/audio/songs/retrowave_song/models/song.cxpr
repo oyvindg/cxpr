@@ -2,9 +2,9 @@
 model song(type = "dsp")
 
 use sequencer from arrangement
-use bass, pad, arp, lead, drums, tom from instruments/retrowave
-use chorus, gated_reverb, stereo_compressor, tape from effects
-use pan, stereo_delay, reverb, master from effects
+use bass, pad, arp, lead, drums, tom from instruments.retrowave
+use chorus, gated_reverb, pan from stereo.effects
+use compressor, filtered_delay, hall, master, tape from stereo.effects
 
 in t
 $sample_rate = 44100
@@ -52,33 +52,23 @@ center = 0.7071067811865476 * (pump * seq.bass_level * b.sample + drum_center)
 
 dry_left = center + pump * pad_stereo.left + arp_stereo.left + lead_stereo.left + hat_stereo.left
 dry_right = center + pump * pad_stereo.right + arp_stereo.right + lead_stereo.right + hat_stereo.right
-echo = stereo_delay(
-    source_left=0.42 * arp_stereo.left + 0.28 * lead_stereo.left,
-    source_right=0.42 * arp_stereo.right + 0.28 * lead_stereo.right,
-    sample_rate=$sample_rate, feedback=0.38, cutoff=3200)
-room = reverb(
-    source_left=0.16 * pad_stereo.left + 0.22 * lead_stereo.left + 0.16 * seq.snare_level * d.snare + 0.20 * echo.left,
-    source_right=0.16 * pad_stereo.right + 0.22 * lead_stereo.right + 0.16 * seq.snare_level * d.snare + 0.20 * echo.right,
-    sample_rate=$sample_rate, feedback=0.76, damping=3900)
+echo = {
+    left = 0.42 * arp_stereo.left + 0.28 * lead_stereo.left,
+    right = 0.42 * arp_stereo.right + 0.28 * lead_stereo.right
+} |> filtered_delay(sample_rate=$sample_rate, feedback=0.38, cutoff=3200)
+room = {
+    left = 0.16 * pad_stereo.left + 0.22 * lead_stereo.left + 0.16 * seq.snare_level * d.snare + 0.20 * echo.left,
+    right = 0.16 * pad_stereo.right + 0.22 * lead_stereo.right + 0.16 * seq.snare_level * d.snare + 0.20 * echo.right
+} |> hall(sample_rate=$sample_rate, feedback=0.76, damping=3900)
 
-compressed = stereo_compressor(
-    source_left=dry_left + 0.82 * echo.left + 0.68 * room.left + 0.42 * snare_gate.left,
-    source_right=dry_right + 0.82 * echo.right + 0.68 * room.right + 0.42 * snare_gate.right,
-    sample_rate=$sample_rate, threshold=0.30, ratio=3.0,
-    attack=0.012, release=0.16, makeup=1.08)
-colored = tape(
-    source_left=compressed.left,
-    source_right=compressed.right,
-    sample_rate=$sample_rate, drive=1.18, mix=0.72)
-finished = master(
-    source_left=colored.left,
-    source_right=colored.right,
-    t=t, sample_rate=$sample_rate, gain=$master_gain,
-    duration=seq.duration, fade_seconds=1.2, ceiling=0.90)
-left = finished.left
-right = finished.right
+compressed = {
+    left = dry_left + 0.82 * echo.left + 0.68 * room.left + 0.42 * snare_gate.left,
+    right = dry_right + 0.82 * echo.right + 0.68 * room.right + 0.42 * snare_gate.right
+} |> compressor(sample_rate=$sample_rate, threshold=0.30, ratio=3.0,
+                       attack=0.012, release=0.16, makeup=1.08)
+stereo = compressed
+    |> tape(sample_rate=$sample_rate, drive=1.18, mix=0.72)
+    |> master(t=t, sample_rate=$sample_rate, gain=$master_gain,
+              duration=seq.duration, fade_seconds=1.2, ceiling=0.90)
 duration = seq.duration
-
-out {
-    left, right, duration
-}
+out stereo, duration

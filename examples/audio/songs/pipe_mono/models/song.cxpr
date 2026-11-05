@@ -1,6 +1,6 @@
 model song(type = "dsp")
 
-use delay, reverb, gain, master from effects/mono
+use delay, reverb, gain, master from mono.effects
 use mono from channels
 
 in t

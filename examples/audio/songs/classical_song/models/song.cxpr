@@ -2,13 +2,13 @@
 model song(type = "dsp")
 
 use score from arrangement
-use fortepiano_chord, pizzicato_section, violin_section, viola, cello, double_bass from instruments/classical
-use flute, oboe, clarinet, bassoon from instruments/woodwind
-use trumpet, trombone, horn_section from instruments/brass
-use timpani from instruments/percussion
-use chamber from effects
-use pan, reverb, stereo_compressor, master from effects
-use resonance from filters
+use fortepiano_chord, pizzicato_section, violin_section, viola, cello, double_bass from instruments.classical
+use flute, oboe, clarinet, bassoon from instruments.woodwind
+use trumpet, trombone, horn_section from instruments.brass
+use timpani from instruments.percussion
+use pan from stereo.effects
+use chamber, compressor, hall, master from stereo.effects
+use resonance from mono.filters
 
 in t
 $sample_rate = 44100
@@ -68,31 +68,31 @@ trumpet_voice = trumpet(age=seq.brass_age,
     frequency=2 * seq.brass_frequency, trigger=seq.brass_trigger,
     sample_rate=$sample_rate, hold=4 * 60 / $bpm - 0.12, gain=0.11)
 
-rhythm_tone = resonance(source=seq.piano_level * rhythmic_strings.sample,
+rhythm_tone = resonance(mono=seq.piano_level * rhythmic_strings.sample,
     sample_rate=$sample_rate, cutoff=2400, resonance=0.10)
-piano_tone = resonance(source=seq.upper_level * piano_upper.sample,
+piano_tone = resonance(mono=seq.upper_level * piano_upper.sample,
     sample_rate=$sample_rate, cutoff=2600, resonance=0.12)
-violin_tone = resonance(source=seq.expression * seq.violin_level * first.sample,
+violin_tone = resonance(mono=seq.expression * seq.violin_level * first.sample,
     sample_rate=$sample_rate, cutoff=2800, resonance=0.10)
-viola_tone = resonance(source=0.82 * middle.sample,
+viola_tone = resonance(mono=0.82 * middle.sample,
     sample_rate=$sample_rate, cutoff=2200, resonance=0.10)
-cello_tone = resonance(source=0.92 * low.sample,
+cello_tone = resonance(mono=0.92 * low.sample,
     sample_rate=$sample_rate, cutoff=1700, resonance=0.08)
-double_bass_tone = resonance(source=0.72 * double_bass_voice.sample,
+double_bass_tone = resonance(mono=0.72 * double_bass_voice.sample,
     sample_rate=$sample_rate, cutoff=900, resonance=0.06)
-flute_tone = resonance(source=seq.flute_level * flute_voice.sample,
+flute_tone = resonance(mono=seq.flute_level * flute_voice.sample,
     sample_rate=$sample_rate, cutoff=3100, resonance=0.10)
-oboe_tone = resonance(source=seq.oboe_level * oboe_voice.sample,
+oboe_tone = resonance(mono=seq.oboe_level * oboe_voice.sample,
     sample_rate=$sample_rate, cutoff=2400, resonance=0.10)
-clarinet_tone = resonance(source=0.72 * seq.oboe_level * clarinet_voice.sample,
+clarinet_tone = resonance(mono=0.72 * seq.oboe_level * clarinet_voice.sample,
     sample_rate=$sample_rate, cutoff=1900, resonance=0.08)
-bassoon_tone = resonance(source=0.68 * seq.horn_level * bassoon_voice.sample,
+bassoon_tone = resonance(mono=0.68 * seq.horn_level * bassoon_voice.sample,
     sample_rate=$sample_rate, cutoff=1250, resonance=0.08)
-trombone_tone = resonance(source=seq.brass_level * brass.sample,
+trombone_tone = resonance(mono=seq.brass_level * brass.sample,
     sample_rate=$sample_rate, cutoff=1550, resonance=0.12)
-horn_tone = resonance(source=seq.horn_level * horn_voice.sample,
+horn_tone = resonance(mono=seq.horn_level * horn_voice.sample,
     sample_rate=$sample_rate, cutoff=1450, resonance=0.10)
-trumpet_tone = resonance(source=0.54 * seq.brass_level * trumpet_voice.sample,
+trumpet_tone = resonance(mono=0.54 * seq.brass_level * trumpet_voice.sample,
     sample_rate=$sample_rate, cutoff=2100, resonance=0.10)
 
 rhythm = pan(source=rhythm_tone.low, position=-0.28)
@@ -117,8 +117,10 @@ dry_right = rhythm.right + piano.right + violins.right + violas.right + cellos.r
     horns.right + trumpets.right + trombones.right + timpani_section.right
 
 # Early reflections establish the stage; deeper sections feed more of the hall.
-early = chamber(source_left=0.28 * dry_left, source_right=0.28 * dry_right,
-    sample_rate=$sample_rate, feedback=0.36)
+early = {
+    left = 0.28 * dry_left,
+    right = 0.28 * dry_right
+} |> chamber(sample_rate=$sample_rate, feedback=0.36)
 hall_send_left = 0.18 * rhythm.left + 0.16 * piano.left +
     0.28 * (violins.left + violas.left + cellos.left + double_basses.left) +
     0.42 * (flutes.left + oboes.left + clarinets.left + bassoons.left) +
@@ -127,22 +129,15 @@ hall_send_right = 0.18 * rhythm.right + 0.16 * piano.right +
     0.28 * (violins.right + violas.right + cellos.right + double_basses.right) +
     0.42 * (flutes.right + oboes.right + clarinets.right + bassoons.right) +
     0.52 * (horns.right + trumpets.right + trombones.right + timpani_section.right)
-hall = reverb(source_left=hall_send_left, source_right=hall_send_right,
-    sample_rate=$sample_rate, feedback=0.85, damping=2850)
-glued = stereo_compressor(
-    source_left=dry_left + 0.48 * early.left + 0.78 * hall.left,
-    source_right=dry_right + 0.48 * early.right + 0.78 * hall.right,
-    sample_rate=$sample_rate, threshold=0.34, ratio=1.8,
-    attack=0.028, release=0.24, makeup=1.03)
-finished = master(
-    source_left=glued.left,
-    source_right=glued.right,
-    t=t, sample_rate=$sample_rate, gain=$master_gain,
-    duration=seq.duration, fade_seconds=1.1, ceiling=0.90)
-left = finished.left
-right = finished.right
+hall_room = { left = hall_send_left, right = hall_send_right }
+    |> hall(sample_rate=$sample_rate, feedback=0.85, damping=2850)
+glued = {
+    left = dry_left + 0.48 * early.left + 0.78 * hall_room.left,
+    right = dry_right + 0.48 * early.right + 0.78 * hall_room.right
+} |> compressor(sample_rate=$sample_rate, threshold=0.34, ratio=1.8,
+                       attack=0.028, release=0.24, makeup=1.03)
+stereo = glued
+    |> master(t=t, sample_rate=$sample_rate, gain=$master_gain,
+              duration=seq.duration, fade_seconds=1.1, ceiling=0.90)
 duration = seq.duration
-
-out {
-    left, right, duration
-}
+out stereo, duration

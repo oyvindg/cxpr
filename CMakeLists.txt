@@ -213,6 +213,7 @@ option(CXPR_BUILD_TESTS "Build cxpr tests" ${PROJECT_IS_TOP_LEVEL})
 if(CXPR_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    add_subdirectory(examples)
 
     add_executable(cxpr_example_engine_lookback
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/engine_lookback.c")

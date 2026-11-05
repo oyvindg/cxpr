@@ -1,6 +1,6 @@
 # Pure scalar gain stage.
 model gain {
-    source_arg = "source"
+    pipe = "source"
 }
 
 in source

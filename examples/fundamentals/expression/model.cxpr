@@ -1,0 +1,11 @@
+# Canonical authored form for the expression fundamentals example.
+model expression_fundamentals
+
+in { mass, velocity }
+
+$speed_limit = 4
+
+kinetic_energy = 0.5 * mass * velocity^2
+over_speed = abs(velocity) > $speed_limit
+
+out { kinetic_energy, over_speed }

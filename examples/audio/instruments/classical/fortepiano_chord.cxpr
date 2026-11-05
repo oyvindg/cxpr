@@ -1,7 +1,7 @@
 # Three independently voiced fortepiano strings for true polyphonic chords.
 model fortepiano_chord(lifecycle = "scoped")
 
-use fortepiano from instruments/classical
+use fortepiano from instruments.classical
 
 in age, root_frequency, third_frequency, fifth_frequency, trigger
 $sample_rate = 44100

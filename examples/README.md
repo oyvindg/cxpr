@@ -2,7 +2,19 @@
 
 This folder contains longer examples that are useful for understanding how `cxpr` can be embedded in an application.
 
+The [executable example matrix](matrix.md) maps stable capability families to
+minimal, integrated, and reference workloads. The machine-readable
+[`manifest.json`](manifest.json) identifies examples whose source,
+documentation, build target, and CTest registration are checked together.
+
 ## Included
+
+- [`fundamentals/expression/`](fundamentals/expression/README.md): the same
+  calculation authored as a `.cxpr` model and through the programmatic C API
+- [`domains/physics/oscillator/`](domains/physics/oscillator/README.md): a
+  stateful damped oscillator with invariant and reset validation
+- [`domains/games/pathfinding/`](domains/games/pathfinding/README.md): native
+  CXPR flow-field models with generated-C bulk execution and Dijkstra parity
 
 - [`trading.md`](trading.md): expression composition and dependency ordering
   Test: [`../tests/examples/trading.test.c`](../tests/examples/trading.test.c)

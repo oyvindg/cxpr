@@ -1,0 +1,26 @@
+# Semi-implicit Euler integration of a damped harmonic oscillator.
+model damped_oscillator
+
+in { force }
+
+$mass = 1
+$spring = 4
+$damping = 0.2
+$dt = 0.005
+
+state {
+    position = 1
+    velocity = 0
+}
+
+acceleration = (force - $spring * position - $damping * velocity) / $mass
+next_velocity = velocity + acceleration * $dt
+next_position = position + next_velocity * $dt
+kinetic_energy = 0.5 * $mass * next_velocity^2
+potential_energy = 0.5 * $spring * next_position^2
+total_energy = kinetic_energy + potential_energy
+
+position := next_position
+velocity := next_velocity
+
+out { position, velocity, acceleration, total_energy }

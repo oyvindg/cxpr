@@ -3,10 +3,12 @@
 model song(type = "dsp")
 
 use sequencer from arrangement
-use bass, lead, kick, snare, hat, bell from instruments/native
+use bass, lead, kick, snare, hat, bell from instruments.native
 use pad from instruments
-use lfo, phaser from effects
-use pan, stereo_delay, reverb, master from effects
+use lfo from effects
+use phaser from mono.effects
+use pan from stereo.effects
+use filtered_delay, hall, master from stereo.effects
 
 in t
 $sample_rate = 44100
@@ -106,25 +108,19 @@ dry_left = center + phase_left.sample + melody_stereo.left + hat_stereo.left + b
 dry_right = center + phase_right.sample + melody_stereo.right + hat_stereo.right + bell_stereo.right
 
 # Send-effekter. Delay og romklang fortsetter å kjøre gjennom hele halen.
-echo = stereo_delay(
-    source_left=0.30 * melody_stereo.left + 0.06 * phase_left.sample + 0.18 * bell_stereo.left,
-    source_right=0.30 * melody_stereo.right + 0.06 * phase_right.sample + 0.18 * bell_stereo.right,
-    sample_rate=$sample_rate, feedback=0.32, cutoff=2600)
-room = reverb(
-    source_left=0.22 * phase_left.sample + 0.18 * melody_stereo.left + 0.10 * snare_sample + 0.14 * bell_stereo.left + 0.30 * echo.left,
-    source_right=0.22 * phase_right.sample + 0.18 * melody_stereo.right + 0.10 * snare_sample + 0.14 * bell_stereo.right + 0.30 * echo.right,
-    sample_rate=$sample_rate, feedback=0.80, damping=3400)
+echo = {
+    left = 0.30 * melody_stereo.left + 0.06 * phase_left.sample + 0.18 * bell_stereo.left,
+    right = 0.30 * melody_stereo.right + 0.06 * phase_right.sample + 0.18 * bell_stereo.right
+} |> filtered_delay(sample_rate=$sample_rate, feedback=0.32, cutoff=2600)
+room = {
+    left = 0.22 * phase_left.sample + 0.18 * melody_stereo.left + 0.10 * snare_sample + 0.14 * bell_stereo.left + 0.30 * echo.left,
+    right = 0.22 * phase_right.sample + 0.18 * melody_stereo.right + 0.10 * snare_sample + 0.14 * bell_stereo.right + 0.30 * echo.right
+} |> hall(sample_rate=$sample_rate, feedback=0.80, damping=3400)
 
-finished = master(
-    source_left=dry_left + echo.left + 0.75 * room.left,
-    source_right=dry_right + echo.right + 0.75 * room.right,
-    t=t, sample_rate=$sample_rate, gain=$master_gain,
-    duration=seq.duration, fade_seconds=1.4, ceiling=0.90)
-
-left = finished.left
-right = finished.right
+stereo = {
+    left = dry_left + echo.left + 0.75 * room.left,
+    right = dry_right + echo.right + 0.75 * room.right
+} |> master(t=t, sample_rate=$sample_rate, gain=$master_gain,
+            duration=seq.duration, fade_seconds=1.4, ceiling=0.90)
 duration = seq.duration
-
-out {
-    left, right, duration
-}
+out stereo, duration

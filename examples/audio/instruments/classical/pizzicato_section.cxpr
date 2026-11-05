@@ -2,7 +2,7 @@
 model pizzicato_section(lifecycle = "scoped")
 
 use oscillator from oscillators
-use resonance from filters
+use resonance from mono.filters
 
 in age, frequency, trigger
 $sample_rate = 44100
@@ -19,7 +19,7 @@ second = oscillator(frequency=2.001 * frequency, reset=trigger,
     sample_rate=$sample_rate, waveform=2, drift=0.00012)
 pluck = 0.58 * fundamental + 0.16 * left_player + 0.16 * right_player +
     0.10 * second
-body = resonance(source=pluck, sample_rate=$sample_rate,
+body = resonance(mono=pluck, sample_rate=$sample_rate,
     cutoff=1750 + 900 * exp(-12 * note_age), resonance=0.18)
 attack_position = clamp(note_age / 0.032, 0, 1)
 attack = pow(sin(pi() * attack_position / 2), 2)

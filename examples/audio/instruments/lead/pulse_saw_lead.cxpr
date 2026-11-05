@@ -3,8 +3,8 @@ model pulse_saw_lead(lifecycle = "scoped")
 
 use oscillator from oscillators
 use adsr from envelopes
-use resonance from filters
-use saturation from effects
+use resonance from mono.filters
+use saturation from mono.effects
 
 in frequency, gate, trigger
 $sample_rate = 44100
@@ -68,9 +68,9 @@ mixed = core_mix * ((1 - pulse_mix) * saw + pulse_mix * pulse) +
     unison_mix * unison_saw.sample + sub_mix * sub_pulse.sample
 # Drive occurs before the resonant filter, matching a subtractive synth voice
 # where oscillator mixer saturation excites the filter rather than the output.
-driven = saturation(source=mixed, drive=$drive)
+driven = saturation(mono=mixed, drive=$drive)
 cutoff = $cutoff_base + $cutoff_envelope * tone
-filtered = resonance(source=driven, sample_rate=$sample_rate,
+filtered = resonance(mono=driven, sample_rate=$sample_rate,
                                  cutoff=cutoff, resonance=$resonance)
 # Output weights expose low, band, notch, and high-pass morphing without
 # duplicating oscillator or envelope state in consuming songs.

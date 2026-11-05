@@ -1,0 +1,18 @@
+# Song-specific chamber send and return for the break, percussion, and stabs.
+model room(lifecycle = "scoped")
+
+use chamber from stereo.effects
+
+in snare_left, snare_right, clap_left, clap_right,
+   hat_left, hat_right, stab_left, stab_right
+$sample_rate = 44100
+
+sample = {
+    left = 0.26 * snare_left + 0.18 * clap_left +
+           0.08 * hat_left + 0.24 * stab_left,
+    right = 0.26 * snare_right + 0.18 * clap_right +
+            0.08 * hat_right + 0.24 * stab_right
+}
+stereo = sample |> chamber(sample_rate=$sample_rate, feedback=0.26)
+
+out stereo

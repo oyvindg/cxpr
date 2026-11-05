@@ -2,7 +2,7 @@
 # bounded state; `mix` is ordinary model policy rather than native audio logic.
 model reverb {
     lifecycle = "scoped"
-    source_arg = "source"
+    pipe = "source"
 }
 
 in source

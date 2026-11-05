@@ -1,0 +1,23 @@
+// Pitch modulation whose wet amount decays smoothly back to the dry note.
+model pitch_wet_to_dry(lifecycle = "scoped")
+
+in age, trigger
+$sample_rate = 44100
+$rate = 6.2
+$depth = 0.032
+$bend = 0.045
+$hold = 0.025
+$fade = 0.30
+$initial_phase = 0.18
+
+state phase = 0
+phase_now = trigger > 0 ? $initial_phase % 1 : phase
+fade_position = clamp((max(0, age) - $hold) / max(0.001, $fade), 0, 1)
+wet = pow(cos(pi() * fade_position / 2), 2)
+motion = $depth * sin(2 * pi() * phase_now) + $bend * exp(-14 * max(0, age))
+ratio = 1 + wet * motion
+phase := (phase_now + $rate / $sample_rate) % 1
+
+out {
+    ratio, wet
+}

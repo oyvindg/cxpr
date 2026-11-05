@@ -2,10 +2,10 @@
 model song(type = "dsp")
 
 use sequencer from arrangement
-use grand_piano from instruments/classical
-use pan, chamber, reverb from effects
-use master from effects/stereo
-use resonance from filters/stereo
+use grand_piano from instruments.classical
+use pan from stereo.effects
+use chamber, hall, master from stereo.effects
+use resonance from stereo.filters
 
 in t
 $sample_rate = 44100
@@ -25,33 +25,29 @@ stereo_voices = map(seq.voices, voice => {
 })
 stereo_mix = sum(stereo_voices)
 // A gentle post-sum low-pass removes brittle modal energy without narrowing stereo.
-tone = resonance(source=stereo_mix, sample_rate=$sample_rate,
+tone = resonance(stereo=stereo_mix, sample_rate=$sample_rate,
     cutoff=4600, resonance=0.025)
 dry_left = tone.low.left
 dry_right = tone.low.right
 
 // Close asymmetric reflections preserve the keyboard width and place the
 // listener at the bench; the softer hall return sits behind that near field.
-near_room = chamber(source_left=0.52 * dry_left, source_right=0.52 * dry_right,
-    sample_rate=$sample_rate, feedback=0.20)
+near_room = { left = 0.52 * dry_left, right = 0.52 * dry_right }
+    |> chamber(sample_rate=$sample_rate, feedback=0.20)
 // The hall is a quiet send fed by both direct piano and early reflections.
-hall = reverb(source_left=0.18 * dry_left + 0.10 * near_room.left,
-    source_right=0.18 * dry_right + 0.10 * near_room.right,
-    sample_rate=$sample_rate, decay_seconds=2.2, damping=2000)
+hall_room = {
+    left = 0.18 * dry_left + 0.10 * near_room.left,
+    right = 0.18 * dry_right + 0.10 * near_room.right
+} |> hall(sample_rate=$sample_rate, decay_seconds=2.2, damping=2000)
 // Keep the pianist-position direct signal dominant over both wet returns.
 master_source = {
-    left = dry_left + 0.22 * near_room.left + 0.16 * hall.left,
-    right = dry_right + 0.22 * near_room.right + 0.16 * hall.right
+    left = dry_left + 0.22 * near_room.left + 0.16 * hall_room.left,
+    right = dry_right + 0.22 * near_room.right + 0.16 * hall_room.right
 }
-finished = master_source |> master(
+stereo = master_source |> master(
     t=t, sample_rate=$sample_rate, gain=1.45, duration=seq.duration,
     // The seven-second fade begins at the final bass event and reaches zero.
     fade_seconds=7.0, fade_in_seconds=0.35, ceiling=0.90)
 
-left = finished.left
-right = finished.right
 duration = seq.duration
-
-out {
-    left, right, duration
-}
+out stereo, duration

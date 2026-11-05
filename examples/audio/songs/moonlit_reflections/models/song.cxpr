@@ -2,9 +2,10 @@
 model song(type = "dsp")
 
 use sequencer from arrangement
-use fortepiano, fortepiano_chord from instruments/classical
-use pan, reverb, master from effects
-use resonance from filters
+use fortepiano, fortepiano_chord from instruments.classical
+use pan from stereo.effects
+use hall, master from stereo.effects
+use resonance from mono.filters
 
 in t
 $sample_rate = 44100
@@ -44,19 +45,19 @@ chord_voice = fortepiano_chord(age=seq.chord_age,
     fifth_frequency=seq.chord_fifth_frequency,
     trigger=seq.chord_trigger, sample_rate=$sample_rate, gain=0.12)
 
-arp_tone = resonance(source=seq.arp_level *
+arp_tone = resonance(mono=seq.arp_level *
     (arpeggio_voices.body + arpeggio_voices.light),
     sample_rate=$sample_rate, cutoff=3100, resonance=0.08)
-melody_tone = resonance(source=seq.melody_level *
+melody_tone = resonance(mono=seq.melody_level *
     (melody_voices.singing + melody_voices.halo),
     sample_rate=$sample_rate, cutoff=3600, resonance=0.07)
-inner_tone = resonance(source=seq.inner_level *
+inner_tone = resonance(mono=seq.inner_level *
     (inner_voices.lower + inner_voices.middle + inner_voices.upper),
     sample_rate=$sample_rate, cutoff=2500, resonance=0.07)
-bass_tone = resonance(source=seq.bass_level *
+bass_tone = resonance(mono=seq.bass_level *
     (bass_voices.foundation + bass_voices.resonance),
     sample_rate=$sample_rate, cutoff=1700, resonance=0.06)
-chord_tone = resonance(source=seq.chord_level * chord_voice.sample,
+chord_tone = resonance(mono=seq.chord_level * chord_voice.sample,
     sample_rate=$sample_rate, cutoff=2800, resonance=0.08)
 
 arpeggio = pan(source=arp_tone.low, position=-0.13)
@@ -67,17 +68,13 @@ chord = pan(source=chord_tone.low, position=0.12)
 dry_left = arpeggio.left + melody.left + inner.left + bass.left + chord.left
 dry_right = arpeggio.right + melody.right + inner.right + bass.right + chord.right
 
-room = reverb(source_left=0.42 * dry_left, source_right=0.42 * dry_right,
-    sample_rate=$sample_rate, decay_seconds=3.8, damping=2600)
-finished = master(source_left=dry_left + 0.62 * room.left,
-    source_right=dry_right + 0.62 * room.right,
-    t=t, sample_rate=$sample_rate, gain=1.12, duration=seq.duration,
-    fade_seconds=3.8, fade_in_seconds=0.35, ceiling=0.90)
-
-left = finished.left
-right = finished.right
+room = { left = 0.42 * dry_left, right = 0.42 * dry_right }
+    |> hall(sample_rate=$sample_rate, decay_seconds=3.8, damping=2600)
+stereo = {
+    left = dry_left + 0.62 * room.left,
+    right = dry_right + 0.62 * room.right
+} |> master(t=t, sample_rate=$sample_rate, gain=1.12,
+            duration=seq.duration, fade_seconds=3.8,
+            fade_in_seconds=0.35, ceiling=0.90)
 duration = seq.duration
-
-out {
-    left, right, duration
-}
+out stereo, duration

@@ -1,0 +1,9 @@
+# Shared symmetric soft clip with approximately unity small-signal gain.
+model saturation(pipe = "mono", lifecycle = "scoped")
+
+in mono
+$drive = 1.5
+
+drive = max(0.01, $drive)
+out sample = tanh(drive * mono) / tanh(drive)
+

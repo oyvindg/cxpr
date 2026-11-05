@@ -2,8 +2,8 @@
 model robot_voice(lifecycle = "scoped")
 
 use oscillator from oscillators
-use resonance from filters
-use saturation from effects
+use resonance from mono.filters
+use saturation from mono.effects
 
 in t, pitch, gate, phoneme, motion
 $sample_rate = 44100
@@ -52,7 +52,7 @@ glottis = oscillator(frequency=pitch, reset=0, sample_rate=$sample_rate,
     waveform=1, pulse_width=0.31, drift=0)
 octave = oscillator(frequency=2 * pitch, reset=0, sample_rate=$sample_rate,
     waveform=1, pulse_width=0.22, drift=0)
-buzz = saturation(source=0.82 * glottis + 0.18 * octave, drive=1.8)
+buzz = saturation(mono=0.82 * glottis + 0.18 * octave, drive=1.8)
 
 # A deterministic LCG provides broadband frication without fixed pitches that
 # can ring like a bell through the formants and long reverb tail.
@@ -64,13 +64,13 @@ noise_low := colored_noise
 hiss = 0.58 * white_noise + 0.42 * colored_noise
 excitation = shaped_gate * (voiced * buzz + noise * hiss)
 
-first = resonance(source=excitation, sample_rate=$sample_rate,
+first = resonance(mono=excitation, sample_rate=$sample_rate,
     cutoff=f1, resonance=0.72, smoothing_seconds=0.020)
-second = resonance(source=excitation, sample_rate=$sample_rate,
+second = resonance(mono=excitation, sample_rate=$sample_rate,
     cutoff=f2, resonance=0.76, smoothing_seconds=0.020)
-third = resonance(source=excitation, sample_rate=$sample_rate,
+third = resonance(mono=excitation, sample_rate=$sample_rate,
     cutoff=f3, resonance=0.56, smoothing_seconds=0.020)
-nasal_body = resonance(source=shaped_gate * buzz,
+nasal_body = resonance(mono=shaped_gate * buzz,
     sample_rate=$sample_rate, cutoff=260, resonance=0.64,
     smoothing_seconds=0.018)
 

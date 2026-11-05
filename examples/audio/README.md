@@ -7,8 +7,9 @@ shared dependencies below that root without knowing the repository layout:
 ```cxpr
 use oscillator from oscillators
 use adsr from envelopes
-use resonance from filters
-use pan, master from effects
+use resonance from mono/filters
+use pan from stereo/effects
+use master from stereo/effects
 ```
 
 Each module owns only its local DSP state and public inputs/parameters. It does
@@ -22,20 +23,24 @@ Shared modules:
 - `oscillators/oscillator`: PolyBLEP saw and pulse plus sine, PWM, and drift;
 - `envelopes/adsr`: exponential attack, decay, sustain, and release;
 - `envelopes/rounded_ar`: sine-squared attack/release for smooth acoustic phrasing;
-- `filters/resonance`: scalar smoothed resonant low/band/high-pass, with a
-  shape-preserving rooted-record stereo variant under `filters/stereo`;
-- `effects/pan`, `effects/master`, `effects/reverb` with optional explicit T60
-  decay time, and two deliberately distinct delay designs; `effects/stereo/master`
-  accepts a rooted `{ left, right }` source record;
-- `effects/lfo`, `effects/chorus`, `effects/phaser`, chamber processing, gated
-  reverb, gated hall, kick sidechain, tempo delay, stereo compression, tape
-  coloration, and delayed pitch vibrato;
+- `mono/filters/resonance`: scalar smoothed resonant low/band/high-pass, with a
+  shape-preserving rooted-record variant under `stereo/filters`;
+- `stereo/effects/pan` plus rooted stereo chamber, hall, tape, compressor, master, and
+  distinct delay designs under `stereo/effects/`;
+- `effects/lfo`, delayed pitch vibrato, and wet-to-dry pitch modulation;
+- `mono/effects/phaser`, kick sidechain, and saturation, plus
+  `stereo/effects/chorus`, gated reverb, gated hall, and pan;
 - `effects/portamento`: sample-continuous pitch transitions for legato voices;
 - `effects/saturation`: normalized soft clipping;
-- `effects/{mono,stereo}`: shape-preserving delay, reverb, gain, and master
-  models usable through ordinary calls or direct stateful `|>` composition;
+- `mono/effects` and `stereo/effects`: signal-shape-specific delay, reverb,
+  gain, and master models usable through ordinary calls or direct stateful
+  `|>` composition;
+- `stereo/effects/compressor`, `stereo/effects/dry_mix`,
+  `stereo/effects/ping_pong_delay`, and `stereo/effects/width_drive`: reusable
+  linked dynamics, bus summing, cross-feedback echo, and mid/side saturation
+  stages for rooted stereo pipes;
 - `sequencing/lane`: reusable trigger/age state for song arrangements.
-- `filters/track_eq`: cascaded high-pass slopes and parametric bell EQ.
+- `mono/filters/track_eq`: cascaded high-pass slopes and parametric bell EQ.
 - `instruments/classical`, including fortepiano and a register-aware modern
   concert grand covering A0-C8 with fractional string waveguides, hammer
   contact, register-dependent string choirs and a coupled soundboard,
@@ -45,12 +50,15 @@ Shared modules:
   state, as demonstrated by `instruments/classical/fortepiano_chord`.
 - `instruments/lead`: reusable melodic voices, including the dual-oscillator
   `pulse_saw_lead`.
+- `instruments/synth`: reusable subtractive voices, including the driven
+  dual-VCO `classic_dual_vco`.
 - `instruments/voice`: source-free vocal synthesis, including the three-formant
   `robot_voice` used by the pure-CXPR robot speech example.
 
 Complete compositions live below `songs/`. Their depth does not affect import
 resolution: `audio/` remains the import root, so a model under
-`songs/drum_solo/models/` imports a shared filter with `from filters`.
+`songs/drum_solo/models/` imports signal-shape-specific modules from the
+`mono/` and `stereo/` namespaces.
 Song folders contain only composition and arrangement models; reusable DSP and
 instrument voices belong in the shared namespaces above.
 

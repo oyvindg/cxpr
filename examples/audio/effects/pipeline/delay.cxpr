@@ -1,7 +1,7 @@
 # Generic scalar delay stage for `source |> delay(...).sample` composition.
 model delay {
     lifecycle = "scoped"
-    source_arg = "source"
+    pipe = "source"
 }
 
 in source

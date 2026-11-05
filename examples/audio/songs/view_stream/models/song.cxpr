@@ -1,6 +1,6 @@
 model song(type = "dsp")
 
-use master from effects/stereo
+use master from stereo.effects
 
 in t
 $sample_rate = 44100

@@ -21,5 +21,10 @@ hall before the principal motif enters.
 Render from `libs/cxpr/examples`:
 
 ```sh
-./audio/render.mjs --example storm_symphony --output "$HOME/storm-symphony.wav"
+./audio/render.mjs --example storm_symphony \
+  --output "$HOME/audio/storm-symphony.wav" --play
+
+# Short contract/render smoke test
+./audio/render.mjs --example storm_symphony \
+  --output /tmp/storm-symphony-smoke.wav --frames=4096
 ```

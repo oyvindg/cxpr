@@ -1,0 +1,104 @@
+model song(type = "dsp")
+
+use sequencer from arrangement
+use room from mix
+use kick, snare, hat, clap, shaker from instruments.drum
+use classic_dual_vco from instruments.synth
+use oscillator from oscillators
+use adsr from envelopes
+use pitch_wet_to_dry from effects
+use chorus, gated_reverb, pan from stereo.effects
+use dry_mix, ping_pong_delay, reverb, width_drive, master from stereo.effects
+
+in t
+$sample_rate = 44100
+$bpm = 118
+
+seq = sequencer(t=t, bpm=$bpm)
+kick_voice = kick(trigger=seq.kick_trigger, sample_rate=$sample_rate,
+                  gain=0.74)
+snare_voice = snare(trigger=seq.snare_trigger, sample_rate=$sample_rate,
+                    seed=29417, gain=0.54)
+closed_hat = hat(trigger=seq.hat_trigger, sample_rate=$sample_rate,
+                 seed=17681, decay=62, gain=0.21)
+open_hat = hat(trigger=seq.open_hat_trigger, sample_rate=$sample_rate,
+               seed=35671, decay=17, gain=0.18)
+clap_voice = clap(trigger=seq.snare_trigger, sample_rate=$sample_rate,
+                  seed=37357, gain=0.24)
+shaker_voice = shaker(trigger=seq.hat_trigger, sample_rate=$sample_rate,
+                      seed=55109, gain=0.12)
+
+pitch_motion = pitch_wet_to_dry(age=seq.riff_age, trigger=seq.riff_trigger,
+    sample_rate=$sample_rate, rate=6.4, depth=0.036, bend=0.052,
+    hold=0.018, fade=0.28)
+acid_motion = 0.5 + 0.5 * sin(2 * pi() * 0.115 * t)
+riff = classic_dual_vco(frequency=seq.riff_frequency * pitch_motion.ratio,
+    gate=seq.riff_gate,
+    trigger=seq.riff_trigger, sample_rate=$sample_rate,
+    cutoff_base=135 + 90 * acid_motion,
+    cutoff_envelope=1850 + 650 * acid_motion,
+    resonance=0.60 + 0.08 * acid_motion,
+    drive=1.95, sub_mix=0.24, unison_spread=0.0048, unison_mix=0.34,
+    reset_phase=0,
+    attack=0.009, decay=0.17,
+    sustain=0.38, release=0.055)
+sub_oscillator = oscillator(frequency=seq.riff_frequency,
+    reset=0, sample_rate=$sample_rate, waveform=2)
+sub_envelope = adsr(gate=seq.riff_gate, trigger=seq.riff_trigger,
+    sample_rate=$sample_rate, attack=0.006, decay=0.14,
+    sustain=0.68, release=0.045)
+sub_bass = 0.22 * seq.riff_level * sub_envelope.value * sub_oscillator.sample
+stab = classic_dual_vco(frequency=seq.stab_frequency, gate=seq.stab_gate,
+    trigger=seq.stab_trigger, sample_rate=$sample_rate,
+    cutoff_base=480, cutoff_envelope=3900, resonance=0.46,
+    drive=1.72, sub_mix=0.04, unison_spread=0.0082, unison_mix=0.54,
+    attack=0.012, decay=0.13,
+    sustain=0.20, release=0.18)
+
+pump = 1 - 0.34 * seq.kick_level * exp(-18 * (t % (60 / $bpm / 4)))
+kick_bus = pan(source=0.92 * seq.kick_level * kick_voice.sample, position=0)
+snare_bus = pan(source=0.76 * seq.snare_level * snare_voice.sample,
+                position=-0.12)
+clap_bus = pan(source=0.34 * seq.snare_level * clap_voice.sample,
+               position=0.32)
+hat_bus = pan(source=seq.hat_level * closed_hat.sample +
+              seq.open_hat_level * open_hat.sample,
+              position=0.34 + 0.10 * sin(2 * pi() * 0.23 * t))
+shaker_bus = pan(source=0.30 * seq.hat_level * shaker_voice.sample,
+                 position=0.66)
+riff_bus = pan(source=pump * seq.riff_level *
+    (0.78 * riff.sample + sub_bass), position=-0.12)
+stab_width = chorus(source=0.34 * pump * stab.sample,
+                    sample_rate=$sample_rate, rate=0.19, depth=0.42, mix=0.32)
+stab_bus = {
+    left = 0.72 * stab_width.left,
+    right = stab_width.right
+}
+room_bus = room(
+    snare_left=snare_bus.left, snare_right=snare_bus.right,
+    clap_left=clap_bus.left, clap_right=clap_bus.right,
+    hat_left=hat_bus.left, hat_right=hat_bus.right,
+    stab_left=stab_bus.left, stab_right=stab_bus.right,
+    sample_rate=$sample_rate)
+snare_gate = gated_reverb(
+    source=0.62 * seq.snare_level * snare_voice.sample +
+           0.38 * seq.snare_level * clap_voice.sample,
+    sample_rate=$sample_rate, feedback=0.56, gate_seconds=0.23)
+stereo = kick_bus
+    |> dry_mix(hats_left=hat_bus.left + shaker_bus.left +
+                         snare_bus.left + clap_bus.left,
+               hats_right=hat_bus.right + shaker_bus.right +
+                          snare_bus.right + clap_bus.right,
+               riff_left=riff_bus.left, riff_right=riff_bus.right,
+               stabs_left=stab_bus.left, stabs_right=stab_bus.right,
+               room_left=0.28 * room_bus.stereo.left + 0.34 * snare_gate.left,
+               room_right=0.28 * room_bus.stereo.right + 0.34 * snare_gate.right)
+    |> ping_pong_delay(sample_rate=$sample_rate, time=0.25, feedback=0.42, mix=0.24)
+    |> reverb(sample_rate=$sample_rate, mix=0.075, decay=0.61)
+    |> width_drive(width=1.20, drive=1.26, level=0.86)
+    |> master(t=t, sample_rate=$sample_rate, gain=1.48,
+              duration=seq.duration, fade_seconds=1.8,
+              fade_in_seconds=0.025, ceiling=0.90)
+duration = seq.duration
+
+out stereo, duration

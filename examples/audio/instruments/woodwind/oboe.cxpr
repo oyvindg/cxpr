@@ -1,7 +1,7 @@
 # Oboe with odd-harmonic reed excitation and a focused wooden formant.
 model oboe(lifecycle = "scoped")
 
-use resonance from filters
+use resonance from mono.filters
 use oscillator from oscillators
 use rounded_ar from envelopes
 use vibrato from effects
@@ -19,7 +19,7 @@ pitch = vibrato(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     rate=5.10, depth=0.0017, delay=0.075, fade=0.20, initial_phase=0.42)
 reed = oscillator(frequency=glide * pitch.ratio, reset=0, sample_rate=$sample_rate,
     waveform=1, pulse_width=0.44, drift=0.00020)
-body = resonance(source=reed, sample_rate=$sample_rate,
+body = resonance(mono=reed, sample_rate=$sample_rate,
     cutoff=1450, resonance=0.42)
 envelope = rounded_ar(age=note_age, trigger=trigger, sample_rate=$sample_rate,
     attack=0.10, hold=$hold, release=$release)

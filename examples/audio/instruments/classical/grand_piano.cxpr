@@ -1,7 +1,7 @@
 // Concert grand with hammer-driven, inharmonic string modes and a coupled board.
 model grand_piano(lifecycle = "scoped")
 
-use grand_piano_mode from instruments/classical
+use grand_piano_mode from instruments.classical
 
 in age, frequency, trigger
 $sample_rate = 44100

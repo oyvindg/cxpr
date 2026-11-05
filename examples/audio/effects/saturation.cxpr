@@ -1,9 +1,0 @@
-# Shared symmetric soft clip with approximately unity small-signal gain.
-model saturation(lifecycle = "scoped")
-
-in source
-$drive = 1.5
-
-drive = max(0.01, $drive)
-out sample = tanh(drive * source) / tanh(drive)
-

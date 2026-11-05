@@ -2,8 +2,8 @@
 model trombone(lifecycle = "scoped")
 
 use oscillator from oscillators
-use resonance from filters
-use saturation from effects
+use resonance from mono.filters
+use saturation from mono.effects
 use rounded_ar from envelopes
 use vibrato from effects
 
@@ -24,16 +24,16 @@ saw = oscillator(frequency=frequency * pitch.ratio, reset=0,
 pulse = oscillator(frequency=frequency * 0.997 * growl, reset=0,
                    sample_rate=$sample_rate, waveform=1,
                    pulse_width=0.39, drift=0.0006)
-excitation = saturation(source=0.72 * saw + 0.28 * pulse,
+excitation = saturation(mono=0.72 * saw + 0.28 * pulse,
                         drive=1.45 + 0.55 * bloom)
 
 # Two broad resonances suggest the bell and bore without making the distant
 # voice unnaturally bright.
-lower_formant = resonance(source=excitation,
+lower_formant = resonance(mono=excitation,
                                       sample_rate=$sample_rate,
                                       cutoff=430 + 90 * bloom,
                                       resonance=1.15)
-upper_formant = resonance(source=excitation,
+upper_formant = resonance(mono=excitation,
                                       sample_rate=$sample_rate,
                                       cutoff=920 + 180 * bloom,
                                       resonance=0.92)

@@ -1,7 +1,7 @@
 # Divisi violin section with three independent oscillator and resonator states.
 model violin_section(lifecycle = "scoped")
 
-use violin from instruments/classical
+use violin from instruments.classical
 
 in age, first_frequency, second_frequency, third_frequency, trigger
 $sample_rate = 44100

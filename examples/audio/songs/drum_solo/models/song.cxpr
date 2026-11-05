@@ -4,8 +4,9 @@ model song(type = "dsp")
 // Arrangement is local; reusable voices and production effects come from the
 // shared audio root.
 use sequencer from arrangement
-use kick, snare, hat, clap, shaker, tom, crash from instruments/drum
-use gated_reverb, stereo_compressor, tape, pan, reverb, master from effects
+use kick, snare, hat, clap, shaker, tom, crash from instruments.drum
+use gated_reverb, pan from stereo.effects
+use compressor, hall, master, tape from stereo.effects
 
 in t
 $sample_rate = 44100
@@ -68,30 +69,21 @@ dry_left = kick_center + snare_stereo.left + clap_stereo.left +
 dry_right = kick_center + snare_stereo.right + clap_stereo.right +
     shaker_stereo.right + closed_hat_stereo.right +
     open_hat_stereo.right + crash_stereo.right + toms_right
-room = reverb(
-    source_left=seq.texture.room_send * (0.20 * dry_left + 0.34 * toms_left),
-    source_right=seq.texture.room_send * (0.20 * dry_right + 0.34 * toms_right),
-    sample_rate=$sample_rate, feedback=0.70, damping=4300)
+room = {
+    left = seq.texture.room_send * (0.20 * dry_left + 0.34 * toms_left),
+    right = seq.texture.room_send * (0.20 * dry_right + 0.34 * toms_right)
+} |> hall(sample_rate=$sample_rate, feedback=0.70, damping=4300)
 
 // The stereo-linked compressor glues dry and wet buses before tape color. The
 // master then removes DC, applies final saturation and performs the end fade.
-compressed = stereo_compressor(
-    source_left=dry_left + 0.48 * gate.left + 0.44 * room.left,
-    source_right=dry_right + 0.48 * gate.right + 0.44 * room.right,
-    sample_rate=$sample_rate, threshold=0.34, ratio=3.5,
-    attack=0.009, release=0.13, makeup=1.10)
-colored = tape(source_left=compressed.left, source_right=compressed.right,
-    sample_rate=$sample_rate, drive=1.16, mix=0.68)
-finished = master(
-    source_left=colored.left, source_right=colored.right,
-    t=t, sample_rate=$sample_rate, gain=$master_gain,
-    duration=seq.duration, fade_seconds=1.1, ceiling=0.90)
-
-// Public host contract: stereo samples plus the authoritative render duration.
-left = finished.left
-right = finished.right
+compressed = {
+    left = dry_left + 0.48 * gate.left + 0.44 * room.left,
+    right = dry_right + 0.48 * gate.right + 0.44 * room.right
+} |> compressor(sample_rate=$sample_rate, threshold=0.34, ratio=3.5,
+                       attack=0.009, release=0.13, makeup=1.10)
+stereo = compressed
+    |> tape(sample_rate=$sample_rate, drive=1.16, mix=0.68)
+    |> master(t=t, sample_rate=$sample_rate, gain=$master_gain,
+              duration=seq.duration, fade_seconds=1.1, ceiling=0.90)
 duration = seq.duration
-
-out {
-    left, right, duration
-}
+out stereo, duration
