@@ -35,12 +35,36 @@ test("semantic DTOs are encoded only in the LSP adapter", () => {
   ]), { data: [1, 2, 3, 0, 0, 0, 6, 2, TOKEN_TYPES.indexOf("number"), 0] });
 });
 
-test("workspace resolves canonical Dynasty cxpr library imports", async () => {
-  const root = path.resolve(__dirname, "../../../../..");
-  const workspace = new NodeWorkspace([root]);
-  const target = await workspace.resolveImport("indicators.adx", path.join(root, "demo.cxpr"));
-  assert.equal(target.path, path.join(root, "libs/dyn/cxpr/indicators/adx.cxpr"));
-  assert.match(target.source, /model adx/);
+test("workspace resolves project module roots from nearest cxpr.json", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cxpr-config-root-"));
+  try {
+    fs.mkdirSync(path.join(root, "library", "indicators"), { recursive: true });
+    fs.mkdirSync(path.join(root, "examples"), { recursive: true });
+    fs.writeFileSync(path.join(root, "cxpr.json"), JSON.stringify({
+      moduleRoots: ["library"], sourceRoots: ["examples", "library"]
+    }));
+    fs.writeFileSync(path.join(root, "library", "indicators", "adx.cxpr"), "model adx\nout value = 1\n");
+    const workspace = new NodeWorkspace([root]);
+    const target = await workspace.resolveImport("indicators.adx",
+      path.join(root, "examples", "demo.cxpr"));
+    assert.equal(target.path, path.join(root, "library", "indicators", "adx.cxpr"));
+    assert.match(target.source, /model adx/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace accepts module roots through initialization options", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cxpr-option-root-"));
+  try {
+    fs.mkdirSync(path.join(root, "shared"), { recursive: true });
+    fs.writeFileSync(path.join(root, "shared", "gain.cxpr"), "model gain\nout value = 1\n");
+    const workspace = new NodeWorkspace([root], { moduleRoots: ["shared"] });
+    const target = await workspace.resolveImport("gain", path.join(root, "demo.cxpr"));
+    assert.equal(target.path, path.join(root, "shared", "gain.cxpr"));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("workspace resolves modules from the nearest ancestor module root", async () => {

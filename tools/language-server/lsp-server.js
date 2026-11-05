@@ -23,11 +23,62 @@ const COMPLETION_KINDS = {
 };
 
 class NodeWorkspace {
-  constructor(roots) { this.roots = roots; }
+  constructor(roots, options = {}) {
+    this.roots = roots;
+    this.options = options.cxpr || options;
+    this.configCache = new Map();
+  }
   readFile(file) { return fs.readFile(file, "utf8"); }
-  importDir() { return this.roots[0] || process.cwd(); }
+  importDir() { return this.configuredRoots("moduleRoots")[0] || this.roots[0] || process.cwd(); }
+  configuredRoots(key) {
+    const configured = Array.isArray(this.options[key]) ? this.options[key] : [];
+    return configured.flatMap((entry) => path.isAbsolute(entry)
+      ? [entry] : this.roots.map((root) => path.resolve(root, entry)));
+  }
+  async projectConfig(from) {
+    for (let directory = path.dirname(from);;) {
+      if (this.configCache.has(directory)) return this.configCache.get(directory);
+      const config = await this.loadConfig(directory);
+      if (config) return config;
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+    return null;
+  }
+  async loadConfig(directory) {
+    try {
+      const parsed = JSON.parse(await this.readFile(path.join(directory, "cxpr.json")));
+      const config = { directory,
+        moduleRoots: (parsed.moduleRoots || []).map((entry) => path.resolve(directory, entry)),
+        sourceRoots: (parsed.sourceRoots || []).map((entry) => path.resolve(directory, entry)) };
+      this.configCache.set(directory, config);
+      return config;
+    } catch { return null; }
+  }
+  async indexRoots() {
+    const configured = this.configuredRoots("sourceRoots");
+    const discovered = [];
+    for (const root of this.roots) await this.findConfigRoots(root, discovered);
+    const roots = [...configured, ...discovered.flatMap((config) => config.sourceRoots)];
+    return [...new Set((roots.length ? roots : this.roots).map((root) => path.resolve(root)))];
+  }
+  async findConfigRoots(directory, output) {
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { return; }
+    if (entries.some((entry) => entry.isFile() && entry.name === "cxpr.json")) {
+      const config = await this.loadConfig(directory);
+      if (config) output.push(config);
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === ".git" || entry.name === "node_modules" ||
+          entry.name.startsWith("build")) continue;
+      await this.findConfigRoots(path.join(directory, entry.name), output);
+    }
+  }
   async resolveImport(spec, from) {
     const name = `${spec.replaceAll(".", path.sep)}.cxpr`;
+    const project = await this.projectConfig(from);
     const moduleRoots = [];
     for (let directory = path.dirname(from);;) {
       moduleRoots.push(path.join(directory, "modules"));
@@ -37,11 +88,12 @@ class NodeWorkspace {
     }
     const candidates = [
       path.resolve(path.dirname(from), name),
+      ...(project?.moduleRoots || []).map((root) => path.resolve(root, name)),
+      ...this.configuredRoots("moduleRoots").map((root) => path.resolve(root, name)),
       ...moduleRoots.map((root) => path.resolve(root, name)),
       ...this.roots.flatMap((root) => [
         path.resolve(root, name),
-        path.resolve(root, "modules", name),
-        path.resolve(root, "libs/dyn/cxpr", name)
+        path.resolve(root, "modules", name)
       ])
     ];
     for (const candidate of candidates) {
@@ -64,7 +116,7 @@ class WorkspaceReferenceIndex {
   }
 
   async scan() {
-    for (const root of this.workspace.roots) await this.scanDirectory(root);
+    for (const root of await this.workspace.indexRoots()) await this.scanDirectory(root);
   }
 
   async scanDirectory(directory) {
@@ -261,7 +313,7 @@ function createLanguageServer(connection) {
   connection.onInitialize(async (params) => {
     const roots = (params.workspaceFolders || []).map(({ uri }) => uri.startsWith("file:") ? fileURLToPath(uri) : "").filter(Boolean);
     if (!roots.length && params.rootUri?.startsWith("file:")) roots.push(fileURLToPath(params.rootUri));
-    const workspace = new NodeWorkspace(roots);
+    const workspace = new NodeWorkspace(roots, params.initializationOptions || {});
     referenceIndex = new WorkspaceReferenceIndex(workspace);
     servicePromise = selectAnalyzer(params.initializationOptions || {}).then((analyzer) =>
       new LanguageService(analyzer, workspace));

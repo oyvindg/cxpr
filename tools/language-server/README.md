@@ -23,6 +23,22 @@ records, local functions, grouped imports, imported models and output
 properties. Editors may provide additional bundled library roots during LSP
 initialization.
 
+Projects may declare portable module and source roots in the nearest
+`cxpr.json`:
+
+```json
+{
+  "moduleRoots": ["modules"],
+  "sourceRoots": ["examples", "modules"]
+}
+```
+
+Paths are relative to the configuration file. A monorepo may contain several
+`cxpr.json` files; the nearest configuration to each source file wins. LSP
+clients may provide additional `moduleRoots` and `sourceRoots` through
+initialization options. Without configuration, the server falls back to the
+nearest ancestor `modules/` directory and workspace-folder roots.
+
 From the Dynasty repository, the same artifact is forwarded by:
 
 ```sh

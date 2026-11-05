@@ -20,6 +20,8 @@ async function activate(context) {
     initializationOptions: {
       transport: configuration.get("analyzer.transport", "wasm"),
       cli: configuration.get("tooling.executable", ""),
+      moduleRoots: configuration.get("moduleRoots", []),
+      sourceRoots: configuration.get("sourceRoots", []),
       wasmAnalyzerModule: context.asAbsolutePath(path.join("runtime", "wasm-analyzer.js")),
       wasmFactoryModule: context.asAbsolutePath(path.join("runtime", "cxpr_wasm.js")),
       wasmPath: context.asAbsolutePath(path.join("runtime", "cxpr_wasm.wasm"))

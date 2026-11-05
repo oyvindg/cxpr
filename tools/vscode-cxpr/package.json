@@ -84,6 +84,18 @@
           "type": "string",
           "default": "",
           "description": "Path to cxpr_document_tooling when analyzer.transport is cli."
+        },
+        "cxprLanguage.moduleRoots": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional CXPR module roots, relative to each workspace folder unless absolute."
+        },
+        "cxprLanguage.sourceRoots": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional CXPR source roots, relative to each workspace folder unless absolute."
         }
       }
     },
