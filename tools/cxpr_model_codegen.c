@@ -185,11 +185,14 @@ static char* join_import_path(const char* dir, const char* name) {
     size_t dir_len = strlen(dir);
     size_t name_len = strlen(name);
     int need_slash = dir_len > 0u && dir[dir_len - 1u] != '/';
-    int has_suffix = name_len > 5u && strcmp(name + name_len - 5u, ".cxpr") == 0;
-    char* out = (char*)malloc(dir_len + (need_slash ? 1u : 0u) + name_len +
-                              (has_suffix ? 1u : 6u));
+    char* out = (char*)malloc(dir_len + (need_slash ? 1u : 0u) + name_len + 6u);
     if (!out) return NULL;
-    sprintf(out, "%s%s%s%s", dir, need_slash ? "/" : "", name, has_suffix ? "" : ".cxpr");
+    sprintf(out, "%s%s%s.cxpr", dir, need_slash ? "/" : "", name);
+    for (char* cursor = out + dir_len + (need_slash ? 1u : 0u);
+         cursor < out + dir_len + (need_slash ? 1u : 0u) + name_len;
+         ++cursor) {
+        if (*cursor == '.') *cursor = '/';
+    }
     return out;
 }
 

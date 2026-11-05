@@ -365,15 +365,15 @@ static void test_parse_model_use_group_from_namespace(void) {
     cxpr_model* model = parse_model_ok(
         "model grouped_uses\n"
         "use { atr, ema, supertrend } from indicators\n"
-        "use { keltner } from long/path/indicators\n"
+        "use { keltner } from long.path.indicators\n"
         "in close\n"
         "out close\n");
 
     assert(cxpr_model_use_count(model) == 4);
-    assert(strcmp(cxpr_model_use(model, 0), "indicators/atr") == 0);
-    assert(strcmp(cxpr_model_use(model, 1), "indicators/ema") == 0);
-    assert(strcmp(cxpr_model_use(model, 2), "indicators/supertrend") == 0);
-    assert(strcmp(cxpr_model_use(model, 3), "long/path/indicators/keltner") == 0);
+    assert(strcmp(cxpr_model_use(model, 0), "indicators.atr") == 0);
+    assert(strcmp(cxpr_model_use(model, 1), "indicators.ema") == 0);
+    assert(strcmp(cxpr_model_use(model, 2), "indicators.supertrend") == 0);
+    assert(strcmp(cxpr_model_use(model, 3), "long.path.indicators.keltner") == 0);
     assert(cxpr_model_use_alias(model, 0) == NULL);
     assert(cxpr_model_use_alias(model, 1) == NULL);
     assert(cxpr_model_use_alias(model, 2) == NULL);
@@ -391,9 +391,9 @@ static void test_parse_model_use_comma_list_from_namespace(void) {
         "out close\n");
 
     assert(cxpr_model_use_count(model) == 3);
-    assert(strcmp(cxpr_model_use(model, 0), "indicators/asx") == 0);
-    assert(strcmp(cxpr_model_use(model, 1), "indicators/macd") == 0);
-    assert(strcmp(cxpr_model_use(model, 2), "indicators/rsi") == 0);
+    assert(strcmp(cxpr_model_use(model, 0), "indicators.asx") == 0);
+    assert(strcmp(cxpr_model_use(model, 1), "indicators.macd") == 0);
+    assert(strcmp(cxpr_model_use(model, 2), "indicators.rsi") == 0);
     assert(cxpr_model_use_alias(model, 0) == NULL);
     assert(cxpr_model_use_alias(model, 1) == NULL);
     assert(cxpr_model_use_alias(model, 2) == NULL);
@@ -405,16 +405,33 @@ static void test_parse_model_use_comma_list_from_namespace(void) {
 static void test_parse_model_use_single_from_nested_namespace(void) {
     cxpr_model* model = parse_model_ok(
         "model single_nested_use\n"
-        "use ltf from indicators/strategy\n"
+        "use ltf from indicators.strategy\n"
         "in close\n"
         "out close\n");
 
     assert(cxpr_model_use_count(model) == 1);
-    assert(strcmp(cxpr_model_use(model, 0), "indicators/strategy/ltf") == 0);
+    assert(strcmp(cxpr_model_use(model, 0), "indicators.strategy.ltf") == 0);
     assert(cxpr_model_use_alias(model, 0) == NULL);
 
     cxpr_model_free(model);
     printf("  ✓ test_parse_model_use_single_from_nested_namespace\n");
+}
+
+static void test_parse_model_rejects_noncanonical_import_names(void) {
+    static const char* invalid[] = {
+        "use instruments/voice/robot_voice\n",
+        "use instruments..voice\n",
+        "use .instruments.voice\n",
+        "use instruments.voice.cxpr\n"
+    };
+
+    for (size_t i = 0u; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        cxpr_error err = {0};
+        cxpr_model* model = cxpr_model_parse(invalid[i], &err);
+        assert(model == NULL);
+        assert(err.code == CXPR_ERR_SYNTAX);
+    }
+    printf("  ✓ test_parse_model_rejects_noncanonical_import_names\n");
 }
 
 static void test_model_validate_use_files_checks_missing_targets(void) {
@@ -422,12 +439,12 @@ static void test_model_validate_use_files_checks_missing_targets(void) {
     char model_path[1024];
     cxpr_model* ok_model = parse_model_ok(
         "model valid_use_file\n"
-        "use imports/ema\n"
+        "use imports.ema\n"
         "in close\n"
         "out close\n");
     cxpr_model* missing_model = parse_model_ok(
         "model missing_use_file\n"
-        "use imports/macdx\n"
+        "use imports.macdx\n"
         "in close\n"
         "out close\n");
 
@@ -464,7 +481,7 @@ static int capture_use_resolution(
     (void)alias;
     (void)err;
     capture->count++;
-    if (strcmp(path, "presets/core_filter") == 0) {
+    if (strcmp(path, "presets.core_filter") == 0) {
         capture->saw_preset = 1;
         if (out_resolution) {
             out_resolution->namespace_name = "core_filter";
@@ -484,7 +501,7 @@ static void test_model_resolve_uses_calls_host_callback(void) {
     cxpr_model* model = parse_model_ok(
         "model use_resolver_model\n"
         "use { core_filter } from presets\n"
-        "use indicators/bollinger\n"
+        "use indicators.bollinger\n"
         "in close\n"
         "out close\n");
 
@@ -2866,11 +2883,11 @@ static void test_compile_import_path_uses_leaf_namespace(void) {
     char* code;
 
     assert(child_program != NULL);
-    imports[0].name = "indicators/macd";
+    imports[0].name = "indicators.macd";
     imports[0].program = child_program;
     parent = parse_model_ok(
         "model parent\n"
-        "use indicators/macd\n"
+        "use indicators.macd\n"
         "in source\n"
         "value = macd(3).line\n"
         "out value\n");
@@ -2887,7 +2904,7 @@ static void test_compile_import_path_uses_leaf_namespace(void) {
     assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
     assert(cxpr_model_session_get_number(session, "value", &value));
     assert(value == 10.0);
-    assert(cxpr_context_get(ctx, "indicators/macd", &found) == 0.0 && !found);
+    assert(cxpr_context_get(ctx, "indicators.macd", &found) == 0.0 && !found);
 
     cxpr_model_session_free(session);
     cxpr_model_compiled_free(parent_program);
@@ -2923,12 +2940,12 @@ static void test_imported_producer_pipe_maps_call_source(void) {
                 err.message ? err.message : "(null)");
     }
     assert(child_program != NULL);
-    imports[0].name = "indicators/bb";
+    imports[0].name = "indicators.bb";
     imports[0].program = child_program;
 
     parent = parse_model_ok(
         "model parent\n"
-        "use indicators/bb\n"
+        "use indicators.bb\n"
         "in close\n"
         "positional = bb(close, 5, 2).upper\n"
         "named = bb(source=close, period=5, mult=2).lower\n"
@@ -3325,12 +3342,12 @@ static void test_imported_producer_repeated_calls_cache_same_args(void) {
                 err.message ? err.message : "(null)");
     }
     assert(child_program != NULL);
-    imports[0].name = "indicators/bb";
+    imports[0].name = "indicators.bb";
     imports[0].program = child_program;
 
     parent = parse_model_ok(
         "model repeated_child_cache\n"
-        "use indicators/bb\n"
+        "use indicators.bb\n"
         "in close\n"
         "value = bb(close, 1).upper + bb(close, 1).lower\n"
         "out value\n");
@@ -3472,12 +3489,12 @@ static void test_imported_stateful_producer_calls_keep_independent_state(void) {
                 err.message ? err.message : "(null)");
     }
     assert(child_program != NULL);
-    imports[0].name = "indicators/bb";
+    imports[0].name = "indicators.bb";
     imports[0].program = child_program;
 
     parent = parse_model_ok(
         "model independent_child_instances\n"
-        "use indicators/bb\n"
+        "use indicators.bb\n"
         "in close\n"
         "fast = bb(close, 1).upper\n"
         "slow = bb(close, 2).upper\n"
@@ -3891,9 +3908,9 @@ static void test_imported_collection_lambda_captures_outer_record(void) {
     assert(child_program != NULL);
     assert(processor_program != NULL);
     imports[0] = (cxpr_model_import){
-        .name = "arrangement/voice_sequencer", .program = child_program};
+        .name = "arrangement.voice_sequencer", .program = child_program};
     imports[1] = (cxpr_model_import){
-        .name = "instruments/voice_gain", .program = processor_program};
+        .name = "instruments.voice_gain", .program = processor_program};
     parent = parse_model_ok(
         "model imported_lexical_capture\n"
         "use voice_sequencer from arrangement\n"
@@ -3962,11 +3979,11 @@ static void test_stateful_producer_history_queries_do_not_replay(void) {
     const double expected_past[] = {NAN, 10.0, 10.0, 12.0};
 
     assert(child_program != NULL);
-    imports[0].name = "indicators/counter";
+    imports[0].name = "indicators.counter";
     imports[0].program = child_program;
     parent = parse_model_ok(
         "model producer_history_queries\n"
-        "use indicators/counter\n"
+        "use indicators.counter\n"
         "in { source, $offset = 1 { min = 0, max = 2 } }\n"
         "current = counter(source).value\n"
         "past = current[$offset]\n"
@@ -4021,11 +4038,11 @@ static void test_imported_producer_default_singleton_shares_state(void) {
     cxpr_context* ctx;
 
     assert(child_program != NULL);
-    imports[0].name = "indicators/bb";
+    imports[0].name = "indicators.bb";
     imports[0].program = child_program;
     parent = parse_model_ok(
         "model singleton_child_instances\n"
-        "use indicators/bb\n"
+        "use indicators.bb\n"
         "in close\n"
         "fast = bb(close, 1).upper\n"
         "slow = bb(close, 2).upper\n"
@@ -5690,6 +5707,7 @@ int main(void) {
     test_parse_model_use_group_from_namespace();
     test_parse_model_use_comma_list_from_namespace();
     test_parse_model_use_single_from_nested_namespace();
+    test_parse_model_rejects_noncanonical_import_names();
     test_model_validate_use_files_checks_missing_targets();
     test_model_resolve_uses_calls_host_callback();
     test_parse_model_statement_metadata_block();

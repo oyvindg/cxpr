@@ -7,9 +7,9 @@ shared dependencies below that root without knowing the repository layout:
 ```cxpr
 use oscillator from oscillators
 use adsr from envelopes
-use resonance from mono/filters
-use pan from stereo/effects
-use master from stereo/effects
+use resonance from mono.filters
+use pan from stereo.effects
+use master from stereo.effects
 ```
 
 Each module owns only its local DSP state and public inputs/parameters. It does

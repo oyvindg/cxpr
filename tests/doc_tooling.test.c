@@ -455,7 +455,7 @@ static void test_import_tokens_are_individual(void) {
 }
 
 static void test_direct_import_path_is_one_token(void) {
-    const char* source = "use indicators/bollinger\n";
+    const char* source = "use indicators.bollinger\n";
     char* json = cxpr_document_analyze_json(source, "direct-import.cxpr");
     assert(json != NULL);
     assert(strstr(json,
@@ -703,7 +703,7 @@ static void test_unresolved_resolution_exposes_c_parsed_imports(void) {
     char* json = cxpr_document_resolve_json(source, "imports.cxpr", 1u, 10u);
     assert(json != NULL);
     assert(strstr(json, "\"kind\":\"unresolved\"") != NULL);
-    assert(strstr(json, "\"imports\":[\"ts/pivots\",\"ts/window\"]") != NULL);
+    assert(strstr(json, "\"imports\":[\"ts.pivots\",\"ts.window\"]") != NULL);
     cxpr_document_json_free(json);
 }
 

@@ -27,7 +27,7 @@ class NodeWorkspace {
   readFile(file) { return fs.readFile(file, "utf8"); }
   importDir() { return this.roots[0] || process.cwd(); }
   async resolveImport(spec, from) {
-    const name = spec.endsWith(".cxpr") ? spec : `${spec}.cxpr`;
+    const name = `${spec.replaceAll(".", path.sep)}.cxpr`;
     const candidates = [
       path.resolve(path.dirname(from), name),
       ...this.roots.flatMap((root) => [

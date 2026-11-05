@@ -1363,7 +1363,7 @@ function pathExists(filePath) {
 
 function resolveDynCxprUseFromAncestors(startDir, usePath) {
   let cursor = startDir || ".";
-  const normalized = usePath.endsWith(".cxpr") ? usePath : `${usePath}.cxpr`;
+  const normalized = `${usePath.split(".").join(path.sep)}.cxpr`;
   for (;;) {
     const candidate = path.join(cursor, "libs", "dyn", "cxpr", normalized);
     if (pathExists(candidate)) return candidate;
@@ -1375,15 +1375,15 @@ function resolveDynCxprUseFromAncestors(startDir, usePath) {
 }
 
 function resolveCxprUsePath(workspaceRoot, usePath, currentFilePath = "") {
-  const normalized = usePath.endsWith(".cxpr") ? usePath : `${usePath}.cxpr`;
+  const normalized = `${usePath.split(".").join(path.sep)}.cxpr`;
   const currentDir = currentFilePath ? path.dirname(currentFilePath) : workspaceRoot;
   const relative = currentDir ? path.join(currentDir, normalized) : "";
   if (pathExists(relative)) return relative;
-  if (usePath.startsWith("presets/") && path.basename(currentDir) === "presets") {
+  if (usePath.startsWith("presets.") && path.basename(currentDir) === "presets") {
     const siblingPreset = path.join(path.dirname(currentDir), normalized);
     if (pathExists(siblingPreset)) return siblingPreset;
   }
-  if (usePath.startsWith("indicators/")) {
+  if (usePath.startsWith("indicators.")) {
     const dynPath = resolveDynCxprUseFromAncestors(currentDir, usePath);
     if (dynPath) return dynPath;
   }
@@ -1398,8 +1398,9 @@ function resolveCxprUsePath(workspaceRoot, usePath, currentFilePath = "") {
 
 function resolveDynCxprDirectoryFromAncestors(startDir, usePath) {
   let cursor = startDir || ".";
+  const logicalPath = usePath.split(".").join(path.sep);
   for (;;) {
-    const candidate = path.join(cursor, "libs", "dyn", "cxpr", usePath);
+    const candidate = path.join(cursor, "libs", "dyn", "cxpr", logicalPath);
     if (pathExists(candidate) && fs.statSync(candidate).isDirectory()) return candidate;
     const parent = path.dirname(cursor);
     if (!parent || parent === cursor) break;
@@ -1409,17 +1410,18 @@ function resolveDynCxprDirectoryFromAncestors(startDir, usePath) {
 }
 
 function resolveCxprUseDirectory(workspaceRoot, usePath, currentFilePath = "") {
+  const logicalPath = usePath.split(".").join(path.sep);
   const currentDir = currentFilePath ? path.dirname(currentFilePath) : workspaceRoot;
-  const relative = currentDir ? path.join(currentDir, usePath) : "";
+  const relative = currentDir ? path.join(currentDir, logicalPath) : "";
   if (pathExists(relative) && fs.statSync(relative).isDirectory()) return relative;
-  if (usePath.startsWith("indicators/") || usePath === "indicators") {
+  if (usePath.startsWith("indicators.") || usePath === "indicators") {
     const dynPath = resolveDynCxprDirectoryFromAncestors(currentDir, usePath);
     if (dynPath) return dynPath;
   }
-  const workspacePath = workspaceRoot ? path.join(workspaceRoot, usePath) : "";
+  const workspacePath = workspaceRoot ? path.join(workspaceRoot, logicalPath) : "";
   if (pathExists(workspacePath) && fs.statSync(workspacePath).isDirectory()) return workspacePath;
   for (const root of additionalImportRoots) {
-    const candidate = path.join(root, usePath);
+    const candidate = path.join(root, logicalPath);
     if (pathExists(candidate) && fs.statSync(candidate).isDirectory()) return candidate;
   }
   return "";
@@ -1427,7 +1429,7 @@ function resolveCxprUseDirectory(workspaceRoot, usePath, currentFilePath = "") {
 
 function collectCxprUses(text) {
   const aliases = new Map();
-  const useRe = /^\s*use\s+([A-Za-z0-9_./-]+)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$/gm;
+  const useRe = /^\s*use\s+([A-Za-z_][A-Za-z0-9_.]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$/gm;
   let match;
   while ((match = useRe.exec(text)) !== null) {
     const importPath = match[1];
@@ -1563,7 +1565,7 @@ function collectCxprFunctionNames(text, document = null) {
   for (const match of code.matchAll(/^\s*fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/gm)) names.add(match[1]);
 
   // Imported models expose their function declarations directly (for example
-  // `use ts/smoothing` exposes `ts_ema_alpha`).  Keep this lookup local to the
+  // `use ts.smoothing` exposes `ts_ema_alpha`). Keep this lookup local to the
   // workspace so diagnostics match the build-time CXPR import behavior.
   if (document) {
     const visited = new Set();

@@ -36,7 +36,7 @@ test("semantic DTOs are encoded only in the LSP adapter", () => {
 test("workspace resolves canonical Dynasty cxpr library imports", async () => {
   const root = path.resolve(__dirname, "../../../../..");
   const workspace = new NodeWorkspace([root]);
-  const target = await workspace.resolveImport("indicators/adx", path.join(root, "demo.cxpr"));
+  const target = await workspace.resolveImport("indicators.adx", path.join(root, "demo.cxpr"));
   assert.equal(target.path, path.join(root, "libs/dyn/cxpr/indicators/adx.cxpr"));
   assert.match(target.source, /model adx/);
 });

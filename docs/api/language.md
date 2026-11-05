@@ -304,7 +304,7 @@ flags, or nested blocks. A newline or comma must separate adjacent assignments;
 Accepted forms include:
 
 ```cxpr
-use indicators/ema
+use indicators.ema
 use robotics as r
 use ema from indicators
 use asx, macd, rsi from indicators
@@ -334,10 +334,11 @@ For example, `use math_helpers` exposes `math_helpers.twice(value)`. The
 one or several package members; calls still use each effective imported
 namespace rather than becoming unqualified global functions.
 
-Paths are relative, slash-separated identifier segments; an optional final
-`.cxpr` suffix is recognized. Absolute paths, empty segments, and invalid
-identifier segments are rejected. `from` prefixes every listed member.
-Validation rejects duplicate import paths and duplicate effective namespaces
+Imports are logical namespaces with dot-separated identifier segments. Filename
+suffixes, absolute paths, empty segments, and invalid identifier segments are
+rejected. `from` prefixes every listed member. Filesystem-backed hosts map the
+validated namespace segments to paths at the resolver boundary.
+Validation rejects duplicate import identities and duplicate effective namespaces
 (the alias when present, otherwise the imported namespace). Resolving whether
 a target exists is a separate host/import-resolution step. The host callback
 receives the importer identity and exact `use` path and returns a canonical

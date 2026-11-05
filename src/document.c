@@ -76,13 +76,11 @@ static bool cxpr_document_lower_is_dotted_ident(const char* s) {
 
 static bool cxpr_document_lower_is_use_path(const char* s) {
     const char* segment = s;
-    if (!s || *s == '\0' || *s == '/') return false;
+    if (!s || *s == '\0') return false;
+    if (strlen(s) > 5u && strcmp(s + strlen(s) - 5u, ".cxpr") == 0) return false;
     while (*segment) {
-        const char* slash = strchr(segment, '/');
-        size_t len = slash ? (size_t)(slash - segment) : strlen(segment);
-        bool last = slash == NULL;
-        if (len == 0u) return false;
-        if (last && len > 5u && strcmp(segment + len - 5u, ".cxpr") == 0) len -= 5u;
+        const char* dot = strchr(segment, '.');
+        size_t len = dot ? (size_t)(dot - segment) : strlen(segment);
         if (len == 0u) return false;
         for (size_t i = 0u; i < len; ++i) {
             unsigned char ch = (unsigned char)segment[i];
@@ -92,8 +90,8 @@ static bool cxpr_document_lower_is_use_path(const char* s) {
                 return false;
             }
         }
-        if (!slash) break;
-        segment = slash + 1;
+        if (!dot) break;
+        segment = dot + 1;
     }
     return true;
 }
@@ -321,7 +319,7 @@ static bool cxpr_document_lower_use_group(cxpr_model* model,
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
             return false;
         }
-        snprintf(path, path_len + 1u, "%s/%s", base, item);
+        snprintf(path, path_len + 1u, "%s.%s", base, item);
         if (!cxpr_doc_model_append_use(model, path, NULL)) {
             free(path);
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
@@ -388,7 +386,7 @@ static bool cxpr_document_lower_use_from_list(cxpr_model* model,
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
             return false;
         }
-        snprintf(path, path_len + 1u, "%s/%s", base, item);
+        snprintf(path, path_len + 1u, "%s.%s", base, item);
         if (!cxpr_doc_model_append_use(model, path, NULL)) {
             free(path);
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");

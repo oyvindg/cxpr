@@ -786,17 +786,15 @@ static void emit_source_tokens(const char* source,
             emit_source_token(line, start_col, i - start, "string", comma);
             continue;
         }
-        if (in_use && !after_from &&
-            (isalpha(ch) || ch == '_')) {
+        if (in_use && (isalpha(ch) || ch == '_')) {
             size_t path_end = i;
-            int has_slash = 0;
+            int has_dot = 0;
             while (isalnum((unsigned char)source[path_end]) ||
-                   source[path_end] == '_' || source[path_end] == '.' ||
-                   source[path_end] == '/' || source[path_end] == '-') {
-                if (source[path_end] == '/') has_slash = 1;
+                   source[path_end] == '_' || source[path_end] == '.') {
+                if (source[path_end] == '.') has_dot = 1;
                 path_end++;
             }
-            if (has_slash) {
+            if (has_dot) {
                 i = path_end;
                 col += path_end - start;
                 emit_source_token(line, start_col, path_end - start,

@@ -69,13 +69,11 @@ static bool cxpr_model_is_ident(const char* s) {
 
 static bool cxpr_model_is_use_path(const char* s) {
     const char* segment = s;
-    if (!s || *s == '\0' || *s == '/') return false;
+    if (!s || *s == '\0') return false;
+    if (strlen(s) > 5u && strcmp(s + strlen(s) - 5u, ".cxpr") == 0) return false;
     while (*segment) {
-        const char* slash = strchr(segment, '/');
-        size_t len = slash ? (size_t)(slash - segment) : strlen(segment);
-        bool last = slash == NULL;
-        if (len == 0u) return false;
-        if (last && len > 5u && strcmp(segment + len - 5u, ".cxpr") == 0) len -= 5u;
+        const char* dot = strchr(segment, '.');
+        size_t len = dot ? (size_t)(dot - segment) : strlen(segment);
         if (len == 0u) return false;
         for (size_t i = 0u; i < len; ++i) {
             unsigned char ch = (unsigned char)segment[i];
@@ -85,8 +83,8 @@ static bool cxpr_model_is_use_path(const char* s) {
                 return false;
             }
         }
-        if (!slash) break;
-        segment = slash + 1;
+        if (!dot) break;
+        segment = dot + 1;
     }
     return true;
 }
@@ -333,7 +331,7 @@ cxpr_model_parse_use_group(cxpr_model* model, char* text) {
         path_len = strlen(base) + 1u + strlen(item);
         path = (char*)malloc(path_len + 1u);
         if (!path) return false;
-        snprintf(path, path_len + 1u, "%s/%s", base, item);
+        snprintf(path, path_len + 1u, "%s.%s", base, item);
         if (!cxpr_model_append_use(model, path, NULL)) {
             free(path);
             return false;

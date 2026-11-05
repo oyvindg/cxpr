@@ -502,8 +502,8 @@ static void test_document_ast_lowering_handles_use_aliases_and_groups(void) {
     model = cxpr_doc_model(document);
     assert(model != NULL);
     assert(cxpr_model_use_count(model) == 3u);
-    assert(strcmp(cxpr_model_use(model, 0u), "indicators/atr") == 0);
-    assert(strcmp(cxpr_model_use(model, 1u), "indicators/ema") == 0);
+    assert(strcmp(cxpr_model_use(model, 0u), "indicators.atr") == 0);
+    assert(strcmp(cxpr_model_use(model, 1u), "indicators.ema") == 0);
     assert(strcmp(cxpr_model_use(model, 2u), "robotics") == 0);
     assert(cxpr_model_use_alias(model, 0u) == NULL);
     assert(cxpr_model_use_alias(model, 1u) == NULL);
@@ -705,7 +705,7 @@ static void test_document_model_exposes_semantic_source_spans(void) {
     const char* source =
         "project { name = \"example_host\" }\n"
         "model strategy\n"
-        "use indicators/rsi as rsi_lib\n"
+        "use indicators.rsi as rsi_lib\n"
         "in { close }\n"
         "$fast = 12 { optimize = [8, 12] }\n"
         "state { signal = 0 }\n"

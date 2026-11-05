@@ -82,7 +82,7 @@ test("pipe is the only highlighted pipe-target metadata", () => {
 
 test("Monarch colors direct imports and every comma-separated input", () => {
   const directImport = monarch.tokenizer.root.find(([pattern]) =>
-    pattern.includes("[A-Za-z0-9_./-]*\\/"));
+    pattern.includes("(?:\\.[A-Za-z_][A-Za-z0-9_])+"));
   const inputList = monarch.tokenizer.root.find((rule) =>
     rule[1]?.some?.((action) => action?.next === "@inputList"));
 

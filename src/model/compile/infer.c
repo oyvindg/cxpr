@@ -975,10 +975,10 @@ static cxpr_expr_ast* cxpr_model_clone_call_as_field_access(const cxpr_expr_ast*
 }
 
 static const char* cxpr_model_import_leaf_name(const char* import_name) {
-    const char* slash;
+    const char* dot;
     if (!import_name) return NULL;
-    slash = strrchr(import_name, '/');
-    return slash && slash[1] != '\0' ? slash + 1 : import_name;
+    dot = strrchr(import_name, '.');
+    return dot && dot[1] != '\0' ? dot + 1 : import_name;
 }
 
 const char* cxpr_model_import_namespace_name(const cxpr_model* model,

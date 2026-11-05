@@ -818,18 +818,19 @@ static char* cxpr_model_join_import_path(const char* dir, const char* use_name) 
     size_t dir_len;
     size_t use_len;
     int need_slash;
-    int has_suffix;
     char* out;
     if (!dir || !use_name) return NULL;
     dir_len = strlen(dir);
     use_len = strlen(use_name);
     need_slash = dir_len > 0u && dir[dir_len - 1u] != '/';
-    has_suffix = use_len > 5u && strcmp(use_name + use_len - 5u, ".cxpr") == 0;
-    out = (char*)malloc(dir_len + (need_slash ? 1u : 0u) + use_len +
-                        (has_suffix ? 1u : 6u));
+    out = (char*)malloc(dir_len + (need_slash ? 1u : 0u) + use_len + 6u);
     if (!out) return NULL;
-    sprintf(out, "%s%s%s%s", dir, need_slash ? "/" : "", use_name,
-            has_suffix ? "" : ".cxpr");
+    sprintf(out, "%s%s%s.cxpr", dir, need_slash ? "/" : "", use_name);
+    for (char* cursor = out + dir_len + (need_slash ? 1u : 0u);
+         cursor < out + dir_len + (need_slash ? 1u : 0u) + use_len;
+         ++cursor) {
+        if (*cursor == '.') *cursor = '/';
+    }
     return out;
 }
 
@@ -851,11 +852,11 @@ static char* cxpr_model_join_path2(const char* dir, const char* name) {
 static char* cxpr_model_resolve_preset_import_from_ancestors(
     const char* dir,
     const char* use_name) {
-    const char* preset_ref = use_name ? use_name + strlen("presets/") : NULL;
+    const char* preset_ref = use_name ? use_name + strlen("presets.") : NULL;
     char* cursor;
 
     if (!dir || !use_name ||
-        strncmp(use_name, "presets/", strlen("presets/")) != 0 ||
+        strncmp(use_name, "presets.", strlen("presets.")) != 0 ||
         !preset_ref ||
         preset_ref[0] == '\0') {
         return NULL;
@@ -914,7 +915,7 @@ static char* cxpr_model_resolve_use_file_path(const char* model_path, const char
         return path;
     }
     free(path);
-    if (strncmp(use_name, "presets/", strlen("presets/")) == 0) {
+    if (strncmp(use_name, "presets.", strlen("presets.")) == 0) {
         const char* slash = strrchr(dir, '/');
         const char* leaf = slash ? slash + 1 : dir;
         if (strcmp(leaf, "presets") == 0) {
