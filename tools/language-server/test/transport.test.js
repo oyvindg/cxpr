@@ -41,22 +41,22 @@ test("workspace resolves canonical Dynasty cxpr library imports", async () => {
   assert.match(target.source, /model adx/);
 });
 
-test("workspace resolves nested audio modules from the shared audio root", async () => {
+test("workspace resolves modules from the nearest ancestor module root", async () => {
   const root = path.resolve(__dirname, "../../../../..");
   const workspace = new NodeWorkspace([root]);
   const song = path.join(root,
-    "libs/cxpr/examples/audio/songs/modular_synth/models/song.cxpr");
+    "libs/audio/examples/songs/neon_highway/song.cxpr");
   const target = await workspace.resolveImport(
-    "instruments/subtractive/subtractive_voice", song);
+    "instruments.retrowave.arp", song);
   assert.equal(target.path, path.join(root,
-    "libs/cxpr/examples/audio/instruments/subtractive/subtractive_voice.cxpr"));
-  assert.match(target.source, /model subtractive_voice/);
+    "libs/audio/modules/instruments/retrowave/arp.cxpr"));
+  assert.match(target.source, /model arp/);
 });
 
 test("language service resolves the complete nested modular synth graph", async () => {
   const root = path.resolve(__dirname, "../../../../..");
   const file = path.join(root,
-    "libs/cxpr/examples/audio/songs/modular_synth/models/song.cxpr");
+    "libs/audio/examples/songs/modular_synth/song.cxpr");
   const analyzer = await selectAnalyzer({
     transport: "native",
     cxprNodeModule: path.join(root, "libs/cxpr-node/dist/index.js")

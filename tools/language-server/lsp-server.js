@@ -28,12 +28,20 @@ class NodeWorkspace {
   importDir() { return this.roots[0] || process.cwd(); }
   async resolveImport(spec, from) {
     const name = `${spec.replaceAll(".", path.sep)}.cxpr`;
+    const moduleRoots = [];
+    for (let directory = path.dirname(from);;) {
+      moduleRoots.push(path.join(directory, "modules"));
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
     const candidates = [
       path.resolve(path.dirname(from), name),
+      ...moduleRoots.map((root) => path.resolve(root, name)),
       ...this.roots.flatMap((root) => [
         path.resolve(root, name),
-        path.resolve(root, "libs/dyn/cxpr", name),
-        path.resolve(root, "libs/cxpr/examples/audio", name)
+        path.resolve(root, "modules", name),
+        path.resolve(root, "libs/dyn/cxpr", name)
       ])
     ];
     for (const candidate of candidates) {
