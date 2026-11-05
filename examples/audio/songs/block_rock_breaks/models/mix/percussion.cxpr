@@ -1,9 +1,0 @@
-# Song-specific dry percussion bus excluding the centered kick foundation.
-model percussion
-
-in hats, shaker, snare, clap, toms, crash
-
-out left = hats.left + shaker.left + snare.left + clap.left +
-    toms.left + crash.left
-out right = hats.right + shaker.right + snare.right + clap.right +
-    toms.right + crash.right

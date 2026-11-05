@@ -1,7 +1,0 @@
-# Explicit stereo-to-mono channel-layout conversion.
-model mono(pipe = "stereo")
-
-in stereo { left, right }
-$gain = 0.5
-
-out sample = $gain * (stereo.left + stereo.right)

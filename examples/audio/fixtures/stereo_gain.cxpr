@@ -1,0 +1,7 @@
+model stereo_gain(source) {
+  param gain = 0.5
+  stereo = {
+    left: source.left * $gain,
+    right: source.right * $gain
+  }
+}

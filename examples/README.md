@@ -26,9 +26,9 @@ documentation, build target, and CTest registration are checked together.
   scalar `.cxpr` models through the generic bulk API
 - [`audio_dsp/`](audio_dsp/): host-neutral oscillators, envelope, and filters,
   with IR/generated-C parity and real-time deployment guidance
-- [`audio/`](audio/): shared, host-neutral DSP modules, a common renderer, and
-  all audio examples: modular synth, native song, retrowave, classical chamber
-  music, and an electronic drum solo
+- [`audio/`](audio/): small audio-shaped conformance fixtures for scalar and
+  rooted-record behavior; reusable modules and full examples live in the
+  repository-level `libs/audio`
 - [`scientific.md`](scientific.md): interdependent expressions resolved in topological
   order across relativity, quantum mechanics, and chemistry
   Test: [`../tests/examples/scientific.test.c`](../tests/examples/scientific.test.c)

@@ -1,6 +1,0 @@
-model gain(pipe = "mono")
-
-in mono
-$level = 1
-
-out sample = mono * $level

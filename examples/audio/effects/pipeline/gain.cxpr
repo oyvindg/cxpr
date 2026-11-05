@@ -1,9 +1,0 @@
-# Pure scalar gain stage.
-model gain {
-    pipe = "source"
-}
-
-in source
-$level = 1
-
-out sample = source * $level
