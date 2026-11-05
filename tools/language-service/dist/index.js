@@ -16,5 +16,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LanguageService = void 0;
 __exportStar(require("./contracts"), exports);
+__exportStar(require("./CxprFormatter"), exports);
 var language_service_1 = require("./language-service");
 Object.defineProperty(exports, "LanguageService", { enumerable: true, get: function () { return language_service_1.LanguageService; } });

@@ -38,6 +38,10 @@ Paths are relative to the configuration file. A monorepo may contain several
 clients may provide additional `moduleRoots` and `sourceRoots` through
 initialization options. Without configuration, the server falls back to the
 nearest ancestor `modules/` directory and workspace-folder roots.
+When a project configuration exists, its `moduleRoots` are authoritative and
+disable those implicit ancestor and workspace fallbacks.
+Changes to `cxpr.json` are applied to open documents immediately when the LSP
+client reports watched-file changes; no language-server restart is required.
 
 From the Dynasty repository, the same artifact is forwarded by:
 

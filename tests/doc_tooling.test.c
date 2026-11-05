@@ -188,9 +188,26 @@ static void test_inferred_input_leaf_hover_exposes_concrete_type(void) {
     assert(strstr(json, "\"type\":\"number\"") != NULL);
     assert(strstr(json, "\"provenance\":\"inferred\"") != NULL);
     assert(strstr(model_json,
-                  "\"typedSignature\":\"inferred_session(session: struct) -> number\"") != NULL);
+                  "\"typedSignature\":\"inferred_session(session: struct) -> { value: number }\"") != NULL);
     cxpr_document_json_free(json);
     cxpr_document_json_free(model_json);
+}
+
+static void test_inferred_input_leaf_hover_survives_unresolved_imports(void) {
+    const char* source =
+        "model epic_section(pipe = \"epic\")\n"
+        "use horn_section from instruments.brass\n"
+        "in epic\n"
+        "voice = horn_section(age=epic.epic_age)\n"
+        "out voice\n";
+    char* json = cxpr_document_resolve_json(
+        source, "epic_section.cxpr", 3u, 38u);
+    assert(json != NULL);
+    assert(strstr(json, "\"name\":\"epic.epic_age\"") != NULL);
+    assert(strstr(json, "\"kind\":\"input\"") != NULL);
+    assert(strstr(json, "\"type\":\"unknown\"") != NULL);
+    assert(strstr(json, "\"provenance\":\"inferred\"") != NULL);
+    cxpr_document_json_free(json);
 }
 
 static void test_binding_resolution_includes_expression(void) {
@@ -933,6 +950,7 @@ int main(void) {
     test_model_resolution_has_callable_metadata();
     test_model_hover_exposes_typed_input_and_output_contract();
     test_inferred_input_leaf_hover_exposes_concrete_type();
+    test_inferred_input_leaf_hover_survives_unresolved_imports();
     test_binding_resolution_includes_expression();
     test_record_field_resolution_stays_in_enclosing_record();
     test_record_field_resolution_includes_full_parent_path();

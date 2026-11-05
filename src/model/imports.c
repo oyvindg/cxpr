@@ -1,5 +1,8 @@
 #include <cxpr/model/imports.h>
 
+#include "core.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -44,6 +47,15 @@ static void import_error(cxpr_error* err, cxpr_error_code code, const char* mess
     err->position = 0u;
     err->line = 0u;
     err->column = 0u;
+}
+
+static void import_add_source_context(cxpr_error* err, const char* id) {
+    static CXPR_THREAD_LOCAL char message[768];
+    char detail[512];
+    if (!err || !id || !err->message) return;
+    snprintf(detail, sizeof(detail), "%s", err->message);
+    snprintf(message, sizeof(message), "Model import '%s': %s", id, detail);
+    err->message = message;
 }
 
 static cxpr_model_import_node* import_find(
@@ -159,7 +171,10 @@ static bool import_compile(
     builder->stack[builder->stack_count++] = id;
 
     model = cxpr_model_parse(source, err);
-    if (!model) goto fail;
+    if (!model) {
+        import_add_source_context(err, id);
+        goto fail;
+    }
     function_only = cxpr_model_output_count(model) == 0u;
     for (i = 0u; i < cxpr_model_use_count(model); ++i) {
         cxpr_model_import_node* child;
@@ -179,28 +194,41 @@ static bool import_compile(
             direct, (direct_count + 1u) * sizeof(*direct));
         if (!grown) goto oom;
         direct = grown;
-        direct[direct_count].name =
-            cxpr_model_use_alias(model, i)
-                ? cxpr_model_use_alias(model, i)
-                : child_use;
+        {
+            const char* alias = cxpr_model_use_alias(model, i);
+            direct[direct_count].name = import_strdup(
+                alias && alias[0] != '\0' ? alias : child_use);
+        }
+        if (!direct[direct_count].name || direct[direct_count].name[0] == '\0') {
+            goto oom;
+        }
         direct[direct_count].program = child->program;
         direct_count++;
     }
     if (combined) {
         cxpr_model_free(model);
         model = cxpr_model_parse(combined, err);
-        if (!model) goto fail;
+        if (!model) {
+            import_add_source_context(err, id);
+            goto fail;
+        }
     }
     compilable = import_make_compilable_source(combined ? combined : source, model);
     if (!compilable) goto oom;
     if (strcmp(compilable, source) != 0) {
         cxpr_model_free(model);
         model = cxpr_model_parse(compilable, err);
-        if (!model) goto fail;
+        if (!model) {
+            import_add_source_context(err, id);
+            goto fail;
+        }
     }
     program = cxpr_model_compile_with_imports(
         model, NULL, direct, direct_count, err);
-    if (!program) goto fail;
+    if (!program) {
+        import_add_source_context(err, id);
+        goto fail;
+    }
     {
         cxpr_model_import_node* grown;
         const char* model_name;
@@ -242,6 +270,7 @@ static bool import_compile(
         }
     }
     builder->stack_count--;
+    for (i = 0u; i < direct_count; ++i) free((char*)direct[i].name);
     free(direct);
     if (combined) free(source);
     free(compilable);
@@ -255,6 +284,7 @@ fail:
         builder->stack[builder->stack_count - 1u] == id) {
         builder->stack_count--;
     }
+    for (i = 0u; i < direct_count; ++i) free((char*)direct[i].name);
     free(direct);
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
@@ -302,7 +332,11 @@ cxpr_model_import_bundle* cxpr_model_import_bundle_build(
         }
         graph->root_imports = grown;
         graph->root_imports[graph->root_import_count].name =
-            node->namespace_name;
+            import_strdup(node->namespace_name);
+        if (!graph->root_imports[graph->root_import_count].name) {
+            import_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            goto fail;
+        }
         graph->root_imports[graph->root_import_count].program = node->program;
         graph->root_import_count++;
     }
@@ -325,6 +359,8 @@ void cxpr_model_import_bundle_free(cxpr_model_import_bundle* graph) {
         free(graph->nodes[i].source);
         free(graph->nodes[i].id);
     }
+    for (i = 0u; i < graph->root_import_count; ++i)
+        free((char*)graph->root_imports[i].name);
     free(graph->nodes);
     free(graph->root_imports);
     free(graph);

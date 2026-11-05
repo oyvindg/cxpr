@@ -1247,6 +1247,7 @@ compile_outputs:
         }
     }
     if (model->output_count > 0) {
+        program->output_is_record = model->output_is_record || model->output_count > 1u;
         program->outputs = (char**)calloc(model->output_count, sizeof(char*));
         program->output_declared_types = calloc(model->output_count, sizeof(*program->output_declared_types));
         program->output_element_types = calloc(model->output_count, sizeof(*program->output_element_types));

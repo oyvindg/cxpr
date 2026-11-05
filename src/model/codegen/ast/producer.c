@@ -609,8 +609,23 @@ bool cxpr_model_ast_is_record_like(const cxpr_model_compiled* program,
          * A child model with one output is scalar; only multi-output child
          * producers are record-like. Misclassifying the scalar child causes
          * its local binding to be skipped and leaves an undeclared C alias. */
-        return entry && entry->defined_return_field_count >
-            (entry->model_producer ? 1u : 0u);
+        if (!entry) return false;
+        if (entry->model_producer) {
+            size_t public_field_count = entry->defined_return_field_count;
+            /* Anonymous imported outputs may carry an internal dummy field;
+             * explicit record outputs do not. Exclude it by name instead of
+             * assuming it is present for every imported model. */
+            for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
+                if (cxpr_model_names_match(
+                        entry->defined_return_field_names[i],
+                        "__cxpr_import_dummy")) {
+                    --public_field_count;
+                    break;
+                }
+            }
+            return public_field_count > 1u;
+        }
+        return entry->defined_return_field_count > 0u;
     default:
         return false;
     }

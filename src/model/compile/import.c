@@ -7,6 +7,7 @@
 #include "ast/internal.h"
 #include "model/internal.h"
 #include "model/compile/internal.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -443,7 +444,12 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
         for (size_t prev = 0u; prev < i; ++prev) {
             if (program->children[prev].name &&
                 cxpr_model_names_match(program->children[prev].name, namespace_name)) {
-                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate import namespace", 0, 0);
+                static CXPR_THREAD_LOCAL char message[256];
+                snprintf(message, sizeof(message),
+                         "Duplicate import namespace '%s' from '%s' and '%s'",
+                         namespace_name, program->children[prev].name,
+                         imports[i].name ? imports[i].name : "(null)");
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX, message, 0, 0);
                 return false;
             }
         }
@@ -511,6 +517,16 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
         }
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
+        if (!child->output_is_record && child->output_count == 1u) {
+            const cxpr_model_result_kind kind =
+                cxpr_model_compiled_output_result_kind(child, 0u);
+            entry->return_type = kind == CXPR_MODEL_RESULT_BOOL
+                ? CXPR_VALUE_BOOL
+                : kind == CXPR_MODEL_RESULT_INT64
+                ? CXPR_VALUE_INT64
+                : CXPR_VALUE_NUMBER;
+            entry->has_return_type = kind != CXPR_MODEL_RESULT_UNKNOWN;
+        }
         entry->defined_return_field_names = cxpr_registry_clone_param_names(
             (const char* const*)child->outputs, child->output_count);
         entry->defined_param_count = entry->max_args;

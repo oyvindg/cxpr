@@ -563,9 +563,22 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
         target_data->program->registry) {
         cxpr_func_entry* entry = cxpr_registry_find(
             target_data->program->registry, name);
+        size_t scalar_field = (size_t)-1;
+        size_t public_field_count = 0u;
+        if (entry && entry->model_producer) {
+            for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
+                if (cxpr_model_names_match(
+                        entry->defined_return_field_names[i],
+                        "__cxpr_import_dummy")) {
+                    continue;
+                }
+                scalar_field = i;
+                ++public_field_count;
+            }
+        }
         if (entry && entry->model_producer &&
             !cxpr_model_names_match(name, "abs") &&
-            entry->defined_return_field_count == 1u) {
+            public_field_count == 1u) {
             cxpr_expr_ast producer = {0};
             producer.type = CXPR_NODE_PRODUCER_ACCESS;
             producer.data.producer_access.name = ast->data.function_call.name;
@@ -573,7 +586,7 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
             producer.data.producer_access.arg_names = ast->data.function_call.arg_names;
             producer.data.producer_access.argc = ast->data.function_call.argc;
             producer.data.producer_access.field =
-                entry->defined_return_field_names[0];
+                entry->defined_return_field_names[scalar_field];
             if (handled) *handled = true;
             return cxpr_model_ast_producer_access_to_c(
                 target_data->program,

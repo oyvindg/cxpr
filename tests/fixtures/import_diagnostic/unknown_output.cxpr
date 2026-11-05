@@ -1,0 +1,3 @@
+model unknown_output
+value = 1
+out value, missing

@@ -42,6 +42,117 @@ test("service accepts an async analyzer", async () => {
   assert.equal(resumed, true)
 })
 
+test("diagnoses the from namespace when grouped imports cannot be resolved", async () => {
+  const analyzer = {
+    async analyzeDocument() { return { ok: true, diagnostics: [], functions: [] } },
+    async resolveAt() { return null }, async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile() { return "" }, importDir() { return "/workspace" },
+    async resolveImport(spec) {
+      return spec === "stereo.effects.gain" ? { path: "/workspace/gain.cxpr" } : null
+    }
+  }
+  const diagnostics = await new LanguageService(analyzer, importWorkspace).getDiagnostics(
+    "use chamber, gain from stereo.effects\n", "/workspace/song.cxpr")
+  assert.deepEqual(diagnostics, [{
+    severity: 1,
+    source: "cxpr",
+    message: "Namespace 'stereo.effects' does not contain: chamber",
+    range: {
+      start: { line: 0, character: 23 },
+      end: { line: 0, character: 37 }
+    }
+  }])
+})
+
+test("diagnoses a structured model result used directly as a scalar", async () => {
+  const analyzer = {
+    async analyzeDocument() {
+      return { ok: true, diagnostics: [], functions: [{ name: "adsr", builtin: false }],
+        sourceTokens: [{ type: "function", line: 0, start: 8, length: 4 }] }
+    },
+    async resolveAt() {
+      return { name: "adsr", kind: "model", builtin: false, type: "struct",
+        typedSignature: "adsr(...) -> { value: number }", outputs: [{ name: "value", type: "number" }] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const service = new LanguageService(analyzer, workspace)
+  const diagnostics = await service.getDiagnostics(
+    "shape = adsr()\nout sample = 0.5 * shape\n", "stacked_bass.cxpr")
+  assert.equal(diagnostics.length, 1)
+  assert.match(diagnostics[0].message, /shape\.value/)
+  assert.deepEqual(diagnostics[0].range, {
+    start: { line: 1, character: 19 }, end: { line: 1, character: 24 }
+  })
+})
+
+test("structured output syntax overrides stale imported scalar metadata", async () => {
+  const imported = "model adsr\nvalue = 1\nout { value }\n"
+  const analyzer = {
+    async analyzeDocument(source) {
+      return source === imported
+        ? { ok: true, outline: [
+          { kind: "model", name: "adsr", startLine: 0, startChar: 0, endLine: 0, endChar: 10 },
+          { kind: "output", name: "value", startLine: 2, startChar: 6, endLine: 2, endChar: 11 }
+        ] }
+        : { ok: true, diagnostics: [], functions: [] }
+    },
+    async resolveAt(source) {
+      if (source === imported || source.includes("__cxpr_probe")) return {
+        name: "adsr", kind: "function", type: "number",
+        outputs: [{ name: "value", type: "number" }],
+        definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 10 }
+      }
+      return { name: "adsr", kind: "unresolved", imports: ["envelopes.adsr"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile() { return imported }, importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/envelopes/adsr.cxpr", source: imported } }
+  }
+  const service = new LanguageService(analyzer, importWorkspace)
+  const diagnostics = await service.getDiagnostics(
+    "shape = adsr()\nout sample = shape * 0.5\n", "/workspace/stacked_bass.cxpr")
+  assert.equal(diagnostics.length, 1)
+  assert.match(diagnostics[0].message, /shape\.value/)
+})
+
+test("sum hover preserves the record shape of collection elements", async () => {
+  const gainSource = "model gain\nout { left, right }\n"
+  const consumer = "mix = sum([source |> gain(level=0.5)])\n"
+  const analyzer = {
+    async analyzeDocument(source) {
+      return source === gainSource ? { ok: true, outline: [
+        { kind: "model", name: "gain", startLine: 0, startChar: 0, endLine: 0, endChar: 10 },
+        { kind: "output", name: "left", startLine: 1, startChar: 6, endLine: 1, endChar: 10 },
+        { kind: "output", name: "right", startLine: 1, startChar: 12, endLine: 1, endChar: 17 }
+      ] } : { ok: true }
+    },
+    async resolveAt(source, _name, pos) {
+      if (source === consumer && pos.column <= 10) return {
+        name: "sum", kind: "function", builtin: true, type: "number",
+        signature: "sum(value, ...values)", documentation: "Sums values."
+      }
+      if (source === consumer) return { name: "gain", kind: "unresolved", imports: ["stereo.effects.gain"] }
+      return { name: "gain", kind: "function", type: "number",
+        outputs: [{ name: "left", type: "number" }],
+        definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 10 } }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const sumWorkspace = {
+    async readFile() { return gainSource }, importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/stereo/effects/gain.cxpr", source: gainSource } }
+  }
+  const hover = await new LanguageService(analyzer, sumWorkspace)
+    .getHover(consumer, { line: 0, column: 7 }, "/workspace/room.cxpr")
+  assert.match(hover.markdown, /sum\(value, \.\.\.values\) -> \{ left: number, right: number \}/)
+  assert.match(hover.markdown, /Returns `struct`/)
+})
+
 test("host requirement diagnostics underline the complete requirement function", async () => {
   const analyzer = {
     async analyzeDocument() {
@@ -123,4 +234,79 @@ test("import hover resolves the declaration so compiled typed signatures survive
   assert.match(hover.markdown,
     /resonance\(mono: number\) -> \{ low: number, band: number, high: number \}/)
   assert.doesNotMatch(hover.markdown, /`resonance\(mono\)`/)
+})
+
+test("each dotted import namespace token shows its folder", async () => {
+  const analyzer = {
+    async analyzeDocument() { return { ok: true } },
+    async resolveAt() { return null },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const service = new LanguageService(analyzer, workspace)
+  const source = "use chamber, gain from stereo.effects"
+
+  const stereo = await service.getHover(source, { line: 0, column: 25 }, "room.cxpr")
+  const effects = await service.getHover(source, { line: 0, column: 32 }, "room.cxpr")
+
+  assert.match(stereo.markdown, /Folder: `stereo\/`/)
+  assert.deepEqual(stereo.range, {
+    start: { line: 0, character: 23 }, end: { line: 0, character: 29 }
+  })
+  assert.match(effects.markdown, /Folder: `stereo\/effects\/`/)
+  assert.deepEqual(effects.range, {
+    start: { line: 0, character: 30 }, end: { line: 0, character: 37 }
+  })
+})
+
+test("model result field diagnostics reject fields on scalars and unknown record fields", async () => {
+  const analyzer = {
+    async analyzeDocument(source) {
+      if (source.startsWith("model adsr")) return { ok: true, outline: [{
+        kind: "model", name: "adsr", startLine: 0, startChar: 0, endLine: 0, endChar: 10
+      }] }
+      if (source.startsWith("model filter")) return { ok: true, outline: [{
+        kind: "model", name: "filter", startLine: 0, startChar: 0, endLine: 0, endChar: 12
+      }] }
+      return { ok: true, diagnostics: [], functions: [] }
+    },
+    async resolveAt(source, _name, pos) {
+      if (source.startsWith("model adsr")) return {
+        name: "adsr", kind: "function", type: "number", outputs: [{ name: "value", type: "number" }],
+        definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 10 }
+      }
+      if (source.startsWith("model filter")) return {
+        name: "filter", kind: "function", type: "struct",
+        outputs: [{ name: "low", type: "number" }, { name: "high", type: "number" }],
+        definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 12 }
+      }
+      const token = source.split("\n")[pos.line]?.slice(pos.column)
+      return { name: token?.startsWith("adsr") ? "adsr" : "filter", kind: "unresolved",
+        imports: [token?.startsWith("adsr") ? "envelopes.adsr" : "filters.filter"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const sources = {
+    "envelopes.adsr": "model adsr\nout value\n",
+    "filters.filter": "model filter\nout low, high\n"
+  }
+  const importWorkspace = {
+    async readFile(path) { return sources[path] }, importDir() { return "/workspace" },
+    async resolveImport(spec) { return { path: spec, source: sources[spec] } }
+  }
+  const source = [
+    "shape = adsr(gate=1)",
+    "tone = filter(source=1)",
+    "sample = shape.valuex + tone.middle + tone.low"
+  ].join("\n")
+  const diagnostics = await new LanguageService(analyzer, importWorkspace)
+    .getDiagnostics(source, "voice.cxpr")
+
+  assert.deepEqual(diagnostics.map((item) => [item.message, item.range]), [
+    ["Cannot access field 'valuex' on scalar result 'shape'", {
+      start: { line: 2, character: 15 }, end: { line: 2, character: 21 }
+    }],
+    ["Unknown field 'middle' on result 'tone'", {
+      start: { line: 2, character: 29 }, end: { line: 2, character: 35 }
+    }]
+  ])
 })

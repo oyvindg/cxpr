@@ -5,7 +5,8 @@ const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
 let client;
 
 async function activate(context) {
-  const watcher = vscode.workspace.createFileSystemWatcher("**/*.cxpr");
+  const sourceWatcher = vscode.workspace.createFileSystemWatcher("**/*.cxpr");
+  const configWatcher = vscode.workspace.createFileSystemWatcher("**/cxpr.json");
   let outputChannel;
   try {
     outputChannel = vscode.window.createOutputChannel("CXPR Language Server", { log: true });
@@ -16,7 +17,10 @@ async function activate(context) {
   const configuration = vscode.workspace.getConfiguration("cxprLanguage");
   const clientOptions = {
     documentSelector: [{ language: "cxpr", scheme: "file" }],
-    synchronize: { configurationSection: "cxprLanguage", fileEvents: watcher },
+    synchronize: {
+      configurationSection: "cxprLanguage",
+      fileEvents: [sourceWatcher, configWatcher]
+    },
     initializationOptions: {
       transport: configuration.get("analyzer.transport", "wasm"),
       cli: configuration.get("tooling.executable", ""),
@@ -40,11 +44,30 @@ async function activate(context) {
     },
     clientOptions
   );
-  context.subscriptions.push(watcher, outputChannel, client);
+  context.subscriptions.push(sourceWatcher, configWatcher, outputChannel, client);
   outputChannel.appendLine(`Starting CXPR language server: ${serverModule}`);
   try {
     await client.start();
     outputChannel.appendLine("CXPR language server is ready.");
+    context.subscriptions.push(vscode.workspace.onWillSaveTextDocument((event) => {
+      if (event.document.languageId !== "cxpr" || event.document.uri.scheme !== "file") return;
+      const editor = vscode.workspace.getConfiguration("editor", event.document.uri);
+      event.waitUntil(client.sendRequest("textDocument/formatting", {
+        textDocument: { uri: event.document.uri.toString() },
+        options: {
+          tabSize: editor.get("tabSize", 4),
+          insertSpaces: editor.get("insertSpaces", true)
+        }
+      }).then((edits) => (edits || []).map((edit) => vscode.TextEdit.replace(
+        new vscode.Range(
+          edit.range.start.line,
+          edit.range.start.character,
+          edit.range.end.line,
+          edit.range.end.character
+        ),
+        edit.newText
+      ))));
+    }));
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     outputChannel.appendLine(`CXPR language server failed to start: ${detail}`);

@@ -1,17 +1,104 @@
 #include <cxpr/cxpr.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+typedef enum diagnostic_color {
+    DIAGNOSTIC_COLOR_RESET = 0,
+    DIAGNOSTIC_COLOR_ERROR,
+    DIAGNOSTIC_COLOR_MODEL,
+    DIAGNOSTIC_COLOR_IMPORT_PATH,
+    DIAGNOSTIC_COLOR_NUMBER
+} diagnostic_color;
+
+static int diagnostic_color_enabled(void) {
+    static int initialized = 0;
+    static int enabled = 0;
+    const char* no_color;
+    const char* term;
+    if (initialized) return enabled;
+    no_color = getenv("NO_COLOR");
+    term = getenv("TERM");
+    enabled = isatty(STDERR_FILENO) &&
+              (!no_color || no_color[0] == '\0') &&
+              (!term || strcmp(term, "dumb") != 0);
+    initialized = 1;
+    return enabled;
+}
+
+static const char* diagnostic_color_code(diagnostic_color color) {
+    if (!diagnostic_color_enabled()) return "";
+    switch (color) {
+    case DIAGNOSTIC_COLOR_RESET: return "\033[0m";
+    /* Keep terminal diagnostics aligned with tools/theme/cxpr-color-profile.json. */
+    case DIAGNOSTIC_COLOR_ERROR: return "\033[38;2;224;108;117m";      /* state */
+    case DIAGNOSTIC_COLOR_MODEL: return "\033[38;2;220;220;170m";      /* model */
+    case DIAGNOSTIC_COLOR_IMPORT_PATH: return "\033[38;2;215;186;125m";/* importPath */
+    case DIAGNOSTIC_COLOR_NUMBER: return "\033[38;2;181;206;168m";     /* number */
+    }
+    return "";
+}
+
+static void diagnostic_stderr_colorf(diagnostic_color color, const char* format, ...) {
+    va_list args;
+    fputs(diagnostic_color_code(color), stderr);
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs(diagnostic_color_code(DIAGNOSTIC_COLOR_RESET), stderr);
+}
 
 static char* resolve_import_path_for_model(const char* dir, const char* use_name);
 static const char* import_dir_override;
+static int source_diagnostic_emitted;
 
 typedef struct import_trace {
     const char** paths;
     size_t count;
     size_t capacity;
 } import_trace;
+
+static int find_output_symbol_location(const char* source,
+                                       const char* message,
+                                       size_t* out_line,
+                                       size_t* out_column) {
+    static const char prefix[] = "Output references unknown symbol '";
+    const char* symbol;
+    const char* symbol_end;
+    const char* line_start;
+    size_t line = 1u;
+    if (!source || !message || strncmp(message, prefix, sizeof(prefix) - 1u) != 0) return 0;
+    symbol = message + sizeof(prefix) - 1u;
+    symbol_end = strchr(symbol, '\'');
+    if (!symbol_end || symbol_end == symbol) return 0;
+    line_start = source;
+    while (*line_start) {
+        const char* line_end = strchr(line_start, '\n');
+        const char* cursor = line_start;
+        const size_t symbol_len = (size_t)(symbol_end - symbol);
+        if (!line_end) line_end = line_start + strlen(line_start);
+        while (cursor < line_end) {
+            if (cursor + symbol_len <= line_end &&
+                strncmp(cursor, symbol, symbol_len) == 0 &&
+                (cursor == line_start ||
+                 !(isalnum((unsigned char)cursor[-1]) || cursor[-1] == '_')) &&
+                (cursor + symbol_len == line_end ||
+                 !(isalnum((unsigned char)cursor[symbol_len]) || cursor[symbol_len] == '_'))) {
+                if (out_line) *out_line = line;
+                if (out_column) *out_column = (size_t)(cursor - line_start) + 1u;
+                return 1;
+            }
+            cursor++;
+        }
+        if (*line_end == '\0') break;
+        line_start = line_end + 1;
+        line++;
+    }
+    return 0;
+}
 
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
@@ -89,15 +176,17 @@ static int import_trace_push(import_trace* trace, const char* path) {
     return 1;
 }
 
-static void print_parse_diagnostic(const char* path,
-                                   const char* source,
-                                   const cxpr_error* err,
-                                   const import_trace* trace) {
+static void print_source_diagnostic(const char* phase,
+                                    const char* path,
+                                    const char* source,
+                                    const cxpr_error* err,
+                                    const import_trace* trace) {
     const char* model_name = "(unnamed)";
     const char* line_start = source;
     const char* line_end;
     size_t current_line = 1u;
     size_t target_line = err && err->line ? err->line : 1u;
+    size_t target_column = err && err->column ? err->column : 1u;
     char* source_copy = xstrdup(source ? source : "");
     char* cursor = source_copy;
 
@@ -112,6 +201,8 @@ static void print_parse_diagnostic(const char* path,
         cursor = next ? next + 1 : NULL;
     }
 
+    (void)find_output_symbol_location(source, err ? err->message : NULL,
+                                      &target_line, &target_column);
     while (source && *line_start && current_line < target_line) {
         const char* newline = strchr(line_start, '\n');
         if (!newline) break;
@@ -121,28 +212,44 @@ static void print_parse_diagnostic(const char* path,
     line_end = line_start ? strchr(line_start, '\n') : NULL;
     if (!line_end && line_start) line_end = line_start + strlen(line_start);
 
-    fprintf(stderr, "cxpr_model_codegen: parse failed\n");
-    fprintf(stderr, "  URI: %s\n", path ? path : "(unknown)");
-    fprintf(stderr, "  Model: %s\n", model_name);
-    fprintf(stderr, "  Location: %zu:%zu\n", target_line,
-            err && err->column ? err->column : 1u);
-    fprintf(stderr, "  Error: %s\n", err && err->message ? err->message : "(null)");
+    diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_ERROR,
+                             "cxpr_model_codegen: %s failed\n",
+                             phase ? phase : "validation");
+    fputs("  URI: ", stderr);
+    diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_IMPORT_PATH, "%s\n",
+                             path ? path : "(unknown)");
+    fputs("  Model: ", stderr);
+    diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_MODEL, "%s\n", model_name);
+    fputs("  Location: ", stderr);
+    diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_NUMBER, "%zu:%zu\n", target_line,
+                             target_column);
+    diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_ERROR, "  Error: %s\n",
+                             err && err->message ? err->message : "(null)");
     fprintf(stderr, "  Source:\n    %zu | %.*s\n", target_line,
             line_start && line_end ? (int)(line_end - line_start) : 0,
             line_start ? line_start : "");
-    fprintf(stderr, "      | %*s^\n",
-            (int)(err && err->column > 0u ? err->column - 1u : 0u), "");
-    fprintf(stderr, "  Import chain:");
+    diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_ERROR, "      | %*s^\n",
+                             (int)(target_column - 1u), "");
+    fputs("  Import chain:", stderr);
     if (trace && trace->count) {
         size_t i;
         for (i = 0u; i < trace->count; ++i) {
-            fprintf(stderr, "%s%s", i == 0u ? " " : " -> ", trace->paths[i]);
+            diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_IMPORT_PATH, "%s%s",
+                                     i == 0u ? " " : " -> ", trace->paths[i]);
         }
     } else {
-        fprintf(stderr, " %s", path ? path : "(unknown)");
+        diagnostic_stderr_colorf(DIAGNOSTIC_COLOR_IMPORT_PATH, " %s",
+                                 path ? path : "(unknown)");
     }
     fprintf(stderr, "\n");
+    source_diagnostic_emitted = 1;
     free(source_copy);
+}
+
+static int is_unknown_output_error(const cxpr_error* err) {
+    static const char prefix[] = "Output references unknown symbol";
+    return err && err->code == CXPR_ERR_UNKNOWN_IDENTIFIER && err->message &&
+           strncmp(err->message, prefix, sizeof(prefix) - 1u) == 0;
 }
 
 static int brace_delta(const char* s) {
@@ -344,7 +451,12 @@ static int collect_import_functions(const char* model_path,
     int ok = 0;
 
     if (!model) {
-        print_parse_diagnostic(model_path, source, &err, trace);
+        print_source_diagnostic("parse", model_path, source, &err, trace);
+        return 0;
+    }
+    if (!cxpr_model_validate(model, &err) && is_unknown_output_error(&err)) {
+        print_source_diagnostic("validation", model_path, source, &err, trace);
+        cxpr_model_free(model);
         return 0;
     }
 
@@ -715,6 +827,8 @@ static int emit_model_c(const char* model_path,
     };
     int rc = 1;
 
+    source_diagnostic_emitted = 0;
+
     source = read_file(model_path);
     if (!source) {
         fprintf(stderr, "cxpr_model_codegen: failed to read %s\n", model_path);
@@ -722,14 +836,16 @@ static int emit_model_c(const char* model_path,
     }
     combined_source = build_source_with_imports(model_path, source);
     if (!combined_source) {
-        fprintf(stderr, "cxpr_model_codegen: failed to resolve model imports\n");
+        if (!source_diagnostic_emitted) {
+            fprintf(stderr, "cxpr_model_codegen: failed to resolve model imports\n");
+        }
         goto cleanup;
     }
     model = cxpr_model_parse(combined_source, &err);
     if (!model) {
         import_trace trace = {0};
         if (import_trace_push(&trace, model_path)) {
-            print_parse_diagnostic(model_path, combined_source, &err, &trace);
+            print_source_diagnostic("parse", model_path, combined_source, &err, &trace);
         }
         free(trace.paths);
         goto cleanup;
@@ -737,8 +853,12 @@ static int emit_model_c(const char* model_path,
     import_bundle = cxpr_model_import_bundle_build(
         model_path, model, model_codegen_load_import, NULL, &err);
     if (!import_bundle) {
-        fprintf(stderr, "cxpr_model_codegen: failed to compile model imports: %s\n",
+        fprintf(stderr, "cxpr_model_codegen: failed to compile model imports: %s",
                 err.message ? err.message : "unknown import error");
+        if (err.line > 0u) {
+            fprintf(stderr, " at %zu:%zu", err.line, err.column ? err.column : 1u);
+        }
+        fputc('\n', stderr);
         goto cleanup;
     }
     import_api = cxpr_model_import_bundle_root_imports(

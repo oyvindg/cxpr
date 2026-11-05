@@ -1024,6 +1024,12 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
             ? cxpr_context_get_cached_struct(ctx, cache_key)
             : NULL;
         if (cached && cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
+            if (!child->output_is_record && child->output_count == 1u &&
+                cached->field_count == 1u) {
+                result = cxpr_value_clone(&cached->field_values[0]);
+                free(owned_cache_key);
+                return result;
+            }
             cxpr_struct_value* copy = cxpr_struct_value_new(
                 (const char* const*)cached->field_names,
                 cached->field_values,
@@ -1235,8 +1241,12 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
     cxpr_context_set_cached_struct((cxpr_context*)ctx, cache_key, record);
     free(owned_cache_key);
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL) {
-        result = cxpr_struct(record);
-        record = NULL;
+        if (!child->output_is_record && child->output_count == 1u) {
+            result = cxpr_value_clone(&record->field_values[0]);
+        } else {
+            result = cxpr_struct(record);
+            record = NULL;
+        }
         found = true;
     } else {
         result = cxpr_struct_get_field(record, cxpr_expr_ast_producer_field(ast), &found);

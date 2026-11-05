@@ -134,6 +134,7 @@ struct cxpr_model {
     cxpr_source_span* output_spans;
     bool* output_has_spans;
     size_t output_count;
+    bool output_is_record;
     cxpr_model_anonymous_output* anonymous_outputs;
     size_t anonymous_output_count;
     cxpr_model_metadata* metadatas;
@@ -312,6 +313,7 @@ struct cxpr_model_compiled {
     cxpr_model_decl_type* output_declared_types;
     cxpr_model_element_type* output_element_types;
     size_t output_count;
+    bool output_is_record;
 };
 
 struct cxpr_model_session {

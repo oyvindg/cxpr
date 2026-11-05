@@ -1489,7 +1489,8 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
             ok = cxpr_doc_ast_parse_comma_or_line_decls(
                 parser, node, CXPR_DOC_AST_OUTPUT_DECL, open + 1,
                 start_offset + (size_t)(open + 1 - statement), false);
-        } else {
+        } else if (cxpr_doc_ast_top_level_char((char*)rest, ',') ||
+                   cxpr_doc_ast_is_ident(rest) || strstr(rest, " as ")) {
             char* output_name;
             char* output_role;
             node = cxpr_doc_ast_node_new(CXPR_DOC_AST_OUTPUT_DECL, span);
@@ -1508,6 +1509,13 @@ static bool cxpr_doc_ast_parse_statement(cxpr_doc_ast_parser* parser,
                      cxpr_doc_ast_append_child(node, metadata);
                 if (!ok) cxpr_doc_ast_node_free(metadata);
             }
+        } else {
+            node = cxpr_doc_ast_node_new(CXPR_DOC_AST_ANONYMOUS_OUTPUT, span);
+            if (!node) goto oom;
+            node->text = cxpr_strdup(rest);
+            node->expression = cxpr_doc_ast_parse_expr(
+                rest, span.start.line, span.start.column + 1u, parser->err);
+            ok = node->text && node->expression;
         }
     } else if (cxpr_doc_ast_keyword(statement, "fn", &rest)) {
         char* open = strchr(statement, '{');
@@ -1753,7 +1761,10 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
                 }
             } else {
                 bool indented = isspace((unsigned char)parse_source[line_start]) != 0;
-                if (has_current && brace_depth <= 0 && paren_depth <= 0 && !indented) {
+                const bool pipe_continuation =
+                    line[0] == '|' && line[1] == '>';
+                if (has_current && brace_depth <= 0 && paren_depth <= 0 &&
+                    !indented && !pipe_continuation) {
                     if (!cxpr_doc_ast_parse_host_statement(
                             &parser, ast->root, parse_source + statement_start,
                             statement_start, line_start > 0u ? line_start - 1u : line_start)) {

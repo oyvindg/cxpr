@@ -600,7 +600,6 @@ static void test_parse_model_param_block(void) {
     cxpr_model_compiled* program;
     cxpr_model_session* session;
     cxpr_context* ctx;
-    char* code;
     double value = 0.0;
     bool found = false;
 
@@ -1485,14 +1484,18 @@ static void test_reject_invalid_out_assignment_name(void) {
     printf("  ✓ test_reject_invalid_out_assignment_name\n");
 }
 
-static void test_reject_invalid_output_name(void) {
+static void test_literal_output_expression_uses_implicit_value(void) {
     cxpr_error err = {0};
     cxpr_model* model = cxpr_model_parse("model bad\nout 123\n", &err);
-    assert(model == NULL);
-    assert(err.code == CXPR_ERR_SYNTAX);
-    assert(err.message != NULL);
+    cxpr_model_compiled* program;
+    assert(model != NULL);
+    program = cxpr_model_compile(model, NULL, &err);
+    assert(program != NULL);
+    assert(cxpr_model_compiled_output_count(program) == 1u);
+    assert(strcmp(cxpr_model_compiled_output_name(program, 0u), "value") == 0);
+    cxpr_model_compiled_free(program);
     cxpr_model_free(model);
-    printf("  ✓ test_reject_invalid_output_name\n");
+    printf("  ✓ test_literal_output_expression_uses_implicit_value\n");
 }
 
 static void test_validate_accepts_known_symbols(void) {
@@ -1522,7 +1525,9 @@ static void test_validate_rejects_unknown_output(void) {
 
     assert(!cxpr_model_validate(model, &err));
     assert(err.code == CXPR_ERR_UNKNOWN_IDENTIFIER);
-    assert(strcmp(err.message, "Output references unknown symbol") == 0);
+    assert(strcmp(err.message, "Output references unknown symbol 'missing'") == 0);
+    assert(err.line == 4u);
+    assert(err.column == 1u);
 
     cxpr_model_free(model);
     printf("  ✓ test_validate_rejects_unknown_output\n");
@@ -1985,6 +1990,106 @@ static void test_output_list_syntax(void) {
 
     cxpr_model_free(model);
     printf("  ✓ test_output_list_syntax\n");
+}
+
+static void test_output_expression_uses_implicit_value(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* model = parse_model_ok(
+        "model mono\n"
+        "in stereo { left, right }\n"
+        "$gain = 0.5\n"
+        "out $gain * (stereo.left + stereo.right)\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    cxpr_model_session* session;
+    char* code;
+
+    assert(program != NULL);
+    assert(cxpr_model_compiled_output_count(program) == 1u);
+    assert(strcmp(cxpr_model_compiled_output_name(program, 0u), "value") == 0);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "stereo.left", 0.25);
+    cxpr_context_set(cxpr_model_session_context(session), "stereo.right", 0.75);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 0.5);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "mono_tick", &err);
+    assert(code != NULL);
+    free(code);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_output_expression_uses_implicit_value\n");
+}
+
+static void test_imported_model_output_shape_controls_call_value(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* scalar = parse_model_ok(
+        "model scalar\n"
+        "in source\n"
+        "value = source + 1\n"
+        "out value\n");
+    cxpr_model* wrapped = parse_model_ok(
+        "model wrapped\n"
+        "in source\n"
+        "value = source + 2\n"
+        "out { value }\n");
+    cxpr_model* record = parse_model_ok(
+        "model record\n"
+        "in source\n"
+        "value = { left = source, right = source + 1 }\n"
+        "out value\n");
+    cxpr_model_compiled* scalar_program = cxpr_model_compile(scalar, NULL, &err);
+    cxpr_model_compiled* wrapped_program = cxpr_model_compile(wrapped, NULL, &err);
+    cxpr_model_compiled* record_program = cxpr_model_compile(record, NULL, &err);
+    cxpr_model_import imports[3];
+    cxpr_model* parent;
+    cxpr_model_compiled* parent_program;
+    cxpr_model_session* session;
+    char* code;
+
+    assert(scalar_program != NULL);
+    assert(wrapped_program != NULL);
+    assert(record_program != NULL);
+    imports[0] = (cxpr_model_import){"scalar", scalar_program};
+    imports[1] = (cxpr_model_import){"wrapped", wrapped_program};
+    imports[2] = (cxpr_model_import){"record", record_program};
+    parent = parse_model_ok(
+        "model parent\n"
+        "use scalar\n"
+        "use wrapped\n"
+        "use record\n"
+        "in source\n"
+        "direct = record(source=source)\n"
+        "value = scalar(source=source) * 2 + wrapped(source=source).value * 3 + "
+        "direct.right\n"
+        "out value\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 3u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "output-shape parent compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "source", 4.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 33.0);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(record_program);
+    cxpr_model_compiled_free(wrapped_program);
+    cxpr_model_compiled_free(scalar_program);
+    cxpr_model_free(wrapped);
+    cxpr_model_free(record);
+    cxpr_model_free(scalar);
+    printf("  ✓ test_imported_model_output_shape_controls_call_value\n");
 }
 
 static void test_function_block_out_expression(void) {
@@ -2762,6 +2867,43 @@ static void test_imported_producer_anonymous_out_expands_child_outputs(void) {
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_imported_producer_anonymous_out_expands_child_outputs\n");
+}
+
+static void test_imported_producer_anonymous_scalar_materializes_local(void) {
+    cxpr_error err = {0};
+    cxpr_model* child = parse_model_ok(
+        "model voice\n"
+        "in source\n"
+        "out source * 2\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import;
+    cxpr_model* parent;
+    cxpr_model_compiled* parent_program;
+    char* code;
+
+    assert(child_program != NULL);
+    import = (cxpr_model_import){.name = "voice", .program = child_program};
+    parent = parse_model_ok(
+        "model parent\n"
+        "use voice\n"
+        "in close\n"
+        "bass_voice = voice(close)\n"
+        "mixed = 3 * bass_voice\n"
+        "out mixed\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, &import, 1u, &err);
+    assert(parent_program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        parent_program, "static inline", "parent_tick", &err);
+    assert(code != NULL);
+    assert(strstr(code, "const double bass_voice =") != NULL);
+    assert(strstr(code, "bass_voice___cxpr_import_dummy") == NULL);
+
+    free(code);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_producer_anonymous_scalar_materializes_local\n");
 }
 
 static void test_compile_imported_functions_are_namespaced(void) {
@@ -4002,7 +4144,7 @@ static void test_imported_collection_lambda_captures_outer_record(void) {
         "newer = { frequency = 440, age = 1, level = 5 }, "
         "other = { frequency = 220, age = 0, level = 7 } }\n"
         "ticks := ticks + 1\n"
-        "out voices\n");
+        "out { voices }\n");
     cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
     cxpr_model* processor = parse_model_ok(
         "model voice_gain { lifecycle = \"scoped\" }\n"
@@ -4010,7 +4152,7 @@ static void test_imported_collection_lambda_captures_outer_record(void) {
         "state ticks = 0\n"
         "sample = source * gain + 0 * ticks\n"
         "ticks := ticks + 1\n"
-        "out sample\n");
+        "out { sample }\n");
     cxpr_model_compiled* processor_program =
         cxpr_model_compile(processor, NULL, &err);
     cxpr_model_import imports[2];
@@ -5981,7 +6123,7 @@ int main(void) {
     test_validate_rejects_duplicate_state_update();
     test_validate_accepts_conditional_state_update();
     test_reject_invalid_out_assignment_name();
-    test_reject_invalid_output_name();
+    test_literal_output_expression_uses_implicit_value();
     test_validate_accepts_known_symbols();
     test_validate_rejects_unknown_output();
     test_validate_rejects_unknown_references();
@@ -6000,6 +6142,8 @@ int main(void) {
     test_compile_rejects_known_value_type_mismatch();
     test_value_type_contract_fixture();
     test_output_list_syntax();
+    test_output_expression_uses_implicit_value();
+    test_imported_model_output_shape_controls_call_value();
     test_function_block_out_expression();
     test_state_session_atomic_commit_and_events();
     test_typed_declaration_fixtures_are_accepted();
@@ -6018,6 +6162,7 @@ int main(void) {
     test_model_c_history_ring_layout_and_initialization();
     test_compile_imported_producer_infers_missing_child_inputs();
     test_imported_producer_anonymous_out_expands_child_outputs();
+    test_imported_producer_anonymous_scalar_materializes_local();
     test_compile_imported_functions_are_namespaced();
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();

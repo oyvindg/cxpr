@@ -1464,7 +1464,9 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
             return cxpr_document_lower_children_to_model(model, node, err);
         case CXPR_DOC_AST_PARAM_BLOCK:
         case CXPR_DOC_AST_STATE_BLOCK:
+            return cxpr_document_lower_children_to_model(model, node, err);
         case CXPR_DOC_AST_OUTPUT_BLOCK:
+            model->output_is_record = true;
             return cxpr_document_lower_children_to_model(model, node, err);
         case CXPR_DOC_AST_INPUT_DECL:
             if (cxpr_doc_ast_node_expr(node)) {

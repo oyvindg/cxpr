@@ -27,8 +27,15 @@ class NodeWorkspace {
     this.roots = roots;
     this.options = options.cxpr || options;
     this.configCache = new Map();
+    this.openDocuments = new Map();
   }
-  readFile(file) { return fs.readFile(file, "utf8"); }
+  readFile(file) {
+    return Promise.resolve(this.openDocuments.get(path.resolve(file)))
+      .then((source) => source === undefined ? fs.readFile(file, "utf8") : source);
+  }
+  setOpenDocument(file, source) { this.openDocuments.set(path.resolve(file), source); }
+  closeOpenDocument(file) { this.openDocuments.delete(path.resolve(file)); }
+  invalidateProjectConfig() { this.configCache.clear(); }
   importDir() { return this.configuredRoots("moduleRoots")[0] || this.roots[0] || process.cwd(); }
   configuredRoots(key) {
     const configured = Array.isArray(this.options[key]) ? this.options[key] : [];
@@ -90,8 +97,8 @@ class NodeWorkspace {
       path.resolve(path.dirname(from), name),
       ...(project?.moduleRoots || []).map((root) => path.resolve(root, name)),
       ...this.configuredRoots("moduleRoots").map((root) => path.resolve(root, name)),
-      ...moduleRoots.map((root) => path.resolve(root, name)),
-      ...this.roots.flatMap((root) => [
+      ...(!project ? moduleRoots : []).map((root) => path.resolve(root, name)),
+      ...(!project ? this.roots : []).flatMap((root) => [
         path.resolve(root, name),
         path.resolve(root, "modules", name)
       ])
@@ -113,6 +120,11 @@ class WorkspaceReferenceIndex {
   async ensure() {
     if (!this.ready) this.ready = this.scan();
     await this.ready;
+  }
+
+  invalidate() {
+    this.files.clear();
+    this.ready = null;
   }
 
   async scan() {
@@ -306,6 +318,7 @@ function createLanguageServer(connection) {
   const documents = new lsp.TextDocuments(TextDocument);
   let servicePromise;
   let referenceIndex;
+  let workspace;
   const document = (uri) => documents.get(uri);
   const name = (item) => item.uri.startsWith("file:") ? fileURLToPath(item.uri) : item.uri;
   const service = () => servicePromise;
@@ -313,7 +326,7 @@ function createLanguageServer(connection) {
   connection.onInitialize(async (params) => {
     const roots = (params.workspaceFolders || []).map(({ uri }) => uri.startsWith("file:") ? fileURLToPath(uri) : "").filter(Boolean);
     if (!roots.length && params.rootUri?.startsWith("file:")) roots.push(fileURLToPath(params.rootUri));
-    const workspace = new NodeWorkspace(roots, params.initializationOptions || {});
+    workspace = new NodeWorkspace(roots, params.initializationOptions || {});
     referenceIndex = new WorkspaceReferenceIndex(workspace);
     servicePromise = selectAnalyzer(params.initializationOptions || {}).then((analyzer) =>
       new LanguageService(analyzer, workspace));
@@ -322,23 +335,47 @@ function createLanguageServer(connection) {
       textDocumentSync: lsp.TextDocumentSyncKind.Incremental, hoverProvider: true,
       completionProvider: { triggerCharacters: ["$", ".", "(", ","] }, definitionProvider: true,
       referencesProvider: true, documentSymbolProvider: true, foldingRangeProvider: true,
+      documentFormattingProvider: true,
       semanticTokensProvider: { legend: { tokenTypes: TOKEN_TYPES, tokenModifiers: [] }, full: true }
     } };
+  });
+
+  connection.onDidChangeWatchedFiles(({ changes }) => {
+    if (!changes.some(({ uri }) => path.basename(fileURLToPath(uri)) === "cxpr.json")) return;
+    workspace.invalidateProjectConfig();
+    referenceIndex.invalidate();
+    for (const item of documents.all()) {
+      if (item.uri.startsWith("file:")) void referenceIndex.update(name(item), item.getText());
+    }
+    void publishOpenDocuments();
   });
 
   async function publish(item) {
     connection.sendDiagnostics({ uri: item.uri,
       diagnostics: await (await service()).getDiagnostics(item.getText(), name(item)) });
   }
+  async function publishOpenDocuments() {
+    await Promise.all(documents.all().map((item) => publish(item)));
+  }
   documents.onDidOpen(({ document: item }) => {
-    if (item.uri.startsWith("file:")) void referenceIndex.update(name(item), item.getText());
-    void publish(item);
+    if (item.uri.startsWith("file:")) {
+      workspace.setOpenDocument(name(item), item.getText());
+      void referenceIndex.update(name(item), item.getText());
+    }
+    void publishOpenDocuments();
   });
   documents.onDidChangeContent(({ document: item }) => {
-    if (item.uri.startsWith("file:")) void referenceIndex.update(name(item), item.getText());
-    void publish(item);
+    if (item.uri.startsWith("file:")) {
+      workspace.setOpenDocument(name(item), item.getText());
+      void referenceIndex.update(name(item), item.getText());
+    }
+    void publishOpenDocuments();
   });
-  documents.onDidClose(({ document: item }) => connection.sendDiagnostics({ uri: item.uri, diagnostics: [] }));
+  documents.onDidClose(({ document: item }) => {
+    if (item.uri.startsWith("file:")) workspace.closeOpenDocument(name(item));
+    connection.sendDiagnostics({ uri: item.uri, diagnostics: [] });
+    void publishOpenDocuments();
+  });
 
   connection.onCompletion(async ({ textDocument, position }) => {
     const item = document(textDocument.uri); if (!item) return [];
@@ -378,6 +415,14 @@ function createLanguageServer(connection) {
   });
   connection.onFoldingRanges(async ({ textDocument }) => {
     const item = document(textDocument.uri); return item ? (await service()).getFoldingRanges(item.getText(), name(item)) : [];
+  });
+  connection.onDocumentFormatting(async ({ textDocument, options }) => {
+    const item = document(textDocument.uri); if (!item) return [];
+    const source = item.getText();
+    const formatted = (await service()).formatDocument(source, options);
+    if (formatted === source) return [];
+    return [{ range: { start: { line: 0, character: 0 }, end: item.positionAt(source.length) },
+      newText: formatted }];
   });
   connection.languages.semanticTokens.on(async ({ textDocument }) => {
     const item = document(textDocument.uri); return item ? encodeSemanticTokens(await (await service()).getSemanticTokens(item.getText(), name(item))) : { data: [] };

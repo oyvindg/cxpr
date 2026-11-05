@@ -1083,6 +1083,29 @@ static void test_binding_expression_error_has_document_column(void) {
     printf("  ✓ test_binding_expression_error_has_document_column\n");
 }
 
+static void test_unindented_pipe_continues_previous_expression(void) {
+    const char* source =
+        "model room\n"
+        "wet = { left = 1, right = 2 }\n"
+        "|> hall(feedback=0.9)\n"
+        "out wet\n";
+    cxpr_error err = {0};
+    cxpr_doc_ast* syntax = cxpr_doc_ast_parse(
+        source, "room.cxpr", CXPR_DOC_EXTENSION_MODEL, &err);
+    const cxpr_doc_ast_node* root;
+    const cxpr_doc_ast_node* binding;
+
+    assert(syntax != NULL);
+    assert(err.code == CXPR_OK);
+    root = cxpr_doc_ast_root(syntax);
+    assert(cxpr_doc_ast_node_child_count(root) == 3u);
+    binding = cxpr_doc_ast_node_child(root, 1u);
+    assert(cxpr_doc_ast_node_kind(binding) == CXPR_DOC_AST_BINDING);
+    assert(cxpr_doc_ast_node_expr(binding) != NULL);
+    cxpr_doc_ast_free(syntax);
+    printf("  ✓ test_unindented_pipe_continues_previous_expression\n");
+}
+
 int main(void) {
     printf("Running cxpr document tests...\n");
     test_manifest_document_accepts_host_blocks_without_model();
@@ -1112,6 +1135,7 @@ int main(void) {
     test_load_document_file_is_primary_entrypoint();
     test_manifest_document_accepts_comment_forms();
     test_binding_expression_error_has_document_column();
+    test_unindented_pipe_continues_previous_expression();
     printf("All document tests passed.\n");
     return 0;
 }

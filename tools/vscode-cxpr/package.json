@@ -2,7 +2,7 @@
   "name": "cxpr-language",
   "displayName": "CXPR Language",
   "description": "VS Code client for the standalone CXPR language server.",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "publisher": "local",
   "engines": { "vscode": "^1.85.0" },
@@ -10,7 +10,7 @@
   "activationEvents": ["onLanguage:cxpr"],
   "main": "./extension.js",
   "scripts": {
-    "package:vsix": "node scripts/build-vsix.js",
+    "package:vsix": "npm --prefix ../../../cxpr-node run build:wasm && node scripts/build-vsix.js",
     "test:packaged": "node --test test/packaged-wasm-smoke.test.js",
     "install:extension": "npm run package:vsix && node install-extension.mjs"
   },

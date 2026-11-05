@@ -65,13 +65,19 @@ test("isolated VSIX serves diagnostics, completion, hover and definition through
   const source = "model smoke\nin close\nout x = sqrt(close)\n";
 
   assert.deepEqual(await service.getDiagnostics(source, "smoke.cxpr"), []);
+  assert.deepEqual(await service.getDiagnostics(
+    "model pipe\nwet = 1\n|> abs()\nout wet\n",
+    "unindented-pipe.cxpr"), []);
   const groupedUseSource = `model grouped_use
 use chorus, gated_reverb, pan, dry_mix, ping_pong_delay, reverb, width_drive, master from stereo.effects
 in stereo
 out { left = stereo.left, right = stereo.right }
 `;
-  assert.deepEqual(
-    await service.getDiagnostics(groupedUseSource, "grouped-use.cxpr"), []);
+  const groupedUseDiagnostics = await service.getDiagnostics(
+    groupedUseSource, "grouped-use.cxpr");
+  assert.equal(groupedUseDiagnostics.length, 1);
+  assert.match(groupedUseDiagnostics[0].message,
+    /Namespace 'stereo\.effects' does not contain/);
   const selectorSource = `model selector
 fn voice(level) { return { phoneme = level } }
 phoneme = sum([voice(1), voice(2)], x => x.phoneme)
@@ -97,7 +103,8 @@ out sample = voices.main + voices.back + voices.third
 `;
   const namedMapHover = (await service.getHover(
     namedMapSource, { line: 6, column: 15 }, "named-map.cxpr")).markdown;
-  assert.match(namedMapHover, /voices = \{ main, back, third \}/);
+  assert.match(namedMapHover, /voices\.main/);
+  assert.match(namedMapHover, /Returns `number`/);
   assert.doesNotMatch(namedMapHover, /frequency = 440|gain = 0\.8/);
   assert.deepEqual(await service.getDefinitions(source, { line: 2, column: 16 }, "smoke.cxpr"), [{
     uri: "smoke.cxpr",

@@ -1,0 +1,3 @@
+model unknown_output_root
+use unknown_output
+out value = unknown_output.value

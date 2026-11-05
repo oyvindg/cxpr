@@ -1234,7 +1234,8 @@ const char* cxpr_model_import_namespace_name(const cxpr_model* model,
     if (!model || !import_name) return import_name;
     for (size_t i = 0u; i < model->use_count; ++i) {
         if (cxpr_model_names_match(model->uses[i], import_name)) {
-            return model->use_aliases && model->use_aliases[i]
+            return model->use_aliases && model->use_aliases[i] &&
+                           model->use_aliases[i][0] != '\0'
                        ? model->use_aliases[i]
                        : cxpr_model_import_leaf_name(import_name);
         }
@@ -1395,9 +1396,12 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                 for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
                     const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
                     if (arg_name && !cxpr_model_child_accepts_named_arg(child, arg_name)) {
+                        static CXPR_THREAD_LOCAL char message[256];
+                        snprintf(message, sizeof(message),
+                                 "Unknown named argument '%s' for imported model '%s'",
+                                 arg_name, ast->data.producer_access.name);
                         cxpr_model_set_error(
-                            err, CXPR_ERR_SYNTAX,
-                            "Unknown named argument for imported model", 0, 0);
+                            err, CXPR_ERR_SYNTAX, message, 0, 0);
                         return false;
                     }
                 }
@@ -1693,16 +1697,24 @@ bool cxpr_model_expand_anonymous_outputs(cxpr_model* model,
     for (size_t i = 0u; i < model->anonymous_output_count; ++i) {
         const cxpr_expr_ast* expr = model->anonymous_outputs[i].expr;
         const cxpr_model_compiled* child;
-        if (!expr || expr->type != CXPR_NODE_FUNCTION_CALL) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "Anonymous out must be a record function call", 0, 0);
-            return false;
+        child = expr && expr->type == CXPR_NODE_FUNCTION_CALL
+            ? cxpr_model_import_program_for_name(
+                  model, imports, import_count, expr->data.function_call.name)
+            : NULL;
+        if (!child) {
+            cxpr_expr_ast* value = expr ? cxpr_expr_ast_clone(expr) : NULL;
+            if (!value || !cxpr_model_append_synthetic_binding(
+                    model, "value", model->anonymous_outputs[i].source,
+                    value, err)) {
+                cxpr_expr_ast_free(value);
+                return false;
+            }
+            if (!cxpr_model_append_output_name(model, "value", err)) return false;
+            continue;
         }
-        child = cxpr_model_import_program_for_name(
-            model, imports, import_count, expr->data.function_call.name);
-        if (!child || child->output_count == 0u) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_FUNCTION,
-                                 "Anonymous out references unknown record function", 0, 0);
+        if (child->output_count == 0u) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Anonymous out model has no outputs", 0, 0);
             return false;
         }
         for (size_t field_i = 0u; field_i < child->output_count; ++field_i) {

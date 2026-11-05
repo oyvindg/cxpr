@@ -368,8 +368,14 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
 
     for (size_t i = 0; i < model->output_count; ++i) {
         if (!cxpr_model_public_symbol_exists(model, model->outputs[i])) {
-            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
-                                 "Output references unknown symbol", 0, 0);
+            static CXPR_THREAD_LOCAL char message[256];
+            cxpr_source_span span = {0};
+            const bool has_span = cxpr_model_output_source_span(model, i, &span);
+            snprintf(message, sizeof(message),
+                     "Output references unknown symbol '%s'", model->outputs[i]);
+            cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER, message,
+                                 has_span ? span.start.line : 0u,
+                                 has_span ? span.start.column + 1u : 0u);
             return false;
         }
     }

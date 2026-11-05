@@ -164,6 +164,16 @@ export interface LanguageFoldingRange {
     kind: "region";
 }
 export interface ICxprLanguageService {
+    /**
+     * Formats a complete CXPR document.
+     * @param source Complete CXPR source text.
+     * @param options Editor indentation preferences.
+     * @returns Formatted source text.
+     */
+    formatDocument(source: string, options?: {
+        tabSize?: number;
+        insertSpaces?: boolean;
+    }): string;
     getDiagnostics(source: string, name: string): Promise<LanguageDiagnostic[]>;
     getCompletions(source: string, pos: Position, name: string): Promise<LanguageCompletion[]>;
     getHover(source: string, pos: Position, name: string): Promise<LanguageHover | null>;
