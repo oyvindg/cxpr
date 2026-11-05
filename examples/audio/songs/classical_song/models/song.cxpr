@@ -7,7 +7,7 @@ use flute, oboe, clarinet, bassoon from instruments.woodwind
 use trumpet, trombone, horn_section from instruments.brass
 use timpani from instruments.percussion
 use pan from stereo.effects
-use chamber, compressor, hall, master from stereo.effects
+use gain, chamber, compressor, hall, master from stereo.effects
 use resonance from mono.filters
 
 in t
@@ -109,33 +109,31 @@ horns = pan(mono=horn_tone.low, position=0.38)
 trombones = pan(mono=trombone_tone.low, position=0.58)
 trumpets = pan(mono=trumpet_tone.low, position=0.30)
 timpani_section = pan(mono=seq.timpani_level * drum.sample, position=0.06)
-dry_left = rhythm.left + piano.left + violins.left + violas.left + cellos.left +
-    double_basses.left + flutes.left + oboes.left + clarinets.left + bassoons.left +
-    horns.left + trumpets.left + trombones.left + timpani_section.left
-dry_right = rhythm.right + piano.right + violins.right + violas.right + cellos.right +
-    double_basses.right + flutes.right + oboes.right + clarinets.right + bassoons.right +
-    horns.right + trumpets.right + trombones.right + timpani_section.right
+dry = sum([
+    rhythm, piano, violins, violas, cellos, double_basses,
+    flutes, oboes, clarinets, bassoons,
+    horns, trumpets, trombones, timpani_section
+])
 
 # Early reflections establish the stage; deeper sections feed more of the hall.
-early = {
-    left = 0.28 * dry_left,
-    right = 0.28 * dry_right
-} |> chamber(sample_rate=$sample_rate, feedback=0.36)
-hall_send_left = 0.18 * rhythm.left + 0.16 * piano.left +
-    0.28 * (violins.left + violas.left + cellos.left + double_basses.left) +
-    0.42 * (flutes.left + oboes.left + clarinets.left + bassoons.left) +
-    0.52 * (horns.left + trumpets.left + trombones.left + timpani_section.left)
-hall_send_right = 0.18 * rhythm.right + 0.16 * piano.right +
-    0.28 * (violins.right + violas.right + cellos.right + double_basses.right) +
-    0.42 * (flutes.right + oboes.right + clarinets.right + bassoons.right) +
-    0.52 * (horns.right + trumpets.right + trombones.right + timpani_section.right)
-hall_room = { left = hall_send_left, right = hall_send_right }
+early = dry
+    |> gain(level=0.28)
+    |> chamber(sample_rate=$sample_rate, feedback=0.36)
+hall_send = sum([
+    rhythm |> gain(level=0.18),
+    piano |> gain(level=0.16),
+    sum([violins, violas, cellos, double_basses]) |> gain(level=0.28),
+    sum([flutes, oboes, clarinets, bassoons]) |> gain(level=0.42),
+    sum([horns, trumpets, trombones, timpani_section]) |> gain(level=0.52)
+])
+hall_room = hall_send
     |> hall(sample_rate=$sample_rate, feedback=0.85, damping=2850)
-glued = {
-    left = dry_left + 0.48 * early.left + 0.78 * hall_room.left,
-    right = dry_right + 0.48 * early.right + 0.78 * hall_room.right
-} |> compressor(sample_rate=$sample_rate, threshold=0.34, ratio=1.8,
-                       attack=0.028, release=0.24, makeup=1.03)
+glued = sum([
+    dry,
+    early |> gain(level=0.48),
+    hall_room |> gain(level=0.78)
+]) |> compressor(sample_rate=$sample_rate, threshold=0.34, ratio=1.8,
+                 attack=0.028, release=0.24, makeup=1.03)
 stereo = glued
     |> master(t=t, sample_rate=$sample_rate, gain=$master_gain,
               duration=seq.duration, fade_seconds=1.1, ceiling=0.90)
