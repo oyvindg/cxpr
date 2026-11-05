@@ -34,6 +34,7 @@ const CXPR_GRAMMAR = Object.freeze({
     inputBlockBegin: "\\b(in)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(\\s*)(\\{)",
     inputListBegin: "\\b(in)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*,)",
     inputDeclaration: "\\b(in)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?:,|\\{|$))",
+    rootedFieldAlias: "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s+)(as)(\\s+)([A-Za-z_][A-Za-z0-9_]*)\\b",
     outputDeclaration: "\\b(out)(\\s+)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?:\\{|$))",
     stateUpdate: "\\b(update)(\\s+)(state)(?=\\s*\\{)",
     outputAssignment: "\\b(out|state)(\\s+)([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\\s*=)",
@@ -47,7 +48,7 @@ const CXPR_GRAMMAR = Object.freeze({
     functionDeclaration: "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
     lambdaParameter: "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s*)(=>)",
     parenthesizedLambdaParameter: "(\\()(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s*)(\\))(\\s*)(=>)",
-    documentString: "\\b(type|id|label|description|hover|mode|source|broker|symbol|strategy|aggregate_from|lifecycle|source_arg)\\b(\\s*=\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:[,}\\]#]|//|$))",
+    documentString: "\\b(type|id|label|description|hover|mode|source|broker|symbol|strategy|aggregate_from|lifecycle|pipe)\\b(\\s*=\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:[,}\\]#]|//|$))",
     documentStringArray: "\\b(books|hedging)\\b(\\s*=\\s*\\[\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:,|\\]))",
     parameterAssignment: "^(\\s*)(\\$[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(\\s*)(=)"
   })
@@ -92,6 +93,11 @@ function textMateGrammar() {
         "3": { name: "variable.other.assignment.cxpr" },
         "5": { name: "punctuation.cxpr" }
       }, end: "\\}", endCaptures: { "0": { name: "punctuation.cxpr" } }, patterns: [
+        { match: p.rootedFieldAlias, captures: {
+          "1": { name: "variable.other.input.cxpr" },
+          "3": { name: "keyword.control.cxpr" },
+          "5": { name: "variable.other.input.cxpr" }
+        } },
         simple("variable.other.input.cxpr", p.identifier),
         simple("punctuation.cxpr", p.punctuation)
       ] },
@@ -163,7 +169,8 @@ function monarchGrammar() {
       [p.identifier, { cases: { "@keywords": "keyword", "@default": "reference" } }],
       [p.number, "number"], [p.operator, "operator"],
       [p.brackets, "@brackets"], [p.punctuation, "punctuation"], ["\\s+", "white"]
-    ], inputBlock: [[p.identifier, "input"], ["\\}", "punctuation", "@pop"],
+    ], inputBlock: [[p.rootedFieldAlias, ["input", "white", "keyword", "white", "input"]],
+      [p.identifier, "input"], ["\\}", "punctuation", "@pop"],
       [p.punctuation, "punctuation"], ["\\s+", "white"]],
     inputList: [[p.lineCommentHash, "comment", "@pop"], [p.lineCommentSlash, "comment", "@pop"],
       [`${p.identifier}(?=\\s*$)`, "input", "@pop"], [p.identifier, "input"],

@@ -53,12 +53,31 @@ test("Monarch preserves legacy input and output declaration classes", () => {
   assert.deepEqual(inputBlock?.[1], ["keyword", "white", "assignment", "white",
     { token: "punctuation", next: "@inputBlock" }]);
   assert.deepEqual(monarch.tokenizer.inputBlock, [
+    ["\\b([A-Za-z_][A-Za-z0-9_]*)(\\s+)(as)(\\s+)([A-Za-z_][A-Za-z0-9_]*)\\b",
+      ["input", "white", "keyword", "white", "input"]],
     ["[A-Za-z_][A-Za-z0-9_]*", "input"],
     ["\\}", "punctuation", "@pop"],
     ["[.,]", "punctuation"],
     ["\\s+", "white"]
   ]);
   assert.deepEqual(output?.[1], ["keyword", "white", "variable"]);
+});
+
+test("rooted input aliases use the same input color on both names", () => {
+  const monarchRule = monarch.tokenizer.inputBlock.find(([pattern]) => pattern.includes("(as)"));
+  assert.deepEqual(monarchRule?.[1], ["input", "white", "keyword", "white", "input"]);
+
+  const inputBlock = textMate.patterns.find((rule) => rule.begin?.includes("(in)(\\s+)"));
+  const aliasRule = inputBlock?.patterns?.find((rule) => rule.match?.includes("(as)"));
+  assert.equal(aliasRule?.captures?.["1"]?.name, "variable.other.input.cxpr");
+  assert.equal(aliasRule?.captures?.["3"]?.name, "keyword.control.cxpr");
+  assert.equal(aliasRule?.captures?.["5"]?.name, "variable.other.input.cxpr");
+});
+
+test("pipe is the only highlighted pipe-target metadata", () => {
+  const metadataRule = textMate.patterns.find((rule) => rule.match?.includes("aggregate_from"));
+  assert.match(metadataRule?.match ?? "", /lifecycle\|pipe/);
+  assert.doesNotMatch(metadataRule?.match ?? "", /source_arg/);
 });
 
 test("Monarch colors direct imports and every comma-separated input", () => {

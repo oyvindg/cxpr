@@ -107,13 +107,13 @@ static void relax_once(cxpr_model_compiled* program, const double* dist,
             double next;
             bool found = false;
 
-            cxpr_context_set(ctx, "d_n", dn);
-            cxpr_context_set(ctx, "d_s", ds);
-            cxpr_context_set(ctx, "d_e", de);
-            cxpr_context_set(ctx, "d_w", dw);
-            cxpr_context_set(ctx, "cost", 1.0);
-            cxpr_context_set(ctx, "is_wall", wall[i] ? 1.0 : 0.0);
-            cxpr_context_set(ctx, "is_goal", goal[i] ? 1.0 : 0.0);
+            cxpr_context_set(ctx, "neighbours.north", dn);
+            cxpr_context_set(ctx, "neighbours.south", ds);
+            cxpr_context_set(ctx, "neighbours.east", de);
+            cxpr_context_set(ctx, "neighbours.west", dw);
+            cxpr_context_set(ctx, "cell.cost", 1.0);
+            cxpr_context_set(ctx, "cell.is_wall", wall[i] ? 1.0 : 0.0);
+            cxpr_context_set(ctx, "cell.is_goal", goal[i] ? 1.0 : 0.0);
             assert(cxpr_model_compiled_eval(program, ctx, NULL, &err));
 
             next = cxpr_context_get(ctx, "next_dist", &found);

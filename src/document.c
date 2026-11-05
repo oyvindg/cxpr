@@ -522,6 +522,7 @@ static bool cxpr_doc_model_append_struct_input_block(cxpr_model* model,
     for (size_t i = 0u; i < cxpr_doc_ast_node_child_count(node); ++i) {
         const cxpr_doc_ast_node* child = cxpr_doc_ast_node_child(node, i);
         const char* field = cxpr_doc_ast_node_name(child);
+        const char* alias = cxpr_doc_ast_node_text(child);
         size_t len;
         char* dotted;
         bool ok;
@@ -537,13 +538,108 @@ static bool cxpr_doc_model_append_struct_input_block(cxpr_model* model,
         }
         snprintf(dotted, len + 1u, "%s.%s", root, field);
         ok = cxpr_doc_model_append_string(&model->inputs, &model->input_count, dotted);
-        free(dotted);
         if (!ok) {
+            free(dotted);
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
             return false;
         }
+        {
+            char** grown_aliases = (char**)realloc(
+                model->input_aliases,
+                (model->input_alias_count + 1u) * sizeof(*model->input_aliases));
+            char** grown_targets = (char**)realloc(
+                model->input_alias_targets,
+                (model->input_alias_count + 1u) * sizeof(*model->input_alias_targets));
+            if (!grown_aliases || !grown_targets) {
+                if (grown_aliases) model->input_aliases = grown_aliases;
+                if (grown_targets) model->input_alias_targets = grown_targets;
+                free(dotted);
+                cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                return false;
+            }
+            model->input_aliases = grown_aliases;
+            model->input_alias_targets = grown_targets;
+            model->input_aliases[model->input_alias_count] =
+                cxpr_strdup(alias && alias[0] ? alias : field);
+            model->input_alias_targets[model->input_alias_count] = dotted;
+            if (!model->input_aliases[model->input_alias_count]) {
+                free(dotted);
+                model->input_alias_targets[model->input_alias_count] = NULL;
+                cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+                return false;
+            }
+            model->input_alias_count++;
+        }
     }
     return true;
+}
+
+static bool cxpr_document_expand_input_alias_expression(
+    char** source, cxpr_expr_ast** expression,
+    const cxpr_alias* aliases, size_t alias_count, cxpr_error* err) {
+    char* expanded_source = NULL;
+    cxpr_expr_parser* parser;
+    cxpr_expr_ast* expanded_ast;
+    if (!source || !*source || !expression || !*expression || alias_count == 0u) return true;
+    if (!cxpr_expand_aliases(*source, aliases, alias_count, &expanded_source, err)) return false;
+    parser = cxpr_expr_parser_new();
+    if (!parser) {
+        free(expanded_source);
+        cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return false;
+    }
+    expanded_ast = cxpr_expr_ast_parse(parser, expanded_source, err);
+    cxpr_expr_parser_free(parser);
+    if (!expanded_ast) {
+        free(expanded_source);
+        return false;
+    }
+    free(*source);
+    cxpr_expr_ast_free(*expression);
+    *source = expanded_source;
+    *expression = expanded_ast;
+    return true;
+}
+
+static bool cxpr_document_expand_input_aliases(cxpr_model* model, cxpr_error* err) {
+    cxpr_alias* aliases;
+    bool ok = true;
+    if (!model || model->input_alias_count == 0u) return true;
+    aliases = (cxpr_alias*)calloc(model->input_alias_count, sizeof(*aliases));
+    if (!aliases) {
+        cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+        return false;
+    }
+    for (size_t i = 0u; i < model->input_alias_count; ++i) {
+        aliases[i].name = model->input_aliases[i];
+        aliases[i].expression = model->input_alias_targets[i];
+    }
+    for (size_t i = 0u; ok && i < model->constant_count; ++i)
+        ok = cxpr_document_expand_input_alias_expression(
+            &model->constants[i].source, &model->constants[i].expr,
+            aliases, model->input_alias_count, err);
+    for (size_t i = 0u; ok && i < model->binding_count; ++i) {
+        if (!model->bindings[i].expr) continue;
+        ok = cxpr_document_expand_input_alias_expression(
+            &model->bindings[i].source, &model->bindings[i].expr,
+            aliases, model->input_alias_count, err);
+        if (ok && model->bindings[i].prelowered_expr) {
+            cxpr_expr_ast_free(model->bindings[i].prelowered_expr);
+            model->bindings[i].prelowered_expr =
+                cxpr_model_prelower_static_map(model->bindings[i].expr);
+        }
+    }
+    for (size_t i = 0u; ok && i < model->assert_count; ++i)
+        ok = cxpr_document_expand_input_alias_expression(
+            &model->asserts[i].source, &model->asserts[i].expr,
+            aliases, model->input_alias_count, err);
+    for (size_t i = 0u; ok && i < model->anonymous_output_count; ++i)
+        ok = cxpr_document_expand_input_alias_expression(
+            &model->anonymous_outputs[i].source,
+            &model->anonymous_outputs[i].expr,
+            aliases, model->input_alias_count, err);
+    free(aliases);
+    return ok;
 }
 
 static bool cxpr_doc_model_has_state(const cxpr_model* model, const char* name) {
@@ -1462,6 +1558,10 @@ static cxpr_model* cxpr_document_lower_model_ast_direct(const cxpr_doc_ast* synt
         if (err && err->code == CXPR_OK) {
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
         }
+        cxpr_model_free(model);
+        return NULL;
+    }
+    if (!cxpr_document_expand_input_aliases(model, err)) {
         cxpr_model_free(model);
         return NULL;
     }

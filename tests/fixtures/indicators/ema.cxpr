@@ -3,11 +3,11 @@
 model ema {
     type = "indicator"
     output_type = "scalar"
-    source_arg = "source"
+    pipe = "series"
 }
 
 in {
-    source
+    series
     $period = 20 {
         description = "EMA period. Higher values smooth the line more."
     }
@@ -21,7 +21,7 @@ state {
     value = 0
 }
 
-next_value = if(initialized, ema_step(value, source, $period), source)
+next_value = if(initialized, ema_step(value, series, $period), series)
 
 initialized := true
 value := next_value
@@ -29,7 +29,7 @@ value := next_value
 out value {
     role = "primary"
     label = "EMA"
-    description = "Exponential Moving Average of the selected source, weighted toward recent bars."
+    description = "Exponential Moving Average of the selected series, weighted toward recent bars."
     hover = "Use slope, price/EMA crosses, and fast/slow EMA relationships to read trend direction, pullbacks, and momentum shifts."
     plot {
         pane = "ema"

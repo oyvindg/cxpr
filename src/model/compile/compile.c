@@ -229,12 +229,44 @@ static const char* cxpr_model_model_field_value(const cxpr_model* model,
     return block ? cxpr_host_block_field_value_by_key(block, key) : NULL;
 }
 
-static char* cxpr_model_parse_source_arg_metadata(const cxpr_model* model) {
-    const char* value = cxpr_model_model_field_value(model, "source_arg");
-    if (value) {
-        return cxpr_model_dup_trimmed_metadata_value(value);
+static bool cxpr_model_parse_pipe_metadata(const cxpr_model* model,
+                                           char** out_target,
+                                           cxpr_error* err) {
+    const char* pipe;
+    char* target;
+    if (out_target) *out_target = NULL;
+    pipe = cxpr_model_model_field_value(model, "pipe");
+    if (!pipe) return true;
+    target = cxpr_model_dup_trimmed_metadata_value(pipe);
+    if (!target) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
     }
-    return NULL;
+    if (!target[0]) {
+        free(target);
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Model pipe target cannot be empty", 0, 0);
+        return false;
+    }
+    if (out_target) *out_target = target;
+    else free(target);
+    return true;
+}
+
+static bool cxpr_model_pipe_target_exists(const cxpr_model* model,
+                                          const char* target) {
+    size_t length;
+    if (!model || !target || !target[0]) return false;
+    length = strlen(target);
+    for (size_t i = 0u; i < model->input_count; ++i) {
+        const char* input = model->inputs[i];
+        if (!input) continue;
+        if (cxpr_model_names_match(input, target) ||
+            (strncmp(input, target, length) == 0 && input[length] == '.')) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool cxpr_model_parse_lifetime_metadata(const cxpr_model* model,
@@ -697,7 +729,26 @@ cxpr_model_compiled* cxpr_model_compile_full(
         }
         (void)saw_type;
     }
-    program->source_arg = cxpr_model_parse_source_arg_metadata(model);
+    if (!cxpr_model_parse_pipe_metadata(model, &program->pipe_target, err)) {
+        for (size_t d = 0; d < required_default_count; ++d) free(required_defaults[d]);
+        free(required_defaults);
+        for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);
+        free(inferred_inputs);
+        cxpr_model_compiled_free(program);
+        return NULL;
+    }
+    if (program->pipe_target &&
+        !cxpr_model_pipe_target_exists(model, program->pipe_target)) {
+        for (size_t d = 0; d < required_default_count; ++d) free(required_defaults[d]);
+        free(required_defaults);
+        for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);
+        free(inferred_inputs);
+        cxpr_model_compiled_free(program);
+        cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
+                             "Model pipe target does not match an input or rooted input",
+                             0, 0);
+        return NULL;
+    }
     {
         const char* guard = cxpr_model_model_field_value(model, "invalid_input_guard");
         if (guard) {
@@ -719,10 +770,10 @@ cxpr_model_compiled* cxpr_model_compile_full(
             }
         }
     }
-    if (model && cxpr_model_metadata_count(model) > 0u && !program->source_arg) {
+    if (model && cxpr_model_metadata_count(model) > 0u && !program->pipe_target) {
         for (size_t i = 0u; i < model->metadata_count; ++i) {
             if (model->metadatas[i].target_kind == CXPR_MODEL_METADATA_TARGET_MODEL &&
-                cxpr_model_metadata_field_value(model, i, "source_arg")) {
+                cxpr_model_metadata_field_value(model, i, "pipe")) {
                 for (size_t d = 0; d < required_default_count; ++d) free(required_defaults[d]);
                 free(required_defaults);
                 for (size_t d = 0u; d < inferred_input_count; ++d) free(inferred_inputs[d]);

@@ -121,6 +121,9 @@ struct cxpr_model {
     cxpr_source_span* input_spans;
     bool* input_has_spans;
     size_t input_count;
+    char** input_aliases;
+    char** input_alias_targets;
+    size_t input_alias_count;
     cxpr_model_constant* constants;
     size_t constant_count;
     cxpr_model_binding* bindings;
@@ -231,7 +234,7 @@ typedef struct {
     char* name;
     const cxpr_model_compiled* program;
     size_t registry_index;
-    char* source_arg;
+    char* pipe_target;
     size_t source_input_index;
     char** source_field_paths;
     size_t* source_field_input_indices;
@@ -290,7 +293,7 @@ struct cxpr_model_compiled {
     cxpr_model_decl_type* input_declared_types;
     cxpr_model_element_type* input_element_types;
     size_t input_count;
-    char* source_arg;
+    char* pipe_target;
     char* invalid_input_guard;
     cxpr_model_lifetime lifetime;
     cxpr_model_child_program* children;

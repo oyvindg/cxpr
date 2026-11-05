@@ -999,7 +999,7 @@ static bool cxpr_model_child_accepts_named_arg(const cxpr_model_compiled* child,
     size_t explicit_param_count = 0u;
 
     if (!child || !name) return false;
-    if (child->source_arg && cxpr_model_names_match(child->source_arg, name)) return true;
+    if (child->pipe_target && cxpr_model_names_match(child->pipe_target, name)) return true;
     for (size_t i = 0u; i < child->input_count; ++i) {
         if (cxpr_model_names_match(child->inputs[i], name)) return true;
     }
@@ -1019,11 +1019,11 @@ static bool cxpr_model_child_input_is_rooted_source(
     const cxpr_model_compiled* child,
     const char* input) {
     size_t root_len;
-    if (!child || !child->source_arg || !input) return false;
+    if (!child || !child->pipe_target || !input) return false;
     for (size_t i = 0u; i < child->input_count; ++i)
-        if (cxpr_model_names_match(child->inputs[i], child->source_arg)) return false;
-    root_len = strlen(child->source_arg);
-    return strncmp(input, child->source_arg, root_len) == 0 &&
+        if (cxpr_model_names_match(child->inputs[i], child->pipe_target)) return false;
+    root_len = strlen(child->pipe_target);
+    return strncmp(input, child->pipe_target, root_len) == 0 &&
            input[root_len] == '.' && input[root_len + 1u] != '\0';
 }
 
@@ -1083,7 +1083,7 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                         return false;
                     }
                 }
-                if (child->source_arg) {
+                if (child->pipe_target) {
                     if (ast->data.producer_access.argc == child->constant_count + 1u &&
                         !cxpr_expr_ast_producer_has_named_args(ast)) {
                         call_supplies_source = true;
@@ -1094,7 +1094,7 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                     }
                     for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
                         const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
-                        if (arg_name && cxpr_model_names_match(arg_name, child->source_arg)) {
+                        if (arg_name && cxpr_model_names_match(arg_name, child->pipe_target)) {
                             call_supplies_source = true;
                             break;
                         }
@@ -1111,8 +1111,8 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                     }
                     if (call_supplies_input) continue;
                     if (call_supplies_source &&
-                        child->source_arg &&
-                        (cxpr_model_names_match(child->inputs[i], child->source_arg) ||
+                        child->pipe_target &&
+                        (cxpr_model_names_match(child->inputs[i], child->pipe_target) ||
                          cxpr_model_child_input_is_rooted_source(
                              child, child->inputs[i]))) {
                         continue;

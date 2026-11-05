@@ -76,7 +76,7 @@ static void test_ema_snapshot(void) {
 
     for (size_t i = 0u; i < CXPR_ARRAY_COUNT(inputs); ++i) {
         double actual = 0.0;
-        cxpr_context_set(context, "source", inputs[i]);
+        cxpr_context_set(context, "series", inputs[i]);
         assert(cxpr_model_session_tick(program, session, NULL, &err));
         assert(cxpr_model_session_get_number(session, "value", &actual));
         assert(fabs(actual - golden[i]) < 1e-12);

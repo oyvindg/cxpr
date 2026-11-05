@@ -274,7 +274,7 @@ static void test_document_ast_exposes_compact_initial_state_update(void) {
 static void test_parse_document_ast_preserves_block_shapes(void) {
     const char* source =
         "project { name = \"example_host\" }\n"
-        "model strategy { source_arg = \"close\" }\n"
+        "model strategy { pipe = \"close\" }\n"
         "${ fast = 12, slow = 26 { min = 10, max = 80 } }\n"
         "state {\n"
         "  score = 0\n"
@@ -311,7 +311,7 @@ static void test_parse_document_ast_preserves_block_shapes(void) {
     assert(cxpr_doc_ast_node_child_count(model_decl) == 1u);
     metadata = cxpr_doc_ast_node_child(model_decl, 0u);
     assert(cxpr_doc_ast_node_kind(metadata) == CXPR_DOC_AST_METADATA);
-    assert(strstr(cxpr_doc_ast_node_text(metadata), "source_arg") != NULL);
+    assert(strstr(cxpr_doc_ast_node_text(metadata), "pipe") != NULL);
     assert(cxpr_doc_ast_node_kind(params) == CXPR_DOC_AST_PARAM_BLOCK);
     assert(cxpr_doc_ast_node_child_count(params) == 2u);
     slow_param = cxpr_doc_ast_node_child(params, 1u);
@@ -806,7 +806,7 @@ static void test_document_ast_function_body_host_fields_and_visitor(void) {
 
 static void test_document_ast_represents_advanced_existing_syntax(void) {
     const char* source =
-        "model parent { source_arg = \"source\" }\n"
+        "model parent { pipe = \"source\" }\n"
         "use { atr, ema } from indicators\n"
         "use robotics as r\n"
         "in { high, low, close }\n"

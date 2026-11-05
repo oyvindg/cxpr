@@ -157,6 +157,12 @@ void cxpr_model_free(cxpr_model* model) {
     free(model->record_functions);
     for (size_t i = 0; i < model->input_count; ++i) free(model->inputs[i]);
     free(model->inputs);
+    for (size_t i = 0; i < model->input_alias_count; ++i) {
+        free(model->input_aliases[i]);
+        free(model->input_alias_targets[i]);
+    }
+    free(model->input_aliases);
+    free(model->input_alias_targets);
     free(model->input_declared_types);
     free(model->input_element_types);
     free(model->input_spans);

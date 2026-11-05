@@ -405,7 +405,7 @@ size_t cxpr_model_compiled_child_count(const cxpr_model_compiled* program);
 const char* cxpr_model_compiled_child_name(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the input name used as the child model source argument, if any. */
-const char* cxpr_model_compiled_child_source_arg(const cxpr_model_compiled* program, size_t index);
+const char* cxpr_model_compiled_child_pipe_target(const cxpr_model_compiled* program, size_t index);
 
 /** @brief Return the number of planned history/lookback buffers. */
 size_t cxpr_model_compiled_history_count(const cxpr_model_compiled* program);

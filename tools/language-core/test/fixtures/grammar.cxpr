@@ -1,7 +1,9 @@
 # canonical grammar parity fixture
-use { ema, rsi } from indicators/trend
+use { ema, rsi } from indicators.trend
 
 model grammar_fixture {
+  pipe = stereo
+  in stereo { left, right as wet_right }
   state previous = 0i64
   out signal = if close.price >= ema(close, length = $period) then "buy" else 'hold'
   update state { previous = signal } // trailing comment

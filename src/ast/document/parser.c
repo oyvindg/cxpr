@@ -567,6 +567,39 @@ static bool cxpr_doc_ast_split_decl_head(cxpr_doc_ast_node* node, char* head,
     return node->name && (!type || node->value);
 }
 
+static bool cxpr_doc_ast_split_rooted_input_alias(cxpr_doc_ast_node* node,
+                                                   char* entry,
+                                                   size_t line,
+                                                   size_t column,
+                                                   cxpr_error* err) {
+    char* cursor;
+    char* alias;
+    char* field;
+    for (cursor = entry; *cursor; ++cursor) {
+        if ((cursor == entry || isspace((unsigned char)cursor[-1])) &&
+            cursor[0] == 'a' && cursor[1] == 's' &&
+            isspace((unsigned char)cursor[2])) {
+            *cursor = '\0';
+            alias = cxpr_doc_ast_trim_in_place(cursor + 2);
+            field = cxpr_doc_ast_trim_in_place(entry);
+            if (!cxpr_doc_ast_is_ident(field) || !cxpr_doc_ast_is_ident(alias)) {
+                cxpr_doc_ast_set_error(err, CXPR_ERR_SYNTAX,
+                                       "Invalid rooted input alias", line, column);
+                return false;
+            }
+            node->name = cxpr_strdup(field);
+            node->text = cxpr_strdup(alias);
+            if (!node->name || !node->text) {
+                cxpr_doc_ast_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                       "Out of memory", line, column);
+                return false;
+            }
+            return true;
+        }
+    }
+    return cxpr_doc_ast_split_decl_head(node, entry, false, line, column, err);
+}
+
 static bool cxpr_doc_ast_assign_name_expr(cxpr_doc_ast_node* node,
                                                cxpr_doc_ast_parser* parser,
                                                char* statement,
@@ -856,10 +889,15 @@ static bool cxpr_doc_ast_parse_comma_or_line_decls(
                         return false;
                     }
                 } else {
-                    if (!cxpr_doc_ast_split_decl_head(child, entry, false,
-                                                     child->span.start.line,
-                                                     child->span.start.column + 1u,
-                                                     parser->err)) {
+                    const bool rooted_input =
+                        child_kind == CXPR_DOC_AST_INPUT_DECL && block->name;
+                    if (!(rooted_input
+                              ? cxpr_doc_ast_split_rooted_input_alias(
+                                    child, entry, child->span.start.line,
+                                    child->span.start.column + 1u, parser->err)
+                              : cxpr_doc_ast_split_decl_head(
+                                    child, entry, false, child->span.start.line,
+                                    child->span.start.column + 1u, parser->err))) {
                         cxpr_doc_ast_node_free(child);
                         free(entry);
                         return false;

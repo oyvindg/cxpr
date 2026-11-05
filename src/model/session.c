@@ -891,13 +891,13 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
     if (!child_ref || !child || !ast ||
         (child_ref->source_input_index == (size_t)-1 &&
          child_ref->source_field_count == 0u) ||
-        !child_ref->source_arg) {
+        !child_ref->pipe_target) {
         return NULL;
     }
     if (cxpr_model_child_call_has_named_args(ast)) {
         for (size_t i = 0u; i < cxpr_model_child_call_argc(ast); ++i) {
             const char* name = cxpr_model_child_call_arg_name(ast, i);
-            if (name && cxpr_model_names_match(name, child_ref->source_arg)) {
+            if (name && cxpr_model_names_match(name, child_ref->pipe_target)) {
                 return cxpr_model_child_call_arg(ast, i);
             }
         }

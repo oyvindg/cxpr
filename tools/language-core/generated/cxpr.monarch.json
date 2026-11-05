@@ -297,6 +297,16 @@
     ],
     "inputBlock": [
       [
+        "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s+)(as)(\\s+)([A-Za-z_][A-Za-z0-9_]*)\\b",
+        [
+          "input",
+          "white",
+          "keyword",
+          "white",
+          "input"
+        ]
+      ],
+      [
         "[A-Za-z_][A-Za-z0-9_]*",
         "input"
       ],

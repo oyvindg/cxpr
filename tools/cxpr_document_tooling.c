@@ -167,9 +167,40 @@ static void recover_error_location(cxpr_error* err, const char* source) {
     if (!end || end == start) return;
     for (offset = 0u; source[offset]; ++offset) {
         size_t len = (size_t)(end - start);
+        size_t i;
+        int in_comment = 0;
+        int in_string = 0;
         int before_is_identifier;
         int after_is_identifier;
         if (strncmp(source + offset, start, len) != 0) continue;
+        for (i = 0u; i < offset; ++i) {
+            if (in_comment == 1) {
+                if (source[i] == '\n') in_comment = 0;
+                continue;
+            }
+            if (in_comment == 2) {
+                if (source[i] == '*' && source[i + 1u] == '/') {
+                    in_comment = 0;
+                    i++;
+                }
+                continue;
+            }
+            if (in_string) {
+                if (source[i] == '\\' && source[i + 1u]) i++;
+                else if (source[i] == '"') in_string = 0;
+                continue;
+            }
+            if (source[i] == '"') in_string = 1;
+            else if (source[i] == '#') in_comment = 1;
+            else if (source[i] == '/' && source[i + 1u] == '/') {
+                in_comment = 1;
+                i++;
+            } else if (source[i] == '/' && source[i + 1u] == '*') {
+                in_comment = 2;
+                i++;
+            }
+        }
+        if (in_comment || in_string) continue;
         before_is_identifier = offset > 0u &&
             (isalnum((unsigned char)source[offset - 1u]) ||
              source[offset - 1u] == '_' || source[offset - 1u] == '$');
@@ -177,7 +208,6 @@ static void recover_error_location(cxpr_error* err, const char* source) {
             isalnum((unsigned char)source[offset + len]) ||
             source[offset + len] == '_' || source[offset + len] == '$';
         if (!before_is_identifier && !after_is_identifier) {
-            size_t i;
             err->position = offset;
             err->line = 1u;
             err->column = 0u;
@@ -501,23 +531,33 @@ static int tooling_is_exported_input(const cxpr_doc_ast_node* node,
                                      size_t length) {
     size_t count;
     const char* name;
+    const char* alias;
+    const char* matched_name = NULL;
     const char* reference_word = word;
     size_t reference_length = length;
     int parameter_reference;
     if (!node) return 0;
     name = cxpr_doc_ast_node_name(node);
+    alias = cxpr_doc_ast_node_text(node);
     parameter_reference = length > 0u && word[0] == '$';
     if (parameter_reference) {
         word++;
         length--;
     }
-    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_INPUT_DECL &&
-        name && strlen(name) == length && strncmp(name, word, length) == 0) {
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_INPUT_DECL) {
+        if (name && strlen(name) == length && strncmp(name, word, length) == 0) {
+            matched_name = name;
+        } else if (alias && strlen(alias) == length &&
+                   strncmp(alias, word, length) == 0) {
+            matched_name = alias;
+        }
+    }
+    if (matched_name) {
         size_t declaration_line;
         size_t declaration_col;
         size_t declaration_length;
         int declaration_is_parameter = 0;
-        if (span_find_name(source, cxpr_doc_ast_node_span(node), name,
+        if (span_find_name(source, cxpr_doc_ast_node_span(node), matched_name,
                            &declaration_line, &declaration_col, &declaration_length,
                            &declaration_is_parameter, NULL) &&
             parameter_reference == declaration_is_parameter) {

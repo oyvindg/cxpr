@@ -1,5 +1,5 @@
 model accumulator {
-    source_arg = "source"
+    pipe = "source"
     lifecycle = "scoped"
 }
 

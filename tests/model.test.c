@@ -2691,7 +2691,7 @@ static void test_imported_producer_anonymous_out_expands_child_outputs(void) {
     cxpr_error err = {0};
     cxpr_model* child = parse_model_ok(
         "model bb {\n"
-        "    source_arg = source\n"
+        "    pipe = source\n"
         "}\n"
         "in source\n"
         "$period = 1\n"
@@ -2897,12 +2897,12 @@ static void test_compile_import_path_uses_leaf_namespace(void) {
     printf("  ✓ test_compile_import_path_uses_leaf_namespace\n");
 }
 
-static void test_imported_producer_source_arg_maps_call_source(void) {
+static void test_imported_producer_pipe_maps_call_source(void) {
     cxpr_error err = {0};
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
         "model bb {\n"
-        "    source_arg = \"source\"\n"
+        "    pipe = \"source\"\n"
         "}\n"
         "in source\n"
         "$period = 20\n"
@@ -2919,7 +2919,7 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
     char* code;
 
     if (!child_program) {
-        fprintf(stderr, "source_arg child compile failed: %s\n",
+        fprintf(stderr, "pipe child compile failed: %s\n",
                 err.message ? err.message : "(null)");
     }
     assert(child_program != NULL);
@@ -2936,7 +2936,7 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
         "out value\n");
     parent_program = cxpr_model_compile_with_imports(parent, NULL, imports, 1u, &err);
     if (!parent_program) {
-        fprintf(stderr, "source_arg parent compile failed: %s\n",
+        fprintf(stderr, "pipe parent compile failed: %s\n",
                 err.message ? err.message : "(null)");
     }
     assert(parent_program != NULL);
@@ -2952,9 +2952,9 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
     assert(value == 20.0);
 
     code = cxpr_model_compiled_generate_c(parent_program, "static inline",
-                                                 "source_arg_parent_tick", &err);
+                                                 "pipe_parent_tick", &err);
     if (!code) {
-        fprintf(stderr, "source_arg C emit failed: %s\n",
+        fprintf(stderr, "pipe C emit failed: %s\n",
                 err.message ? err.message : "(null)");
     }
     assert(code != NULL);
@@ -2966,14 +2966,14 @@ static void test_imported_producer_source_arg_maps_call_source(void) {
     cxpr_model_free(parent);
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
-    printf("  ✓ test_imported_producer_source_arg_maps_call_source\n");
+    printf("  ✓ test_imported_producer_pipe_maps_call_source\n");
 }
 
 static void test_imported_producer_rooted_record_source(void) {
     cxpr_error err = {0};
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
-        "model stereo_gain { source_arg = \"source\" }\n"
+        "model stereo_gain { pipe = \"source\" }\n"
         "in source { left, right }\n"
         "$level = 1\n"
         "out { left = source.left * $level, right = source.right * $level }\n");
@@ -3023,14 +3023,98 @@ static void test_imported_producer_rooted_record_source(void) {
     printf("  ✓ test_imported_producer_rooted_record_source\n");
 }
 
+static void test_pipe_metadata_and_rooted_input_destructuring(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    char* code;
+    cxpr_model* model = parse_model_ok(
+        "model stereo_sum { pipe = \"stereo\" }\n"
+        "in stereo { left, right as other }\n"
+        "out { left = left, renamed = other, "
+        "value = left + other + stereo.left + stereo.right }\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    cxpr_model_session* session;
+
+    if (!program) fprintf(stderr, "pipe/destructuring compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    assert(cxpr_model_compiled_input_count(program) == 2u);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "stereo.left", 2.0);
+    cxpr_context_set(cxpr_model_session_context(session), "stereo.right", 3.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 10.0);
+    assert(cxpr_model_session_get_number(session, "left", &value));
+    assert(value == 2.0);
+    assert(cxpr_model_session_get_number(session, "renamed", &value));
+    assert(value == 3.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "stereo_sum_tick", &err);
+    if (!code) fprintf(stderr, "pipe/destructuring C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "_cx_input_0") != NULL);
+    assert(strstr(code, "other") == NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_pipe_metadata_and_rooted_input_destructuring\n");
+}
+
+static void test_rooted_input_destructuring_rejects_alias_collisions(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model collision\n"
+        "in dry { left }\n"
+        "in wet { left }\n"
+        "out value = dry.left + wet.left\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    assert(program == NULL);
+    assert(err.code == CXPR_ERR_SYNTAX);
+    assert(err.message && strstr(err.message, "alias"));
+    cxpr_model_free(model);
+    printf("  ✓ test_rooted_input_destructuring_rejects_alias_collisions\n");
+}
+
+static void test_source_arg_metadata_does_not_bind_pipe(void) {
+    cxpr_error err = {0};
+    cxpr_model* child = parse_model_ok(
+        "model legacy { source_arg = \"source\" }\n"
+        "in source\n"
+        "out value = source\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import;
+    cxpr_model* parent;
+    cxpr_model_compiled* parent_program;
+    assert(child_program != NULL);
+    import = (cxpr_model_import){.name = "legacy", .program = child_program};
+    parent = parse_model_ok(
+        "model parent\n"
+        "use legacy\n"
+        "in close\n"
+        "out close\n");
+    parent_program = cxpr_model_compile_with_imports(parent, NULL, &import, 1u, &err);
+    assert(parent_program != NULL);
+    assert(cxpr_model_compiled_child_count(parent_program) == 1u);
+    assert(cxpr_model_compiled_child_pipe_target(parent_program, 0u) == NULL);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_source_arg_metadata_does_not_bind_pipe\n");
+}
+
 static void test_pipe_rooted_record_through_imported_models(void) {
     cxpr_error err = {0};
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
-        "model stereo_gain { source_arg = \"source\" }\n"
-        "in source { left, right }\n"
+        "model stereo_gain { pipe = \"stereo\" }\n"
+        "in stereo { left, right }\n"
         "$level = 1\n"
-        "out { left = source.left * $level, right = source.right * $level }\n");
+        "out { left = left * $level, right = right * $level }\n");
     cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
     cxpr_model_import imports[2] = {
         {.name = "first", .program = child_program},
@@ -3081,7 +3165,7 @@ static void test_imported_producer_explicit_call_params_hide_internal_params(voi
     char* code;
     cxpr_model* child = parse_model_ok(
         "model configurable {\n"
-        "    source_arg = \"source\"\n"
+        "    pipe = \"source\"\n"
         "}\n"
         "in source, $period = 20, $slope = 5\n"
         "$epsilon = 0.5\n"
@@ -3220,7 +3304,7 @@ static void test_imported_producer_repeated_calls_cache_same_args(void) {
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
         "model bb {\n"
-        "    source_arg = \"source\"\n"
+        "    pipe = \"source\"\n"
         "}\n"
         "in source\n"
         "$period = 1\n"
@@ -3282,7 +3366,7 @@ static void test_imported_producer_output_fans_out_to_two_consumers(void) {
     cxpr_error err = {0};
     double value = 0.0;
     cxpr_model* producer = parse_model_ok(
-        "model producer { source_arg = \"source\", lifecycle = \"scoped\" }\n"
+        "model producer { pipe = \"source\", lifecycle = \"scoped\" }\n"
         "in source\n"
         "state evaluations = 0\n"
         "next_evaluations = evaluations + 1\n"
@@ -3290,12 +3374,12 @@ static void test_imported_producer_output_fans_out_to_two_consumers(void) {
         "evaluations := next_evaluations\n"
         "out { value, next_evaluations }\n");
     cxpr_model* consumer_a = parse_model_ok(
-        "model consumer_a { source_arg = \"source\" }\n"
+        "model consumer_a { pipe = \"source\" }\n"
         "in source\n"
         "value = source + 100\n"
         "out value\n");
     cxpr_model* consumer_b = parse_model_ok(
-        "model consumer_b { source_arg = \"source\" }\n"
+        "model consumer_b { pipe = \"source\" }\n"
         "in source\n"
         "value = source * 2\n"
         "out value\n");
@@ -3366,7 +3450,7 @@ static void test_imported_stateful_producer_calls_keep_independent_state(void) {
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
         "model bb {\n"
-        "    source_arg = \"source\"\n"
+        "    pipe = \"source\"\n"
         "    lifecycle = \"scoped\"\n"
         "}\n"
         "in source\n"
@@ -3859,7 +3943,7 @@ static void test_stateful_producer_history_queries_do_not_replay(void) {
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
         "model counter {\n"
-        "    source_arg = \"source\"\n"
+        "    pipe = \"source\"\n"
         "    lifecycle = \"scoped\"\n"
         "}\n"
         "in source\n"
@@ -3921,7 +4005,7 @@ static void test_imported_producer_default_singleton_shares_state(void) {
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
         "model bb {\n"
-        "    source_arg = \"source\"\n"
+        "    pipe = \"source\"\n"
         "}\n"
         "in source\n"
         "$period = 1\n"
@@ -4890,7 +4974,7 @@ static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
 static void test_child_window_call_param_uses_dynamic_capacity(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
-        "model child_window { source_arg = \"source\" }\n"
+        "model child_window { pipe = \"source\" }\n"
         "in source, $period = 20\n"
         "value = max(window(source, $period))\n"
         "out value\n");
@@ -5554,7 +5638,7 @@ static void test_pipe_into_imported_model_with_named_params(void) {
     cxpr_error err = {0};
     double value = 0.0;
     cxpr_model* child = parse_model_ok(
-        "model stage { source_arg = \"source\" }\n"
+        "model stage { pipe = \"source\" }\n"
         "in source\n"
         "$multiplier = 2\n"
         "sample = source * $multiplier\n"
@@ -5685,8 +5769,11 @@ int main(void) {
     test_compile_imported_functions_are_namespaced();
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();
-    test_imported_producer_source_arg_maps_call_source();
+    test_imported_producer_pipe_maps_call_source();
     test_imported_producer_rooted_record_source();
+    test_pipe_metadata_and_rooted_input_destructuring();
+    test_rooted_input_destructuring_rejects_alias_collisions();
+    test_source_arg_metadata_does_not_bind_pipe();
     test_pipe_rooted_record_through_imported_models();
     test_pipe_into_imported_model_with_named_params();
     test_imported_producer_explicit_call_params_hide_internal_params();

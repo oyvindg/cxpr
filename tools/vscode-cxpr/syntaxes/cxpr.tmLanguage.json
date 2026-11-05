@@ -68,7 +68,7 @@
       "match": "'(?:\\\\.|[^'\\\\])*'"
     },
     {
-      "match": "\\b(type|id|label|description|hover|mode|source|broker|symbol|strategy|aggregate_from|lifecycle|source_arg)\\b(\\s*=\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:[,}\\]#]|//|$))",
+      "match": "\\b(type|id|label|description|hover|mode|source|broker|symbol|strategy|aggregate_from|lifecycle|pipe)\\b(\\s*=\\s*)([A-Za-z_][A-Za-z0-9_.-]*)(?=\\s*(?:[,}\\]#]|//|$))",
       "captures": {
         "1": {
           "name": "variable.other.assignment.cxpr"
@@ -182,6 +182,20 @@
         }
       },
       "patterns": [
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(\\s+)(as)(\\s+)([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": {
+              "name": "variable.other.input.cxpr"
+            },
+            "3": {
+              "name": "keyword.control.cxpr"
+            },
+            "5": {
+              "name": "variable.other.input.cxpr"
+            }
+          }
+        },
         {
           "name": "variable.other.input.cxpr",
           "match": "[A-Za-z_][A-Za-z0-9_]*"

@@ -249,6 +249,12 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
                                             "Duplicate input", err)) {
         return false;
     }
+    if (!cxpr_model_validate_unique_strings(
+            model->input_aliases, model->input_alias_count,
+            "Duplicate rooted input alias; use 'as' to assign distinct local names",
+            err)) {
+        return false;
+    }
     if (!cxpr_model_validate_unique_strings(model->outputs, model->output_count,
                                             "Duplicate output", err)) {
         return false;
@@ -257,6 +263,14 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
     for (size_t i = 0; i < model->function_count; ++i) {
         const char* open_i = strchr(model->functions[i], '(');
         size_t len_i = open_i ? (size_t)(open_i - model->functions[i]) : strlen(model->functions[i]);
+        for (size_t j = 0; j < model->input_alias_count; ++j) {
+            if (strlen(model->input_aliases[j]) == len_i &&
+                strncmp(model->functions[i], model->input_aliases[j], len_i) == 0) {
+                cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                     "Function duplicates rooted input alias", 0, 0);
+                return false;
+            }
+        }
         for (size_t j = i + 1; j < model->function_count; ++j) {
             const char* open_j = strchr(model->functions[j], '(');
             size_t len_j = open_j ? (size_t)(open_j - model->functions[j]) : strlen(model->functions[j]);
@@ -274,6 +288,12 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
         }
     }
     for (size_t i = 0; i < model->record_function_count; ++i) {
+        if (cxpr_model_string_exists(model->input_aliases, model->input_alias_count,
+                                     model->record_functions[i].name)) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Function duplicates rooted input alias", 0, 0);
+            return false;
+        }
         for (size_t j = i + 1; j < model->record_function_count; ++j) {
             if (cxpr_model_names_match(model->record_functions[i].name,
                                        model->record_functions[j].name)) {
@@ -284,6 +304,12 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
     }
 
     for (size_t i = 0; i < model->constant_count; ++i) {
+        if (cxpr_model_string_exists(model->input_aliases, model->input_alias_count,
+                                     model->constants[i].name)) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Parameter duplicates rooted input alias", 0, 0);
+            return false;
+        }
         for (size_t j = i + 1; j < model->constant_count; ++j) {
             if (cxpr_model_names_match(model->constants[i].name, model->constants[j].name)) {
                 cxpr_model_set_error(err, CXPR_ERR_SYNTAX, "Duplicate constant", 0, 0);
@@ -293,6 +319,15 @@ static bool cxpr_model_validate_symbols(const cxpr_model* model, cxpr_error* err
     }
 
     for (size_t i = 0; i < model->binding_count; ++i) {
+        if (cxpr_model_string_exists(model->input_aliases, model->input_alias_count,
+                                     model->bindings[i].name) &&
+            !(model->bindings[i].kind == CXPR_MODEL_BINDING_EXPR &&
+              cxpr_model_string_exists(model->outputs, model->output_count,
+                                       model->bindings[i].name))) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Binding duplicates rooted input alias", 0, 0);
+            return false;
+        }
         if (cxpr_model_string_exists(model->inputs, model->input_count,
                                      model->bindings[i].name)) {
             cxpr_model_set_error(err, CXPR_ERR_SYNTAX,

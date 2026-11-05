@@ -36,7 +36,7 @@ static bool cxpr_model_compiled_param_is_exposed(const cxpr_model_compiled* prog
 
 static bool cxpr_model_compiled_inputs_are_implicit_market(
     const cxpr_model_compiled* program) {
-    if (!program || program->input_count == 0u || program->source_arg) return false;
+    if (!program || program->input_count == 0u || program->pipe_target) return false;
     for (size_t i = 0u; i < program->input_count; ++i) {
         const char* input = program->inputs[i];
         if (!input ||
@@ -66,10 +66,10 @@ static bool cxpr_model_child_build_rooted_source(
     const cxpr_model_compiled* child,
     cxpr_error* err) {
     size_t count = 0u;
-    if (!child_ref || !child || !child_ref->source_arg ||
+    if (!child_ref || !child || !child_ref->pipe_target ||
         child_ref->source_input_index != (size_t)-1) return true;
     for (size_t i = 0u; i < child->input_count; ++i)
-        if (cxpr_model_rooted_source_field(child->inputs[i], child_ref->source_arg)) ++count;
+        if (cxpr_model_rooted_source_field(child->inputs[i], child_ref->pipe_target)) ++count;
     if (count == 0u) return true;
     child_ref->source_field_paths = (char**)calloc(count, sizeof(char*));
     child_ref->source_field_input_indices = (size_t*)calloc(count, sizeof(size_t));
@@ -79,7 +79,7 @@ static bool cxpr_model_child_build_rooted_source(
     }
     for (size_t i = 0u; i < child->input_count; ++i) {
         const char* field = cxpr_model_rooted_source_field(
-            child->inputs[i], child_ref->source_arg);
+            child->inputs[i], child_ref->pipe_target);
         if (!field) continue;
         child_ref->source_field_paths[child_ref->source_field_count] =
             cxpr_strdup(field);
@@ -398,14 +398,14 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return false;
         }
-        if (child->source_arg) {
-            program->children[i].source_arg = cxpr_strdup(child->source_arg);
-            if (!program->children[i].source_arg) {
+        if (child->pipe_target) {
+            program->children[i].pipe_target = cxpr_strdup(child->pipe_target);
+            if (!program->children[i].pipe_target) {
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
             for (size_t in_i = 0u; in_i < child->input_count; ++in_i) {
-                if (cxpr_model_names_match(child->inputs[in_i], child->source_arg)) {
+                if (cxpr_model_names_match(child->inputs[in_i], child->pipe_target)) {
                     program->children[i].source_input_index = in_i;
                     break;
                 }
@@ -450,7 +450,7 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
             }
             if (program->children[i].source_field_count > 0u) {
                 entry->defined_param_names[name_index++] =
-                    cxpr_strdup(program->children[i].source_arg);
+                    cxpr_strdup(program->children[i].pipe_target);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
                                          "Out of memory", 0, 0);

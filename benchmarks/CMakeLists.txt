@@ -77,6 +77,9 @@ target_link_libraries(cxpr_bench_named_map_ir PRIVATE cxpr)
 target_compile_definitions(cxpr_bench_named_map_ir PRIVATE
     CXPR_BENCH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
+add_executable(cxpr_bench_pipe_alias pipe_alias_bench.c)
+target_link_libraries(cxpr_bench_pipe_alias PRIVATE cxpr)
+
 set(CXPR_BENCH_INDEX_HISTORY_HEADER
     "${CMAKE_CURRENT_BINARY_DIR}/index_history_generated.h")
 set(CXPR_BENCH_PRODUCER_HISTORY_HEADER

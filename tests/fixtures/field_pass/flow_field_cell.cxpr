@@ -2,8 +2,9 @@
 // Design source: docs/read_only_peer_state.md
 //
 // Peer-state form of the flow-field cell. Replaces the halo-gathered
-// grid_relax_4nabo.cxpr (d_n/d_s/d_e/d_w scalar inputs) with peer reads of a
-// neighbour cell's own `dist` state from the frozen previous snapshot.
+// grid_relax_4nabo.cxpr (rooted neighbour inputs scalarized by generated C)
+// with peer reads of a neighbour cell's own `dist` state from the frozen
+// previous snapshot.
 //
 // New surface exercised:
 //   - `peers { ... }` declaration

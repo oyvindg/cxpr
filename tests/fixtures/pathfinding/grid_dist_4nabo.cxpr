@@ -2,17 +2,20 @@
 // sentinel test. Compiles today: sentinel saturation is a plain `fn`, no builtin.
 model grid_dist_4nabo
 
-in { d_n, d_s, d_e, d_w, cost, is_wall, is_goal }
+in neighbours { north, south, east, west }
+in cell { cost, is_wall, is_goal }
 
 $INF = 1e18
 
 fn sadd(a, b) = min(a + b, $INF)
 
-cand_n = sadd(d_n, cost)
-cand_s = sadd(d_s, cost)
-cand_e = sadd(d_e, cost)
-cand_w = sadd(d_w, cost)
+cand_n = sadd(neighbours.north, cell.cost)
+cand_s = sadd(neighbours.south, cell.cost)
+cand_e = sadd(neighbours.east, cell.cost)
+cand_w = sadd(neighbours.west, cell.cost)
 
-next_dist = is_wall > 0 ? $INF : is_goal > 0 ? 0 : min(cand_n, cand_s, cand_e, cand_w)
+next_dist = cell.is_wall > 0 ? $INF
+          : cell.is_goal > 0 ? 0
+          : min(cand_n, cand_s, cand_e, cand_w)
 
 out { next_dist }

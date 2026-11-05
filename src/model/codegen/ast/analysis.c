@@ -195,13 +195,13 @@ const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_child_pro
     if (!child_ref || !child || !ast ||
         (child_ref->source_input_index == (size_t)-1 &&
          child_ref->source_field_count == 0u) ||
-        !child_ref->source_arg) {
+        !child_ref->pipe_target) {
         return NULL;
     }
     if (cxpr_expr_ast_producer_has_named_args(ast)) {
         for (size_t i = 0u; i < cxpr_expr_ast_producer_arg_count(ast); ++i) {
             const char* name = cxpr_expr_ast_producer_arg_name(ast, i);
-            if (name && cxpr_model_names_match(name, child_ref->source_arg)) {
+            if (name && cxpr_model_names_match(name, child_ref->pipe_target)) {
                 return cxpr_expr_ast_producer_arg(ast, i);
             }
         }

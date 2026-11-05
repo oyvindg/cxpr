@@ -74,7 +74,7 @@ function legacyDiagnostics(analysis) {
   }))
   if (!analysis.ok) {
     const line = Math.max(0, (analysis.line || 1) - 1)
-    const character = analysis.column || 0
+    const character = Math.max(0, (analysis.column || 1) - 1)
     items.push({ severity: 1, source: "cxpr", message: analysis.error || "CXPR parse failed",
       range: { start: { line, character }, end: { line, character: character + 1 } } })
   }
@@ -92,7 +92,7 @@ function prefixAt(text, position) {
 function normalizedLegacyCompletions(analysis, text, position) {
   const prefix = prefixAt(text, position)
   const labels = [...(analysis.functions || []).map(({ name: label }) => label),
-    ...(analysis.outline || []).map(({ name: label }) => label)]
+    ...(analysis.outline || []).map(({ name: label }) => label), "map"]
   return [...new Set(labels)].filter((label) => label.startsWith(prefix)).sort()
 }
 
@@ -119,7 +119,7 @@ function normalizedSymbols(items) {
 }
 
 function normalizedTokens(items) {
-  const symbolTypes = new Set(["input", "reference", "variable", "assignment"])
+  const symbolTypes = new Set(["input", "reference", "variable", "assignment", "model"])
   return items.map((item) => ({ ...item, type: symbolTypes.has(item.type) ? "symbol" : item.type }))
     .sort((left, right) => left.line - right.line || left.start - right.start || left.length - right.length)
 }

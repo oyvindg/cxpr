@@ -1242,7 +1242,7 @@ function parseCxprIndicatorMetadata(text, filePath, workspaceRoot = "") {
     name: "",
     label: "",
     type: "",
-    sourceArg: "",
+    pipeTarget: "",
     summary: collectLeadingCommentSummary(text),
     params: [],
     outputs: [],
@@ -1257,7 +1257,7 @@ function parseCxprIndicatorMetadata(text, filePath, workspaceRoot = "") {
       const block = readBlockAfter(text, nameMatch.index);
       metadata.label = readMetadataValue(block, "label");
       metadata.type = readMetadataValue(block, "type");
-      metadata.sourceArg = readMetadataValue(block, "source_arg");
+      metadata.pipeTarget = readMetadataValue(block, "pipe");
     }
   }
 
@@ -1851,7 +1851,7 @@ function appendIndicatorMarkdown(markdown, metadata, alias) {
   markdown.appendMarkdown("\n\n");
   appendMetadataFileMarkdown(markdown, metadata);
   if (metadata.summary) markdown.appendMarkdown(`${metadata.summary}\n\n`);
-  if (metadata.sourceArg) markdown.appendMarkdown(`Source input: \`${metadata.sourceArg}\`\n\n`);
+  if (metadata.pipeTarget) markdown.appendMarkdown(`Pipe target: \`${metadata.pipeTarget}\`\n\n`);
   if (metadata.params.length > 0) {
     markdown.appendMarkdown("Parameters:\n");
     for (const param of metadata.params) {

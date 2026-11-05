@@ -1,4 +1,4 @@
-model child { source_arg = "source" }
+model child { pipe = "source" }
 
 in { source, adjustment }
 

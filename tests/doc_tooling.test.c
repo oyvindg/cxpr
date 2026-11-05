@@ -513,6 +513,18 @@ static void test_unknown_symbol_location_ignores_identifier_prefixes(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_unknown_symbol_location_ignores_comments(void) {
+    const char* source =
+        "model demo\n"
+        "// A peer read such as n.dist uses the previous snapshot.\n"
+        "value = n.dist\n";
+    char* json = cxpr_document_analyze_json(source, "diagnostic-comment.cxpr");
+    assert(json != NULL);
+    assert(strstr(json, "Expression references unknown symbol 'n.dist'") != NULL);
+    assert(strstr(json, "\"line\":2,\"column\":8") != NULL);
+    cxpr_document_json_free(json);
+}
+
 static void test_runtime_symbol_in_parameter_reports_source_location(void) {
     const char* source =
         "model demo\n"
@@ -746,6 +758,26 @@ static void test_comma_separated_inputs_are_source_input_tokens(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_rooted_input_aliases_are_source_input_tokens(void) {
+    const char* source =
+        "in stereo { left as source_left, right as source_right }\n"
+        "out mono = source_left + source_right\n";
+    char* json = cxpr_document_analyze_json(source, "rooted-alias-tokens.cxpr");
+    static const char* expected[] = {
+        "{\"line\":0,\"start\":12,\"length\":4,\"type\":\"input\"}",
+        "{\"line\":0,\"start\":20,\"length\":11,\"type\":\"input\"}",
+        "{\"line\":0,\"start\":33,\"length\":5,\"type\":\"input\"}",
+        "{\"line\":0,\"start\":42,\"length\":12,\"type\":\"input\"}",
+        "{\"line\":1,\"start\":11,\"length\":11,\"type\":\"input\"}",
+        "{\"line\":1,\"start\":25,\"length\":12,\"type\":\"input\"}"
+    };
+    assert(json != NULL);
+    for (size_t i = 0u; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+        assert(strstr(json, expected[i]) != NULL);
+    }
+    cxpr_document_json_free(json);
+}
+
 static void test_struct_input_producer_is_typed_in_outline(void) {
     const char* source = "in position { entry_price, bars_in_position }\n";
     char* json = cxpr_document_analyze_json(source, "struct-input.cxpr");
@@ -853,6 +885,7 @@ int main(void) {
     test_exported_and_internal_parameter_tokens();
     test_unknown_symbol_diagnostic_location();
     test_unknown_symbol_location_ignores_identifier_prefixes();
+    test_unknown_symbol_location_ignores_comments();
     test_runtime_symbol_in_parameter_reports_source_location();
     test_window_syntax_hover_metadata();
     test_window_binding_hover_preserves_source_syntax();
@@ -867,6 +900,7 @@ int main(void) {
     test_operator_token_does_not_match_identifier_substring();
     test_multiline_boolean_operators_are_keywords();
     test_comma_separated_inputs_are_source_input_tokens();
+    test_rooted_input_aliases_are_source_input_tokens();
     test_struct_input_producer_is_typed_in_outline();
     test_optimize_block_is_named_argument();
     test_function_body_outline_exposes_native_expressions();

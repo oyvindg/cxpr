@@ -112,20 +112,20 @@ static void run_case(const cxpr_generated_model_descriptor* descriptor, int diag
         for (i = 0u; i < CELLS; ++i) {
             const int x = (int)(i % WIDTH);
             const int y = (int)(i / WIDTH);
-            set_input(input_values, descriptor, i, "d_n", neighbour(current, wall, x, y - 1));
-            set_input(input_values, descriptor, i, "d_s", neighbour(current, wall, x, y + 1));
-            set_input(input_values, descriptor, i, "d_e", neighbour(current, wall, x + 1, y));
-            set_input(input_values, descriptor, i, "d_w", neighbour(current, wall, x - 1, y));
+            set_input(input_values, descriptor, i, "neighbours.north", neighbour(current, wall, x, y - 1));
+            set_input(input_values, descriptor, i, "neighbours.south", neighbour(current, wall, x, y + 1));
+            set_input(input_values, descriptor, i, "neighbours.east", neighbour(current, wall, x + 1, y));
+            set_input(input_values, descriptor, i, "neighbours.west", neighbour(current, wall, x - 1, y));
             if (diagonal) {
-                set_input(input_values, descriptor, i, "d_ne", neighbour(current, wall, x + 1, y - 1));
-                set_input(input_values, descriptor, i, "d_nw", neighbour(current, wall, x - 1, y - 1));
-                set_input(input_values, descriptor, i, "d_se", neighbour(current, wall, x + 1, y + 1));
-                set_input(input_values, descriptor, i, "d_sw", neighbour(current, wall, x - 1, y + 1));
-                set_input(input_values, descriptor, i, "cost_diag", 1.5);
+                set_input(input_values, descriptor, i, "neighbours.north_east", neighbour(current, wall, x + 1, y - 1));
+                set_input(input_values, descriptor, i, "neighbours.north_west", neighbour(current, wall, x - 1, y - 1));
+                set_input(input_values, descriptor, i, "neighbours.south_east", neighbour(current, wall, x + 1, y + 1));
+                set_input(input_values, descriptor, i, "neighbours.south_west", neighbour(current, wall, x - 1, y + 1));
+                set_input(input_values, descriptor, i, "cell.diagonal_cost", 1.5);
             }
-            set_input(input_values, descriptor, i, "cost", 1.0);
-            set_input(input_values, descriptor, i, "is_wall", wall[i] ? 1.0 : 0.0);
-            set_input(input_values, descriptor, i, "is_goal", i == WIDTH - 1 ? 1.0 : 0.0);
+            set_input(input_values, descriptor, i, "cell.cost", 1.0);
+            set_input(input_values, descriptor, i, "cell.is_wall", wall[i] ? 1.0 : 0.0);
+            set_input(input_values, descriptor, i, "cell.is_goal", i == WIDTH - 1 ? 1.0 : 0.0);
         }
         {
             const cxpr_bulk_view view = {

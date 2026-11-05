@@ -100,11 +100,11 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     free(program->inputs);
     free(program->input_declared_types);
     free(program->input_element_types);
-    free(program->source_arg);
+    free(program->pipe_target);
     free(program->invalid_input_guard);
     for (size_t i = 0; i < program->child_count; ++i) {
         free(program->children[i].name);
-        free(program->children[i].source_arg);
+        free(program->children[i].pipe_target);
         for (size_t field = 0u;
              field < program->children[i].source_field_count;
              ++field) {
@@ -338,8 +338,8 @@ const char* cxpr_model_compiled_child_name(const cxpr_model_compiled* program, s
     return program && index < program->child_count ? program->children[index].name : NULL;
 }
 
-const char* cxpr_model_compiled_child_source_arg(const cxpr_model_compiled* program, size_t index) {
-    return program && index < program->child_count ? program->children[index].source_arg : NULL;
+const char* cxpr_model_compiled_child_pipe_target(const cxpr_model_compiled* program, size_t index) {
+    return program && index < program->child_count ? program->children[index].pipe_target : NULL;
 }
 
 size_t cxpr_model_compiled_history_count(const cxpr_model_compiled* program) {

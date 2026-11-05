@@ -1,4 +1,4 @@
-model consumer_a { source_arg = "source" }
+model consumer_a { pipe = "source" }
 
 in source
 
