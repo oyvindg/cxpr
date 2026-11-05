@@ -60,11 +60,11 @@ bass_tone = resonance(mono=seq.bass_level *
 chord_tone = resonance(mono=seq.chord_level * chord_voice.sample,
     sample_rate=$sample_rate, cutoff=2800, resonance=0.08)
 
-arpeggio = pan(source=arp_tone.low, position=-0.13)
-melody = pan(source=melody_tone.low, position=0.20)
-inner = pan(source=inner_tone.low, position=0.04)
-bass = pan(source=bass_tone.low, position=-0.30)
-chord = pan(source=chord_tone.low, position=0.12)
+arpeggio = pan(mono=arp_tone.low, position=-0.13)
+melody = pan(mono=melody_tone.low, position=0.20)
+inner = pan(mono=inner_tone.low, position=0.04)
+bass = pan(mono=bass_tone.low, position=-0.30)
+chord = pan(mono=chord_tone.low, position=0.12)
 dry_left = arpeggio.left + melody.left + inner.left + bass.left + chord.left
 dry_right = arpeggio.right + melody.right + inner.right + bass.right + chord.right
 

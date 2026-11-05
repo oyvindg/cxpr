@@ -1,0 +1,84 @@
+# Nine-oscillator hybrid stack with independent tone and transient contouring.
+model hybrid_voice_stack(lifecycle = "scoped")
+
+use oscillator from oscillators
+use adsr from envelopes
+use resonance from mono.filters
+use saturation from mono.effects
+
+in frequency, gate, trigger
+$sample_rate = 44100
+$spread = 0.0065
+$pulse_width = 0.43
+$pwm_rate = 0.31
+$pwm_depth = 0.055
+$sub_mix = 0.10
+$octave_mix = 0.16
+$cutoff_base = 420
+$cutoff_envelope = 4600
+$resonance = 0.48
+$drive = 1.65
+$attack = 0.006
+$decay = 0.15
+$sustain = 0.22
+$release = 0.17
+
+state pwm_phase = 0
+
+amp = adsr(gate=gate, trigger=trigger, sample_rate=$sample_rate,
+           attack=$attack, decay=$decay, sustain=$sustain, release=$release)
+filter_env = adsr(gate=gate, trigger=trigger, sample_rate=$sample_rate,
+                  attack=0.0015, decay=0.13, sustain=0.075, release=0.11)
+transient_env = adsr(gate=gate, trigger=trigger, sample_rate=$sample_rate,
+                     attack=0.001, decay=0.035, sustain=0, release=0.025)
+
+spread = clamp($spread, 0, 0.016)
+pwm = clamp($pulse_width + $pwm_depth * sin(2 * pi() * pwm_phase), 0.12, 0.88)
+phase_reset = trigger
+
+center_saw = oscillator(frequency=frequency, reset=phase_reset,
+    sample_rate=$sample_rate, waveform=0, drift=0.0007)
+low_saw = oscillator(frequency=frequency * (1 - spread), reset=0,
+    sample_rate=$sample_rate, waveform=0, drift=0.0011)
+high_saw = oscillator(frequency=frequency * (1 + spread), reset=0,
+    sample_rate=$sample_rate, waveform=0, drift=0.0017)
+low_pulse = oscillator(frequency=frequency * (1 - 0.58 * spread), reset=0,
+    sample_rate=$sample_rate, waveform=1, pulse_width=pwm - 0.018,
+    drift=0.0009)
+high_pulse = oscillator(frequency=frequency * (1 + 0.58 * spread), reset=0,
+    sample_rate=$sample_rate, waveform=1, pulse_width=pwm + 0.018,
+    drift=0.0013)
+low_octave = oscillator(frequency=2 * frequency * (1 - 0.36 * spread), reset=0,
+    sample_rate=$sample_rate, waveform=0, drift=0.0008)
+high_octave = oscillator(frequency=2 * frequency * (1 + 0.36 * spread), reset=0,
+    sample_rate=$sample_rate, waveform=0, drift=0.0012)
+fundamental = oscillator(frequency=frequency, reset=phase_reset,
+    sample_rate=$sample_rate, waveform=2)
+sub = oscillator(frequency=0.5 * frequency, reset=phase_reset,
+    sample_rate=$sample_rate, waveform=2)
+
+core = 0.30 * center_saw.sample +
+    0.18 * low_saw.sample + 0.18 * high_saw.sample +
+    0.17 * low_pulse.sample + 0.17 * high_pulse.sample
+octaves = 0.5 * low_octave.sample + 0.5 * high_octave.sample
+sub_mix = clamp($sub_mix, 0, 0.24)
+octave_mix = clamp($octave_mix, 0, 0.32)
+stack = ((1 - 0.32 * octave_mix) * core + octave_mix * octaves +
+         0.10 * fundamental.sample + sub_mix * sub.sample) /
+        (1.10 + 0.68 * octave_mix + sub_mix)
+
+driven = stack |> saturation(drive=$drive)
+cutoff = $cutoff_base + $cutoff_envelope * filter_env.value
+main_filter = driven |> resonance(sample_rate=$sample_rate,
+    cutoff=cutoff, resonance=$resonance, smoothing_seconds=0.0025)
+body = main_filter.low + 0.20 * main_filter.band
+polish = body |> resonance(sample_rate=$sample_rate,
+    cutoff=min(13500, 1.9 * cutoff + 900), resonance=0.11,
+    smoothing_seconds=0.003)
+transient = transient_env.value * (0.46 * main_filter.band +
+    0.12 * (low_octave.sample + high_octave.sample))
+
+pwm_phase := (pwm_phase + max(0, $pwm_rate) / $sample_rate) % 1
+
+out sample = amp.value * (0.82 * polish.low + 0.12 * polish.band) +
+    0.16 * transient

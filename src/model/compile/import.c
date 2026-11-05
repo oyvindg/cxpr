@@ -93,6 +93,63 @@ static bool cxpr_model_child_build_rooted_source(
     return true;
 }
 
+static bool cxpr_model_child_has_exact_input_root(
+    const cxpr_model_compiled* child, const char* root, size_t root_len) {
+    for (size_t i = 0u; child && i < child->input_count; ++i) {
+        if (strlen(child->inputs[i]) == root_len &&
+            strncmp(child->inputs[i], root, root_len) == 0) return true;
+    }
+    return false;
+}
+
+static bool cxpr_model_child_build_rooted_args(
+    cxpr_model_child_program* child_ref,
+    const cxpr_model_compiled* child,
+    cxpr_error* err) {
+    size_t count = 0u;
+    if (!child_ref || !child) return true;
+    for (size_t i = 0u; i < child->input_count; ++i) {
+        const char* dot = strchr(child->inputs[i], '.');
+        const size_t root_len = dot ? (size_t)(dot - child->inputs[i]) : 0u;
+        if (dot && root_len > 0u && dot[1] != '\0' &&
+            !cxpr_model_child_has_exact_input_root(child, child->inputs[i], root_len)) ++count;
+    }
+    if (count == 0u) return true;
+    child_ref->rooted_arg_names = (char**)calloc(count, sizeof(char*));
+    child_ref->rooted_arg_field_paths = (char**)calloc(count, sizeof(char*));
+    child_ref->rooted_arg_input_indices = (size_t*)calloc(count, sizeof(size_t));
+    if (!child_ref->rooted_arg_names || !child_ref->rooted_arg_field_paths ||
+        !child_ref->rooted_arg_input_indices) {
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < child->input_count; ++i) {
+        const char* input = child->inputs[i];
+        const char* dot = strchr(input, '.');
+        const size_t root_len = dot ? (size_t)(dot - input) : 0u;
+        char* root;
+        if (!dot || root_len == 0u || dot[1] == '\0' ||
+            cxpr_model_child_has_exact_input_root(child, input, root_len)) continue;
+        root = (char*)malloc(root_len + 1u);
+        if (!root) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        memcpy(root, input, root_len);
+        root[root_len] = '\0';
+        child_ref->rooted_arg_names[child_ref->rooted_arg_field_count] = root;
+        child_ref->rooted_arg_field_paths[child_ref->rooted_arg_field_count] =
+            cxpr_strdup(dot + 1u);
+        child_ref->rooted_arg_input_indices[child_ref->rooted_arg_field_count] = i;
+        if (!child_ref->rooted_arg_field_paths[child_ref->rooted_arg_field_count]) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            return false;
+        }
+        ++child_ref->rooted_arg_field_count;
+    }
+    return true;
+}
+
 static char* cxpr_model_join_namespace(const char* ns, const char* name) {
     size_t ns_len;
     size_t name_len;
@@ -413,6 +470,7 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
             if (!cxpr_model_child_build_rooted_source(
                     &program->children[i], child, err)) return false;
         }
+        if (!cxpr_model_child_build_rooted_args(&program->children[i], child, err)) return false;
         entry = cxpr_registry_find(program->registry, namespace_name);
         if (entry) {
             cxpr_registry_clear_owned_entry(entry);
@@ -433,8 +491,23 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
         entry->model_producer_userdata = &program->children[i];
         entry->min_args = 0u;
         entry->max_args = exposed_input_count + exposed_param_count;
-        if (program->children[i].source_field_count > 0u) {
-            entry->max_args -= program->children[i].source_field_count - 1u;
+        {
+            size_t unique_roots = 0u;
+            for (size_t field = 0u;
+                 field < program->children[i].rooted_arg_field_count; ++field) {
+                bool seen = false;
+                for (size_t prior = 0u; prior < field; ++prior) {
+                    if (cxpr_model_names_match(
+                            program->children[i].rooted_arg_names[prior],
+                            program->children[i].rooted_arg_names[field])) {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (!seen) ++unique_roots;
+            }
+            entry->max_args -=
+                program->children[i].rooted_arg_field_count - unique_roots;
         }
         entry->return_type = CXPR_VALUE_STRUCT;
         entry->has_return_type = true;
@@ -448,9 +521,20 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return false;
             }
-            if (program->children[i].source_field_count > 0u) {
-                entry->defined_param_names[name_index++] =
-                    cxpr_strdup(program->children[i].pipe_target);
+            for (size_t field = 0u;
+                 field < program->children[i].rooted_arg_field_count; ++field) {
+                bool seen = false;
+                for (size_t prior = 0u; prior < field; ++prior) {
+                    if (cxpr_model_names_match(
+                            program->children[i].rooted_arg_names[prior],
+                            program->children[i].rooted_arg_names[field])) {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (seen) continue;
+                entry->defined_param_names[name_index++] = cxpr_strdup(
+                    program->children[i].rooted_arg_names[field]);
                 if (!entry->defined_param_names[name_index - 1u]) {
                     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
                                          "Out of memory", 0, 0);
@@ -460,9 +544,9 @@ bool cxpr_model_compiled_register_imports(cxpr_model_compiled* program,
             for (size_t in_i = 0u; in_i < exposed_input_count; ++in_i) {
                 bool rooted = false;
                 for (size_t field = 0u;
-                     field < program->children[i].source_field_count;
+                     field < program->children[i].rooted_arg_field_count;
                      ++field) {
-                    if (program->children[i].source_field_input_indices[field] == in_i) {
+                    if (program->children[i].rooted_arg_input_indices[field] == in_i) {
                         rooted = true;
                         break;
                     }

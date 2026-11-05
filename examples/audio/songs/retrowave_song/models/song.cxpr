@@ -39,13 +39,13 @@ d = drums(age=seq.drum_age, trigger=seq.drum_trigger, sample_rate=$sample_rate,
 tom_voice = tom(age=seq.drum_age, frequency=seq.tom_frequency,
                 trigger=seq.drum_trigger, sample_rate=$sample_rate)
 
-arp_stereo = pan(source=seq.arp_level * a.sample, position=-0.24)
-lead_stereo = pan(source=seq.lead_level * l.sample, position=0.18)
+arp_stereo = pan(mono=seq.arp_level * a.sample, position=-0.24)
+lead_stereo = pan(mono=seq.lead_level * l.sample, position=0.18)
 snare_bus = seq.snare_level * d.snare + seq.clap_level * d.clap
 drum_center = seq.kick_level * d.kick + snare_bus + seq.tom_level * tom_voice.sample
-hat_stereo = pan(source=seq.hat_level * d.hat + seq.open_hat_level * d.open_hat,
+hat_stereo = pan(mono=seq.hat_level * d.hat + seq.open_hat_level * d.open_hat,
     position=0.28)
-snare_gate = gated_reverb(source=snare_bus, sample_rate=$sample_rate,
+snare_gate = gated_reverb(mono=snare_bus, sample_rate=$sample_rate,
     feedback=0.54, gate_seconds=0.22)
 pump = 1 - 0.24 * seq.kick_level * exp(-11 * seq.drum_age)
 center = 0.7071067811865476 * (pump * seq.bass_level * b.sample + drum_center)

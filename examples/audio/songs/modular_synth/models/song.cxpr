@@ -75,13 +75,13 @@ melodic_bass_voice = bass(age=sequence.bass_age,
 pluck_voice = arp(age=sequence.pluck_age, frequency=sequence.pluck_frequency,
                   trigger=sequence.pluck_trigger, sample_rate=$sample_rate,
                   gain=0.10)
-pluck_stereo = pan(source=pluck_voice, position=-0.42)
+pluck_stereo = pan(mono=pluck_voice, position=-0.42)
 background_arp = arp(age=sequence.background_arp_age,
                      frequency=sequence.background_arp_frequency,
                      trigger=sequence.background_arp_trigger,
                      sample_rate=$sample_rate, gain=0.075)
 background_arp_position = 0.62 * sin(2 * pi() * 0.047 * t)
-background_arp_stereo = pan(source=background_arp,
+background_arp_stereo = pan(mono=background_arp,
                             position=background_arp_position)
 background_arp_room = {
     left = 0.46 * background_arp_stereo.left,
@@ -102,7 +102,7 @@ fast_lead = lead(age=sequence.fast_lead_age,
                  cutoff_base=2300, cutoff_envelope=6900)
 fast_phase = phaser(source=fast_lead, sample_rate=$sample_rate,
                     rate=0.31, depth=0.58, mix=0.27)
-fast_stereo = pan(source=fast_phase, position=0.34)
+fast_stereo = pan(mono=fast_phase, position=0.34)
 fast_echo = { left = 0.30 * fast_stereo.left, right = 0.30 * fast_stereo.right }
     |> filtered_delay(sample_rate=$sample_rate, feedback=0.28, cutoff=5600)
 fast_entry = clamp((t - 8.0) / 1.2, 0, 1)
@@ -131,7 +131,7 @@ counter_lead = lead(age=sequence.counter_age,
                     index=0.82, gain=0.15, ratio=1.5, decay=1.25,
                     octave_mix=0.11, transient_mix=0.025,
                     cutoff_base=1100, cutoff_envelope=3100)
-counter_position = pan(source=counter_lead, position=-0.28)
+counter_position = pan(mono=counter_lead, position=-0.28)
 counter_room = { left = 0.42 * counter_position.left,
                  right = 0.42 * counter_position.right }
     |> hall(sample_rate=$sample_rate, feedback=0.82, damping=2200)
@@ -150,8 +150,8 @@ trombone_right_voice = trombone(age=sequence.trombone_age,
                                 trigger=sequence.trombone_trigger,
                                 sample_rate=$sample_rate, hold=0.62,
                                 release=0.38, gain=0.50)
-trombone_left = pan(source=trombone_left_voice, position=-0.68)
-trombone_right = pan(source=trombone_right_voice, position=0.68)
+trombone_left = pan(mono=trombone_left_voice, position=-0.68)
+trombone_right = pan(mono=trombone_right_voice, position=0.68)
 trombone_dry_left = trombone_left.left + 0.24 * trombone_right.left
 trombone_dry_right = 0.24 * trombone_left.right + trombone_right.right
 trombone_room = { left = 0.78 * trombone_dry_left,
@@ -185,7 +185,7 @@ hat_filter = resonance(mono=drum_hat_mono,
                                    sample_rate=$sample_rate,
                                    cutoff=2600 + 3900 * hat_filter_motion,
                                    resonance=0.54)
-drum_hats = pan(source=0.14 * drum_hat_mono + 0.86 * hat_filter.high,
+drum_hats = pan(mono=0.14 * drum_hat_mono + 0.86 * hat_filter.high,
                 position=0.38)
 drum_presence = clamp((t - 16.0) / 2.0, 0, 1)
 

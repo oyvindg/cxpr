@@ -65,6 +65,13 @@ test("isolated VSIX serves diagnostics, completion, hover and definition through
   const source = "model smoke\nin close\nout x = sqrt(close)\n";
 
   assert.deepEqual(await service.getDiagnostics(source, "smoke.cxpr"), []);
+  const groupedUseSource = `model grouped_use
+use chorus, gated_reverb, pan, dry_mix, ping_pong_delay, reverb, width_drive, master from stereo.effects
+in stereo
+out { left = stereo.left, right = stereo.right }
+`;
+  assert.deepEqual(
+    await service.getDiagnostics(groupedUseSource, "grouped-use.cxpr"), []);
   const selectorSource = `model selector
 fn voice(level) { return { phoneme = level } }
 phoneme = sum([voice(1), voice(2)], x => x.phoneme)

@@ -153,6 +153,46 @@ static void test_model_resolution_has_callable_metadata(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_model_hover_exposes_typed_input_and_output_contract(void) {
+    const char* source =
+        "model inferred_session\n"
+        "in session\n"
+        "out { value = session.open + session.bar.close, early = session.bar_index < 3 }\n";
+    char* json = cxpr_document_resolve_json(
+        source, "session-signal.cxpr", 0u, 8u);
+    assert(json != NULL);
+    assert(strstr(json,
+                  "\"typedSignature\":\"inferred_session(session: struct) -> { value: number, early: bool }\"") != NULL);
+    assert(strstr(json,
+                  "\"name\":\"session.open\",\"type\":\"number\",\"provenance\":\"inferred\"") != NULL);
+    assert(strstr(json,
+                  "\"name\":\"session.bar.close\",\"type\":\"number\",\"provenance\":\"inferred\"") != NULL);
+    assert(strstr(json,
+                  "\"outputs\":[{\"name\":\"value\",\"type\":\"number\"},{\"name\":\"early\",\"type\":\"bool\"}]") != NULL);
+    cxpr_document_json_free(json);
+}
+
+static void test_inferred_input_leaf_hover_exposes_concrete_type(void) {
+    const char* source =
+        "model inferred_session\n"
+        "in session\n"
+        "out { value = session.open + 1 }\n";
+    char* json = cxpr_document_resolve_json(
+        source, "session-leaf.cxpr", 2u, 23u);
+    char* model_json = cxpr_document_resolve_json(
+        source, "session-leaf.cxpr", 0u, 8u);
+    assert(json != NULL);
+    assert(model_json != NULL);
+    assert(strstr(json, "\"name\":\"session.open\"") != NULL);
+    assert(strstr(json, "\"kind\":\"input\"") != NULL);
+    assert(strstr(json, "\"type\":\"number\"") != NULL);
+    assert(strstr(json, "\"provenance\":\"inferred\"") != NULL);
+    assert(strstr(model_json,
+                  "\"typedSignature\":\"inferred_session(session: struct) -> number\"") != NULL);
+    cxpr_document_json_free(json);
+    cxpr_document_json_free(model_json);
+}
+
 static void test_binding_resolution_includes_expression(void) {
     const char* source =
         "model market_structure\n"
@@ -385,11 +425,38 @@ static void test_declared_symbol_references_keep_semantic_colors(void) {
     assert(strstr(json,
                   "{\"line\":2,\"start\":0,\"length\":8,\"type\":\"state\"}") != NULL);
     assert(strstr(json,
-                  "{\"line\":2,\"start\":12,\"length\":5,\"type\":\"variable\"}") != NULL);
+                  "{\"line\":2,\"start\":12,\"length\":5,\"type\":\"reference\"}") != NULL);
     assert(strstr(json,
                   "{\"line\":3,\"start\":13,\"length\":8,\"type\":\"state\"}") != NULL);
     assert(strstr(json,
-                  "{\"line\":3,\"start\":24,\"length\":5,\"type\":\"variable\"}") != NULL);
+                  "{\"line\":3,\"start\":24,\"length\":5,\"type\":\"reference\"}") != NULL);
+    cxpr_document_json_free(json);
+}
+
+static void test_record_and_pipe_binding_uses_are_references(void) {
+    const char* source =
+        "dry = sum([arpeggio, melody])\n"
+        "early = dry |> gain(level=0.28)\n"
+        "atmosphere = sum([dry, early])\n"
+        "glue_source = sum([dry, early, atmosphere])\n"
+        "stereo = glue_source\n"
+        "out stereo\n";
+    char* json = cxpr_document_analyze_json(source, "ambience-colors.cxpr");
+    assert(json != NULL);
+    assert(strstr(json,
+                  "{\"line\":1,\"start\":8,\"length\":3,\"type\":\"reference\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":19,\"length\":3,\"type\":\"reference\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":24,\"length\":5,\"type\":\"reference\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":31,\"length\":10,\"type\":\"reference\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":3,\"start\":0,\"length\":11,\"type\":\"assignment\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":4,\"start\":9,\"length\":11,\"type\":\"reference\"}") != NULL);
+    assert(strstr(json,
+                  "{\"line\":5,\"start\":4,\"length\":6,\"type\":\"reference\"}") != NULL);
     cxpr_document_json_free(json);
 }
 
@@ -480,7 +547,7 @@ static void test_exported_and_internal_parameter_tokens(void) {
     assert(strstr(json,
                   "{\"line\":3,\"start\":18,\"length\":9,\"type\":\"input\"}") != NULL);
     assert(strstr(json,
-                  "{\"line\":4,\"start\":12,\"length\":8,\"type\":\"variable\"}") != NULL);
+                  "{\"line\":4,\"start\":12,\"length\":8,\"type\":\"reference\"}") != NULL);
     assert(strstr(json,
                   "{\"line\":4,\"start\":23,\"length\":9,\"type\":\"input\"}") != NULL);
     assert(strstr(json,
@@ -864,6 +931,8 @@ int main(void) {
     test_registry_signature_fields();
     test_marker_resolution();
     test_model_resolution_has_callable_metadata();
+    test_model_hover_exposes_typed_input_and_output_contract();
+    test_inferred_input_leaf_hover_exposes_concrete_type();
     test_binding_resolution_includes_expression();
     test_record_field_resolution_stays_in_enclosing_record();
     test_record_field_resolution_includes_full_parent_path();
@@ -878,6 +947,7 @@ int main(void) {
     test_function_declaration_parameters_are_semantic_parameters();
     test_lambda_parameters_and_arrows_have_semantic_colors();
     test_declared_symbol_references_keep_semantic_colors();
+    test_record_and_pipe_binding_uses_are_references();
     test_model_name_semantic_token();
     test_output_metadata_is_named_argument();
     test_import_tokens_are_individual();

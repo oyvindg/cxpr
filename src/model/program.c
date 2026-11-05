@@ -98,6 +98,7 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     free(program->bindings);
     for (size_t i = 0; i < program->input_count; ++i) free(program->inputs[i]);
     free(program->inputs);
+    free(program->input_is_explicit);
     free(program->input_declared_types);
     free(program->input_element_types);
     free(program->pipe_target);
@@ -112,6 +113,13 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
         }
         free(program->children[i].source_field_paths);
         free(program->children[i].source_field_input_indices);
+        for (size_t j = 0u; j < program->children[i].rooted_arg_field_count; ++j) {
+            free(program->children[i].rooted_arg_names[j]);
+            free(program->children[i].rooted_arg_field_paths[j]);
+        }
+        free(program->children[i].rooted_arg_names);
+        free(program->children[i].rooted_arg_field_paths);
+        free(program->children[i].rooted_arg_input_indices);
     }
     free(program->children);
     for (size_t i = 0; i < program->history_spec_count; ++i) {
@@ -328,6 +336,15 @@ size_t cxpr_model_compiled_input_count(const cxpr_model_compiled* program) {
 
 const char* cxpr_model_compiled_input_name(const cxpr_model_compiled* program, size_t index) {
     return program && index < program->input_count ? program->inputs[index] : NULL;
+}
+
+bool cxpr_model_compiled_input_is_explicit(const cxpr_model_compiled* program, size_t index) {
+    return program && index < program->input_count && program->input_is_explicit
+        ? program->input_is_explicit[index] : false;
+}
+
+uint64_t cxpr_model_compiled_input_schema_fingerprint(const cxpr_model_compiled* program) {
+    return program ? program->input_schema_fingerprint : 0u;
 }
 
 size_t cxpr_model_compiled_child_count(const cxpr_model_compiled* program) {

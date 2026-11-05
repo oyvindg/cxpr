@@ -144,6 +144,10 @@ int main(int argc, char** argv) {
         "model implicit\n"
         "in stereo { left, right }\n"
         "out value = left + right\n";
+    static const char* inferred_source =
+        "model inferred\n"
+        "in stereo\n"
+        "out value = stereo.left + stereo.right\n";
     static const char* explicit_source =
         "model explicit\n"
         "in stereo { left as channel_left, right as channel_right }\n"
@@ -161,6 +165,7 @@ int main(int argc, char** argv) {
         "out value = processed.left + processed.right\n";
     bench_model qualified = compile_model(qualified_source);
     bench_model implicit = compile_model(implicit_source);
+    bench_model inferred = compile_model(inferred_source);
     bench_model explicit_alias = compile_model(explicit_source);
     bench_model pipe_child = compile_model(pipe_child_source);
     bench_model pipe_parent = compile_parent(
@@ -173,21 +178,28 @@ int main(int argc, char** argv) {
     }
     require_equal("qualified", tick_rooted(&qualified, 2.0, 4.0), expected);
     require_equal("implicit", tick_rooted(&implicit, 2.0, 4.0), expected);
+    require_equal("inferred", tick_rooted(&inferred, 2.0, 4.0), expected);
     require_equal("explicit alias", tick_rooted(&explicit_alias, 2.0, 4.0), expected);
     require_equal("pipe", tick_parent(&pipe_parent, 2.0, 4.0), expected);
 
     printf("mode,ns_per_tick\n");
     printf("qualified_rooted,%.3f\n", time_rooted(&qualified, iterations));
     printf("implicit_alias,%.3f\n", time_rooted(&implicit, iterations));
+    printf("usage_inferred,%.3f\n", time_rooted(&inferred, iterations));
     printf("explicit_as_alias,%.3f\n", time_rooted(&explicit_alias, iterations));
     printf("pipe_metadata,%.3f\n", time_parent(&pipe_parent, iterations));
     printf("compile_mode,ns_per_compile\n");
+    printf("explicit_rooted,%.3f\n",
+           time_compile(qualified_source, compile_iterations));
+    printf("usage_inferred,%.3f\n",
+           time_compile(inferred_source, compile_iterations));
     printf("pipe_metadata,%.3f\n",
            time_compile(pipe_child_source, compile_iterations));
     free_model(&pipe_parent);
     free_model(&pipe_child);
     free_model(&explicit_alias);
     free_model(&implicit);
+    free_model(&inferred);
     free_model(&qualified);
     return bench_sink == -1.0 ? 1 : 0;
 }

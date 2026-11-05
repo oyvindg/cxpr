@@ -652,6 +652,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
     size_t required_default_count = 0u;
     size_t* order = NULL;
     bool expanded_anonymous_outputs = false;
+    const cxpr_model* declaration_model;
 
     if (err) *err = (cxpr_error){0};
     if (!cxpr_model_compile_options_resolve(options, &compile_options, err)) {
@@ -669,6 +670,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
         }
         expanded_anonymous_outputs = true;
     }
+    declaration_model = model;
     if (!cxpr_model_infer_inputs_for_compile(
             model, imports, import_count, &inferred_inputs, &inferred_input_count, err)) {
         if (expanded_anonymous_outputs) {
@@ -1182,9 +1184,11 @@ cxpr_model_compiled* cxpr_model_compile_full(
 compile_outputs:
     if (model->input_count > 0) {
         program->inputs = (char**)calloc(model->input_count, sizeof(char*));
+        program->input_is_explicit = (bool*)calloc(model->input_count, sizeof(bool));
         program->input_declared_types = calloc(model->input_count, sizeof(*program->input_declared_types));
         program->input_element_types = calloc(model->input_count, sizeof(*program->input_element_types));
-        if (!program->inputs || !program->input_declared_types || !program->input_element_types) {
+        if (!program->inputs || !program->input_is_explicit ||
+            !program->input_declared_types || !program->input_element_types) {
             cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
@@ -1192,6 +1196,15 @@ compile_outputs:
         program->input_count = model->input_count;
         for (size_t i = 0; i < model->input_count; ++i) {
             program->inputs[i] = cxpr_strdup(model->inputs[i]);
+            for (size_t declared_i = 0u;
+                 declaration_model && declared_i < declaration_model->input_count;
+                 ++declared_i) {
+                if (cxpr_model_names_match(
+                        model->inputs[i], declaration_model->inputs[declared_i])) {
+                    program->input_is_explicit[i] = true;
+                    break;
+                }
+            }
             program->input_declared_types[i] =
                 model->input_declared_types && i < declared_input_count
                 ? model->input_declared_types[i] : CXPR_MODEL_DECL_INFERRED;
@@ -1202,6 +1215,34 @@ compile_outputs:
                 cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
                 return NULL;
+            }
+        }
+        program->input_schema_fingerprint = UINT64_C(1469598103934665603);
+        for (size_t i = 0u; i < program->input_count; ++i) {
+            const unsigned char* cursor = (const unsigned char*)program->inputs[i];
+            while (cursor && *cursor) {
+                program->input_schema_fingerprint ^= (uint64_t)*cursor++;
+                program->input_schema_fingerprint *= UINT64_C(1099511628211);
+            }
+            program->input_schema_fingerprint ^=
+                (uint64_t)program->input_declared_types[i] + UINT64_C(0x100);
+            program->input_schema_fingerprint *= UINT64_C(1099511628211);
+            program->input_schema_fingerprint ^=
+                (uint64_t)program->input_element_types[i] + UINT64_C(0x200);
+            program->input_schema_fingerprint *= UINT64_C(1099511628211);
+        }
+        for (size_t i = 0u; i < program->binding_count; ++i) {
+            if (program->bindings[i].result_kind == CXPR_MODEL_RESULT_UNKNOWN &&
+                program->bindings[i].ast) {
+                program->bindings[i].result_kind = cxpr_model_infer_result_kind(
+                    program->bindings[i].ast, compile_reg, model, program);
+            }
+        }
+        for (size_t i = 0u; i < program->state_default_count; ++i) {
+            if (program->state_defaults[i].result_kind == CXPR_MODEL_RESULT_UNKNOWN &&
+                program->state_defaults[i].ast) {
+                program->state_defaults[i].result_kind = cxpr_model_infer_result_kind(
+                    program->state_defaults[i].ast, compile_reg, model, program);
             }
         }
     }

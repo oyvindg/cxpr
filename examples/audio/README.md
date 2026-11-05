@@ -51,7 +51,7 @@ Shared modules:
 - `instruments/lead`: reusable melodic voices, including the dual-oscillator
   `pulse_saw_lead`.
 - `instruments/synth`: reusable subtractive voices, including the driven
-  dual-VCO `classic_dual_vco`.
+  dual-VCO `classic_dual_vco` and nine-oscillator `hybrid_voice_stack`.
 - `instruments/voice`: source-free vocal synthesis, including the three-formant
   `robot_voice` used by the pure-CXPR robot speech example.
 

@@ -21,7 +21,7 @@ stereo_voices = map(seq.voices, voice => {
         sample_rate=$sample_rate,
         gain=0.10 * voice.gain,
         delay_samples=floor($sample_rate / voice.frequency));
-    return pan(source=piano, position=voice.pan);
+    return pan(mono=piano, position=voice.pan);
 })
 stereo_mix = sum(stereo_voices)
 // A gentle post-sum low-pass removes brittle modal energy without narrowing stereo.

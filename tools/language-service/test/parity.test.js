@@ -55,3 +55,35 @@ test("retained parity corpus covers the authoritative language-service features"
       `overlapping semantic tokens: ${JSON.stringify(previous)} / ${JSON.stringify(token)}`)
   }
 })
+
+test("model hover lists each typed input and output leaf", async () => {
+  const contractAnalyzer = {
+    ...analyzer,
+    async resolveAt() {
+      return {
+        name: "session_signal", kind: "function", signature: "session_signal(session)",
+        typedSignature: "session_signal(session: struct) -> { signal.entry: bool, signal.price: number }",
+        inputs: [
+          { name: "session.open", type: "number", provenance: "inferred" },
+          { name: "session.active", type: "bool", provenance: "explicit" }
+        ],
+        outputs: [
+          { name: "signal.entry", type: "bool" },
+          { name: "signal.price", type: "number" }
+        ]
+      }
+    }
+  }
+  const hover = await new LanguageService(contractAnalyzer, workspace)
+    .getHover("model session_signal", { line: 0, column: 8 }, name)
+
+  assert.match(hover.markdown, /\*\*Inputs\*\*/)
+  assert.match(hover.markdown,
+    /`session_signal\(session: struct\) -> \{ signal\.entry: bool, signal\.price: number \}`/)
+  assert.doesNotMatch(hover.markdown, /`session_signal\(session\)`/)
+  assert.match(hover.markdown, /`session\.open: number` _\(inferred\)_/)
+  assert.match(hover.markdown, /`session\.active: bool` _\(explicit\)_/)
+  assert.match(hover.markdown, /\*\*Outputs\*\*/)
+  assert.match(hover.markdown, /`signal\.entry: bool`/)
+  assert.match(hover.markdown, /`signal\.price: number`/)
+})

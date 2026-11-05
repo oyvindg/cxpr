@@ -1,0 +1,36 @@
+# Song-specific grand-piano section with pianist-perspective placement.
+model piano_section
+
+use grand_piano from instruments.classical
+use resonance from mono.filters
+use pan from stereo.effects
+
+in arp_age, arp_frequency, arp_trigger, arp_level
+in melody_age, melody_frequency, melody_trigger, melody_level
+in bass_age, bass_frequency, bass_trigger, bass_level
+$sample_rate = 44100
+
+fn keyboard_pan(frequency) {
+    note = 69 + 12 * log(clamp(frequency, 27.5, 4186.01) / 440) / log(2)
+    position = clamp((note - 64.5) / 43.5, -1, 1)
+    spread = position < 0 ? -pow(-position, 0.82) : pow(position, 0.82)
+    return 0.96 * spread
+}
+
+arp_piano = grand_piano(age=arp_age, frequency=arp_frequency,
+    trigger=arp_trigger)
+melody_piano = grand_piano(age=melody_age, frequency=melody_frequency,
+    trigger=melody_trigger)
+bass_piano = grand_piano(age=bass_age, frequency=bass_frequency,
+    trigger=bass_trigger)
+arp_tone = resonance(mono=arp_level * arp_piano,
+    sample_rate=$sample_rate, cutoff=3400, resonance=0.05)
+melody_tone = resonance(mono=melody_level * melody_piano,
+    sample_rate=$sample_rate, cutoff=4200, resonance=0.04)
+bass_tone = resonance(mono=bass_level * bass_piano,
+    sample_rate=$sample_rate, cutoff=1900, resonance=0.06)
+arpeggio = pan(mono=arp_tone.low, position=keyboard_pan(arp_frequency))
+melody = pan(mono=melody_tone.low, position=keyboard_pan(melody_frequency))
+bass = pan(mono=bass_tone.low, position=keyboard_pan(bass_frequency))
+
+out arpeggio, melody, bass

@@ -393,6 +393,12 @@ size_t cxpr_model_compiled_input_count(const cxpr_model_compiled* program);
 /** @brief Return input name @p index, or NULL when out of range. */
 const char* cxpr_model_compiled_input_name(const cxpr_model_compiled* program, size_t index);
 
+/** @brief Return whether an input path came from an explicit rooted declaration. */
+bool cxpr_model_compiled_input_is_explicit(const cxpr_model_compiled* program, size_t index);
+
+/** @brief Return the stable fingerprint of the normalized compiled input schema. */
+uint64_t cxpr_model_compiled_input_schema_fingerprint(const cxpr_model_compiled* program);
+
 /** @brief Return the inferred scalar result kind for input @p index. */
 cxpr_model_result_kind cxpr_model_compiled_input_result_kind(
     const cxpr_model_compiled* program,

@@ -257,7 +257,7 @@ static const char* token_type(cxpr_doc_ast_kind kind) {
     case CXPR_DOC_AST_INPUT_DECL: return "input";
     case CXPR_DOC_AST_PARAM_DECL: return "parameter";
     case CXPR_DOC_AST_FUNCTION_DECL: return "function";
-    case CXPR_DOC_AST_LOCAL_BINDING: return "variable";
+    case CXPR_DOC_AST_LOCAL_BINDING: return "assignment";
     case CXPR_DOC_AST_STATE_DECL:
     case CXPR_DOC_AST_STATE_UPDATE:
     case CXPR_DOC_AST_OUTPUT_STATE_UPDATE:
@@ -470,7 +470,7 @@ static void emit_token_node(const cxpr_doc_ast_node* node,
     if (kind == CXPR_DOC_AST_OUTPUT_DECL) {
         size_t cursor = offset + len;
         while (source[cursor] == ' ' || source[cursor] == '\t') cursor++;
-        type = source[cursor] == '=' ? "assignment" : "variable";
+        type = source[cursor] == '=' ? "assignment" : "reference";
     }
     if (prefixed_dollar) {
         type = kind == CXPR_DOC_AST_INPUT_DECL ? "input" : "parameter";
@@ -656,7 +656,7 @@ static const char* tooling_declared_reference_type(const cxpr_doc_ast_node* node
             kind == CXPR_DOC_AST_OUTPUT_STATE_UPDATE) return "state";
         if (kind == CXPR_DOC_AST_PARAM_DECL) return "parameter";
         if (kind == CXPR_DOC_AST_LOCAL_BINDING || kind == CXPR_DOC_AST_BINDING ||
-            kind == CXPR_DOC_AST_OUTPUT_DECL) return "variable";
+            kind == CXPR_DOC_AST_OUTPUT_DECL) return "reference";
     }
     count = cxpr_doc_ast_node_child_count(node);
     for (size_t i = 0u; i < count; ++i) {
@@ -1454,6 +1454,26 @@ static void tooling_word_at(const char* source,
     *out_end = end;
 }
 
+static char* tooling_qualified_word_at(const char* source,
+                                       size_t start,
+                                       size_t end) {
+    size_t path_start = start;
+    size_t path_end = end;
+    char* path;
+    while (path_start > 0u &&
+           (tooling_word_char(source[path_start - 1u]) ||
+            source[path_start - 1u] == '.')) path_start--;
+    while (source[path_end] &&
+           (tooling_word_char(source[path_end]) || source[path_end] == '.')) path_end++;
+    if (path_start == path_end || source[path_start] == '.' ||
+        source[path_end - 1u] == '.') return NULL;
+    path = (char*)malloc(path_end - path_start + 1u);
+    if (!path) return NULL;
+    memcpy(path, source + path_start, path_end - path_start);
+    path[path_end - path_start] = '\0';
+    return path;
+}
+
 static int tooling_name_equals(const char* name,
                                const char* source,
                                size_t start,
@@ -1699,6 +1719,111 @@ static const char* tooling_value_type_name(cxpr_value_type type) {
     }
 }
 
+static const char* tooling_result_kind_name(cxpr_model_result_kind kind) {
+    switch (kind) {
+    case CXPR_MODEL_RESULT_NUMBER: return "number";
+    case CXPR_MODEL_RESULT_BOOL: return "bool";
+    case CXPR_MODEL_RESULT_INT64: return "int64";
+    default: return "unknown";
+    }
+}
+
+static void tooling_emit_typed_model_signature(const cxpr_model* model,
+                                               const cxpr_model_compiled* program) {
+    const char* model_name = model ? cxpr_model_name(model) : NULL;
+    int comma = 0;
+    fputs(",\"typedSignature\":\"", stdout);
+    fputs(model_name ? model_name : "model", stdout);
+    fputc('(', stdout);
+    for (size_t i = 0u; program && i < cxpr_model_compiled_input_count(program); ++i) {
+        const char* input = cxpr_model_compiled_input_name(program, i);
+        const char* dot = input ? strchr(input, '.') : NULL;
+        const size_t name_length = dot ? (size_t)(dot - input) : (input ? strlen(input) : 0u);
+        int emitted_root = 0;
+        for (size_t previous = 0u; dot && previous < i; ++previous) {
+            const char* prior = cxpr_model_compiled_input_name(program, previous);
+            const char* prior_dot = prior ? strchr(prior, '.') : NULL;
+            if (prior_dot && (size_t)(prior_dot - prior) == name_length &&
+                strncmp(prior, input, name_length) == 0) {
+                emitted_root = 1;
+                break;
+            }
+        }
+        if (!input || emitted_root) continue;
+        if (comma) fputs(", ", stdout);
+        for (size_t ch = 0u; ch < name_length; ++ch) fputc(input[ch], stdout);
+        fputs(": ", stdout);
+        fputs(dot ? "struct" : tooling_result_kind_name(
+            cxpr_model_compiled_input_result_kind(program, i)), stdout);
+        comma = 1;
+    }
+    for (size_t declared = 0u; model && program &&
+         declared < cxpr_model_constant_count(model); ++declared) {
+        const char* param;
+        size_t compiled = 0u;
+        if (!cxpr_model_constant_is_call_param(model, declared)) continue;
+        param = cxpr_model_constant_name(model, declared);
+        if (!param) continue;
+        while (compiled < cxpr_model_compiled_param_count(program) &&
+               !cxpr_model_names_match(
+                   param, cxpr_model_compiled_param_name(program, compiled))) compiled++;
+        if (compiled == cxpr_model_compiled_param_count(program)) continue;
+        if (comma) fputs(", ", stdout);
+        fputs(param, stdout);
+        fputs(": ", stdout);
+        fputs(tooling_result_kind_name(
+            cxpr_model_compiled_param_result_kind(program, compiled)), stdout);
+        comma = 1;
+    }
+    fputs(") -> ", stdout);
+    if (!program || cxpr_model_compiled_output_count(program) == 0u) {
+        fputs("void", stdout);
+    } else if (cxpr_model_compiled_output_count(program) == 1u) {
+        fputs(tooling_result_kind_name(
+            cxpr_model_compiled_output_result_kind(program, 0u)), stdout);
+    } else {
+        fputs("{ ", stdout);
+        for (size_t i = 0u; i < cxpr_model_compiled_output_count(program); ++i) {
+            if (i) fputs(", ", stdout);
+            fputs(cxpr_model_compiled_output_name(program, i), stdout);
+            fputs(": ", stdout);
+            fputs(tooling_result_kind_name(
+                cxpr_model_compiled_output_result_kind(program, i)), stdout);
+        }
+        fputs(" }", stdout);
+    }
+    fputc('\"', stdout);
+}
+
+static void tooling_emit_compiled_contract(const cxpr_model* model,
+                                           const cxpr_model_compiled* program) {
+    tooling_emit_typed_model_signature(model, program);
+    fputs(",\"inputs\":[", stdout);
+    for (size_t i = 0u; program && i < cxpr_model_compiled_input_count(program); ++i) {
+        if (i) fputc(',', stdout);
+        fputs("{\"name\":", stdout);
+        json_string(cxpr_model_compiled_input_name(program, i));
+        fputs(",\"type\":", stdout);
+        json_string(tooling_result_kind_name(
+            cxpr_model_compiled_input_result_kind(program, i)));
+        fputs(",\"provenance\":", stdout);
+        json_string(cxpr_model_compiled_input_is_explicit(program, i)
+            ? "explicit" : "inferred");
+        fputc('}', stdout);
+    }
+    fputs("],\"outputs\":[", stdout);
+    for (size_t i = 0u; program && i < cxpr_model_compiled_output_count(program); ++i) {
+        if (i) fputc(',', stdout);
+        fputs("{\"name\":", stdout);
+        json_string(cxpr_model_compiled_output_name(program, i));
+        fputs(",\"type\":", stdout);
+        json_string(tooling_result_kind_name(
+            cxpr_model_compiled_output_result_kind(program, i)));
+        fputc('}', stdout);
+    }
+    fputc(']', stdout);
+}
+
 static void tooling_emit_model_signature(const cxpr_model* model) {
     int comma = 0;
     const char* name = cxpr_model_name(model);
@@ -1813,6 +1938,11 @@ char* cxpr_document_resolve_with_builtins_json(
     const cxpr_func_entry* entry = NULL;
     const cxpr_function_info* builtin = NULL;
     cxpr_model* parsed_model = NULL;
+    cxpr_model* contract_model = NULL;
+    cxpr_model_compiled* compiled_model = NULL;
+    char* qualified_path = NULL;
+    size_t contract_input_index = 0u;
+    int has_contract_input = 0;
     size_t offset;
     size_t start;
     size_t end;
@@ -1829,16 +1959,31 @@ char* cxpr_document_resolve_with_builtins_json(
         return cxpr_json_take(&writer);
     }
     tooling_word_at(input, offset, &start, &end);
+    qualified_path = tooling_qualified_word_at(input, start, end);
     ast = cxpr_doc_ast_parse(input, source_name, CXPR_DOC_EXTENSION_MODEL, &err);
     registry = cxpr_registry_new();
     tooling_register_functions(registry);
     if (ast) {
         declaration = tooling_find_declaration(
             cxpr_doc_ast_root(ast), input, start, end);
+        {
+            cxpr_error model_err = {0};
+            contract_model = cxpr_model_parse(input, &model_err);
+            if (contract_model)
+                compiled_model = cxpr_model_compile(contract_model, NULL, &model_err);
+        }
         if (declaration &&
             cxpr_doc_ast_node_kind(declaration) == CXPR_DOC_AST_MODEL_DECL) {
-            cxpr_error model_err = {0};
-            parsed_model = cxpr_model_parse(input, &model_err);
+            parsed_model = contract_model;
+        }
+    }
+    for (size_t i = 0u; compiled_model && qualified_path && strchr(qualified_path, '.') &&
+         i < cxpr_model_compiled_input_count(compiled_model); ++i) {
+        if (cxpr_model_names_match(
+                qualified_path, cxpr_model_compiled_input_name(compiled_model, i))) {
+            has_contract_input = 1;
+            contract_input_index = i;
+            break;
         }
     }
     has_record_field = tooling_find_scoped_record_field(
@@ -1864,13 +2009,14 @@ char* cxpr_document_resolve_with_builtins_json(
             else {
                 memcpy(name, input + start, end - start);
                 name[end - start] = '\0';
-                json_string(has_record_field && record_field_path
-                    ? record_field_path : name);
+                json_string(has_contract_input ? qualified_path
+                    : has_record_field && record_field_path ? record_field_path : name);
                 free(name);
             }
         }
         fputs(",\"kind\":", stdout);
-        json_string(entry || builtin || parsed_model ? "function" : declaration
+        json_string(entry || builtin || parsed_model ? "function" : has_contract_input
+            ? "input" : declaration
             ? tooling_symbol_kind(cxpr_doc_ast_node_kind(declaration))
             : has_record_field ? "variable"
             : "unresolved");
@@ -1893,6 +2039,31 @@ char* cxpr_document_resolve_with_builtins_json(
                         : "unknown",
                     entry->min_args, entry->max_args);
             tooling_emit_signature(entry);
+        } else if (has_contract_input) {
+            fputs(",\"type\":", stdout);
+            json_string(tooling_result_kind_name(
+                cxpr_model_compiled_input_result_kind(
+                    compiled_model, contract_input_index)));
+            fputs(",\"provenance\":", stdout);
+            json_string(cxpr_model_compiled_input_is_explicit(
+                compiled_model, contract_input_index) ? "explicit" : "inferred");
+            fputs(",\"builtin\":false", stdout);
+            if (declaration) {
+                cxpr_source_span span = cxpr_doc_ast_node_span(declaration);
+                size_t definition_line = line_zero(span.start);
+                size_t definition_col = span.start.column;
+                size_t definition_len = end - start;
+                const char* declaration_name = cxpr_doc_ast_node_name(declaration);
+                (void)span_find_name(input, span, declaration_name,
+                                     &definition_line, &definition_col,
+                                     &definition_len, NULL, NULL);
+                fputs(",\"definition\":{", stdout);
+                fprintf(stdout,
+                        "\"startLine\":%zu,\"startChar\":%zu,\"endLine\":%zu,\"endChar\":%zu",
+                        definition_line, definition_col, definition_line,
+                        definition_col + definition_len);
+                fputc('}', stdout);
+            }
         } else if (declaration) {
             cxpr_source_span span = cxpr_doc_ast_node_span(declaration);
             size_t definition_line = line_zero(span.start);
@@ -1915,6 +2086,8 @@ char* cxpr_document_resolve_with_builtins_json(
                     fputs(",\"documentation\":", stdout);
                     json_string(documentation);
                 }
+                if (compiled_model)
+                    tooling_emit_compiled_contract(parsed_model, compiled_model);
                 free(documentation);
             } else if (cxpr_doc_ast_node_kind(declaration) == CXPR_DOC_AST_FUNCTION_DECL &&
                 cxpr_doc_ast_node_name(declaration)) {
@@ -1980,8 +2153,10 @@ char* cxpr_document_resolve_with_builtins_json(
         fputc('}', stdout);
     }
     fputs("}\n", stdout);
+    cxpr_model_compiled_free(compiled_model);
     cxpr_registry_free(registry);
-    cxpr_model_free(parsed_model);
+    cxpr_model_free(contract_model);
+    free(qualified_path);
     free(record_field_path);
     cxpr_doc_ast_free(ast);
     tooling_output = NULL;

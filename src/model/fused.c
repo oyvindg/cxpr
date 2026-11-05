@@ -579,9 +579,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
                 cxpr_model_fused_program_clear(program);
                 return false;
             }
-        } else if (cxpr_model_binding_is_output(
-                       program, model->bindings[i].name) &&
-                   cxpr_model_fused_producer_is_record(
+        } else if (cxpr_model_fused_producer_is_record(
                        model->bindings[i].expr, compile_reg)) {
             if (!cxpr_model_fused_producer_record_add(
                     program, model->bindings[i].name, model->bindings[i].expr,
@@ -706,8 +704,7 @@ bool cxpr_model_try_compile_fused_ir(cxpr_model_compiled* program,
             program->has_fused_ir = false;
             return true;
         }
-        if (cxpr_model_binding_is_output(program, model->bindings[i].name) &&
-            cxpr_model_fused_producer_is_record(
+        if (cxpr_model_fused_producer_is_record(
                 model->bindings[i].expr,
                 compile_reg)) {
             program->has_fused_ir = false;

@@ -19,7 +19,7 @@ stereo_voices = map(seq.voices, voice => {
         sample_rate=$sample_rate,
         gain=0.0625 * voice.gain,
         delay_samples=floor($sample_rate / voice.frequency));
-    return pan(source=piano, position=voice.pan);
+    return pan(mono=piano, position=voice.pan);
 })
 stereo_mix = sum(stereo_voices)
 tone = resonance(stereo=stereo_mix, sample_rate=$sample_rate,

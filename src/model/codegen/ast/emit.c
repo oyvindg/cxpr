@@ -420,6 +420,11 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
         if (full_key && cxpr_model_c_symbol_is_binding(program, full_key)) {
             return cxpr_model_c_safe_name(full_key);
         }
+        if (full_key && cxpr_model_c_symbol_is_input(program, full_key, &index)) {
+            char raw[64];
+            snprintf(raw, sizeof(raw), "_cx_input_%zu", index);
+            return cxpr_strdup(raw);
+        }
         if (target && full_key) {
             for (size_t i = 0u; i < target->param_count; ++i) {
                 if (target->param_names[i] && target->param_exprs &&
@@ -457,6 +462,9 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
     }
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
         const char* full_key = cxpr_expr_ast_full_reference(ast);
+        const char* references[2] = {0};
+        const size_t reference_count = cxpr_expr_ast_references(ast, references, 2u);
+        if (!full_key && reference_count == 1u) full_key = references[0];
         if (target && full_key) {
             for (size_t i = 0u; i < target->param_count; ++i) {
                 if (target->param_names[i] && target->param_exprs &&
@@ -473,7 +481,42 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
             .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
             .userdata = target,
         };
+        if (full_key && cxpr_model_c_symbol_is_input(program, full_key, &index)) {
+            char raw[64];
+            snprintf(raw, sizeof(raw), "_cx_input_%zu", index);
+            return cxpr_strdup(raw);
+        }
         if (ast->data.field_access.base) {
+            if (cxpr_expr_ast_kind_of(ast->data.field_access.base) ==
+                CXPR_NODE_IDENTIFIER) {
+                const char* base_name = cxpr_expr_ast_identifier_name(
+                    ast->data.field_access.base);
+                const cxpr_model_compiled_binding* base_binding =
+                    cxpr_model_c_binding_for_name(program, base_name);
+                char qualified[256];
+                const int written = snprintf(
+                    qualified, sizeof(qualified), "%s.%s", base_name,
+                    ast->data.field_access.field);
+                if (written > 0 && (size_t)written < sizeof(qualified) &&
+                    cxpr_model_c_symbol_is_input(program, qualified, &index)) {
+                    char raw[64];
+                    snprintf(raw, sizeof(raw), "_cx_input_%zu", index);
+                    return cxpr_strdup(raw);
+                }
+                if (base_binding &&
+                    cxpr_expr_ast_kind_of(base_binding->ast) == CXPR_NODE_RECORD) {
+                    if (written > 0 && (size_t)written < sizeof(qualified))
+                        return cxpr_model_c_safe_name(qualified);
+                }
+                if (base_binding) {
+                    char* expr = cxpr_model_ast_field_expr_to_c(
+                        program, base_binding->ast,
+                        ast->data.field_access.field, &field_target, err, 0u);
+                    if (expr) return expr;
+                }
+                if (written > 0 && (size_t)written < sizeof(qualified))
+                    return cxpr_model_c_safe_name(qualified);
+            }
             char* expr = cxpr_model_ast_field_expr_to_c(
                 program, ast->data.field_access.base, ast->data.field_access.field, &field_target, err, 0u);
             if (expr) return expr;
@@ -487,6 +530,9 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
             char* expr = cxpr_model_ast_field_expr_to_c(
                 program, binding->ast, ast->data.field_access.field, &field_target, err, 0u);
             if (expr) return expr;
+            if (full_key && cxpr_model_ast_is_record_like(program, binding->ast, 0u)) {
+                return cxpr_model_c_safe_name(full_key);
+            }
         }
         const cxpr_model_compiled_binding* constant =
             cxpr_model_c_constant_for_name(program, ast->data.field_access.object);

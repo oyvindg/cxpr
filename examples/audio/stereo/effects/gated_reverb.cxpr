@@ -1,7 +1,7 @@
 // Short, dense gated reverb intended for snare and clap sends.
-model gated_reverb(lifecycle = "scoped")
+model gated_reverb(pipe = "mono", lifecycle = "scoped")
 
-in source
+in mono
 $sample_rate = 44100
 $feedback = 0.54
 $gate_seconds = 0.22
@@ -27,15 +27,15 @@ three = isnan(three_raw) ? 0 : three_raw
 
 // Any meaningful send transient reopens the gate. The squared close curve
 // avoids an abrupt cut at the end of the configured hold interval.
-triggered = abs(source) > 0.015
+triggered = abs(mono) > 0.015
 next_gate_age = triggered ? 0 : gate_age + 1 / $sample_rate
 gate = pow(clamp(($gate_seconds - next_gate_age) / 0.045, 0, 1), 2)
 feedback = clamp($feedback, 0, 0.68)
 
 // Cross-coupled signs diffuse energy rather than repeating one delay verbatim.
-line_one := 0.52 * source + feedback * (two + three) / 2
-line_two := 0.46 * source + feedback * (one - three) / 2
-line_three := 0.38 * source + feedback * (one + two) / 2
+line_one := 0.52 * mono + feedback * (two + three) / 2
+line_two := 0.46 * mono + feedback * (one - three) / 2
+line_three := 0.38 * mono + feedback * (one + two) / 2
 gate_age := next_gate_age
 // Different tap combinations decorrelate the stereo return.
 left = gate * (0.62 * one + 0.38 * three)

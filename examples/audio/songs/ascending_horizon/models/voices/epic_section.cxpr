@@ -1,0 +1,28 @@
+# Song-specific brass and timpani section for the cinematic crest.
+model epic_section
+
+use horn_section from instruments.brass
+use timpani from instruments.percussion
+use resonance from mono.filters
+use pan from stereo.effects
+
+in epic_age, epic_root_frequency, epic_third_frequency,
+   epic_trigger, epic_level
+in timpani_trigger, timpani_frequency, timpani_level
+$sample_rate = 44100
+$bpm = 82
+
+horn_voice = horn_section(age=epic_age,
+    root_frequency=epic_root_frequency,
+    harmony_frequency=epic_third_frequency,
+    trigger=epic_trigger, sample_rate=$sample_rate,
+    hold=4 * 60 / $bpm - 0.10, release=1.0, gain=0.14)
+timpani_voice = timpani(trigger=timpani_trigger,
+    frequency=timpani_frequency, sample_rate=$sample_rate,
+    gain=0.44, decay=1.7)
+horn_tone = resonance(mono=epic_level * horn_voice.sample,
+    sample_rate=$sample_rate, cutoff=2300, resonance=0.06)
+horns = pan(mono=horn_tone.low, position=0.34)
+drums = pan(mono=timpani_level * timpani_voice.sample, position=0.05)
+
+out horns, drums

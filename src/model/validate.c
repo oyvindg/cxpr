@@ -43,6 +43,12 @@ static bool cxpr_model_reference_exists(const cxpr_model* model, const char* ref
     if (!model || !reference) return false;
     for (size_t i = 0; i < model->input_count; ++i) {
         if (cxpr_model_reference_matches_symbol(reference, model->inputs[i])) return true;
+        {
+            const size_t reference_len = strlen(reference);
+            if (!strchr(reference, '.') &&
+                strncmp(model->inputs[i], reference, reference_len) == 0 &&
+                model->inputs[i][reference_len] == '.') return true;
+        }
     }
     for (size_t i = 0; i < model->binding_count; ++i) {
         if (cxpr_model_reference_matches_symbol(reference, model->bindings[i].name)) return true;

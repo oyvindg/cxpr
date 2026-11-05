@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+static cxpr_expr_ast* cxpr_model_clone_call_as_field_access(
+    const cxpr_expr_ast* call, const char* field, cxpr_error* err);
+static bool cxpr_model_binding_name_exists(const cxpr_model* model,
+                                           const char* name);
+
 static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, const char* name) {
     if (!name) return false;
     for (size_t i = 0u; i < count; ++i) {
@@ -83,6 +88,18 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
     if (ast->type == CXPR_NODE_VARIABLE)
         return cxpr_model_symbol_result_kind(
             model, program, ast->data.variable.name, true);
+    if ((ast->type == CXPR_NODE_FIELD_ACCESS ||
+         ast->type == CXPR_NODE_CHAIN_ACCESS) && program) {
+        const char* reference = cxpr_expr_ast_full_reference(ast);
+        const char* references[2] = {0};
+        if (!reference && cxpr_expr_ast_references(ast, references, 2u) == 1u)
+            reference = references[0];
+        for (size_t i = 0u; reference && i < program->input_count; ++i) {
+            if (program->inputs[i] &&
+                cxpr_model_names_match(program->inputs[i], reference))
+                return cxpr_model_compiled_input_result_kind(program, i);
+        }
+    }
     if (ast->type == CXPR_NODE_FUNCTION_CALL &&
         ast->data.function_call.name &&
         cxpr_model_names_match(ast->data.function_call.name, "resample") &&
@@ -147,6 +164,8 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
         case CXPR_TOK_STAR:
             if (left == CXPR_MODEL_RESULT_INT64 && right == CXPR_MODEL_RESULT_INT64)
                 return CXPR_MODEL_RESULT_INT64;
+            if (left == CXPR_MODEL_RESULT_NUMBER || right == CXPR_MODEL_RESULT_NUMBER)
+                return CXPR_MODEL_RESULT_NUMBER;
             break;
         default:
             break;
@@ -340,8 +359,9 @@ static bool cxpr_model_inline_static_collection_source(
 
 static bool cxpr_model_structural_sum_shapes_match(const cxpr_expr_ast* left,
                                                    const cxpr_expr_ast* right) {
-    if (!left || !right || left->type != right->type) return false;
-    if (left->type != CXPR_NODE_RECORD) return true;
+    if (!left || !right) return false;
+    if (left->type != CXPR_NODE_RECORD || right->type != CXPR_NODE_RECORD)
+        return left->type != CXPR_NODE_RECORD && right->type != CXPR_NODE_RECORD;
     if (left->data.record.field_count != right->data.record.field_count) return false;
     for (size_t i = 0u; i < left->data.record.field_count; ++i) {
         if (strcmp(left->data.record.field_names[i],
@@ -353,14 +373,57 @@ static bool cxpr_model_structural_sum_shapes_match(const cxpr_expr_ast* left,
     return true;
 }
 
+static cxpr_expr_ast* cxpr_model_materialize_identifier_from_shape(
+    const cxpr_expr_ast* identifier,
+    const cxpr_expr_ast* shape,
+    cxpr_error* err) {
+    const char** names;
+    cxpr_expr_ast** values;
+    cxpr_expr_ast* record;
+    const char* identifier_name;
+
+    if (!identifier || identifier->type != CXPR_NODE_IDENTIFIER || !shape ||
+        shape->type != CXPR_NODE_RECORD) return NULL;
+    identifier_name = identifier->data.identifier.name;
+    names = (const char**)calloc(shape->data.record.field_count, sizeof(*names));
+    values = (cxpr_expr_ast**)calloc(shape->data.record.field_count, sizeof(*values));
+    if (!names || !values) goto oom;
+    for (size_t i = 0u; i < shape->data.record.field_count; ++i) {
+        if (shape->data.record.field_values[i]->type == CXPR_NODE_RECORD) {
+            free(names);
+            free(values);
+            return NULL;
+        }
+        names[i] = shape->data.record.field_names[i];
+        values[i] = cxpr_expr_ast_field_new(identifier_name, names[i]);
+        if (!values[i]) goto oom_values;
+    }
+    record = cxpr_expr_ast_record_new(names, values, shape->data.record.field_count);
+    free(names);
+    if (!record) {
+        names = NULL;
+        goto oom_values;
+    }
+    return record;
+
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+oom_values:
+    for (size_t i = 0u; i < shape->data.record.field_count; ++i)
+        cxpr_expr_ast_free(values ? values[i] : NULL);
+    free(names);
+    free(values);
+    return NULL;
+}
+
 static cxpr_expr_ast* cxpr_model_build_structural_sum_record(
     const cxpr_expr_ast* array,
     size_t depth,
     cxpr_error* err) {
     const cxpr_expr_ast* shape;
     const size_t count = array ? array->data.array.count : 0u;
-    const char** names;
-    cxpr_expr_ast** values;
+    const char** names = NULL;
+    cxpr_expr_ast** values = NULL;
     cxpr_expr_ast* result;
 
     if (!array || array->type != CXPR_NODE_ARRAY || count == 0u ||
@@ -448,6 +511,146 @@ oom:
     free(names);
     free(values);
     cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+    return NULL;
+}
+
+/**
+ * Expand a multi-output imported model call into the record shape consumed by
+ * structural reductions. This keeps collection lowering independent of model
+ * names and lets ordinary pipe models participate anywhere a record can.
+ */
+static cxpr_expr_ast* cxpr_model_materialize_call_record(
+    const cxpr_expr_ast* call,
+    const cxpr_model_compiled* program,
+    cxpr_error* err) {
+    cxpr_func_entry* entry;
+    const char** names;
+    cxpr_expr_ast** values;
+    cxpr_expr_ast* record;
+
+    if (!call || call->type != CXPR_NODE_FUNCTION_CALL || !program ||
+        !program->registry) return NULL;
+    entry = cxpr_registry_find(program->registry, call->data.function_call.name);
+    if (!entry || !entry->model_producer ||
+        entry->defined_return_field_count < 2u ||
+        !entry->defined_return_field_names) return NULL;
+
+    names = (const char**)calloc(entry->defined_return_field_count, sizeof(*names));
+    values = (cxpr_expr_ast**)calloc(entry->defined_return_field_count, sizeof(*values));
+    if (!names || !values) goto oom;
+    for (size_t i = 0u; i < entry->defined_return_field_count; ++i) {
+        names[i] = entry->defined_return_field_names[i];
+        values[i] = cxpr_model_clone_call_as_field_access(call, names[i], err);
+        if (!values[i]) goto fail;
+    }
+    record = cxpr_expr_ast_record_new(
+        names, values, entry->defined_return_field_count);
+    free(names);
+    if (!record) {
+        names = NULL;
+        goto fail;
+    }
+    return record;
+
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+fail:
+    for (size_t i = 0u; i < entry->defined_return_field_count; ++i)
+        cxpr_expr_ast_free(values ? values[i] : NULL);
+    free(names);
+    free(values);
+    return NULL;
+}
+
+/** Materialize a named record binding as references to its flattened fields. */
+static cxpr_expr_ast* cxpr_model_materialize_binding_record(
+    const cxpr_expr_ast* identifier,
+    const cxpr_model_compiled* program,
+    cxpr_error* err) {
+    const char* binding_name;
+    const cxpr_model_compiled_binding* binding = NULL;
+    const char* const* field_names = NULL;
+    const char** rooted_input_fields = NULL;
+    size_t field_count = 0u;
+    const char** names = NULL;
+    cxpr_expr_ast** values = NULL;
+    cxpr_expr_ast* record;
+
+    if (!identifier || identifier->type != CXPR_NODE_IDENTIFIER || !program)
+        return NULL;
+    binding_name = identifier->data.identifier.name;
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        if (cxpr_model_names_match(program->bindings[i].name, binding_name)) {
+            binding = &program->bindings[i];
+            break;
+        }
+    }
+    if (binding && binding->ast && binding->ast->type == CXPR_NODE_RECORD) {
+        field_names = (const char* const*)binding->ast->data.record.field_names;
+        field_count = binding->ast->data.record.field_count;
+    } else if (binding && binding->ast &&
+               binding->ast->type == CXPR_NODE_FUNCTION_CALL && program->registry) {
+        cxpr_func_entry* entry = cxpr_registry_find(
+            program->registry, binding->ast->data.function_call.name);
+        if (entry && entry->model_producer) {
+            field_names = (const char* const*)entry->defined_return_field_names;
+            field_count = entry->defined_return_field_count;
+        }
+    } else if (!binding) {
+        const size_t root_length = strlen(binding_name);
+        for (size_t i = 0u; i < program->input_count; ++i) {
+            const char* input = program->inputs[i];
+            if (input && strncmp(input, binding_name, root_length) == 0 &&
+                input[root_length] == '.' && input[root_length + 1u] != '\0' &&
+                !strchr(input + root_length + 1u, '.')) ++field_count;
+        }
+        if (field_count > 0u) {
+            size_t next = 0u;
+            rooted_input_fields = (const char**)calloc(
+                field_count, sizeof(*rooted_input_fields));
+            if (!rooted_input_fields) goto oom;
+            for (size_t i = 0u; i < program->input_count; ++i) {
+                const char* input = program->inputs[i];
+                if (input && strncmp(input, binding_name, root_length) == 0 &&
+                    input[root_length] == '.' && input[root_length + 1u] != '\0' &&
+                    !strchr(input + root_length + 1u, '.')) {
+                    rooted_input_fields[next++] = input + root_length + 1u;
+                }
+            }
+            field_names = rooted_input_fields;
+        }
+    }
+    if (!field_names || field_count < 2u) {
+        free(rooted_input_fields);
+        return NULL;
+    }
+
+    names = (const char**)calloc(field_count, sizeof(*names));
+    values = (cxpr_expr_ast**)calloc(field_count, sizeof(*values));
+    if (!names || !values) goto oom;
+    for (size_t i = 0u; i < field_count; ++i) {
+        names[i] = field_names[i];
+        values[i] = cxpr_expr_ast_field_new(binding_name, field_names[i]);
+        if (!values[i]) goto oom_values;
+    }
+    record = cxpr_expr_ast_record_new(names, values, field_count);
+    free(names);
+    free(rooted_input_fields);
+    if (!record) {
+        names = NULL;
+        rooted_input_fields = NULL;
+        goto oom_values;
+    }
+    return record;
+
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+oom_values:
+    for (size_t i = 0u; i < field_count; ++i)
+        cxpr_expr_ast_free(values ? values[i] : NULL);
+    free(names);
+    free(values);
+    free(rooted_input_fields);
     return NULL;
 }
 
@@ -619,6 +822,51 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
             if (!ast->data.function_call.args[i]) {
                 cxpr_expr_ast_free(ast);
                 return NULL;
+            }
+        }
+        if (name && !strcmp(name, "sum") &&
+            ast->data.function_call.argc == 1u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) {
+            cxpr_expr_ast* array = ast->data.function_call.args[0];
+            for (size_t i = 0u; i < array->data.array.count; ++i) {
+                cxpr_expr_ast* record = cxpr_model_materialize_call_record(
+                    array->data.array.elements[i], program, err);
+                if (!record) record = cxpr_model_materialize_binding_record(
+                    array->data.array.elements[i], program, err);
+                if (!record) {
+                    if (err && err->code != CXPR_OK) {
+                        cxpr_expr_ast_free(ast);
+                        return NULL;
+                    }
+                    continue;
+                }
+                cxpr_expr_ast_free(array->data.array.elements[i]);
+                array->data.array.elements[i] = record;
+            }
+            {
+                const cxpr_expr_ast* shape = NULL;
+                for (size_t i = 0u; i < array->data.array.count; ++i) {
+                    if (array->data.array.elements[i]->type == CXPR_NODE_RECORD) {
+                        shape = array->data.array.elements[i];
+                        break;
+                    }
+                }
+                if (shape) {
+                    for (size_t i = 0u; i < array->data.array.count; ++i) {
+                        cxpr_expr_ast* record =
+                            cxpr_model_materialize_identifier_from_shape(
+                                array->data.array.elements[i], shape, err);
+                        if (!record) {
+                            if (err && err->code != CXPR_OK) {
+                                cxpr_expr_ast_free(ast);
+                                return NULL;
+                            }
+                            continue;
+                        }
+                        cxpr_expr_ast_free(array->data.array.elements[i]);
+                        array->data.array.elements[i] = record;
+                    }
+                }
             }
         }
         if (name && !strcmp(name, "sum") &&
@@ -1002,6 +1250,11 @@ static bool cxpr_model_child_accepts_named_arg(const cxpr_model_compiled* child,
     if (child->pipe_target && cxpr_model_names_match(child->pipe_target, name)) return true;
     for (size_t i = 0u; i < child->input_count; ++i) {
         if (cxpr_model_names_match(child->inputs[i], name)) return true;
+        {
+            const char* dot = strchr(child->inputs[i], '.');
+            if (dot && (size_t)(dot - child->inputs[i]) == strlen(name) &&
+                strncmp(child->inputs[i], name, strlen(name)) == 0) return true;
+        }
     }
     for (size_t i = 0u; i < child->constant_count; ++i) {
         if (child->constants[i].is_call_param) ++explicit_param_count;
@@ -1061,6 +1314,71 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
             return cxpr_model_infer_child_inputs_from_ast(
                 ast->data.unary_op.operand, model, imports, import_count, inputs, input_count, err);
         case CXPR_NODE_FUNCTION_CALL:
+            if (ast->data.function_call.name &&
+                strcmp(ast->data.function_call.name, "sum") == 0 &&
+                ast->data.function_call.argc == 1u &&
+                ast->data.function_call.args[0]->type == CXPR_NODE_ARRAY) {
+                const cxpr_expr_ast* array = ast->data.function_call.args[0];
+                const cxpr_model_compiled* shape_model = NULL;
+                for (size_t i = 0u; i < array->data.array.count; ++i) {
+                    const cxpr_expr_ast* element = array->data.array.elements[i];
+                    if (element->type != CXPR_NODE_FUNCTION_CALL) continue;
+                    shape_model = cxpr_model_import_program_for_name(
+                        model, imports, import_count,
+                        element->data.function_call.name);
+                    if (shape_model && shape_model->pipe_target &&
+                        shape_model->output_count > 1u) break;
+                    shape_model = NULL;
+                }
+                if (shape_model) {
+                    const size_t root_length = strlen(shape_model->pipe_target);
+                    for (size_t element_i = 0u;
+                         element_i < array->data.array.count; ++element_i) {
+                        const cxpr_expr_ast* element =
+                            array->data.array.elements[element_i];
+                        if (element->type != CXPR_NODE_IDENTIFIER) continue;
+                        if (cxpr_model_binding_name_exists(
+                                model, element->data.identifier.name)) continue;
+                        for (size_t input_i = 0u;
+                             input_i < shape_model->input_count; ++input_i) {
+                            const char* child_input = shape_model->inputs[input_i];
+                            char* propagated;
+                            size_t length;
+                            bool appended;
+                            if (!child_input ||
+                                strncmp(child_input, shape_model->pipe_target,
+                                        root_length) != 0 ||
+                                child_input[root_length] != '.') continue;
+                            length = strlen(element->data.identifier.name) +
+                                strlen(child_input + root_length) + 1u;
+                            propagated = (char*)malloc(length);
+                            if (!propagated) {
+                                cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                                     "Out of memory", 0, 0);
+                                return false;
+                            }
+                            snprintf(propagated, length, "%s%s",
+                                     element->data.identifier.name,
+                                     child_input + root_length);
+                            appended = cxpr_model_append_inferred_input(
+                                inputs, input_count, propagated, err);
+                            free(propagated);
+                            if (!appended) return false;
+                        }
+                    }
+                }
+            }
+            if (cxpr_model_import_program_for_name(
+                    model, imports, import_count, ast->data.function_call.name)) {
+                cxpr_expr_ast producer = {0};
+                producer.type = CXPR_NODE_PRODUCER_ACCESS;
+                producer.data.producer_access.name = ast->data.function_call.name;
+                producer.data.producer_access.args = ast->data.function_call.args;
+                producer.data.producer_access.arg_names = ast->data.function_call.arg_names;
+                producer.data.producer_access.argc = ast->data.function_call.argc;
+                return cxpr_model_infer_child_inputs_from_ast(
+                    &producer, model, imports, import_count, inputs, input_count, err);
+            }
             for (size_t i = 0u; i < ast->data.function_call.argc; ++i) {
                 if (!cxpr_model_infer_child_inputs_from_ast(
                         ast->data.function_call.args[i], model, imports, import_count, inputs, input_count, err)) {
@@ -1102,14 +1420,56 @@ static bool cxpr_model_infer_child_inputs_from_ast(const cxpr_expr_ast* ast,
                 }
                 for (size_t i = 0u; i < child->input_count; ++i) {
                     bool call_supplies_input = false;
+                    const cxpr_expr_ast* rooted_arg_expr = NULL;
+                    const char* child_dot = strchr(child->inputs[i], '.');
+                    size_t child_root_len = child_dot
+                        ? (size_t)(child_dot - child->inputs[i]) : 0u;
                     for (size_t arg_i = 0u; arg_i < ast->data.producer_access.argc; ++arg_i) {
                         const char* arg_name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
                         if (arg_name && cxpr_model_names_match(arg_name, child->inputs[i])) {
                             call_supplies_input = true;
                             break;
                         }
+                        if (arg_name && child_dot && strlen(arg_name) == child_root_len &&
+                            strncmp(arg_name, child->inputs[i], child_root_len) == 0) {
+                            rooted_arg_expr = ast->data.producer_access.args[arg_i];
+                        }
+                    }
+                    if (!rooted_arg_expr && child_dot && child->pipe_target &&
+                        strlen(child->pipe_target) == child_root_len &&
+                        strncmp(child->pipe_target, child->inputs[i], child_root_len) == 0 &&
+                        ast->data.producer_access.argc > 0u &&
+                        !cxpr_expr_ast_producer_arg_name(ast, 0u)) {
+                        rooted_arg_expr = ast->data.producer_access.args[0u];
+                    }
+                    if (rooted_arg_expr && child_dot) {
+                        const char* arg_refs[2] = {0};
+                        const size_t arg_ref_count = cxpr_expr_ast_references(
+                            rooted_arg_expr, arg_refs, 2u);
+                        if (arg_ref_count == 1u && arg_refs[0] && !strchr(arg_refs[0], '.')) {
+                            for (size_t parent_i = 0u; parent_i < model->input_count; ++parent_i) {
+                                if (cxpr_model_names_match(model->inputs[parent_i], arg_refs[0])) {
+                                    const size_t len = strlen(arg_refs[0]) +
+                                        strlen(child_dot) + 1u;
+                                    char* propagated = (char*)malloc(len);
+                                    bool appended;
+                                    if (!propagated) {
+                                        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                                             "Out of memory", 0, 0);
+                                        return false;
+                                    }
+                                    snprintf(propagated, len, "%s%s", arg_refs[0], child_dot);
+                                    appended = cxpr_model_append_inferred_input(
+                                        inputs, input_count, propagated, err);
+                                    free(propagated);
+                                    if (!appended) return false;
+                                    break;
+                                }
+                            }
+                        }
                     }
                     if (call_supplies_input) continue;
+                    if (rooted_arg_expr) continue;
                     if (call_supplies_source &&
                         child->pipe_target &&
                         (cxpr_model_names_match(child->inputs[i], child->pipe_target) ||
@@ -1219,11 +1579,19 @@ bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
     char** inputs = NULL;
     size_t input_count = 0u;
     bool infer_direct_refs;
+    bool* inferred_root_fields = NULL;
     if (out_inputs) *out_inputs = NULL;
     if (out_input_count) *out_input_count = 0u;
     if (!model) return true;
 
     infer_direct_refs = model->input_count == 0u;
+    if (model->input_count > 0u) {
+        inferred_root_fields = (bool*)calloc(model->input_count, sizeof(bool));
+        if (!inferred_root_fields) {
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+            goto fail;
+        }
+    }
     for (size_t i = 0u; i < model->input_count; ++i) {
         if (!cxpr_model_append_inferred_input(&inputs, &input_count, model->inputs[i], err)) {
             goto fail;
@@ -1243,19 +1611,64 @@ bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
                 err)) {
             goto fail;
         }
-        if (!infer_direct_refs) continue;
         nrefs = cxpr_expr_ast_references(model->bindings[i].expr, refs, CXPR_ARRAY_COUNT(refs));
         for (size_t j = 0u; j < nrefs && j < CXPR_ARRAY_COUNT(refs); ++j) {
+            bool declared_root_field = false;
             if (cxpr_model_expr_binds_reference(
                     model->bindings[i].expr, refs[j])) continue;
             if (cxpr_model_binding_name_exists(model, refs[j]) ||
                 cxpr_model_constant_name_exists(model, refs[j])) {
                 continue;
             }
+            for (size_t input_i = 0u; input_i < model->input_count; ++input_i) {
+                const char* input = model->inputs[input_i];
+                const char* input_dot = input ? strchr(input, '.') : NULL;
+                const size_t root_len = input_dot
+                    ? (size_t)(input_dot - input) : (input ? strlen(input) : 0u);
+                if (!input || root_len == 0u) continue;
+                if (strncmp(refs[j], input, root_len) == 0 &&
+                    refs[j][root_len] == '.' && refs[j][root_len + 1u] != '\0') {
+                    if (!input_dot &&
+                        (!model->input_declared_types ||
+                         model->input_declared_types[input_i] == CXPR_MODEL_DECL_INFERRED)) {
+                        inferred_root_fields[input_i] = true;
+                    }
+                    declared_root_field = true;
+                    break;
+                }
+            }
+            if (!infer_direct_refs && !declared_root_field) continue;
             if (!cxpr_model_append_inferred_input(&inputs, &input_count, refs[j], err)) goto fail;
         }
     }
-    if (input_count == model->input_count) {
+    for (size_t root_i = 0u; root_i < model->input_count; ++root_i) {
+        const char* root = model->inputs[root_i];
+        const size_t root_len = root ? strlen(root) : 0u;
+        if (!root || strchr(root, '.')) continue;
+        for (size_t input_i = model->input_count; input_i < input_count; ++input_i) {
+            if (strncmp(inputs[input_i], root, root_len) == 0 &&
+                inputs[input_i][root_len] == '.') {
+                inferred_root_fields[root_i] = true;
+                break;
+            }
+        }
+    }
+    for (size_t root_i = model->input_count; root_i > 0u; --root_i) {
+        const size_t index = root_i - 1u;
+        if (!inferred_root_fields || !inferred_root_fields[index]) continue;
+        free(inputs[index]);
+        memmove(&inputs[index], &inputs[index + 1u],
+                (input_count - index - 1u) * sizeof(*inputs));
+        --input_count;
+    }
+    free(inferred_root_fields);
+    inferred_root_fields = NULL;
+    bool inputs_unchanged = input_count == model->input_count;
+    for (size_t i = 0u; inputs_unchanged && i < input_count; ++i) {
+        inputs_unchanged = model->inputs[i] && inputs[i] &&
+            cxpr_model_names_match(model->inputs[i], inputs[i]);
+    }
+    if (inputs_unchanged) {
         for (size_t i = 0u; i < input_count; ++i) free(inputs[i]);
         free(inputs);
         inputs = NULL;
@@ -1266,6 +1679,7 @@ bool cxpr_model_infer_inputs_for_compile(const cxpr_model* model,
     return true;
 
 fail:
+    free(inferred_root_fields);
     for (size_t i = 0u; i < input_count; ++i) free(inputs[i]);
     free(inputs);
     return false;

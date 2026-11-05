@@ -47,12 +47,12 @@ crash_voice = crash(trigger=seq.crash.trigger, sample_rate=$sample_rate,
 snare_signal = seq.snare.level * s.sample
 clap_signal = seq.clap.level * c.sample
 snare_bus = snare_signal + clap_signal
-snare_stereo = pan(source=snare_signal, position=-0.08)
-clap_stereo = pan(source=clap_signal, position=0.38)
-shaker_stereo = pan(source=seq.shaker.level * shaker_voice.sample, position=0.70)
-closed_hat_stereo = pan(source=seq.hats.closed.level * closed_hat.sample, position=0.56)
-open_hat_stereo = pan(source=seq.hats.open.level * open_hat.sample, position=-0.34)
-crash_stereo = pan(source=crash_voice.sample, position=-0.68)
+snare_stereo = pan(mono=snare_signal, position=-0.08)
+clap_stereo = pan(mono=clap_signal, position=0.38)
+shaker_stereo = pan(mono=seq.shaker.level * shaker_voice.sample, position=0.70)
+closed_hat_stereo = pan(mono=seq.hats.closed.level * closed_hat.sample, position=0.56)
+open_hat_stereo = pan(mono=seq.hats.open.level * open_hat.sample, position=-0.34)
+crash_stereo = pan(mono=crash_voice.sample, position=-0.68)
 toms_left = 0.88 * seq.toms.high.level * high_tom.sample +
     0.30 * seq.toms.mid.level * mid_tom.sample
 toms_right = 0.30 * seq.toms.mid.level * mid_tom.sample +
@@ -60,7 +60,7 @@ toms_right = 0.30 * seq.toms.mid.level * mid_tom.sample +
 
 // Snare/clap receives a short gated send, while the full kit feeds a quieter
 // room whose amount is automated by the arrangement.
-gate = gated_reverb(source=snare_bus, sample_rate=$sample_rate,
+gate = gated_reverb(mono=snare_bus, sample_rate=$sample_rate,
     feedback=0.57, gate_seconds=0.24)
 kick_center = 0.7071067811865476 * seq.kick.level * k.sample
 dry_left = kick_center + snare_stereo.left + clap_stereo.left +

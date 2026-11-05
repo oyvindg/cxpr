@@ -100,19 +100,19 @@ trumpet_tone = resonance(mono=seq.brass_level * trumpet_voice.sample,
 trombone_tone = resonance(mono=seq.brass_level * trombone_voice.sample,
     sample_rate=$sample_rate, cutoff=1900, resonance=0.07)
 
-ostinato = pan(source=ostinato_tone.low, position=-0.34)
-arpeggio = pan(source=arp_tone.low, position=0.26)
-violins = pan(source=strings_tone.low, position=-0.64)
-inner_strings = pan(source=inner_tone.low, position=0.38)
-flutes = pan(source=flute_tone.low, position=-0.28)
-oboes = pan(source=oboe_tone.low, position=-0.06)
-clarinets = pan(source=clarinet_tone.low, position=0.12)
-bassoons = pan(source=bassoon_tone.low, position=0.28)
-horns = pan(source=horn_tone.low, position=0.36)
-trumpets = pan(source=trumpet_tone.low, position=0.14)
-trombones = pan(source=trombone_tone.low, position=0.58)
-drums = pan(source=seq.timpani_level * timpani_voice.sample, position=0.08)
-opening_drum = pan(source=seq.opening_timpani_level * opening_timpani_voice.sample,
+ostinato = pan(mono=ostinato_tone.low, position=-0.34)
+arpeggio = pan(mono=arp_tone.low, position=0.26)
+violins = pan(mono=strings_tone.low, position=-0.64)
+inner_strings = pan(mono=inner_tone.low, position=0.38)
+flutes = pan(mono=flute_tone.low, position=-0.28)
+oboes = pan(mono=oboe_tone.low, position=-0.06)
+clarinets = pan(mono=clarinet_tone.low, position=0.12)
+bassoons = pan(mono=bassoon_tone.low, position=0.28)
+horns = pan(mono=horn_tone.low, position=0.36)
+trumpets = pan(mono=trumpet_tone.low, position=0.14)
+trombones = pan(mono=trombone_tone.low, position=0.58)
+drums = pan(mono=seq.timpani_level * timpani_voice.sample, position=0.08)
+opening_drum = pan(mono=seq.opening_timpani_level * opening_timpani_voice.sample,
     position=0)
 dry_left = ostinato.left + arpeggio.left + violins.left + inner_strings.left +
     flutes.left + oboes.left + clarinets.left + bassoons.left +

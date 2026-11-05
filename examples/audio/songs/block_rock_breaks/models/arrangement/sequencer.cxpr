@@ -27,10 +27,17 @@ kick_trigger = clock.trigger and kick_hit
 snare_trigger = clock.trigger and snare_hit
 hat_trigger = clock.trigger and hat_hit
 open_hat_trigger = clock.trigger and open_hat_hit
+tom_hit = bar % 4 == 3 and contains(slot, [10, 13, 14, 15])
+crash_hit = slot == 0 and contains(bar, [2, 4, 6])
+tom_trigger = clock.trigger and tom_hit
+crash_trigger = clock.trigger and crash_hit
 kick_level = kick_hit ? (slot == 0 ? 1 : 0.78) : 0
 snare_level = snare_hit ? (contains(slot, [4, 12]) ? 1 : 0.38) : 0
-hat_level = hat_hit ? (slot % 4 == 2 ? 0.72 : 0.46) : 0
+hat_level = hat_hit ? (slot % 4 == 2 ? 0.72 :
+    contains(slot, [3, 11]) ? 0.34 : 0.48) : 0
 open_hat_level = open_hat_hit ? 0.62 : 0
+tom_level = tom_hit ? (slot == 15 ? 0.86 : 0.66) : 0
+tom_frequency = slot < 13 ? 156 : slot < 15 ? 128 : 104
 
 riff_slot = step % 16
 riff_phrase = bar % 4
@@ -45,8 +52,8 @@ riff_note = riff_phrase == 1 ? riff_note_b :
 riff_hit = contains(riff_slot, [0, 3, 6, 8, 11, 14]) or
     (riff_phrase == 3 and contains(riff_slot, [12, 13, 15]))
 riff_trigger = clock.trigger and riff_hit
-riff_gate_seconds = riff_phrase == 2 ? 0.24 :
-    riff_phrase == 3 and riff_slot >= 12 ? 0.095 : 0.19
+riff_gate_seconds = riff_phrase == 2 ? 0.17 :
+    riff_phrase == 3 and riff_slot >= 12 ? 0.075 : 0.135
 riff_gate = clock.age < riff_gate_seconds and riff_hit ? 1 : 0
 riff_age = clock.age
 riff_frequency = riff_note |> hz()
@@ -59,12 +66,23 @@ stab_gate = clock.age < 0.11 and stab_hit ? 1 : 0
 stab_note = bar % 4 < 2 ? 62 : 60
 stab_frequency = stab_note |> hz()
 
+arp_note = contains(slot, [0, 8]) ? 74 : contains(slot, [1, 7, 9, 15]) ? 77 :
+    contains(slot, [2, 6, 10, 14]) ? 81 : contains(slot, [3, 5, 11, 13]) ? 84 : 86
+arp_hit = bar >= 1 and not tom_hit and slot % 2 == 1
+arp_trigger = clock.trigger and arp_hit
+arp_age = clock.age
+arp_frequency = arp_note |> hz()
+arp_level = arp_hit ? (slot % 4 == 3 ? 0.82 : 0.62) : 0
+
 duration = 8 * 4 * beat_seconds + 3.0
 
 out {
     kick_trigger, snare_trigger, hat_trigger, open_hat_trigger,
+    tom_trigger, crash_trigger,
     kick_level, snare_level, hat_level, open_hat_level,
+    tom_level, tom_frequency,
     riff_trigger, riff_gate, riff_age, riff_frequency, riff_level,
     stab_trigger, stab_gate, stab_frequency,
+    arp_trigger, arp_age, arp_frequency, arp_level,
     bar, duration
 }

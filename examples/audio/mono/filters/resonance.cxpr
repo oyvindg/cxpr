@@ -34,6 +34,5 @@ integrator_two := 2 * low - integrator_two
 smoothed_cutoff := cutoff
 smoothed_resonance := resonance_amount
 
-out {
-    low, band, high
-}
+out low, band, high
+

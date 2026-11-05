@@ -86,9 +86,20 @@ export interface SymbolResolution {
     type?: string;
     builtin?: boolean;
     signature?: string;
+    typedSignature?: string;
     minArgs?: number;
     maxArgs?: number;
     documentation?: string;
+    provenance?: "explicit" | "inferred";
+    inputs?: Array<{
+        name: string;
+        type: string;
+        provenance: "explicit" | "inferred";
+    }>;
+    outputs?: Array<{
+        name: string;
+        type: string;
+    }>;
     imports?: string[];
     definition?: {
         startLine: number;

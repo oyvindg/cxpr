@@ -3081,6 +3081,67 @@ static void test_pipe_metadata_and_rooted_input_destructuring(void) {
     printf("  ✓ test_pipe_metadata_and_rooted_input_destructuring\n");
 }
 
+static void test_usage_inferred_rooted_input_schema(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    char* code;
+    cxpr_model* model = parse_model_ok(
+        "model inferred_session\n"
+        "in session\n"
+        "out { value = session.open + session.bar.close, "
+        "early = session.bar_index < 3 }\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    cxpr_model_session* session;
+
+    if (!program) fprintf(stderr, "rooted inference compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    assert(cxpr_model_compiled_input_count(program) == 3u);
+    assert(strcmp(cxpr_model_compiled_input_name(program, 0u), "session.open") == 0);
+    assert(strcmp(cxpr_model_compiled_input_name(program, 1u), "session.bar.close") == 0);
+    assert(strcmp(cxpr_model_compiled_input_name(program, 2u), "session.bar_index") == 0);
+    assert(!cxpr_model_compiled_input_is_explicit(program, 0u));
+    assert(cxpr_model_compiled_input_schema_fingerprint(program) != 0u);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "session.open", 2.0);
+    cxpr_context_set(cxpr_model_session_context(session), "session.bar.close", 3.0);
+    cxpr_context_set(cxpr_model_session_context(session), "session.bar_index", 1.0);
+    if (!cxpr_model_session_tick(program, session, NULL, &err)) {
+        fprintf(stderr, "rooted inference tick failed: %s\n",
+                err.message ? err.message : "(null)");
+        assert(false);
+    }
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 5.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "inferred_session_tick", &err);
+    assert(code != NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_usage_inferred_rooted_input_schema\n");
+}
+
+static void test_explicit_and_inferred_rooted_schema_merge(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model merged_schema\n"
+        "in session { open as opened }\n"
+        "out value = opened + session.close\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    assert(program != NULL);
+    assert(cxpr_model_compiled_input_count(program) == 2u);
+    assert(strcmp(cxpr_model_compiled_input_name(program, 0u), "session.open") == 0);
+    assert(strcmp(cxpr_model_compiled_input_name(program, 1u), "session.close") == 0);
+    assert(cxpr_model_compiled_input_is_explicit(program, 0u));
+    assert(!cxpr_model_compiled_input_is_explicit(program, 1u));
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_explicit_and_inferred_rooted_schema_merge\n");
+}
+
 static void test_rooted_input_destructuring_rejects_alias_collisions(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -3174,6 +3235,59 @@ static void test_pipe_rooted_record_through_imported_models(void) {
     cxpr_model_compiled_free(child_program);
     cxpr_model_free(child);
     printf("  ✓ test_pipe_rooted_record_through_imported_models\n");
+}
+
+static void test_imported_model_binds_multiple_inferred_rooted_arguments(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    char* code;
+    cxpr_model* child = parse_model_ok(
+        "model dry_mix { pipe = \"stereo\" }\n"
+        "in stereo\n"
+        "in hats\n"
+        "out { left = stereo.left + hats.left, "
+        "right = stereo.right + hats.right }\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import = {.name = "dry_mix", .program = child_program};
+    cxpr_model* parent;
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+
+    assert(child_program != NULL);
+    assert(cxpr_model_compiled_input_count(child_program) == 4u);
+    parent = parse_model_ok(
+        "model multi_root_parent\n"
+        "use dry_mix\n"
+        "in foundation\n"
+        "in hat_bus\n"
+        "mixed = foundation |> dry_mix(hats=hat_bus)\n"
+        "out value = mixed.left + mixed.right\n");
+    program = cxpr_model_compile_with_imports(parent, NULL, &import, 1u, &err);
+    if (!program) fprintf(stderr, "multi-root compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    assert(cxpr_model_compiled_input_count(program) == 4u);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "foundation.left", 1.0);
+    cxpr_context_set(cxpr_model_session_context(session), "foundation.right", 2.0);
+    cxpr_context_set(cxpr_model_session_context(session), "hat_bus.left", 3.0);
+    cxpr_context_set(cxpr_model_session_context(session), "hat_bus.right", 4.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 10.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "multi_root_parent_tick", &err);
+    if (!code) fprintf(stderr, "multi-root C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_model_binds_multiple_inferred_rooted_arguments\n");
 }
 
 static void test_imported_producer_explicit_call_params_hide_internal_params(void) {
@@ -4951,6 +5065,126 @@ static void test_structural_sum_emits_nested_record_c(void) {
     printf("  ✓ test_structural_sum_emits_nested_record_c\n");
 }
 
+static void test_structural_sum_accepts_imported_pipe_model_records(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C, true, false
+    };
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model stereo_scale(pipe = \"stereo\")\n"
+        "in stereo { left, right }\n"
+        "$level = 1\n"
+        "out { left = stereo.left * $level, right = stereo.right * $level }\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import = {.name = "stereo_scale", .program = child_program};
+    cxpr_model* parent;
+    cxpr_model_compiled* program;
+    cxpr_model_session* session;
+    char* code;
+
+    assert(child_program != NULL);
+    parent = parse_model_ok(
+        "model structural_pipe_sum\n"
+        "use stereo_scale\n"
+        "in { a, b, c, d }\n"
+        "first = { left = a, right = b }\n"
+        "second = { left = c, right = d }\n"
+        "first_scaled = first |> stereo_scale(level=2)\n"
+        "second_scaled = second |> stereo_scale(level=3)\n"
+        "mixed = sum([first_scaled, second_scaled])\n"
+        "out value = mixed.left + mixed.right\n");
+    program = cxpr_model_compile_full(
+        parent, NULL, &import, 1u, &options, &err);
+    if (!program) fprintf(stderr, "structural pipe sum compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    session = cxpr_model_session_new(program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "a", 1.0);
+    cxpr_context_set(cxpr_model_session_context(session), "b", 2.0);
+    cxpr_context_set(cxpr_model_session_context(session), "c", 3.0);
+    cxpr_context_set(cxpr_model_session_context(session), "d", 4.0);
+    assert(cxpr_model_session_tick(program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 27.0);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "structural_pipe_sum_tick", &err);
+    if (!code) fprintf(stderr, "structural pipe sum C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "stereo_scale") != NULL);
+    free(code);
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_structural_sum_accepts_imported_pipe_model_records\n");
+}
+
+static void test_structural_sum_accepts_nested_imported_pipe_models(void) {
+    cxpr_error err = {0};
+    const cxpr_model_compile_options options = {
+        CXPR_MODEL_BACKEND_C, true, false
+    };
+    cxpr_model* scale = parse_model_ok(
+        "model stereo_scale(pipe = \"stereo\")\n"
+        "in stereo { left, right }\n"
+        "$level = 1\n"
+        "out { left = stereo.left * $level, right = stereo.right * $level }\n");
+    cxpr_model_compiled* scale_program = cxpr_model_compile(scale, NULL, &err);
+    cxpr_model_import scale_import = {
+        .name = "stereo_scale", .program = scale_program
+    };
+    cxpr_model* bus = parse_model_ok(
+        "model bus\n"
+        "use stereo_scale\n"
+        "in first\n"
+        "in second\n"
+        "mixed = sum([first |> stereo_scale(level=2), "
+        "second |> stereo_scale(level=3)])\n"
+        "out left = mixed.left\n"
+        "out right = mixed.right\n");
+    cxpr_model_compiled* bus_program = cxpr_model_compile_with_imports(
+        bus, NULL, &scale_import, 1u, &err);
+    cxpr_model_import bus_import = {.name = "bus", .program = bus_program};
+    cxpr_model* root;
+    cxpr_model_compiled* program;
+    char* code;
+
+    assert(scale_program != NULL);
+    if (!bus_program) fprintf(stderr, "nested bus compile failed: %s\n",
+                              err.message ? err.message : "(null)");
+    assert(bus_program != NULL);
+    root = parse_model_ok(
+        "model nested_pipe_sum\n"
+        "use bus\n"
+        "in { a, b, c, d }\n"
+        "first = { left = a, right = b }\n"
+        "second = { left = c, right = d }\n"
+        "result = bus(first=first, second=second)\n"
+        "out value = result.left + result.right\n");
+    program = cxpr_model_compile_full(
+        root, NULL, &bus_import, 1u, &options, &err);
+    if (!program) fprintf(stderr, "nested structural pipe sum compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "nested_pipe_sum_tick", &err);
+    if (!code) fprintf(stderr, "nested structural pipe sum C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(root);
+    cxpr_model_compiled_free(bus_program);
+    cxpr_model_free(bus);
+    cxpr_model_compiled_free(scale_program);
+    cxpr_model_free(scale);
+    printf("  ✓ test_structural_sum_accepts_nested_imported_pipe_models\n");
+}
+
 static void test_window_param_bounds_drive_capacity_and_session_clamp(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -5790,9 +6024,12 @@ int main(void) {
     test_imported_producer_pipe_maps_call_source();
     test_imported_producer_rooted_record_source();
     test_pipe_metadata_and_rooted_input_destructuring();
+    test_usage_inferred_rooted_input_schema();
+    test_explicit_and_inferred_rooted_schema_merge();
     test_rooted_input_destructuring_rejects_alias_collisions();
     test_source_arg_metadata_does_not_bind_pipe();
     test_pipe_rooted_record_through_imported_models();
+    test_imported_model_binds_multiple_inferred_rooted_arguments();
     test_pipe_into_imported_model_with_named_params();
     test_imported_producer_explicit_call_params_hide_internal_params();
     test_imported_producer_implicit_market_inputs_precede_no_params();
@@ -5822,6 +6059,8 @@ int main(void) {
     test_static_reduce_compiles_and_emits_c_tick();
     test_static_record_map_binding_emits_c_tick();
     test_structural_sum_emits_nested_record_c();
+    test_structural_sum_accepts_imported_pipe_model_records();
+    test_structural_sum_accepts_nested_imported_pipe_models();
     test_window_param_bounds_drive_capacity_and_session_clamp();
     test_child_window_call_param_uses_dynamic_capacity();
     test_dynamic_lookback_uses_parameter_max();

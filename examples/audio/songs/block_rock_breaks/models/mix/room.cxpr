@@ -1,18 +1,35 @@
-# Song-specific chamber send and return for the break, percussion, and stabs.
+# Song-specific ambience bus for the break, percussion, and stabs.
 model room(lifecycle = "scoped")
 
-use chamber from stereo.effects
+use chamber, gain, gated_reverb from stereo.effects
+use mono from channels
 
-in snare_left, snare_right, clap_left, clap_right,
-   hat_left, hat_right, stab_left, stab_right
+in snare, clap, hats, stabs
 $sample_rate = 44100
 
-sample = {
-    left = 0.26 * snare_left + 0.18 * clap_left +
-           0.08 * hat_left + 0.24 * stab_left,
-    right = 0.26 * snare_right + 0.18 * clap_right +
-            0.08 * hat_right + 0.24 * stab_right
-}
-stereo = sample |> chamber(sample_rate=$sample_rate, feedback=0.26)
+chamber_send = sum([
+    snare |> gain(level=0.26),
+    clap |> gain(level=0.18),
+    hats |> gain(level=0.08),
+    stabs |> gain(level=0.24)
+])
+chamber_return = chamber_send |>
+    chamber(sample_rate=$sample_rate, feedback=0.26)
 
-out stereo
+gate_source = sum([
+    snare |> mono(gain=0.54),
+    clap |> mono(gain=0.81)
+])
+
+gate_return = gated_reverb(mono=gate_source, sample_rate=$sample_rate,
+    feedback=0.56, gate_seconds=0.23)
+
+room_return = sum([
+    chamber_return |> gain(level=0.28),
+    gate_return |> gain(level=0.34)
+])
+
+left = room_return.left
+right = room_return.right
+
+out left, right

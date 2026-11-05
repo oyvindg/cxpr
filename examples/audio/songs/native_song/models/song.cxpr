@@ -63,10 +63,10 @@ chord_four = 0.40 * reduce(map([0, 1], bank => pad(
     release=bank == 0 ? seq.a_release : seq.b_release,
     cutoff=pad_cutoff).sample), 0,
     step => step.acc + (step.index == 0 ? seq.a_level : seq.b_level) * step.value)
-p1 = pan(source=chord_one, position=-0.70)
-p2 = pan(source=chord_two, position=-0.22)
-p3 = pan(source=chord_three, position=0.24)
-p4 = pan(source=chord_four, position=0.70)
+p1 = pan(mono=chord_one, position=-0.70)
+p2 = pan(mono=chord_two, position=-0.22)
+p3 = pan(mono=chord_three, position=0.24)
+p4 = pan(mono=chord_four, position=0.70)
 pan_one = { left=p1.left, right=p1.right }
 pan_two = { left=p2.left, right=p2.right }
 pan_three = { left=p3.left, right=p3.right }
@@ -85,13 +85,13 @@ melody = lead(age=seq.lead_age,
               trigger=seq.lead_trigger, sample_rate=$sample_rate,
               hold=seq.lead_hold, release=seq.lead_release,
               index=1.05 + 0.55 * seq.intensity)
-melody_stereo = pan(source=0.72 * seq.lead_level * melody.sample,
+melody_stereo = pan(mono=0.72 * seq.lead_level * melody.sample,
                      position=0.28 * movement.bipolar)
 
 # Arpeggiert FM-klokkespill som synter sin egen linje fra bank A-akkorden.
 bell_voice = bell(t=t, f1=seq.a_one, f2=seq.a_two, f3=seq.a_three, f4=seq.a_four,
                   sample_rate=$sample_rate, bpm=$bpm)
-bell_stereo = pan(source=0.6 * seq.intensity * bell_voice.sample,
+bell_stereo = pan(mono=0.6 * seq.intensity * bell_voice.sample,
                   position=-0.30 * movement.bipolar)
 
 k = kick(age=seq.kick_age)
@@ -99,7 +99,7 @@ s = snare(age=seq.snare_age, trigger=seq.snare_trigger, sample_rate=$sample_rate
           seed=seq.snare_seed)
 h = hat(age=seq.hat_age, trigger=seq.hat_trigger, sample_rate=$sample_rate,
         seed=seq.hat_seed)
-hat_stereo = pan(source=0.34 * seq.hat_level * h.sample, position=0.22)
+hat_stereo = pan(mono=0.34 * seq.hat_level * h.sample, position=0.22)
 snare_sample = 0.75 * seq.snare_level * s.sample
 center = 0.7071067811865476 * (0.90 * seq.bass_level * b.sample +
           0.64 * seq.kick_level * k.sample + snare_sample)

@@ -918,11 +918,15 @@ static const cxpr_expr_ast* cxpr_model_child_call_source_arg(const cxpr_model_ch
 
 static const char* cxpr_model_child_rooted_field_for_input(
     const cxpr_model_child_program* child_ref,
-    size_t input_index) {
+    size_t input_index,
+    const char** out_root) {
+    if (out_root) *out_root = NULL;
     if (!child_ref) return NULL;
-    for (size_t i = 0u; i < child_ref->source_field_count; ++i) {
-        if (child_ref->source_field_input_indices[i] == input_index)
-            return child_ref->source_field_paths[i];
+    for (size_t i = 0u; i < child_ref->rooted_arg_field_count; ++i) {
+        if (child_ref->rooted_arg_input_indices[i] == input_index) {
+            if (out_root) *out_root = child_ref->rooted_arg_names[i];
+            return child_ref->rooted_arg_field_paths[i];
+        }
     }
     return NULL;
 }
@@ -1062,28 +1066,67 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
             return cxpr_eval_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                    "Missing rooted child model source");
         }
-        rooted_source = cxpr_eval_node(source_arg, ctx, reg, err);
-        if ((err && err->code != CXPR_OK) ||
-            rooted_source.type != CXPR_VALUE_STRUCT || !rooted_source.s) {
-            cxpr_value_free(&rooted_source);
-            if (transient_session) cxpr_model_session_free(child_session);
-            free(owned_cache_key);
-            return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
-                                   "Rooted child model source must be a record");
+        if (cxpr_expr_ast_kind_of(source_arg) != CXPR_NODE_IDENTIFIER) {
+            rooted_source = cxpr_eval_node(source_arg, ctx, reg, err);
+            if ((err && err->code != CXPR_OK) ||
+                rooted_source.type != CXPR_VALUE_STRUCT || !rooted_source.s) {
+                cxpr_value_free(&rooted_source);
+                if (transient_session) cxpr_model_session_free(child_session);
+                free(owned_cache_key);
+                return cxpr_eval_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                       "Rooted child model source must be a record");
+            }
+            has_rooted_source = true;
         }
-        has_rooted_source = true;
     }
     for (size_t i = 0u; i < child->input_count; ++i) {
         bool input_found = false;
         bool owns_value = false;
+        const char* rooted_arg = NULL;
+        cxpr_value secondary_root = {0};
+        cxpr_value forwarded_value = {0};
+        bool has_secondary_root = false;
+        bool has_forwarded_value = false;
         const cxpr_expr_ast* named_input_arg = cxpr_model_child_call_named_arg(ast, child->inputs[i]);
-        const char* rooted_field = cxpr_model_child_rooted_field_for_input(child_ref, i);
+        const char* rooted_field = cxpr_model_child_rooted_field_for_input(
+            child_ref, i, &rooted_arg);
+        const bool pipe_root = rooted_arg && child_ref->pipe_target &&
+            cxpr_model_names_match(rooted_arg, child_ref->pipe_target);
+        const cxpr_expr_ast* rooted_arg_expr = rooted_field
+            ? (pipe_root
+                   ? cxpr_model_child_call_source_arg(child_ref, child, ast)
+                   : cxpr_model_child_call_named_arg(ast, rooted_arg))
+            : NULL;
         const cxpr_expr_ast* source_arg =
             (!named_input_arg && i == child_ref->source_input_index)
                 ? cxpr_model_child_call_source_arg(child_ref, child, ast)
                 : NULL;
-        const cxpr_value* rooted_value = rooted_field
-            ? cxpr_model_child_struct_field_path(&rooted_source, rooted_field) : NULL;
+        if (rooted_field && rooted_arg_expr &&
+            cxpr_expr_ast_kind_of(rooted_arg_expr) == CXPR_NODE_IDENTIFIER) {
+            const char* forwarded_root = cxpr_expr_ast_identifier_name(rooted_arg_expr);
+            char qualified[512];
+            const int written = snprintf(
+                qualified, sizeof(qualified), "%s.%s", forwarded_root, rooted_field);
+            bool found = false;
+            if (written <= 0 || (size_t)written >= sizeof(qualified)) {
+                return cxpr_eval_error(err, CXPR_ERR_SYNTAX,
+                                       "Rooted child input path is too long");
+            }
+            forwarded_value = cxpr_context_get_typed(ctx, qualified, &found);
+            has_forwarded_value = found;
+        }
+        if (rooted_field && !has_forwarded_value && rooted_arg_expr &&
+            (!pipe_root || !has_rooted_source)) {
+            secondary_root = cxpr_eval_node(rooted_arg_expr, ctx, reg, err);
+            has_secondary_root = true;
+        }
+        const cxpr_value* rooted_value = has_forwarded_value
+            ? &forwarded_value
+            : rooted_field
+            ? cxpr_model_child_struct_field_path(
+                  pipe_root && has_rooted_source ? &rooted_source : &secondary_root,
+                  rooted_field)
+            : NULL;
         cxpr_value value = rooted_value
                                ? cxpr_value_clone(rooted_value)
                                : (named_input_arg || source_arg)
@@ -1099,6 +1142,8 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
             return cxpr_num(NAN);
         }
         if (rooted_field && !rooted_value) {
+            if (has_secondary_root) cxpr_value_free(&secondary_root);
+            if (has_forwarded_value) cxpr_value_free(&forwarded_value);
             cxpr_value_free(&rooted_source);
             if (transient_session) cxpr_model_session_free(child_session);
             free(owned_cache_key);
@@ -1127,6 +1172,8 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
             cxpr_context_set_value(child_session->ctx, child->inputs[i], &value);
         }
         if (owns_value) cxpr_value_free(&value);
+        if (has_secondary_root) cxpr_value_free(&secondary_root);
+        if (has_forwarded_value) cxpr_value_free(&forwarded_value);
     }
     if (has_rooted_source) cxpr_value_free(&rooted_source);
     for (size_t i = 0u; i < child->constant_count; ++i) {

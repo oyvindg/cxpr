@@ -133,12 +133,20 @@ bool cxpr_model_c_used_child_outputs(const cxpr_model_compiled* program,
     if (!indices) goto oom;
     for (size_t root_i = 0u; root_i < program->binding_count; ++root_i) {
         const cxpr_model_compiled_binding* root = &program->bindings[root_i];
+        bool materialized_record = false;
         if (!root->ast || cxpr_expr_ast_kind_of(root->ast) != CXPR_NODE_FUNCTION_CALL ||
             !cxpr_model_names_match(cxpr_expr_ast_call_name(root->ast),
                                     program->children[child_index].name)) {
             continue;
         }
         found_child_binding = true;
+        for (size_t record_i = 0u; record_i < program->fused_record_count; ++record_i) {
+            if (cxpr_model_names_match(
+                    program->fused_records[record_i].name, root->name)) {
+                materialized_record = true;
+                break;
+            }
+        }
         for (size_t field_i = 0u; field_i < flat_output_count; ++field_i) {
             char needle[768];
             size_t root_prefix_len;
@@ -171,7 +179,7 @@ bool cxpr_model_c_used_child_outputs(const cxpr_model_compiled* program,
                 free(source);
                 if (used) break;
             }
-            if (!used) continue;
+            if (!used && !materialized_record) continue;
             bool duplicate = false;
             for (size_t i = 0u; i < count; ++i) {
                 if (indices[i] == field_i) duplicate = true;

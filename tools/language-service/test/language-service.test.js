@@ -88,3 +88,39 @@ test("definition searches exported symbols inside imported modules", async () =>
   }])
   assert.deepEqual(requested, ["ts/pivots", "ts/window"])
 })
+
+test("import hover resolves the declaration so compiled typed signatures survive", async () => {
+  const importedSource = "model resonance\nin mono\nout low, band, high\n"
+  const analyzer = {
+    async analyzeDocument(source) {
+      return source === importedSource
+        ? { ok: true, outline: [{ kind: "model", name: "resonance",
+          startLine: 0, startChar: 0, endLine: 0, endChar: 15 }] }
+        : { ok: true, outline: [] }
+    },
+    async resolveAt(source) {
+      if (source === importedSource) {
+        return { name: "resonance", kind: "function", builtin: false,
+          signature: "resonance(mono)",
+          typedSignature: "resonance(mono: number) -> { low: number, band: number, high: number }",
+          definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 15 } }
+      }
+      return { name: "resonance", kind: "unresolved", builtin: false,
+        imports: ["mono.filters.resonance"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile() { return importedSource },
+    importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/resonance.cxpr" } }
+  }
+
+  const hover = await new LanguageService(analyzer, importWorkspace).getHover(
+    "use resonance from mono.filters\ntone = resonance(mono=sample)",
+    { line: 1, column: 9 }, "/workspace/piano_section.cxpr")
+
+  assert.match(hover.markdown,
+    /resonance\(mono: number\) -> \{ low: number, band: number, high: number \}/)
+  assert.doesNotMatch(hover.markdown, /`resonance\(mono\)`/)
+})

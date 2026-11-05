@@ -149,6 +149,12 @@ cxpr_value cxpr_eval_field_access(const cxpr_expr_ast* ast, const cxpr_context* 
                                   const cxpr_registry* reg, cxpr_error* err) {
     bool found = false;
     if (ast->data.field_access.base) {
+        const char* references[2] = {0};
+        const size_t reference_count = cxpr_expr_ast_references(ast, references, 2u);
+        if (reference_count == 1u && references[0]) {
+            cxpr_value flattened = cxpr_context_get_typed(ctx, references[0], &found);
+            if (found) return flattened;
+        }
         const cxpr_expr_ast* base_ast = ast->data.field_access.base;
         if (base_ast->type == CXPR_NODE_FUNCTION_CALL && reg) {
             cxpr_func_entry* entry =
@@ -248,6 +254,13 @@ cxpr_value cxpr_eval_chain_access(const cxpr_expr_ast* ast, const cxpr_context* 
     const cxpr_struct_value* current = NULL;
     cxpr_value owned_root = cxpr_null();
     size_t start_index = 1u;
+
+    if (ast->data.chain_access.full_key) {
+        bool found = false;
+        cxpr_value flattened = cxpr_context_get_typed(
+            ctx, ast->data.chain_access.full_key, &found);
+        if (found) return flattened;
+    }
 
     if (ctx && ctx->expression_scope) {
         bool found = false;

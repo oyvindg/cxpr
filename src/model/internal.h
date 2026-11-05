@@ -239,6 +239,10 @@ typedef struct {
     char** source_field_paths;
     size_t* source_field_input_indices;
     size_t source_field_count;
+    char** rooted_arg_names;
+    char** rooted_arg_field_paths;
+    size_t* rooted_arg_input_indices;
+    size_t rooted_arg_field_count;
 } cxpr_model_child_program;
 
 typedef enum {
@@ -290,9 +294,11 @@ struct cxpr_model_compiled {
     cxpr_model_compiled_binding* bindings;
     size_t binding_count;
     char** inputs;
+    bool* input_is_explicit;
     cxpr_model_decl_type* input_declared_types;
     cxpr_model_element_type* input_element_types;
     size_t input_count;
+    uint64_t input_schema_fingerprint;
     char* pipe_target;
     char* invalid_input_guard;
     cxpr_model_lifetime lifetime;

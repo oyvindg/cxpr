@@ -70,7 +70,7 @@ transition_focus = resonance(
     smoothing_seconds=0.004)
 transition_focused = transition_focus.low +
     (seq.transition_bridge ? 0.18 : 0.06) * transition_focus.band
-transition_stereo = pan(source=transition_focused,
+transition_stereo = pan(mono=transition_focused,
                         position=seq.transition_pan)
 # A second, lower shell mirrors the main fill from the opposite side. Separate
 # scoped calls preserve independent resonant tails even on simultaneous hits.
@@ -168,7 +168,7 @@ lead_voice = pulse_saw_lead(frequency=lead_glide.value * (1 + lead_vibrato),
                             pulse_mix=0.36, drive=1.08,
                             pwm_lfo_hz=0, pwm_depth=0,
                             unison_mix=0.22, sub_mix=0.05, phase_reset=0)
-lead_pan = pan(source=0.31 * seq.lead_level * lead_voice.sample,
+lead_pan = pan(mono=0.31 * seq.lead_level * lead_voice.sample,
                position=0.24 * sin(2 * pi() * 0.09 * t))
 # The oscillator release, rather than reverb, carries the audible tail. During
 # its 0.9-second fade the side component narrows smoothly toward the center.
@@ -205,12 +205,12 @@ arp_soft = resonance(mono=arp_eq.sample,
 arp_ducked = kick_sidechain(source=arp_soft.low, trigger=seq.kick_trigger,
                             sample_rate=$sample_rate, reduction_db=-5,
                             attack_ms=0.8, release_ms=90)
-arp_stereo = pan(source=arp_ducked.sample,
+arp_stereo = pan(mono=arp_ducked.sample,
                  position=0.46 * sin(2 * pi() * 0.055 * t))
 arp_room = { left = 0.48 * arp_stereo.left,
              right = 0.48 * arp_stereo.right }
     |> hall(sample_rate=$sample_rate, decay_seconds=0.85, damping=2900)
-hat_stereo = pan(source=hat_raw, position=0.24)
+hat_stereo = pan(mono=hat_raw, position=0.24)
 
 # Snare uses two distinct spaces: a contract-specific post-reverb gate for the
 # 80s hit, plus a long dark room that continues after the gate closes.

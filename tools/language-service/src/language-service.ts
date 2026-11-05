@@ -23,12 +23,21 @@ function completionDetail(candidate: CompletionCandidate): string {
 
 function hoverMarkdown(resolution: SymbolResolution, sourceUri?: string): string {
   const title = `**${resolution.name}** \`CXPR ${resolution.builtin ? "builtin" : resolution.kind}\``
-  const signature = resolution.signature ? `\n\n\`${resolution.signature}\`` : ""
+  const displaySignature = resolution.typedSignature ?? resolution.signature
+  const signature = displaySignature ? `\n\n\`${displaySignature}\`` : ""
   const type = resolution.type && resolution.type !== "unknown"
     ? `\n\nReturns \`${resolution.type}\`.` : ""
+  const provenance = resolution.provenance
+    ? `\n\nInput provenance: \`${resolution.provenance}\`.` : ""
   const documentation = resolution.documentation ? `\n\n${resolution.documentation}` : ""
+  const inputs = resolution.inputs?.length
+    ? `\n\n**Inputs**\n${resolution.inputs.map((item) =>
+      `- \`${item.name}: ${item.type}\` _(${item.provenance})_`).join("\n")}` : ""
+  const outputs = resolution.outputs?.length
+    ? `\n\n**Outputs**\n${resolution.outputs.map((item) =>
+      `- \`${item.name}: ${item.type}\``).join("\n")}` : ""
   const source = sourceUri ? `\n\nSource: \`${sourceUri.replaceAll("`", "\\`")}\`` : ""
-  return title + signature + type + documentation + source
+  return title + signature + type + provenance + documentation + inputs + outputs + source
 }
 
 function importHoverMarkdown(name: string, uri: string, outline: OutlineItem[]): string {
@@ -168,6 +177,21 @@ export class LanguageService implements ICxprLanguageService {
       const target = await this.workspace.resolveImport(spec, from)
       if (!target) continue
       const importedSource = target.source ?? await this.workspace.readFile(target.path)
+      const analysis = await this.analyzer.analyzeDocument(importedSource, target.path)
+      const exported = (analysis.outline || []).find((item) =>
+        item.name === unresolved.name && (item.kind === "model" || item.kind === "function"))
+      if (exported) {
+        const line = importedSource.split("\n")[exported.startLine] || ""
+        const declarationColumn = line.indexOf(unresolved.name, exported.startChar)
+        const declaration = await this.analyzer.resolveAt(importedSource, target.path, {
+          line: exported.startLine,
+          column: declarationColumn >= 0 ? declarationColumn : exported.startChar
+        })
+        if (declaration?.definition && declaration.name === unresolved.name &&
+            declaration.kind !== "unresolved") {
+          return { uri: target.path, source: importedSource, resolution: declaration }
+        }
+      }
       const probeLine = importedSource.split("\n").length
       const probePrefix = "__cxpr_probe = "
       const probedSource = `${importedSource}\n${probePrefix}${unresolved.name}`

@@ -1,0 +1,46 @@
+# Song-specific dry balance, early reflections, hall send, and glue stage.
+model ambience(lifecycle = "scoped")
+
+use gain, chamber, compressor, hall from stereo.effects
+
+in arpeggio, melody, bass, pad, strings, horns, drums, kit
+
+$sample_rate = 44100
+
+dry = sum([
+    arpeggio,
+    melody,
+    bass,
+    pad |> gain(level=0.58),
+    strings,
+    horns,
+    drums,
+    kit |> gain(level=0.72)
+])
+
+early = dry
+    |> gain(level=0.28)
+    |> chamber(sample_rate=$sample_rate, feedback=0.43)
+
+atmosphere = sum([
+    arpeggio |> gain(level=0.38),
+    melody |> gain(level=0.52),
+    pad |> gain(level=0.86),
+    strings |> gain(level=0.68),
+    horns |> gain(level=0.72),
+    drums |> gain(level=0.38),
+    kit |> gain(level=0.28)
+]) |> hall(sample_rate=$sample_rate, decay_seconds=5.6, damping=2850)
+
+glue_source = sum([
+    dry,
+    early |> gain(level=0.32),
+    atmosphere |> gain(level=0.66)
+]) |> gain(level=0.78)
+
+stereo = glue_source |> compressor(sample_rate=$sample_rate,
+    threshold=0.42, ratio=1.32, attack=0.045, release=0.34, makeup=1.0)
+
+out left = stereo.left
+out right = stereo.right
+

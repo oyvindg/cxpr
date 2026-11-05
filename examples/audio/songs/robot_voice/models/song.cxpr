@@ -74,16 +74,16 @@ local_voice_time = seq_bright.phoneme != 0 ? t - 2.0 :
     t - 4 * repeat_spacing - 2.0
 orbit_position = 0.86 * sin(2 * pi() * 0.31 * local_voice_time)
 rear_depth = 0.5 - 0.5 * cos(2 * pi() * 0.31 * local_voice_time)
-solo_dry = pan(source=(0.92 - 0.20 * rear_depth) * voice_mix,
+solo_dry = pan(mono=(0.92 - 0.20 * rear_depth) * voice_mix,
     position=orbit_position)
-side_left = pan(source=0.56 * side_left_filter.low, position=-0.88)
-side_right = pan(source=0.56 * side_right_filter.low, position=0.88)
+side_left = pan(mono=0.56 * side_left_filter.low, position=-0.88)
+side_right = pan(mono=0.56 * side_right_filter.low, position=0.88)
 pitch_round_time = t - 4 * repeat_spacing - 2.0
 dark_outer_position = 0.98 * sin(2 * pi() * 0.18 * pitch_round_time - pi() / 2)
 natural_inner_position = 0.26 * sin(2 * pi() * 0.32 * pitch_round_time)
-pitch_left = pan(source=0.54 * pitch_left_filter.low,
+pitch_left = pan(mono=0.54 * pitch_left_filter.low,
     position=dark_outer_position)
-pitch_right = pan(source=0.54 * pitch_right_filter.low,
+pitch_right = pan(mono=0.54 * pitch_right_filter.low,
     position=natural_inner_position)
 dry = {
     left = solo_dry.left + side_left.left + side_right.left +
@@ -100,10 +100,10 @@ room_left = phaser(source=room.left, sample_rate=$sample_rate,
     rate=0.10, depth=0.62, mix=0.36)
 room_right = phaser(source=room.right, sample_rate=$sample_rate,
     rate=0.19, depth=0.66, mix=0.36)
-wide_left = pan(source=room_left, position=-0.78)
-wide_right = pan(source=room_right, position=0.78)
+wide_left = pan(mono=room_left, position=-0.78)
+wide_right = pan(mono=room_right, position=0.78)
 room_motion = 0.82 * sin(2 * pi() * 0.12 * t)
-moving_room = pan(source=0.5 * (room_left + room_right), position=room_motion)
+moving_room = pan(mono=0.5 * (room_left + room_right), position=room_motion)
 space_left = wide_left.left + 0.28 * wide_right.left
 space_right = wide_right.right + 0.28 * wide_left.right
 duration = 25.00
