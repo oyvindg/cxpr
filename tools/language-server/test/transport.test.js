@@ -3,7 +3,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { encodeSemanticTokens, NodeWorkspace, selectAnalyzer } = require("../lsp-server");
+const { fileURLToPath } = require("node:url");
+const { encodeSemanticTokens, NodeWorkspace, WorkspaceReferenceIndex, TOKEN_TYPES,
+  selectAnalyzer } = require("../lsp-server");
 
 test("native transport is injected in-process", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cxpr-lsp-native-"));
@@ -30,7 +32,7 @@ test("semantic DTOs are encoded only in the LSP adapter", () => {
   assert.deepEqual(encodeSemanticTokens([
     { line: 1, start: 2, length: 3, type: "function" },
     { line: 1, start: 8, length: 2, type: "number" }
-  ]), { data: [1, 2, 3, 0, 0, 0, 6, 2, 15, 0] });
+  ]), { data: [1, 2, 3, 0, 0, 0, 6, 2, TOKEN_TYPES.indexOf("number"), 0] });
 });
 
 test("workspace resolves canonical Dynasty cxpr library imports", async () => {
@@ -51,6 +53,29 @@ test("workspace resolves modules from the nearest ancestor module root", async (
   assert.equal(target.path, path.join(root,
     "libs/audio/modules/instruments/retrowave/arp.cxpr"));
   assert.match(target.source, /model arp/);
+});
+
+test("reference index keeps identical module names isolated by nearest root", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cxpr-reference-roots-"));
+  try {
+    for (const project of ["alpha", "beta"]) {
+      fs.mkdirSync(path.join(root, project, "modules", "instruments"), { recursive: true });
+      fs.mkdirSync(path.join(root, project, "songs"), { recursive: true });
+      fs.writeFileSync(path.join(root, project, "modules", "instruments", "arp.cxpr"),
+        `model arp\nin value\nout sample = value\n`);
+      fs.writeFileSync(path.join(root, project, "songs", "song.cxpr"),
+        `model song\nuse arp from instruments\nout sample = arp(value=1)\n`);
+    }
+    const index = new WorkspaceReferenceIndex(new NodeWorkspace([root]));
+    await index.ensure();
+    const declaration = path.join(root, "alpha", "modules", "instruments", "arp.cxpr");
+    const target = index.targetAt(declaration, { line: 0, character: 7 });
+    const references = index.references(target, false);
+    assert.equal(references.length, 2);
+    assert.ok(references.every((item) => fileURLToPath(item.uri).includes(`${path.sep}alpha${path.sep}`)));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("language service resolves the complete nested modular synth graph", async () => {
