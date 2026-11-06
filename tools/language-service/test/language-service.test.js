@@ -258,6 +258,45 @@ test("each dotted import namespace token shows its folder", async () => {
   })
 })
 
+test("definition on a grouped import namespace resolves its exported models", async () => {
+  const sources = {
+    "/workspace/modules/instruments/native/lead.cxpr": "model lead\nout value = 1\n",
+    "/workspace/modules/instruments/native/bass.cxpr": "model bass\nout value = 1\n"
+  }
+  const analyzer = {
+    async analyzeDocument(source) {
+      const model = source.match(/^model\s+(\w+)/)?.[1]
+      return { ok: true, outline: model ? [{ kind: "model", name: model,
+        startLine: 0, startChar: 0, endLine: 0, endChar: 10 }] : [] }
+    },
+    async resolveAt(source) {
+      const model = source.match(/^model\s+(\w+)/)?.[1]
+      return model ? { name: model, kind: "model", definition: {
+        startLine: 0, startChar: 6, endLine: 0, endChar: 6 + model.length
+      } } : null
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile(file) { return sources[file] }, importDir() { return "/workspace/modules" },
+    async resolveImport(spec) {
+      const file = `/workspace/modules/${spec.replaceAll(".", "/")}.cxpr`
+      return sources[file] ? { path: file, source: sources[file] } : null
+    }
+  }
+  const definitions = await new LanguageService(analyzer, importWorkspace).getDefinitions(
+    "use lead, bass from instruments.native", { line: 0, column: 35 }, "/workspace/song.cxpr")
+
+  assert.deepEqual(definitions.map((item) => [item.uri, item.range]), [
+    ["/workspace/modules/instruments/native/lead.cxpr", {
+      start: { line: 0, character: 6 }, end: { line: 0, character: 10 }
+    }],
+    ["/workspace/modules/instruments/native/bass.cxpr", {
+      start: { line: 0, character: 6 }, end: { line: 0, character: 10 }
+    }]
+  ])
+})
+
 test("model result field diagnostics reject fields on scalars and unknown record fields", async () => {
   const analyzer = {
     async analyzeDocument(source) {
@@ -309,4 +348,109 @@ test("model result field diagnostics reject fields on scalars and unknown record
       start: { line: 2, character: 29 }, end: { line: 2, character: 35 }
     }]
   ])
+})
+
+test("model result field diagnostics accept nested record roots", async () => {
+  const analyzer = {
+    async analyzeDocument(source) {
+      if (source.startsWith("model sequencer")) return { ok: true, outline: [
+        { kind: "model", name: "sequencer", startLine: 0, startChar: 0, endLine: 0, endChar: 15 },
+        { kind: "output", name: "drums", startLine: 1, startChar: 0, endLine: 1, endChar: 40 },
+        { kind: "output", name: "bass", startLine: 1, startChar: 42, endLine: 1, endChar: 79 }
+      ] }
+      return { ok: true, diagnostics: [], functions: [] }
+    },
+    async resolveAt(source) {
+      if (source.startsWith("model sequencer")) return {
+        name: "sequencer", kind: "function", type: "unknown",
+        definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 15 }
+      }
+      return { name: "sequencer", kind: "unresolved", imports: ["sequencer"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const sequencer = "model sequencer\nout { drums = { kick_trigger = true }, bass = { age = 0, frequency = 55 } }\n"
+  const importWorkspace = {
+    async readFile() { return sequencer }, importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/sequencer.cxpr", source: sequencer } }
+  }
+  const diagnostics = await new LanguageService(analyzer, importWorkspace).getDiagnostics(
+    "seq = sequencer(t=0)\nsample = seq.bass.age + seq.drums.kick_trigger\n",
+    "/workspace/song.cxpr")
+
+  assert.deepEqual(diagnostics, [])
+})
+
+test("model result hover resolves a nested output leaf", async () => {
+  const sequencer = [
+    "model sequencer",
+    "out { drums = { kick_level = 1, snare_level = 0.8 }, duration = 1 }"
+  ].join("\n")
+  const analyzer = {
+    async analyzeDocument(source) {
+      return source === sequencer ? { ok: true, outline: [
+        { kind: "model", name: "sequencer", startLine: 0, startChar: 0, endLine: 0, endChar: 15 },
+        { kind: "output", name: "drums", startLine: 1, startChar: 6, endLine: 1, endChar: 54 },
+        { kind: "output", name: "duration", startLine: 1, startChar: 56, endLine: 1, endChar: 68 }
+      ] } : { ok: true, diagnostics: [], functions: [] }
+    },
+    async resolveAt(source) {
+      return source === sequencer
+        ? { name: "sequencer", kind: "function", type: "unknown",
+          definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 15 } }
+        : { name: "sequencer", kind: "unresolved", imports: ["sequencer"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile() { return sequencer }, importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/sequencer.cxpr", source: sequencer } }
+  }
+  const source = "model song\n\nseq = sequencer(t=0)\nsample = seq.drums.snare_level\n"
+  const hover = await new LanguageService(analyzer, importWorkspace)
+    .getHover(source, { line: 3, column: 25 }, "/workspace/song.cxpr")
+
+  assert.match(hover.markdown, /\*\*snare_level\*\*/)
+  assert.match(hover.markdown, /Output of `sequencer`/)
+  assert.deepEqual(hover.range, {
+    start: { line: 3, character: 19 }, end: { line: 3, character: 30 }
+  })
+
+  const groupHover = await new LanguageService(analyzer, importWorkspace)
+    .getHover(source, { line: 3, column: 15 }, "/workspace/song.cxpr")
+  assert.match(groupHover.markdown, /\*\*drums\*\*/)
+  assert.match(groupHover.markdown, /Returns `struct`/)
+  assert.match(groupHover.markdown, /`snare_level: number`/)
+  assert.deepEqual(groupHover.range, {
+    start: { line: 3, character: 13 }, end: { line: 3, character: 18 }
+  })
+})
+
+test("model result field diagnostics do not match a nested field as a root binding", async () => {
+  const voice = "model voice\nout sample = 0\n"
+  const analyzer = {
+    async analyzeDocument(source) {
+      return source === voice ? { ok: true, outline: [
+        { kind: "model", name: "voice", startLine: 0, startChar: 0, endLine: 0, endChar: 11 },
+        { kind: "output", name: "sample", startLine: 1, startChar: 4, endLine: 1, endChar: 10 }
+      ] } : { ok: true, diagnostics: [], functions: [] }
+    },
+    async resolveAt(source) {
+      return source === voice
+        ? { name: "voice", kind: "function", type: "number",
+          outputs: [{ name: "sample", type: "number" }] }
+        : { name: "voice", kind: "unresolved", imports: ["voice"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile() { return voice }, importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/voice.cxpr", source: voice } }
+  }
+  const diagnostics = await new LanguageService(analyzer, importWorkspace).getDiagnostics([
+    "stab = voice()",
+    "sample = seq.stab.frequency + stab"
+  ].join("\n"), "song.cxpr")
+
+  assert.deepEqual(diagnostics, [])
 })

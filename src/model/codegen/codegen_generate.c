@@ -20,6 +20,38 @@ static bool cxpr_model_c_contains_static_array(
     return false;
 }
 
+static bool cxpr_model_c_is_direct_alias(const cxpr_expr_ast* ast) {
+    const cxpr_expr_ast_kind kind = cxpr_expr_ast_kind_of(ast);
+    return kind == CXPR_NODE_FIELD_ACCESS;
+}
+
+static bool cxpr_model_c_output_alias_can_inline(
+    const cxpr_model_compiled* program, size_t binding_index) {
+    const cxpr_model_compiled_binding* binding;
+    bool is_output = false;
+    if (!program || binding_index >= program->binding_count) return false;
+    binding = &program->bindings[binding_index];
+    if (binding->kind == CXPR_MODEL_BINDING_STATE_UPDATE ||
+        !cxpr_model_c_is_direct_alias(binding->ast)) return false;
+    for (size_t i = 0u; i < program->fused_output_count; ++i) {
+        if (cxpr_model_names_match(program->fused_outputs[i].name, binding->name)) {
+            is_output = true;
+            break;
+        }
+    }
+    if (!is_output) return false;
+    for (size_t i = 0u; i < program->history_spec_count; ++i) {
+        if (cxpr_model_names_match(program->history_specs[i].name, binding->name))
+            return false;
+    }
+    for (size_t i = 0u; i < program->binding_count; ++i) {
+        if (i != binding_index && program->bindings[i].ast &&
+            cxpr_expr_ast_contains_reference(
+                program->bindings[i].ast, binding->name)) return false;
+    }
+    return true;
+}
+
 static bool cxpr_model_c_emit_record_leaves(
     cxpr_model_c_buf* b,
     const cxpr_model_compiled* program,
@@ -58,8 +90,13 @@ static bool cxpr_model_c_emit_record_leaves(
             free(expression);
             return false;
         }
-        cxpr_model_c_printf(b, "    const double %s = (double)(%s);\n",
-                            safe_name, expression);
+        /* A nested output alias may flatten to the same C name as its source
+         * binding (for example `stab.enabled = stab_enabled`). Reuse that
+         * binding instead of emitting a self-referential redeclaration. */
+        if (strcmp(safe_name, expression) != 0) {
+            cxpr_model_c_printf(b, "    const double %s = (double)(%s);\n",
+                                safe_name, expression);
+        }
         free(safe_name);
         free(expression);
     }
@@ -158,6 +195,8 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
      */
     for (size_t i = 0u; i < program->binding_count; ++i) {
         needed_bindings[i] = true;
+        if (cxpr_model_c_output_alias_can_inline(program, i))
+            skip_bindings[i] = true;
         if (!cxpr_model_collect_resample_cse(
                 &ast_target_data, program->bindings[i].ast, 0u)) goto oom;
     }
@@ -701,7 +740,18 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             free(field_name);
         } else {
             char* local_name = NULL;
-            local_name = cxpr_model_c_safe_name(name);
+            const cxpr_model_compiled_binding* output_binding =
+                cxpr_model_c_binding_for_name(program, name);
+            size_t output_binding_index = output_binding
+                ? (size_t)(output_binding - program->bindings) : (size_t)-1;
+            if (output_binding &&
+                cxpr_model_c_output_alias_can_inline(
+                    program, output_binding_index)) {
+                local_name = cxpr_expr_ast_to_c(
+                    output_binding->ast, &ast_target, err);
+            } else {
+                local_name = cxpr_model_c_safe_name(name);
+            }
             if (!local_name) {
                 static CXPR_THREAD_LOCAL char output_error[512];
                 snprintf(output_error, sizeof(output_error),

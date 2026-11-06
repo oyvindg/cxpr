@@ -47,6 +47,14 @@ export declare class LanguageService implements ICxprLanguageService {
      */
     private inferSumResult;
     getDefinitions(source: string, pos: Position, name: string): Promise<LanguageDefinition[]>;
+    /**
+     * Resolves a grouped import namespace to the declarations exported through it.
+     * @param source Complete consumer source.
+     * @param pos Cursor position within the dotted namespace after `from`.
+     * @param name Consumer document name used as the import-resolution origin.
+     * @returns Definition locations for the imported symbols, or an empty list outside a namespace.
+     */
+    private getNamespaceDefinitions;
     getDocumentSymbols(source: string, name: string): Promise<LanguageDocumentSymbol[]>;
     getFoldingRanges(source: string, name: string): Promise<LanguageFoldingRange[]>;
     getSemanticTokens(source: string, name: string): Promise<LanguageSemanticToken[]>;
@@ -59,5 +67,20 @@ export declare class LanguageService implements ICxprLanguageService {
      * @returns Resolution enriched with scalar or structured output metadata.
      */
     private withImportedOutputs;
+    /**
+     * Extracts leaf paths from a structured `out { ... }` declaration.
+     * @param source Complete imported model source.
+     * @returns Dotted output paths in declaration order.
+     */
+    private recordOutputLeaves;
+    /**
+     * Parses one output record while skipping scalar expressions and nested delimiters.
+     * @param source Complete imported model source.
+     * @param open Index of the record's opening brace.
+     * @param prefix Dotted parent path, or empty for the output root.
+     * @param leaves Mutable destination for discovered scalar leaf paths.
+     * @returns Index immediately after the record's closing brace.
+     */
+    private parseOutputRecord;
     private resolveImportedModule;
 }

@@ -153,6 +153,59 @@ static void test_imported_structured_output_field(void) {
     cxpr_model_free(root);
 }
 
+static void test_nested_anonymous_scalar_model_is_not_function_only(void) {
+    static const test_source sources[] = {
+        {
+            "channels.mono",
+            "model mono(pipe = \"stereo\")\n"
+            "in stereo { left, right }\n"
+            "$gain = 0.5\n"
+            "out $gain * (stereo.left + stereo.right)\n",
+        },
+        {
+            "room",
+            "model room\n"
+            "use mono from channels\n"
+            "in stereo\n"
+            "out stereo |> mono(gain=0.5)\n",
+        },
+    };
+    const char root_source[] =
+        "model root\n"
+        "use room\n"
+        "in stereo { left, right }\n"
+        "out room(stereo=stereo)\n";
+    test_loader loader = {sources, 2u};
+    cxpr_error err = {0};
+    cxpr_model* root = cxpr_model_parse(root_source, &err);
+    cxpr_model_import_bundle* bundle;
+    const cxpr_model_import* imports;
+    cxpr_model_compiled* program;
+    size_t import_count = 0u;
+
+    assert(root);
+    bundle = cxpr_model_import_bundle_build(
+        "root", root, load_source, &loader, &err);
+    if (!bundle) {
+        fprintf(stderr, "anonymous scalar import bundle failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(bundle);
+    imports = cxpr_model_import_bundle_root_imports(bundle, &import_count);
+    assert(imports && import_count == 1u);
+    program = cxpr_model_compile_with_imports(
+        root, NULL, imports, import_count, &err);
+    if (!program) {
+        fprintf(stderr, "anonymous scalar root compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(program);
+
+    cxpr_model_compiled_free(program);
+    cxpr_model_import_bundle_free(bundle);
+    cxpr_model_free(root);
+}
+
 static void test_cycle_is_rejected(void) {
     static const test_source sources[] = {
         {"a", "model a\nuse b\nout value = 1\n"},
@@ -197,6 +250,7 @@ int main(void) {
     test_function_only_import();
     test_imported_function_preserves_resample();
     test_imported_structured_output_field();
+    test_nested_anonymous_scalar_model_is_not_function_only();
     test_cycle_is_rejected();
     test_duplicate_namespace_is_rejected();
     return 0;

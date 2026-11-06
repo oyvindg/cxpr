@@ -301,12 +301,16 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                 source_arg = cxpr_expr_ast_producer_arg(ast, i);
             }
             if (!source_arg && rooted_field) {
-                const cxpr_expr_ast* rooted_source =
-                    program->children[child_index].pipe_target
+                const bool pipe_root = rooted_arg &&
+                    program->children[child_index].pipe_target &&
+                    cxpr_model_names_match(
+                        rooted_arg,
+                        program->children[child_index].pipe_target);
+                const cxpr_expr_ast* rooted_source = pipe_root
                     ? cxpr_model_child_call_source_arg(
                           &program->children[child_index], child, ast)
                     : NULL;
-                if (!rooted_source && program->children[child_index].pipe_target) {
+                if (!rooted_source && pipe_root) {
                     for (size_t arg_i = 0u;
                          arg_i < cxpr_expr_ast_producer_arg_count(ast); ++arg_i) {
                         const char* name = cxpr_expr_ast_producer_arg_name(ast, arg_i);
@@ -317,8 +321,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                         }
                     }
                 }
-                if (!rooted_source &&
-                    program->children[child_index].pipe_target &&
+                if (!rooted_source && pipe_root &&
                     cxpr_expr_ast_producer_arg_count(ast) > 0u &&
                     !cxpr_expr_ast_producer_arg_name(ast, 0u)) {
                     rooted_source = cxpr_expr_ast_producer_arg(ast, 0u);

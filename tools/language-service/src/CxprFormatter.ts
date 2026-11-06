@@ -24,15 +24,15 @@ export class CxprFormatter implements ICxprFormatter {
     const newline = source.includes("\r\n") ? "\r\n" : "\n"
     const finalNewline = /\r?\n$/.test(source)
     const lines = this.normalizeRecordLayout(this.normalizeAssignmentLayout(
-      this.normalizeInlineParentheses(this.normalizeVerticalArithmetic(
+      this.normalizeInlineParentheses(this.normalizeVerticalCallLists(this.normalizeVerticalArithmetic(
         this.normalizeOutputLists(this.joinBareOutput(
-          source.replace(/\r\n/g, "\n").split("\n")))))))
+          source.replace(/\r\n/g, "\n").split("\n"))))))))
     if (finalNewline) lines.pop()
     const size = Number.isInteger(options.tabSize) && (options.tabSize ?? 0) > 0
       ? options.tabSize as number : 4
     const indent = options.insertSpaces === false ? "\t" : " ".repeat(size)
     let blockDepth = 0
-    let groupingDepth = 0
+    const groupingStack: Array<{ delimiter: string; visual: boolean }> = []
     let previousContinues = false
     let inBlockComment = false
 
@@ -46,16 +46,13 @@ export class CxprFormatter implements ICxprFormatter {
       inBlockComment = shaped.inBlockComment
       const shape = shaped.code.trim()
       const blockCloses = shape.match(/^\}+/)?.[0].length ?? 0
-      const groupingCloses = shape.match(/^[\])]+/)?.[0].length ?? 0
       const lineBlockDepth = Math.max(0, blockDepth - blockCloses)
-      const lineGroupingDepth = Math.max(0, groupingDepth - groupingCloses)
+      const lineGroupingDepth = this.groupingDepthAfterLeadingClosers(groupingStack, shape)
       const continuationDepth = lineGroupingDepth === 0 &&
         (previousContinues || this.startsContinuation(shape)) ? 1 : 0
       const formatted = `${indent.repeat(lineBlockDepth + lineGroupingDepth + continuationDepth)}${text}`
       blockDepth = Math.max(0, blockDepth + this.count("{", shape) - this.count("}", shape))
-      groupingDepth = Math.max(0,
-        groupingDepth + this.count("(", shape) + this.count("[", shape) -
-        this.count(")", shape) - this.count("]", shape))
+      this.updateGroupingStack(groupingStack, shape)
       previousContinues = this.endsContinuation(shape)
       return formatted
     })
@@ -128,14 +125,44 @@ export class CxprFormatter implements ICxprFormatter {
     return [...text].filter((candidate) => candidate === character).length
   }
 
+  /**
+   * Calculates indentation after applying closing delimiters at the start of a line.
+   * @param stack Active grouping delimiters from preceding lines.
+   * @param text Delimiter-safe source line.
+   * @returns Visual grouping depth for the current line.
+   */
+  private groupingDepthAfterLeadingClosers(
+    stack: Array<{ delimiter: string; visual: boolean }>, text: string): number {
+    const remaining = [...stack]
+    for (const character of text.match(/^[\])]+/)?.[0] ?? "") remaining.pop()
+    return remaining.filter((entry) => entry.visual).length
+  }
+
+  /**
+   * Tracks grouping delimiters across lines without double-indenting direct call-wrapped lists.
+   * @param stack Mutable active grouping stack.
+   * @param text Delimiter-safe source line.
+   */
+  private updateGroupingStack(
+    stack: Array<{ delimiter: string; visual: boolean }>, text: string): void {
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index]
+      if (character === "(") stack.push({ delimiter: character, visual: true })
+      else if (character === "[") {
+        const previous = text.slice(0, index).trimEnd().at(-1)
+        stack.push({ delimiter: character, visual: previous !== "(" })
+      } else if (character === ")" || character === "]") stack.pop()
+    }
+  }
+
   /** @param text Safe source line. @returns Whether the line starts a continuation. */
   private startsContinuation(text: string): boolean {
-    return /^(?:and\b|or\b|[+*/%?:]|-(?!>))/.test(text)
+    return /^(?:and\b|or\b|\|>|[+*/%?:]|-(?!>))/.test(text)
   }
 
   /** @param text Safe source line. @returns Whether the next line continues this expression. */
   private endsContinuation(text: string): boolean {
-    return /(?:=|\b(?:and|or)|[+\-*/%?:]|&&|\|\|)\s*$/.test(text) &&
+    return /(?:=|\b(?:and|or)|[+\-*/%?:]|&&|\|\||\|>)\s*$/.test(text) &&
       !/(?:==|!=|<=|>=)\s*$/.test(text)
   }
 
@@ -241,6 +268,53 @@ export class CxprFormatter implements ICxprFormatter {
   }
 
   /**
+   * Expands a call-wrapped list when its first value starts on the following line.
+   * @param lines Source lines after output normalization.
+   * @returns Lines with top-level list values written one per line.
+   */
+  private normalizeVerticalCallLists(lines: string[]): string[] {
+    const result: string[] = []
+    for (let index = 0; index < lines.length; index += 1) {
+      const shaped = this.codeShape(lines[index], false).code
+      const open = shaped.lastIndexOf("[")
+      if (open < 0 || shaped.slice(open + 1).trim() || !/\(\s*$/.test(shaped.slice(0, open))) {
+        result.push(lines[index])
+        continue
+      }
+
+      let depth = 1
+      let closeLine = -1
+      let closeColumn = -1
+      for (let cursor = index + 1; cursor < lines.length && closeLine < 0; cursor += 1) {
+        const continuation = this.codeShape(lines[cursor], false).code
+        for (let column = 0; column < continuation.length; column += 1) {
+          if (continuation[column] === "[") depth += 1
+          else if (continuation[column] === "]" && --depth === 0) {
+            closeLine = cursor
+            closeColumn = column
+            break
+          }
+        }
+      }
+      if (closeLine < 0) {
+        result.push(lines[index])
+        continue
+      }
+
+      const content = lines.slice(index + 1, closeLine).concat(
+        lines[closeLine].slice(0, closeColumn)).join("\n").trim()
+      const values = this.splitRecordFields(content)
+      const suffix = lines[closeLine].slice(closeColumn + 1).trim()
+      result.push(lines[index].trimEnd())
+      values.forEach((value, valueIndex) =>
+        result.push(`${value}${valueIndex + 1 < values.length ? "," : ""}`))
+      result.push(`]${suffix}`)
+      index = closeLine
+    }
+    return result
+  }
+
+  /**
    * Collapses parenthesized expressions whose opening line already contains content.
    * A line ending at the unmatched opening parenthesis retains hanging layout intent.
    * @param lines Source lines after output normalization.
@@ -256,7 +330,8 @@ export class CxprFormatter implements ICxprFormatter {
         else if (shaped[column] === ")") openings.pop()
       }
       const unmatched = openings.at(-1)
-      if (unmatched === undefined || !shaped.slice(unmatched + 1).trim()) {
+      const openingContent = unmatched === undefined ? "" : shaped.slice(unmatched + 1).trim()
+      if (unmatched === undefined || !openingContent || /^[\[{]$/.test(openingContent)) {
         result.push(lines[index])
         continue
       }
@@ -409,6 +484,10 @@ export class CxprFormatter implements ICxprFormatter {
           continue
         }
       }
+      if (/\|>\s*$/.test(shaped)) {
+        result.push(lines[index])
+        continue
+      }
       if (!/^[$A-Za-z_][$A-Za-z0-9_]*\s*=\s*\S/.test(shaped) ||
           !this.endsContinuation(shaped)) {
         result.push(lines[index])
@@ -473,16 +552,55 @@ export class CxprFormatter implements ICxprFormatter {
       const suffix = lines[closeLine].slice(closeColumn + 1).trim()
       if (firstContent) {
         result.push(`${prefix} ${content.replace(/\s+/g, " ")} }${suffix ? ` ${suffix}` : ""}`)
+      } else if (!this.hasPackedRecordFields(content)) {
+        result.push(...lines.slice(index, closeLine + 1))
       } else {
         const fields = this.splitRecordFields(content)
         result.push(prefix)
-        fields.forEach((field, fieldIndex) =>
-          result.push(`${field}${fieldIndex + 1 < fields.length ? "," : ""}`))
+        fields.forEach((field, fieldIndex) => {
+          const rendered = this.renderRecordField(field)
+          rendered[rendered.length - 1] += fieldIndex + 1 < fields.length ? "," : ""
+          result.push(...rendered)
+        })
         result.push(`}${suffix ? ` ${suffix}` : ""}`)
       }
       index = closeLine
     }
     return result
+  }
+
+  /**
+   * Detects whether a vertical record has multiple top-level fields on one physical line.
+   * @param content Record body with its original line breaks.
+   * @returns True when field splitting is required.
+   */
+  private hasPackedRecordFields(content: string): boolean {
+    let depth = 0
+    let quote: string | null = null
+    let inLineComment = false
+    for (let index = 0; index < content.length; index += 1) {
+      const character = content[index]
+      const next = content[index + 1]
+      if (character === "\n") {
+        inLineComment = false
+        continue
+      }
+      if (inLineComment) continue
+      if (quote) {
+        if (character === quote && content[index - 1] !== "\\") quote = null
+        continue
+      }
+      if (character === '"' || character === "'") quote = character
+      else if (character === "#" || (character === "/" && next === "/")) inLineComment = true
+      else if (character === "{" || character === "(" || character === "[") depth += 1
+      else if (character === "}" || character === ")" || character === "]") depth -= 1
+      else if (character === "," && depth === 0) {
+        const lineEnd = content.indexOf("\n", index + 1)
+        const remainder = content.slice(index + 1, lineEnd < 0 ? content.length : lineEnd)
+        if (remainder.trim()) return true
+      }
+    }
+    return false
   }
 
   /** @param line Candidate opening line. @param open Brace column. @returns Whether it opens a record expression. */
@@ -512,6 +630,43 @@ export class CxprFormatter implements ICxprFormatter {
     const tail = content.slice(start).trim().replace(/\s+/g, " ")
     if (tail) fields.push(tail)
     return fields
+  }
+
+  /**
+   * Expands a record-valued field so nested records follow their parent's vertical layout.
+   * @param field Normalized record field text.
+   * @returns One or more field lines without the parent's trailing comma.
+   */
+  private renderRecordField(field: string): string[] {
+    const open = field.indexOf("{")
+    if (open < 0 || !this.isRecordOpening(field, open)) return [field]
+
+    let depth = 0
+    let close = -1
+    let quote: string | null = null
+    for (let index = open; index < field.length; index += 1) {
+      const character = field[index]
+      if (quote) {
+        if (character === quote && field[index - 1] !== "\\") quote = null
+      } else if (character === '"' || character === "'") quote = character
+      else if (character === "{") depth += 1
+      else if (character === "}" && --depth === 0) {
+        close = index
+        break
+      }
+    }
+    if (close < 0 || field.slice(close + 1).trim()) return [field]
+
+    const children = this.splitRecordFields(field.slice(open + 1, close))
+    if (!children.length) return [field]
+    const lines = [field.slice(0, open + 1).trimEnd()]
+    children.forEach((child, childIndex) => {
+      const rendered = this.renderRecordField(child)
+      rendered[rendered.length - 1] += childIndex + 1 < children.length ? "," : ""
+      lines.push(...rendered)
+    })
+    lines.push("}")
+    return lines
   }
 
   /**
@@ -546,6 +701,13 @@ export class CxprFormatter implements ICxprFormatter {
       }
       if (closeLine <= index) {
         result.push(line)
+        continue
+      }
+      const openingContent = line.slice(open + 1).trim()
+      const closingContent = lines[closeLine].slice(0, closeColumn).trim()
+      if (openingContent === "[" && closingContent === "]") {
+        result.push(...lines.slice(index, closeLine + 1))
+        index = closeLine
         continue
       }
       const parts = [line.slice(open + 1)]

@@ -1,6 +1,7 @@
 #include <cxpr/model/imports.h>
 
 #include "core.h"
+#include "model/internal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,7 +90,10 @@ static char* import_make_compilable_source(
     size_t header_size = cxpr_model_name(model) ? 0u : sizeof(header) - 1u;
     size_t source_size = strlen(source);
     size_t output_size =
-        cxpr_model_output_count(model) == 0u ? sizeof(output) - 1u : 0u;
+        cxpr_model_output_count(model) == 0u &&
+        model->anonymous_output_count == 0u
+            ? sizeof(output) - 1u
+            : 0u;
     char* result = (char*)malloc(header_size + source_size + output_size + 1u);
     if (!result) return NULL;
     if (header_size) memcpy(result, header, header_size);
@@ -175,7 +179,8 @@ static bool import_compile(
         import_add_source_context(err, id);
         goto fail;
     }
-    function_only = cxpr_model_output_count(model) == 0u;
+    function_only = cxpr_model_output_count(model) == 0u &&
+                    model->anonymous_output_count == 0u;
     for (i = 0u; i < cxpr_model_use_count(model); ++i) {
         cxpr_model_import_node* child;
         cxpr_model_import* grown;

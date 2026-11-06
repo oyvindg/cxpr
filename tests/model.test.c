@@ -2906,6 +2906,66 @@ static void test_imported_producer_anonymous_scalar_materializes_local(void) {
     printf("  ✓ test_imported_producer_anonymous_scalar_materializes_local\n");
 }
 
+static void test_imported_anonymous_scalar_pipe_in_collection(void) {
+    cxpr_error err = {0};
+    double value = 0.0;
+    cxpr_model* child = parse_model_ok(
+        "model mono(pipe = \"stereo\")\n"
+        "in stereo { left, right }\n"
+        "$gain = 0.5\n"
+        "out $gain * (stereo.left + stereo.right)\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model* gain_child;
+    cxpr_model_compiled* gain_program;
+    cxpr_model_import imports[2];
+    cxpr_model* parent;
+    cxpr_model_compiled* parent_program;
+    cxpr_model_session* session;
+
+    assert(child_program != NULL);
+    gain_child = parse_model_ok(
+        "model gain(pipe = \"stereo\")\n"
+        "in stereo { left, right }\n"
+        "$level = 1\n"
+        "out { left = stereo.left * $level, right = stereo.right * $level }\n");
+    gain_program = cxpr_model_compile(gain_child, NULL, &err);
+    assert(gain_program != NULL);
+    imports[0] = (cxpr_model_import){.name = "channels.mono", .program = child_program};
+    imports[1] = (cxpr_model_import){.name = "stereo.effects.gain", .program = gain_program};
+    parent = parse_model_ok(
+        "model room\n"
+        "use mono from channels\n"
+        "use gain from stereo.effects\n"
+        "in stereo\n"
+        "send = stereo |> gain(level=0.5)\n"
+        "mixed = sum([stereo |> mono(gain=0.25), "
+        "stereo |> mono(gain=0.75)]) + 0 * send.left\n"
+        "out mixed\n");
+    parent_program = cxpr_model_compile_with_imports(
+        parent, NULL, imports, 2u, &err);
+    if (!parent_program) {
+        fprintf(stderr, "anonymous scalar pipe compile failed: %s\n",
+                err.message ? err.message : "(null)");
+    }
+    assert(parent_program != NULL);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    cxpr_context_set(cxpr_model_session_context(session), "stereo.left", 2.0);
+    cxpr_context_set(cxpr_model_session_context(session), "stereo.right", 4.0);
+    assert(cxpr_model_session_tick(parent_program, session, NULL, &err));
+    assert(cxpr_model_session_get_number(session, "mixed", &value));
+    assert(fabs(value - 6.0) < 1e-12);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(gain_program);
+    cxpr_model_free(gain_child);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  ✓ test_imported_anonymous_scalar_pipe_in_collection\n");
+}
+
 static void test_compile_imported_functions_are_namespaced(void) {
     cxpr_error err = {0};
     char* code;
@@ -3423,6 +3483,8 @@ static void test_imported_model_binds_multiple_inferred_rooted_arguments(void) {
     if (!code) fprintf(stderr, "multi-root C emit failed: %s\n",
                        err.message ? err.message : "(null)");
     assert(code != NULL);
+    assert(strstr(code,
+        "_cx_input_0, _cx_input_1, _cx_input_2, _cx_input_3") != NULL);
     free(code);
     cxpr_model_session_free(session);
     cxpr_model_compiled_free(program);
@@ -5207,6 +5269,42 @@ static void test_structural_sum_emits_nested_record_c(void) {
     printf("  ✓ test_structural_sum_emits_nested_record_c\n");
 }
 
+static void test_structural_sum_field_aliases_emit_fused_c(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model structural_sum_aliases\n"
+        "in { a, b, c, d }\n"
+        "first = { left = a, right = b }\n"
+        "second = { left = c, right = d }\n"
+        "voices = [first, second]\n"
+        "stereo = sum(voices)\n"
+        "left = stereo.left\n"
+        "right = stereo.right\n"
+        "out left, right\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+
+    if (!program) fprintf(stderr, "structural sum alias compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "structural_sum_aliases_tick", &err);
+    if (!code) fprintf(stderr, "structural sum alias C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    assert(strstr(code, "_cx_input_0 + _cx_input_2") != NULL);
+    assert(strstr(code, "_cx_input_1 + _cx_input_3") != NULL);
+    assert(strstr(code, "const double left =") == NULL);
+    assert(strstr(code, "const double right =") == NULL);
+    assert(strstr(code, "cxpr_num(stereo_left)") != NULL);
+    assert(strstr(code, "cxpr_num(stereo_right)") != NULL);
+    assert(strstr(code, "CALL_AST") == NULL);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_structural_sum_field_aliases_emit_fused_c\n");
+}
+
 static void test_structural_sum_accepts_imported_pipe_model_records(void) {
     cxpr_error err = {0};
     const cxpr_model_compile_options options = {
@@ -6163,6 +6261,7 @@ int main(void) {
     test_compile_imported_producer_infers_missing_child_inputs();
     test_imported_producer_anonymous_out_expands_child_outputs();
     test_imported_producer_anonymous_scalar_materializes_local();
+    test_imported_anonymous_scalar_pipe_in_collection();
     test_compile_imported_functions_are_namespaced();
     test_compile_import_alias_namespaces_child_producer();
     test_compile_import_path_uses_leaf_namespace();
@@ -6204,6 +6303,7 @@ int main(void) {
     test_static_reduce_compiles_and_emits_c_tick();
     test_static_record_map_binding_emits_c_tick();
     test_structural_sum_emits_nested_record_c();
+    test_structural_sum_field_aliases_emit_fused_c();
     test_structural_sum_accepts_imported_pipe_model_records();
     test_structural_sum_accepts_nested_imported_pipe_models();
     test_window_param_bounds_drive_capacity_and_session_clamp();

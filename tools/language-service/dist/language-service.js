@@ -210,12 +210,14 @@ class LanguageService {
                 /^\s*[^-]+->\s*\{/.test(resolution.typedSignature || "");
             if (!imported && !explicitStruct)
                 continue;
-            const fields = new Set((resolution.outputs || []).map((output) => output.name));
+            // Model metadata flattens nested record leaves (for example `bass.age`).
+            // Field access at this level must be checked against the record root.
+            const fields = new Set((resolution.outputs || []).map((output) => output.name.split(".")[0]));
             if (fields.size === 0)
                 continue;
             const scalar = resolution.type !== "struct" &&
                 !/^\s*[^-]+->\s*\{/.test(resolution.typedSignature || "") && fields.size === 1;
-            const access = new RegExp(`\\b${binding}\\.([A-Za-z_][A-Za-z0-9_]*)`, "g");
+            const access = new RegExp(`(?<![A-Za-z0-9_.])${binding}\\.([A-Za-z_][A-Za-z0-9_]*)`, "g");
             for (let line = 0; line < lines.length; line += 1) {
                 for (const match of lines[line].matchAll(access)) {
                     const field = match[1];
@@ -313,22 +315,31 @@ class LanguageService {
      */
     async getModelResultFieldHover(source, pos, name) {
         const line = source.split("\n")[pos.line] || "";
-        const access = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)/g;
+        const access = /\b([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z_][A-Za-z0-9_]*)+)/g;
         let binding = "";
         let field = "";
         let fieldStart = -1;
+        let fieldLength = 0;
         for (const match of line.matchAll(access)) {
-            const start = (match.index || 0) + match[1].length + 1;
-            if (pos.column < start || pos.column > start + match[2].length)
-                continue;
-            binding = match[1];
-            field = match[2];
-            fieldStart = start;
-            break;
+            const segments = match[2].slice(1).split(".");
+            let start = (match.index || 0) + match[1].length + 1;
+            for (let index = 0; index < segments.length; index += 1) {
+                const segment = segments[index];
+                if (pos.column >= start && pos.column <= start + segment.length) {
+                    binding = match[1];
+                    field = segments.slice(0, index + 1).join(".");
+                    fieldStart = start;
+                    fieldLength = segment.length;
+                    break;
+                }
+                start += segment.length + 1;
+            }
+            if (binding)
+                break;
         }
         if (!binding)
             return null;
-        const assignment = new RegExp(`^\\s*${binding.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\(`, "m");
+        const assignment = new RegExp(`^[ \\t]*${binding.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}[ \\t]*=[ \\t]*([A-Za-z_][A-Za-z0-9_]*)[ \\t]*\\(`, "m");
         const call = source.match(assignment);
         if (!call || call.index === undefined)
             return null;
@@ -347,18 +358,24 @@ class LanguageService {
             resolution = (await this.resolveImported(name, { ...resolution, imports }))?.resolution ?? resolution;
         }
         const output = resolution.outputs?.find((candidate) => candidate.name === field);
-        if (!output)
+        const nested = (resolution.outputs || []).filter((candidate) => candidate.name.startsWith(`${field}.`));
+        if (!output && nested.length === 0)
             return null;
+        const leafName = field.split(".").at(-1) || field;
+        const nestedOutputs = nested.map((candidate) => ({
+            ...candidate, name: candidate.name.slice(field.length + 1)
+        }));
         return {
             markdown: hoverMarkdown({
-                name: field,
+                name: leafName,
                 kind: "output",
-                type: output.type,
+                type: output?.type || "struct",
+                outputs: nestedOutputs.length ? nestedOutputs : undefined,
                 documentation: `Output of \`${call[1]}\`.`
             }),
             range: {
                 start: { line: pos.line, character: fieldStart },
-                end: { line: pos.line, character: fieldStart + field.length }
+                end: { line: pos.line, character: fieldStart + fieldLength }
             }
         };
     }
@@ -449,6 +466,9 @@ class LanguageService {
         return fallback;
     }
     async getDefinitions(source, pos, name) {
+        const namespaceDefinitions = await this.getNamespaceDefinitions(source, pos, name);
+        if (namespaceDefinitions.length)
+            return namespaceDefinitions;
         const resolution = await this.analyzer.resolveAt(source, name, pos);
         if (!resolution)
             return [];
@@ -460,6 +480,34 @@ class LanguageService {
         return imported?.resolution.definition
             ? [{ uri: imported.uri, range: range(imported.resolution.definition), source: imported.source }]
             : [];
+    }
+    /**
+     * Resolves a grouped import namespace to the declarations exported through it.
+     * @param source Complete consumer source.
+     * @param pos Cursor position within the dotted namespace after `from`.
+     * @param name Consumer document name used as the import-resolution origin.
+     * @returns Definition locations for the imported symbols, or an empty list outside a namespace.
+     */
+    async getNamespaceDefinitions(source, pos, name) {
+        const line = source.split("\n")[pos.line] || "";
+        const grouped = line.match(/^\s*use\s+(.+?)\s+from\s+([A-Za-z_][A-Za-z0-9_.]*)\s*(?:#.*)?$/);
+        if (!grouped || grouped.index === undefined)
+            return [];
+        const namespace = grouped[2];
+        const start = grouped.index + grouped[0].lastIndexOf(namespace);
+        if (pos.column < start || pos.column > start + namespace.length)
+            return [];
+        const imports = grouped[1].split(",").map((item) => item.trim())
+            .filter((item) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(item));
+        const definitions = await Promise.all(imports.map(async (symbol) => {
+            const imported = await this.resolveImported(name, {
+                name: symbol, kind: "unresolved", imports: [`${namespace}.${symbol}`]
+            });
+            return imported?.resolution.definition
+                ? { uri: imported.uri, range: range(imported.resolution.definition), source: imported.source }
+                : null;
+        }));
+        return definitions.filter((item) => item !== null);
     }
     async getDocumentSymbols(source, name) {
         const analysis = await this.analyzer.analyzeDocument(source, name);
@@ -547,13 +595,90 @@ class LanguageService {
                     declaredNames.push(name);
             }
         }
-        const declaredOutputs = [...new Set(declaredNames)].map((name) => ({ name, type: "number" }));
-        const candidates = [resolution.outputs ?? [], outlinedOutputs, declaredOutputs];
-        const outputs = candidates.reduce((best, candidate) => candidate.length > best.length ? candidate : best, []);
+        const recordLeaves = this.recordOutputLeaves(source);
+        const declaredOutputs = [...new Set(recordLeaves.length ? recordLeaves : declaredNames)]
+            .map((name) => ({ name, type: "number" }));
+        // The analyzer outline is parser-backed and preserves top-level fields of
+        // nested records. The regex fallback stops at the first nested `}` and may
+        // collect inner fields while dropping later roots such as `bass`.
+        const outputs = recordLeaves.length
+            ? declaredOutputs
+            : outlinedOutputs.length ? outlinedOutputs
+                : resolution.outputs?.length ? resolution.outputs : declaredOutputs;
         if (!outputs.length)
             return anonymousOutput ? { ...resolution, type: "number" } : resolution;
         const structured = structuredSyntax || outputs.length > 1;
         return { ...resolution, type: structured ? "struct" : "number", outputs };
+    }
+    /**
+     * Extracts leaf paths from a structured `out { ... }` declaration.
+     * @param source Complete imported model source.
+     * @returns Dotted output paths in declaration order.
+     */
+    recordOutputLeaves(source) {
+        const match = /\bout\s*\{/.exec(source);
+        if (!match)
+            return [];
+        const leaves = [];
+        this.parseOutputRecord(source, match.index + match[0].length - 1, "", leaves);
+        return leaves;
+    }
+    /**
+     * Parses one output record while skipping scalar expressions and nested delimiters.
+     * @param source Complete imported model source.
+     * @param open Index of the record's opening brace.
+     * @param prefix Dotted parent path, or empty for the output root.
+     * @param leaves Mutable destination for discovered scalar leaf paths.
+     * @returns Index immediately after the record's closing brace.
+     */
+    parseOutputRecord(source, open, prefix, leaves) {
+        let index = open + 1;
+        while (index < source.length) {
+            while (index < source.length && /[\s,]/.test(source[index]))
+                index += 1;
+            if (source[index] === "}")
+                return index + 1;
+            const name = source.slice(index).match(/^[A-Za-z_][A-Za-z0-9_]*/)?.[0];
+            if (!name) {
+                index += 1;
+                continue;
+            }
+            index += name.length;
+            while (/\s/.test(source[index] || ""))
+                index += 1;
+            const path = prefix ? `${prefix}.${name}` : name;
+            if (source[index] !== "=") {
+                leaves.push(path);
+                while (index < source.length && source[index] !== "," && source[index] !== "}")
+                    index += 1;
+                continue;
+            }
+            index += 1;
+            while (/\s/.test(source[index] || ""))
+                index += 1;
+            if (source[index] === "{") {
+                index = this.parseOutputRecord(source, index, path, leaves);
+                continue;
+            }
+            leaves.push(path);
+            let round = 0;
+            let square = 0;
+            while (index < source.length) {
+                const character = source[index];
+                if (character === "(")
+                    round += 1;
+                else if (character === ")")
+                    round -= 1;
+                else if (character === "[")
+                    square += 1;
+                else if (character === "]")
+                    square -= 1;
+                else if (round === 0 && square === 0 && (character === "," || character === "}"))
+                    break;
+                index += 1;
+            }
+        }
+        return index;
     }
     async resolveImportedModule(from, unresolved) {
         for (const spec of unresolved.imports || []) {

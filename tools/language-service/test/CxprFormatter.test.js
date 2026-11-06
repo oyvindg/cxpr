@@ -33,7 +33,7 @@ test("record opening layout controls vertical versus inline formatting", () => {
     "    left = 0.76 * shadow_pad_left,",
     "    right = 0.76 * shadow_pad_right",
     "}",
-    "|> hall(feedback=0.92)",
+    "    |> hall(feedback=0.92)",
     ""
   ].join("\n"))
 
@@ -44,6 +44,53 @@ test("record opening layout controls vertical versus inline formatting", () => {
     ""
   ].join("\n")),
   "shadow_pad_room = { left = 0.76 * shadow_pad_left, right = 0.76 * shadow_pad_right }\n")
+})
+
+test("indents pipeline continuations", () => {
+  const formatter = new CxprFormatter()
+  assert.equal(formatter.format([
+    "stereo = compressed",
+    "|> tape(sample_rate=$sample_rate, drive=1.18, mix=0.72)",
+    "|> master(t=t, sample_rate=$sample_rate, gain=$master_gain)",
+    ""
+  ].join("\n")), [
+    "stereo = compressed",
+    "    |> tape(sample_rate=$sample_rate, drive=1.18, mix=0.72)",
+    "    |> master(t=t, sample_rate=$sample_rate, gain=$master_gain)",
+    ""
+  ].join("\n"))
+})
+
+test("preserves a line break after a trailing pipeline operator", () => {
+  const formatter = new CxprFormatter()
+  assert.equal(formatter.format([
+    "chamber_return = chamber_send |>",
+    "chamber(sample_rate=$sample_rate, feedback=0.26)",
+    ""
+  ].join("\n")), [
+    "chamber_return = chamber_send |>",
+    "    chamber(sample_rate=$sample_rate, feedback=0.26)",
+    ""
+  ].join("\n"))
+})
+
+test("preserves explicit indentation of deeply nested records", () => {
+  const formatter = new CxprFormatter()
+  const source = [
+    "snare = {",
+    "    pattern = true,",
+    "    hit = {",
+    "        cycle = clock.tick % 7,",
+    "        variation = cycle == 0 ? 1.12 : 0.86",
+    "    },",
+    "    roll = {",
+    "        enabled = true,",
+    "        hit = active and primary",
+    "    }",
+    "}",
+    ""
+  ].join("\n")
+  assert.equal(formatter.format(source), source)
 })
 
 test("inline state records stay on one line", () => {
@@ -66,6 +113,41 @@ test("inline parenthesized expressions stay on one line", () => {
     "hammer = hammer_contact * (0.038 * sin(2 * pi() * 7.11 * phase_now) + 0.022 * sin(2 * pi() * 10.37 * phase_now)) # hammer partials",
     ""
   ].join("\n"))
+})
+
+test("preserves multiline lists wrapped in calls", () => {
+  const formatter = new CxprFormatter()
+  const source = [
+    "chamber_send = sum([",
+    "    snare |> gain(level=0.26),",
+    "    clap |> gain(level=0.18),",
+    "    hats |> gain(level=0.08),",
+    "    stabs |> gain(level=0.24)",
+    "])",
+    ""
+  ].join("\n")
+  assert.equal(formatter.format(source), source)
+})
+
+test("uses the first list value to select vertical call-list layout", () => {
+  const formatter = new CxprFormatter()
+  assert.equal(formatter.format([
+    "gate_source = sum([ ",
+    "snare |> mono(gain=0.54), clap |> mono(gain=0.81) ]) # gated layers",
+    ""
+  ].join("\n")), [
+    "gate_source = sum([",
+    "    snare |> mono(gain=0.54),",
+    "    clap |> mono(gain=0.81)",
+    "]) # gated layers",
+    ""
+  ].join("\n"))
+
+  assert.equal(formatter.format([
+    "gate_source = sum([snare |> mono(gain=0.54),",
+    "clap |> mono(gain=0.81)])",
+    ""
+  ].join("\n")), "gate_source = sum([snare |> mono(gain=0.54), clap |> mono(gain=0.81)])\n")
 })
 
 test("a newline immediately after an opening parenthesis selects vertical arithmetic layout", () => {

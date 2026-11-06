@@ -1684,6 +1684,19 @@ static bool cxpr_doc_ast_parse_host_statement(cxpr_doc_ast_parser* parser,
     return true;
 }
 
+/** Returns whether the accumulated statement ends with a forward pipe. */
+static bool cxpr_doc_ast_statement_ends_with_pipe(
+    const char* source, size_t statement_start, size_t line_start) {
+    size_t end = line_start;
+
+    while (end > statement_start &&
+           isspace((unsigned char)source[end - 1u])) {
+        --end;
+    }
+    return end >= statement_start + 2u &&
+           source[end - 2u] == '|' && source[end - 1u] == '>';
+}
+
 cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
                                            const char* source_name,
                                            unsigned extensions,
@@ -1762,7 +1775,9 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
             } else {
                 bool indented = isspace((unsigned char)parse_source[line_start]) != 0;
                 const bool pipe_continuation =
-                    line[0] == '|' && line[1] == '>';
+                    (line[0] == '|' && line[1] == '>') ||
+                    (has_current && cxpr_doc_ast_statement_ends_with_pipe(
+                        parse_source, statement_start, line_start));
                 if (has_current && brace_depth <= 0 && paren_depth <= 0 &&
                     !indented && !pipe_continuation) {
                     if (!cxpr_doc_ast_parse_host_statement(

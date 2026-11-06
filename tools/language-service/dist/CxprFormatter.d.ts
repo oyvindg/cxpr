@@ -34,6 +34,19 @@ export declare class CxprFormatter implements ICxprFormatter {
     private codeShape;
     /** @param character Delimiter to count. @param text Safe source text. @returns Occurrence count. */
     private count;
+    /**
+     * Calculates indentation after applying closing delimiters at the start of a line.
+     * @param stack Active grouping delimiters from preceding lines.
+     * @param text Delimiter-safe source line.
+     * @returns Visual grouping depth for the current line.
+     */
+    private groupingDepthAfterLeadingClosers;
+    /**
+     * Tracks grouping delimiters across lines without double-indenting direct call-wrapped lists.
+     * @param stack Mutable active grouping stack.
+     * @param text Delimiter-safe source line.
+     */
+    private updateGroupingStack;
     /** @param text Safe source line. @returns Whether the line starts a continuation. */
     private startsContinuation;
     /** @param text Safe source line. @returns Whether the next line continues this expression. */
@@ -50,6 +63,12 @@ export declare class CxprFormatter implements ICxprFormatter {
      * @returns Lines with simple output-name lists written on one line.
      */
     private normalizeOutputLists;
+    /**
+     * Expands a call-wrapped list when its first value starts on the following line.
+     * @param lines Source lines after output normalization.
+     * @returns Lines with top-level list values written one per line.
+     */
+    private normalizeVerticalCallLists;
     /**
      * Collapses parenthesized expressions whose opening line already contains content.
      * A line ending at the unmatched opening parenthesis retains hanging layout intent.
@@ -89,10 +108,22 @@ export declare class CxprFormatter implements ICxprFormatter {
      * @returns Lines with multiline records expanded and inline records collapsed.
      */
     private normalizeRecordLayout;
+    /**
+     * Detects whether a vertical record has multiple top-level fields on one physical line.
+     * @param content Record body with its original line breaks.
+     * @returns True when field splitting is required.
+     */
+    private hasPackedRecordFields;
     /** @param line Candidate opening line. @param open Brace column. @returns Whether it opens a record expression. */
     private isRecordOpening;
     /** @param content Record body. @returns Fields split only at top-level commas. */
     private splitRecordFields;
+    /**
+     * Expands a record-valued field so nested records follow their parent's vertical layout.
+     * @param field Normalized record field text.
+     * @returns One or more field lines without the parent's trailing comma.
+     */
+    private renderRecordField;
     /**
      * Formats multiline calls using the opening parenthesis as intent.
      * @param lines Already indented document lines.
