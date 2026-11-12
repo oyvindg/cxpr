@@ -259,8 +259,7 @@ static void test_snapshot_labels_rsi_positional_arg0(void) {
             assert(node->display_label);
             assert(strcmp(node->label, "arg0") == 0);
             assert(strcmp(node->source, "14") == 0);
-            assert(strstr(node->display_label, "arg0") != NULL);
-            assert(strstr(node->display_label, "14") != NULL);
+            assert(strcmp(node->display_label, "14") == 0);
             saw_arg0 = 1;
         }
     }
@@ -297,7 +296,7 @@ static void test_snapshot_labels_registered_function_arg_name(void) {
             assert(node->display_label);
             assert(strcmp(node->label, "period") == 0);
             assert(strcmp(node->source, "14") == 0);
-            assert(strcmp(node->display_label, "period =\n14") == 0);
+            assert(strcmp(node->display_label, "14") == 0);
             assert(node->has_parent);
             assert(node->parent_id == function_id);
             saw_period = 1;
@@ -405,7 +404,7 @@ static void test_snapshot_positional_identifier_arg_displays_source(void) {
             assert(node->source);
             assert(node->display_label);
             assert(strcmp(node->source, "close") == 0);
-            assert(strstr(node->display_label, "arg0 =\nclose\n= 104.1") != NULL);
+            assert(strstr(node->display_label, "close\n= 104.1") != NULL);
             saw_arg0_close = 1;
         }
     }
@@ -443,17 +442,17 @@ static void test_snapshot_named_function_args_attach_to_call_node(void) {
                    node->source && strcmp(node->source, "close") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "source =\nclose\n= 104.1") == 0);
+            assert(strcmp(node->display_label, "close\n= 104.1") == 0);
             saw_source = 1;
         } else if (node->role && strcmp(node->role, "min") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "min =\n100") == 0);
+            assert(strcmp(node->display_label, "100") == 0);
             saw_min = 1;
         } else if (node->role && strcmp(node->role, "max") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "max =\n110") == 0);
+            assert(strcmp(node->display_label, "110") == 0);
             saw_max = 1;
         }
     }
@@ -635,7 +634,7 @@ static void test_snapshot_nested_function_args_attach_to_call_node(void) {
         if (node->role && strcmp(node->role, "period") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == rsi_call_id);
-            assert(strcmp(node->display_label, "period =\n14") == 0);
+            assert(strcmp(node->display_label, "14") == 0);
             saw_period_under_call = 1;
         }
     }
@@ -670,12 +669,12 @@ static void test_snapshot_contains_args_attach_to_call_node(void) {
                    node->source && strcmp(node->source, "citizenship_code") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "source =\ncitizenship_code\n= 100") == 0);
+            assert(strcmp(node->display_label, "citizenship_code\n= 100") == 0);
             saw_source = 1;
         } else if (node->role && strcmp(node->role, "values") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strstr(node->display_label, "values =\n[100, 101]") != NULL);
+            assert(strstr(node->display_label, "[100, 101]") != NULL);
             saw_values = 1;
         }
     }
@@ -719,17 +718,17 @@ static void test_snapshot_producer_args_attach_to_call_node(void) {
         } else if (node->role && strcmp(node->role, "fast") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "fast =\n12") == 0);
+            assert(strcmp(node->display_label, "12") == 0);
             saw_fast = 1;
         } else if (node->role && strcmp(node->role, "slow") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "slow =\n26") == 0);
+            assert(strcmp(node->display_label, "26") == 0);
             saw_slow = 1;
         } else if (node->role && strcmp(node->role, "signal") == 0) {
             assert(node->has_parent);
             assert(node->parent_id == function_id);
-            assert(strcmp(node->display_label, "signal =\n9") == 0);
+            assert(strcmp(node->display_label, "9") == 0);
             saw_signal = 1;
         }
     }

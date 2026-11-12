@@ -10,7 +10,7 @@
     "initial", "model", "name", "out", "return", "state", "update", "use",
     "true", "false", "null", "assert", "optimize"
   ],
-  "typeNames": ["bool", "buffer", "int", "number", "series"],
+  "typeNames": ["bool", "buffer", "int", "int64", "number", "series", "view"],
   "operatorTokens": ["=>", "<=", ">=", "==", "!=", "&&", "||", "|>", "**"],
   "punctuationChars": [".", ",", "(", ")", "[", "]", "{", "}"],
   "singleCharOperators": ["+", "-", "*", "/", "%", "^", "<", ">", "=", "!", "?", ":"]

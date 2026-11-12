@@ -337,6 +337,28 @@ static int cxpr_doc_ast_paren_delta(const char* text) {
     return delta;
 }
 
+static int cxpr_doc_ast_bracket_delta(const char* text) {
+    int delta = 0;
+    char quote = '\0';
+    while (text && *text) {
+        if (quote) {
+            if (*text == '\\' && text[1]) {
+                text += 2;
+                continue;
+            }
+            if (*text == quote) quote = '\0';
+        } else if (*text == '"' || *text == '\'') {
+            quote = *text;
+        } else if (*text == '[') {
+            delta++;
+        } else if (*text == ']') {
+            delta--;
+        }
+        text++;
+    }
+    return delta;
+}
+
 static bool cxpr_doc_ast_has_top_level_comma(const char* text) {
     int paren = 0;
     int brace = 0;
@@ -516,6 +538,35 @@ static bool cxpr_doc_ast_type_valid(const char* type) {
                 !strncmp(type + 7, "bool>", 5u) ||
                 !strncmp(type + 7, "int>", 4u) ||
                 !strncmp(type + 7, "int64>", 6u));
+    }
+    if (!strncmp(type, "view<", 5u)) {
+        const char* close = strchr(type + 5u, '>');
+        const char* shape;
+        size_t rank = 0u;
+        size_t elements = 1u;
+        size_t element_len;
+        if (!close) return false;
+        element_len = (size_t)(close - (type + 5u));
+        if (!((element_len == 6u && !strncmp(type + 5u, "number", 6u)) ||
+              (element_len == 4u && !strncmp(type + 5u, "bool", 4u)) ||
+              (element_len == 3u && !strncmp(type + 5u, "int", 3u)) ||
+              (element_len == 5u && !strncmp(type + 5u, "int64", 5u)))) return false;
+        shape = close + 1u;
+        if (*shape++ != '[') return false;
+        while (*shape && *shape != ']') {
+            char* end = NULL;
+            unsigned long dimension;
+            while (isspace((unsigned char)*shape)) shape++;
+            dimension = strtoul(shape, &end, 10);
+            if (end == shape || dimension == 0u || ++rank > CXPR_VIEW_MAX_RANK) return false;
+            if ((size_t)dimension > SIZE_MAX / elements) return false;
+            elements *= (size_t)dimension;
+            shape = end;
+            while (isspace((unsigned char)*shape)) shape++;
+            if (*shape == ',') shape++;
+            else if (*shape != ']') return false;
+        }
+        return rank > 0u && *shape == ']' && shape[1] == '\0';
     }
     if (strncmp(type, "buffer<", 7u)) return false;
     p = strchr(type + 7, ',');
@@ -1708,6 +1759,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
     size_t statement_start = 0u;
     int brace_depth = 0;
     int paren_depth = 0;
+    int bracket_depth = 0;
     bool has_current = false;
 
     if (err) *err = (cxpr_error){0};
@@ -1761,7 +1813,8 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
             }
             blank = line[0] == '\0' || line[0] == '#' || (line[0] == '/' && line[1] == '/');
             if (blank) {
-                if (has_current && brace_depth <= 0 && paren_depth <= 0) {
+                if (has_current && brace_depth <= 0 && paren_depth <= 0 &&
+                    bracket_depth <= 0) {
                     if (!cxpr_doc_ast_parse_host_statement(
                             &parser, ast->root, parse_source + statement_start,
                             statement_start, line_start > 0u ? line_start - 1u : line_start)) {
@@ -1779,6 +1832,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
                     (has_current && cxpr_doc_ast_statement_ends_with_pipe(
                         parse_source, statement_start, line_start));
                 if (has_current && brace_depth <= 0 && paren_depth <= 0 &&
+                    bracket_depth <= 0 &&
                     !indented && !pipe_continuation) {
                     if (!cxpr_doc_ast_parse_host_statement(
                             &parser, ast->root, parse_source + statement_start,
@@ -1796,6 +1850,7 @@ cxpr_doc_ast* cxpr_doc_ast_parse(const char* source,
                 }
                 brace_depth += cxpr_doc_ast_brace_delta(line);
                 paren_depth += cxpr_doc_ast_paren_delta(line);
+                bracket_depth += cxpr_doc_ast_bracket_delta(line);
             }
             free(line);
         }

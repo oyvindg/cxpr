@@ -426,6 +426,76 @@ test("model result hover resolves a nested output leaf", async () => {
   })
 })
 
+test("model result hover preserves compiled leaves behind shorthand record outputs", async () => {
+  const sequencer = [
+    "model sequencer",
+    "position = clock(t=0)",
+    "out { position, duration = 1 }"
+  ].join("\n")
+  const analyzer = {
+    async analyzeDocument(source) {
+      return source === sequencer ? { ok: true, outline: [
+        { kind: "model", name: "sequencer", startLine: 0, startChar: 0, endLine: 0, endChar: 15 },
+        { kind: "output", name: "position", startLine: 2, startChar: 6, endLine: 2, endChar: 14 },
+        { kind: "output", name: "duration", startLine: 2, startChar: 16, endLine: 2, endChar: 28 }
+      ] } : { ok: true, diagnostics: [], functions: [] }
+    },
+    async resolveAt(source) {
+      return source === sequencer
+        ? { name: "sequencer", kind: "function", type: "struct",
+          outputs: [
+            { name: "position.absolute_tick", type: "number" },
+            { name: "position.absolute_row", type: "number" },
+            { name: "duration", type: "number" }
+          ],
+          definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 15 } }
+        : { name: "sequencer", kind: "unresolved", imports: ["sequencer"] }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const importWorkspace = {
+    async readFile() { return sequencer }, importDir() { return "/workspace" },
+    async resolveImport() { return { path: "/workspace/sequencer.cxpr", source: sequencer } }
+  }
+  const source = "model song\nseq = sequencer(t=0)\nsample = seq.position.absolute_row\n"
+  const hover = await new LanguageService(analyzer, importWorkspace)
+    .getHover(source, { line: 2, column: 29 }, "/workspace/song.cxpr")
+
+  assert.match(hover.markdown, /\*\*absolute_row\*\*/)
+  assert.match(hover.markdown, /Returns `number`/)
+  assert.deepEqual(hover.range, {
+    start: { line: 2, character: 22 }, end: { line: 2, character: 34 }
+  })
+})
+
+test("type hover documents scalar and bounded view declarations", async () => {
+  const source = "model grid\nin image: view<number>[8, 8, 3]\nin cell_y: int64\n"
+  const typeTokens = [
+    { line: 1, start: 10, length: 4, type: "type" },
+    { line: 1, start: 15, length: 6, type: "type" },
+    { line: 2, start: 11, length: 5, type: "type" }
+  ]
+  const analyzer = {
+    async analyzeDocument() { return { ok: true, sourceTokens: typeTokens } },
+    async resolveAt() { return null }, async completeAt() { return [] },
+    async queryFunctions() { return [] }
+  }
+  const service = new LanguageService(analyzer, workspace)
+
+  const view = await service.getHover(source, { line: 1, column: 12 }, "grid.cxpr")
+  assert.match(view.markdown, /\*\*view\*\* `CXPR type`/)
+  assert.match(view.markdown, /`view<T>\[D, \.\.\.\]`/)
+  assert.deepEqual(view.range, {
+    start: { line: 1, character: 10 }, end: { line: 1, character: 14 }
+  })
+
+  const int64 = await service.getHover(source, { line: 2, column: 13 }, "grid.cxpr")
+  assert.match(int64.markdown, /Signed 64-bit integer/)
+  assert.deepEqual(int64.range, {
+    start: { line: 2, character: 11 }, end: { line: 2, character: 16 }
+  })
+})
+
 test("model result field diagnostics do not match a nested field as a root binding", async () => {
   const voice = "model voice\nout sample = 0\n"
   const analyzer = {

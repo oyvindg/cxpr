@@ -33,6 +33,21 @@ static bool cxpr_model_c_output_alias_can_inline(
     binding = &program->bindings[binding_index];
     if (binding->kind == CXPR_MODEL_BINDING_STATE_UPDATE ||
         !cxpr_model_c_is_direct_alias(binding->ast)) return false;
+    {
+        const char* object = cxpr_expr_ast_field_object(binding->ast);
+        for (size_t i = 0u; object && i < program->binding_count; ++i) {
+            const cxpr_expr_ast* source = program->bindings[i].ast;
+            if (!cxpr_model_names_match(program->bindings[i].name, object) ||
+                !source || cxpr_expr_ast_kind_of(source) != CXPR_NODE_RECORD)
+                continue;
+            for (size_t field_i = 0u;
+                 field_i < cxpr_expr_ast_record_field_count(source); ++field_i) {
+                if (cxpr_expr_ast_kind_of(
+                        cxpr_expr_ast_record_field_value(source, field_i)) ==
+                    CXPR_NODE_INDEX) return false;
+            }
+        }
+    }
     for (size_t i = 0u; i < program->fused_output_count; ++i) {
         if (cxpr_model_names_match(program->fused_outputs[i].name, binding->name)) {
             is_output = true;
@@ -50,6 +65,17 @@ static bool cxpr_model_c_output_alias_can_inline(
                 program->bindings[i].ast, binding->name)) return false;
     }
     return true;
+}
+
+/** Count model-visible external views separately from scalar ABI inputs. */
+static size_t cxpr_model_c_view_count(
+    const cxpr_model_compiled* program) {
+    size_t count = 0u;
+    if (!program) return 0u;
+    for (size_t i = 0u; i < cxpr_model_compiled_input_count(program); ++i)
+        if (cxpr_model_compiled_input_view_requirement(
+                program, i, NULL, NULL, NULL)) ++count;
+    return count;
 }
 
 static bool cxpr_model_c_emit_record_leaves(
@@ -124,6 +150,7 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
     size_t child_call_capacity = 0u;
     cxpr_model_local_cse local_cse = {0};
     bool typed_resample = false;
+    const size_t view_count = cxpr_model_c_view_count(program);
 
     if (out_source) *out_source = NULL;
     if (!program || !program->has_fused_layout || !function_name || !out_source) return false;
@@ -227,6 +254,8 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         }
     }
     cxpr_model_c_emit_common_helpers(&b);
+    if (view_count > 0u)
+        cxpr_model_c_puts(&b, "#include <cxpr/view.h>\n\n");
     if (program->resample_requirement_count > 0u) {
         if (typed_resample) cxpr_model_c_puts(&b,
             "#ifndef CXPR_TYPED_RESAMPLE_VIEW_DEFINED\n"
@@ -285,6 +314,11 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
             "void %s(%s_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs, const %s* restrict _cx_resample_views, size_t _cx_primary_cursor) {\n",
             safe_name, safe_name,
             typed_resample ? "cxpr_typed_resample_view" : "cxpr_resample_view");
+    } else if (view_count > 0u) {
+        cxpr_model_c_printf(
+            &b,
+            "void %s(%s_state* restrict _cx_state, const cxpr_value* restrict _cx_inputs, const cxpr_value* restrict _cx_params, cxpr_value* restrict _cx_outputs, const cxpr_view_table* restrict _cx_views) {\n",
+            safe_name, safe_name);
     } else {
         cxpr_model_c_printf(
             &b,
@@ -302,17 +336,26 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
                 safe_name);
         }
     }
+    {
+    size_t scalar_input_index = 0u;
     for (size_t i = 0u; i < program->fused_input_count; ++i) {
         char* name = cxpr_model_c_prefixed_name("_cx_input_", program->fused_inputs[i].name);
+        if (cxpr_model_compiled_input_view_requirement(
+                program, i, NULL, NULL, NULL)) {
+            free(name);
+            continue;
+        }
         if (!name) goto oom;
         cxpr_model_c_printf(&b, "    const %s _cx_input_%zu = _cx_inputs[%zu].%s;\n",
             program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "bool" :
             program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "int64_t" : "double",
-            i, i,
+            i, scalar_input_index,
             program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_BOOL ? "b" :
             program->fused_inputs[i].result_kind == CXPR_MODEL_RESULT_INT64 ? "i64" : "d");
         cxpr_model_c_printf(&b, "    (void)_cx_input_%zu;\n", i);
+        ++scalar_input_index;
         free(name);
+    }
     }
     if (!literal_param_values || literal_param_count < program->constant_count) {
         for (size_t i = 0u; i < program->constant_count; ++i) {
@@ -464,6 +507,8 @@ bool cxpr_model_compiled_generate_c_ast(const cxpr_model_compiled* program,
         char* name;
         bool owns_name = false;
         if (!needed_bindings[i] || skip_bindings[i]) continue;
+        if (cxpr_expr_ast_kind_of(program->bindings[i].ast) == CXPR_NODE_ARRAY)
+            continue;
         if (cxpr_expr_ast_kind_of(program->bindings[i].ast) == CXPR_NODE_RECORD) {
             if (cxpr_model_c_contains_static_array(
                     program, program->bindings[i].ast, 0u)) continue;

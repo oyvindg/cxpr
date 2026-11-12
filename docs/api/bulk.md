@@ -18,6 +18,13 @@ before the first run unless every state block was fully zero-initialized.
 writable storage. Range arithmetic, buffer extents, descriptor schema, and state
 stride are checked and reported as `cxpr_bulk_status` values.
 
+Generated models with model-visible typed views use the explicit
+`cxpr_bulk_validate_views`, `cxpr_bulk_run_views`, and
+`cxpr_bulk_run_range_views` APIs. One immutable `cxpr_view_table` is shared by
+all lanes; scalar columns and state remain lane-specific. The original runner
+returns `CXPR_BULK_VIEWS_REQUIRED` instead of changing its row/scalar meaning.
+See [Typed bounded views](views.md) for binding and lifetime requirements.
+
 For a grid, expose local stencil values as named scalar columns, for example
 `phi_left`, `phi`, and `phi_right`. The host gathers neighbors, fills halo or
 boundary cells, launches ranges or kernels, and swaps input/output buffers after
@@ -54,3 +61,5 @@ device-state parity is covered by `tests/cuda_bulk_buffer_runtime.cu`.
 | `cxpr_bulk_run` / `cxpr_bulk_run_range` | Serial execution of all elements or one checked range. |
 | `cxpr_bulk_reset` / `cxpr_bulk_reset_range` | Call descriptor reset or zero each state block. |
 | `cxpr_bulk_status_message` | Convert `cxpr_bulk_status` to stable diagnostic text. |
+| `cxpr_bulk_validate_views` | Validate scalar columns plus one shared resolved view table. |
+| `cxpr_bulk_run_views` / `cxpr_bulk_run_range_views` | Execute lanes against one shared view generation. |

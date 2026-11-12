@@ -622,6 +622,27 @@ char* cxpr_model_ast_c_emit_leaf(const cxpr_expr_ast* ast,
     return NULL;
 }
 
+/** Collect a nested index chain from its root through row-major dimensions. */
+static const cxpr_expr_ast* cxpr_model_c_index_chain(
+    const cxpr_expr_ast* ast,
+    const cxpr_expr_ast** indices,
+    size_t* count) {
+    const cxpr_expr_ast* cursor = ast;
+    size_t used = 0u;
+    while (cursor && cxpr_expr_ast_kind_of(cursor) == CXPR_NODE_INDEX) {
+        if (used >= CXPR_VIEW_MAX_RANK) return NULL;
+        indices[used++] = cxpr_expr_ast_index_expression(cursor);
+        cursor = cxpr_expr_ast_index_target(cursor);
+    }
+    for (size_t i = 0u; i < used / 2u; ++i) {
+        const cxpr_expr_ast* swap = indices[i];
+        indices[i] = indices[used - i - 1u];
+        indices[used - i - 1u] = swap;
+    }
+    *count = used;
+    return cursor;
+}
+
 char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
                                             unsigned lookback_offset,
                                             void* userdata,
@@ -642,6 +663,85 @@ char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
     if (!data || !program || !ast || cxpr_expr_ast_kind_of(ast) != CXPR_NODE_INDEX) return NULL;
     target_ast = cxpr_expr_ast_index_target(ast);
     index_ast = cxpr_expr_ast_index_expression(ast);
+    {
+        const cxpr_expr_ast* indices[CXPR_VIEW_MAX_RANK] = {0};
+        size_t index_count = 0u;
+        const cxpr_expr_ast* root = cxpr_model_c_index_chain(ast, indices, &index_count);
+    if (root && cxpr_expr_ast_kind_of(root) == CXPR_NODE_IDENTIFIER) {
+        const char* input_name = cxpr_expr_ast_identifier_name(root);
+        size_t input_index = 0u;
+        if (cxpr_model_c_symbol_is_input(program, input_name, &input_index)) {
+            cxpr_model_element_type element_type = CXPR_MODEL_ELEMENT_UNKNOWN;
+            size_t rank = 0u;
+            size_t view_slot = 0u;
+            if (cxpr_model_compiled_input_view_requirement(
+                    program, input_index, &element_type, &rank, NULL)) {
+                char* index_values[CXPR_VIEW_MAX_RANK] = {0};
+                const char* c_type;
+                const char* invalid;
+                cxpr_model_c_buf expression = {0};
+                for (size_t i = 0u; i < input_index; ++i)
+                    if (cxpr_model_compiled_input_view_requirement(
+                            program, i, NULL, NULL, NULL)) ++view_slot;
+                if (rank != index_count) {
+                    cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                        "Multidimensional external views require one index per dimension",
+                        0u, 0u);
+                    return NULL;
+                }
+                target = (cxpr_c_target){
+                    .api_version = CXPR_C_TARGET_API_VERSION,
+                    .emit_leaf_at_offset = cxpr_model_ast_c_emit_leaf,
+                    .emit_call_at_offset = cxpr_model_ast_c_emit_call,
+                    .emit_lookback_at_offset = cxpr_model_ast_c_emit_lookback,
+                    .userdata = data,
+                };
+                for (size_t i = 0u; i < rank; ++i) {
+                    index_values[i] = cxpr_expr_ast_to_c_at_offset(
+                        indices[i], 0u, &target, err);
+                    if (!index_values[i]) {
+                        for (size_t j = 0u; j < i; ++j) free(index_values[j]);
+                        return NULL;
+                    }
+                }
+                c_type = element_type == CXPR_MODEL_ELEMENT_BOOL ? "bool" :
+                         element_type == CXPR_MODEL_ELEMENT_INT ? "int64_t" : "double";
+                invalid = element_type == CXPR_MODEL_ELEMENT_BOOL ? "false" :
+                          element_type == CXPR_MODEL_ELEMENT_INT ? "INT64_C(0)" : "NAN";
+                cxpr_model_c_printf(&expression,
+                    "((_cx_views && %zuu < _cx_views->count && "
+                    "_cx_views->views[%zuu].rank == %zuu",
+                    view_slot, view_slot, rank);
+                for (size_t i = 0u; i < rank; ++i) {
+                    cxpr_model_c_printf(&expression,
+                        " && isfinite((double)(%s)) && (double)(%s) >= 0.0"
+                        " && floor((double)(%s)) == (double)(%s)"
+                        " && (size_t)(%s) < _cx_views->views[%zuu].shape[%zuu]",
+                        index_values[i], index_values[i], index_values[i],
+                        index_values[i], index_values[i], view_slot, i);
+                }
+                cxpr_model_c_printf(&expression,
+                    ") ? ((const %s*)_cx_views->views[%zuu].data)[",
+                    c_type, view_slot);
+                for (size_t i = 0u; i < rank; ++i) {
+                    if (i) cxpr_model_c_puts(&expression, " + ");
+                    cxpr_model_c_printf(&expression,
+                        "(size_t)(%s) * _cx_views->views[%zuu].element_strides[%zuu]",
+                        index_values[i], view_slot, i);
+                }
+                cxpr_model_c_printf(&expression, "] : %s)", invalid);
+                for (size_t i = 0u; i < rank; ++i) free(index_values[i]);
+                if (expression.oom) {
+                    free(expression.data);
+                    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                         "Out of memory", 0u, 0u);
+                    return NULL;
+                }
+                return expression.data;
+            }
+        }
+    }
+    }
     {
         const cxpr_expr_ast* collection =
             cxpr_model_c_static_collection(program, target_ast, 0u);
@@ -684,6 +784,13 @@ char* cxpr_model_ast_c_emit_lookback(const cxpr_expr_ast* ast,
             free(field_name); free(index_expr);
             return cxpr_strdup(out);
         }
+    }
+    /* Literal history offsets retain the core codegen path after typed buffer
+     * state has had a chance to provide its bounded ring-buffer selector. */
+    if (cxpr_expr_ast_kind_of(index_ast) == CXPR_NODE_NUMBER ||
+        cxpr_expr_ast_kind_of(index_ast) == CXPR_NODE_INT64) {
+        free(key);
+        return NULL;
     }
     hist_index = cxpr_model_c_history_find(program, key);
     free(key);

@@ -13,6 +13,9 @@ const cLanguageSpec = [
   "static const char* const tooling_keywords[] = {",
   ...languageSpec.keywords.map((keyword) => `    ${cString(keyword)},`),
   "};",
+  "static const char* const tooling_type_names[] = {",
+  ...languageSpec.typeNames.map((typeName) => `    ${cString(typeName)},`),
+  "};",
   ""
 ].join("\n");
 const languageServerProxy = "\"use strict\";\n\nmodule.exports = require(\"../language-core/cxpr-language-core\");\n";

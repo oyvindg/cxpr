@@ -7,6 +7,7 @@
 #define CXPR_CONTEXT_H
 
 #include <cxpr/types.h>
+#include <cxpr/view.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +35,24 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx);
  * @return Newly allocated overlay context, or NULL on allocation failure.
  */
 cxpr_context* cxpr_context_overlay_new(const cxpr_context* parent);
+
+/**
+ * Bind a prevalidated external-view table to authored input names.
+ *
+ * The requirements, table, and referenced storage are borrowed for the
+ * context's execution lease and may be replaced at a tick boundary.
+ *
+ * @param ctx Destination context.
+ * @param requirements Ordered requirements whose names identify expressions.
+ * @param table Prevalidated resolved binding table.
+ * @param count Number of requirements; must equal `table->count`.
+ * @returns A detailed binding status.
+ */
+cxpr_view_status cxpr_context_bind_views(
+    cxpr_context* ctx,
+    const cxpr_view_requirement* requirements,
+    const cxpr_view_table* table,
+    size_t count);
 void cxpr_context_set_history_offset(cxpr_context* ctx, size_t offset);
 bool cxpr_context_history_offset(const cxpr_context* ctx, size_t* out_offset);
 

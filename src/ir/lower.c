@@ -31,6 +31,7 @@ static cxpr_ir_value_kind cxpr_ir_instruction_value_kind(
         return program->fast_result_kind == CXPR_IR_RESULT_UNKNOWN
                    ? CXPR_IR_VALUE_DYNAMIC : CXPR_IR_VALUE_F64;
     case CXPR_OP_LOOKBACK_RESOLVE:
+    case CXPR_OP_VIEW_LENGTH:
     case CXPR_OP_DIV:
     case CXPR_OP_MOD:
     case CXPR_OP_POW:
@@ -67,6 +68,9 @@ static cxpr_ir_value_kind cxpr_ir_instruction_value_kind(
     case CXPR_OP_CALL_FUNC:
     case CXPR_OP_CALL_DEFINED:
         return cxpr_ir_function_result_kind(instr);
+    case CXPR_OP_VIEW_LOAD_CHECKED:
+    case CXPR_OP_VIEW_LOAD_OR:
+        return CXPR_IR_VALUE_DYNAMIC;
     case CXPR_OP_LOAD_TEMP:
         return CXPR_IR_VALUE_F64;
     case CXPR_OP_RETURN:

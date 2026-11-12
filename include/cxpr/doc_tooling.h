@@ -15,6 +15,15 @@ extern "C" {
 /** Return an allocated JSON analysis document, or NULL on allocation failure. */
 char* cxpr_document_analyze_json(const char* source, const char* source_name);
 
+/**
+ * Return a native renderer-independent declaration and dependency snapshot.
+ *
+ * The JSON schema is `cxpr.document_snapshot.v1`. Nodes describe model,
+ * input, parameter, binding and output declarations; dependency edges point
+ * from referenced declarations to their consumers.
+ */
+char* cxpr_document_snapshot_json(const char* source, const char* source_name);
+
 /** Resolve the symbol at a zero-based line/column as editor-neutral JSON. */
 char* cxpr_document_resolve_json(const char* source,
                                  const char* source_name,

@@ -15,6 +15,16 @@ static bool cxpr_model_c_collect_defined_function_refs(
     bool* used,
     cxpr_error* err);
 
+static bool cxpr_model_c_body_uses_view_syntax(const cxpr_expr_ast* ast) {
+    const char* names[64];
+    const size_t count = cxpr_expr_ast_functions_used(ast, names, 64u);
+    for (size_t i = 0u; i < count && i < 64u; ++i) {
+        if (cxpr_model_names_match(names[i], "get") ||
+            cxpr_model_names_match(names[i], "length")) return true;
+    }
+    return false;
+}
+
 bool cxpr_model_c_defined_function_captures_param(
     const cxpr_model_compiled* program,
     const cxpr_func_entry* entry,
@@ -254,6 +264,9 @@ bool cxpr_model_c_emit_defined_functions_ast(const cxpr_model_compiled* program,
         char* source;
         if (!used[i]) continue;
         if (!entry->defined_body || entry->defined_return_field_count > 0u) continue;
+        /* View syntax is lowered with call-site model metadata and therefore
+         * cannot be emitted as a detached scalar C helper. */
+        if (cxpr_model_c_body_uses_view_syntax(entry->defined_body)) continue;
         source = cxpr_model_ast_defined_fn_to_c(program, entry, function_prefix, err);
         if (!source) {
             free(used);

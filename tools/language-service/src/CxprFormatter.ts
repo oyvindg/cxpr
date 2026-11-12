@@ -134,7 +134,8 @@ export class CxprFormatter implements ICxprFormatter {
   private groupingDepthAfterLeadingClosers(
     stack: Array<{ delimiter: string; visual: boolean }>, text: string): number {
     const remaining = [...stack]
-    for (const character of text.match(/^[\])]+/)?.[0] ?? "") remaining.pop()
+    const leadingClosers = text.match(/^[\])]+/)?.[0].length ?? 0
+    for (let index = 0; index < leadingClosers; index += 1) remaining.pop()
     return remaining.filter((entry) => entry.visual).length
   }
 

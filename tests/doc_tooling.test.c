@@ -940,6 +940,24 @@ static void test_function_catalog_exposes_inferred_parameter_types(void) {
     cxpr_document_json_free(json);
 }
 
+static void test_model_hover_handles_rooted_input_aliases(void) {
+    const char* source =
+        "model channel(type = \"tracker_channel\", pipe = \"event\", lifecycle = \"scoped\")\n"
+        "in t, absolute_tick, absolute_row, tick, row_start\n"
+        "in event {\n"
+        "    note as row_note,\n"
+        "    instrument as row_instrument,\n"
+        "    volume as row_volume,\n"
+        "    effect as row_effect,\n"
+        "    param as row_param\n"
+        "}\n";
+    char* json = cxpr_document_resolve_json(source, "channel.cxpr", 0u, 8u);
+    assert(json != NULL);
+    assert(strstr(json, "\"name\":\"channel\"") != NULL);
+    assert(strstr(json, "\"kind\":\"function\"") != NULL);
+    cxpr_document_json_free(json);
+}
+
 
 int main(void) {
     test_analysis_baseline();
@@ -994,6 +1012,7 @@ int main(void) {
     test_function_body_outline_exposes_native_expressions();
     test_function_parameters_preserve_origin_token_types();
     test_function_catalog_exposes_inferred_parameter_types();
+    test_model_hover_handles_rooted_input_aliases();
     puts("doc tooling tests passed");
     return 0;
 }

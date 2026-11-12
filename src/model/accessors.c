@@ -165,6 +165,8 @@ void cxpr_model_free(cxpr_model* model) {
     free(model->input_alias_targets);
     free(model->input_declared_types);
     free(model->input_element_types);
+    free(model->input_view_ranks);
+    free(model->input_view_shapes);
     free(model->input_spans);
     free(model->input_has_spans);
     for (size_t i = 0; i < model->constant_count; ++i) {
@@ -289,6 +291,20 @@ size_t cxpr_model_input_count(const cxpr_model* model) {
 
 const char* cxpr_model_input(const cxpr_model* model, size_t index) {
     return model && index < model->input_count ? model->inputs[index] : NULL;
+}
+
+bool cxpr_model_input_view_requirement(const cxpr_model* model, size_t index,
+                                       cxpr_model_element_type* element_type,
+                                       size_t* rank,
+                                       size_t max_shape[CXPR_VIEW_MAX_RANK]) {
+    if (!model || index >= model->input_count || !model->input_declared_types ||
+        model->input_declared_types[index] != CXPR_MODEL_DECL_VIEW ||
+        !model->input_view_ranks || !model->input_view_shapes) return false;
+    if (element_type) *element_type = model->input_element_types[index];
+    if (rank) *rank = model->input_view_ranks[index];
+    if (max_shape) for (size_t i = 0u; i < CXPR_VIEW_MAX_RANK; ++i)
+        max_shape[i] = model->input_view_shapes[index * CXPR_VIEW_MAX_RANK + i];
+    return true;
 }
 
 bool cxpr_model_input_source_span(const cxpr_model* model,

@@ -101,6 +101,8 @@ void cxpr_model_compiled_free(cxpr_model_compiled* program) {
     free(program->input_is_explicit);
     free(program->input_declared_types);
     free(program->input_element_types);
+    free(program->input_view_ranks);
+    free(program->input_view_shapes);
     free(program->pipe_target);
     free(program->invalid_input_guard);
     for (size_t i = 0; i < program->child_count; ++i) {
@@ -336,6 +338,20 @@ size_t cxpr_model_compiled_input_count(const cxpr_model_compiled* program) {
 
 const char* cxpr_model_compiled_input_name(const cxpr_model_compiled* program, size_t index) {
     return program && index < program->input_count ? program->inputs[index] : NULL;
+}
+
+bool cxpr_model_compiled_input_view_requirement(
+    const cxpr_model_compiled* program, size_t index,
+    cxpr_model_element_type* element_type, size_t* rank,
+    size_t max_shape[CXPR_VIEW_MAX_RANK]) {
+    if (!program || index >= program->input_count || !program->input_declared_types ||
+        program->input_declared_types[index] != CXPR_MODEL_DECL_VIEW ||
+        !program->input_view_ranks || !program->input_view_shapes) return false;
+    if (element_type) *element_type = program->input_element_types[index];
+    if (rank) *rank = program->input_view_ranks[index];
+    if (max_shape) for (size_t i = 0u; i < CXPR_VIEW_MAX_RANK; ++i)
+        max_shape[i] = program->input_view_shapes[index * CXPR_VIEW_MAX_RANK + i];
+    return true;
 }
 
 bool cxpr_model_compiled_input_is_explicit(const cxpr_model_compiled* program, size_t index) {

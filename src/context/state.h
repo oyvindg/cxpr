@@ -161,7 +161,14 @@ struct cxpr_context {
     unsigned long cached_structs_version;
     const struct cxpr_context* parent;
     const struct cxpr_evaluator* expression_scope;
+    const cxpr_view_requirement* view_requirements;
+    const cxpr_view_table* view_table;
+    size_t view_count;
     struct cxpr_context* overlay_cache_next;
 };
+
+/** Resolve one named model-visible view from the active execution lease. */
+const cxpr_view_resolved* cxpr_context_view(
+    const cxpr_context* ctx, const char* name, size_t* out_slot);
 
 #endif /* CXPR_CONTEXT_STATE_H */

@@ -1,0 +1,31 @@
+model shared_height_field
+
+in heights: view<number>[8, 8]
+in navigation: view<int64>[8, 8]
+in cell_y: int64
+in cell_x: int64
+in fraction_y: number
+in fraction_x: number
+in lane_bias: number
+
+state visits: int = 0i64
+
+fn get_clamped(values, y, x) =
+    get(values,
+        clamp(y + 0.0, 0, length(values, 0) - 1),
+        clamp(x + 0.0, 0, length(values, 1) - 1),
+        0)
+
+h00 = get_clamped(heights, cell_y, cell_x)
+h01 = get_clamped(heights, cell_y, cell_x + 1)
+h10 = get_clamped(heights, cell_y + 1, cell_x)
+h11 = get_clamped(heights, cell_y + 1, cell_x + 1)
+top = h00 + (h01 - h00) * fraction_x
+bottom = h10 + (h11 - h10) * fraction_x
+height = top + (bottom - top) * fraction_y
+navigation_cost = get(navigation, cell_y, cell_x, -1i64)
+movement_score = height - navigation_cost + lane_bias
+next_visits = visits + 1i64
+
+out { height, navigation_cost, movement_score }
+out visits := next_visits

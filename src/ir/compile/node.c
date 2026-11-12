@@ -8,6 +8,7 @@
 #include "core.h"
 #include "lookback.h"
 
+#include <math.h>
 #include <stdio.h>
 
 static const char* cxpr_ir_unknown_function_message(const char* name) {
@@ -31,6 +32,29 @@ static bool cxpr_ir_index_has_scalar_literal_base(const cxpr_expr_ast* target) {
     if (!target) return false;
     return target->type == CXPR_NODE_NUMBER || target->type == CXPR_NODE_INT64 ||
            target->type == CXPR_NODE_BOOL || target->type == CXPR_NODE_STRING;
+}
+
+/** Collect a nested comma-index chain in source order. */
+static bool cxpr_ir_view_index_chain(
+    const cxpr_expr_ast* ast, const char** out_name,
+    const cxpr_expr_ast** indices, size_t* out_rank) {
+    const cxpr_expr_ast* cursor = ast;
+    size_t rank = 0u;
+    while (cursor && cursor->type == CXPR_NODE_INDEX) {
+        if (rank == CXPR_VIEW_MAX_RANK) return false;
+        indices[rank++] = cursor->data.index.index;
+        cursor = cursor->data.index.target;
+    }
+    if (!cursor || cursor->type != CXPR_NODE_IDENTIFIER || rank == 0u)
+        return false;
+    for (size_t left = 0u, right = rank - 1u; left < right; ++left, --right) {
+        const cxpr_expr_ast* swap = indices[left];
+        indices[left] = indices[right];
+        indices[right] = swap;
+    }
+    *out_name = cursor->data.identifier.name;
+    *out_rank = rank;
+    return true;
 }
 
 static const cxpr_expr_ast* cxpr_ir_static_record_field(
@@ -955,6 +979,9 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
     {
         unsigned offset;
         const cxpr_expr_ast* target = ast->data.index.target;
+        const cxpr_expr_ast* view_indices[CXPR_VIEW_MAX_RANK];
+        const char* view_name = NULL;
+        size_t view_rank = 0u;
         if (cxpr_ir_index_has_literal_array_base(target)) {
             if (!cxpr_ir_compile_node(target, program, reg,
                                       local_names, local_count, subst, inline_depth, err) ||
@@ -999,6 +1026,23 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
             }
             return true;
         }
+        if (cxpr_ir_view_index_chain(
+                ast, &view_name, view_indices, &view_rank) &&
+            !cxpr_registry_index_target_info(
+                reg, ast->data.index.target, NULL, NULL, NULL)) {
+            for (size_t i = 0u; i < view_rank; ++i) {
+                if (!cxpr_ir_compile_node(
+                        view_indices[i], program, reg, local_names, local_count,
+                        subst, inline_depth, err)) return false;
+            }
+            return cxpr_ir_emit(program,
+                                (cxpr_ir_instr){
+                                    .op = CXPR_OP_VIEW_LOAD_CHECKED,
+                                    .name = view_name,
+                                    .payload = ast,
+                                    .index = view_rank,
+                                }, err);
+        }
         return cxpr_ir_emit(program,
                             (cxpr_ir_instr){
                                 .op = CXPR_OP_CALL_AST,
@@ -1010,6 +1054,55 @@ bool cxpr_ir_compile_node(const cxpr_expr_ast* ast, cxpr_ir_program* program,
     case CXPR_NODE_FUNCTION_CALL: {
         cxpr_func_entry* entry = cxpr_registry_find(reg, ast->data.function_call.name);
         const char* fname = ast->data.function_call.name;
+        if (!strcmp(fname, "get") &&
+            ast->data.function_call.argc >= 2u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER) {
+            const cxpr_expr_ast* view_arg = ast->data.function_call.args[0];
+            const cxpr_expr_ast* mapped = cxpr_ir_subst_lookup(
+                subst, view_arg->data.identifier.name, NULL);
+            if (mapped && mapped->type == CXPR_NODE_IDENTIFIER) view_arg = mapped;
+            const size_t rank = ast->data.function_call.argc - 2u;
+            if (rank >= 1u && rank <= CXPR_VIEW_MAX_RANK) {
+                for (size_t i = 0u; i < rank; ++i) {
+                    if (!cxpr_ir_compile_node(
+                            ast->data.function_call.args[i + 1u], program, reg,
+                            local_names, local_count, subst, inline_depth, err))
+                        return false;
+                }
+                if (!cxpr_ir_compile_node(
+                        ast->data.function_call.args[ast->data.function_call.argc - 1u],
+                        program, reg, local_names, local_count, subst,
+                        inline_depth, err)) return false;
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_VIEW_LOAD_OR,
+                                        .name = view_arg->data.identifier.name,
+                                        .payload = ast,
+                                        .index = rank,
+                                    }, err);
+            }
+        }
+        if (!strcmp(fname, "length") && ast->data.function_call.argc == 2u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER &&
+            ast->data.function_call.args[1]->type == CXPR_NODE_NUMBER) {
+            const cxpr_expr_ast* view_arg = ast->data.function_call.args[0];
+            const cxpr_expr_ast* mapped = cxpr_ir_subst_lookup(
+                subst, view_arg->data.identifier.name, NULL);
+            if (mapped && mapped->type == CXPR_NODE_IDENTIFIER) view_arg = mapped;
+            const double dimension =
+                ast->data.function_call.args[1]->data.number.value;
+            if (isfinite(dimension) && dimension >= 0.0 &&
+                floor(dimension) == dimension &&
+                dimension <= (double)SIZE_MAX) {
+                return cxpr_ir_emit(program,
+                                    (cxpr_ir_instr){
+                                        .op = CXPR_OP_VIEW_LENGTH,
+                                            .name = view_arg->data.identifier.name,
+                                        .payload = ast,
+                                        .index = (size_t)dimension,
+                                    }, err);
+            }
+        }
         if (!strcmp(fname, "reduce") && ast->data.function_call.argc == 3u) {
             const cxpr_expr_ast* source = ast->data.function_call.args[0];
             const cxpr_expr_ast* initial = ast->data.function_call.args[1];

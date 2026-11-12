@@ -222,6 +222,11 @@ static bool cxpr_document_parse_decl_type(const char* text,
     if (!strncmp(text, "series<", 7u)) {
         *declared_type = CXPR_MODEL_DECL_SERIES;
         inner = text + 7u;
+    } else if (!strncmp(text, "view<", 5u)) {
+        const char* close = strchr(text + 5u, '>');
+        if (!close || close[1] != '[') return false;
+        *declared_type = CXPR_MODEL_DECL_VIEW;
+        inner = text + 5u;
     } else if (!strncmp(text, "buffer<", 7u)) {
         const char* comma;
         char* end = NULL;
@@ -239,6 +244,37 @@ static bool cxpr_document_parse_decl_type(const char* text,
     else if (!strncmp(inner, "int64", 5u) || !strncmp(inner, "int", 3u))
         *element_type = CXPR_MODEL_ELEMENT_INT;
     else return false;
+    return true;
+}
+
+static bool cxpr_document_parse_view_shape(
+    const char* text, size_t* rank, size_t shape[CXPR_VIEW_MAX_RANK]) {
+    const char* cursor;
+    size_t count = 0u;
+    size_t elements = 1u;
+    if (rank) *rank = 0u;
+    if (shape) memset(shape, 0, CXPR_VIEW_MAX_RANK * sizeof(*shape));
+    if (!text || strncmp(text, "view<", 5u) != 0) return false;
+    cursor = strchr(text + 5u, '>');
+    if (!cursor || *++cursor != '[') return false;
+    cursor++;
+    while (*cursor && *cursor != ']') {
+        char* end = NULL;
+        unsigned long value;
+        while (isspace((unsigned char)*cursor)) cursor++;
+        value = strtoul(cursor, &end, 10);
+        if (end == cursor || value == 0u || count >= CXPR_VIEW_MAX_RANK) return false;
+        if ((size_t)value > SIZE_MAX / elements) return false;
+        elements *= (size_t)value;
+        if (shape) shape[count] = (size_t)value;
+        count++;
+        cursor = end;
+        while (isspace((unsigned char)*cursor)) cursor++;
+        if (*cursor == ',') cursor++;
+        else if (*cursor != ']') return false;
+    }
+    if (*cursor != ']' || cursor[1] != '\0' || count == 0u) return false;
+    if (rank) *rank = count;
     return true;
 }
 
@@ -509,6 +545,71 @@ static bool cxpr_doc_model_append_typed_name_list(
     return true;
 }
 
+static bool cxpr_doc_model_append_input(cxpr_model* model, const char* name,
+                                        const char* type_text, cxpr_error* err) {
+    size_t old_count = model->input_count;
+    size_t rank = 0u;
+    size_t shape[CXPR_VIEW_MAX_RANK] = {0};
+    size_t* grown_ranks;
+    size_t* grown_shapes;
+    if (name && strchr(name, '.')) {
+        cxpr_model_decl_type declared_type;
+        cxpr_model_element_type element_type;
+        cxpr_model_decl_type* grown_declared;
+        cxpr_model_element_type* grown_elements;
+        if (!cxpr_document_lower_is_dotted_ident(name) ||
+            !cxpr_document_parse_decl_type(
+                type_text, &declared_type, &element_type, NULL) ||
+            !cxpr_doc_model_append_string(
+                &model->inputs, &model->input_count, name)) return false;
+        grown_declared = realloc(
+            model->input_declared_types,
+            model->input_count * sizeof(*model->input_declared_types));
+        grown_elements = realloc(
+            model->input_element_types,
+            model->input_count * sizeof(*model->input_element_types));
+        if (!grown_declared || !grown_elements) {
+            if (grown_declared) model->input_declared_types = grown_declared;
+            if (grown_elements) model->input_element_types = grown_elements;
+            cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
+            return false;
+        }
+        model->input_declared_types = grown_declared;
+        model->input_element_types = grown_elements;
+        model->input_declared_types[old_count] = declared_type;
+        model->input_element_types[old_count] = element_type;
+    } else if (!cxpr_doc_model_append_typed_name_list(
+                   &model->inputs, &model->input_declared_types,
+                   &model->input_element_types, &model->input_count, name, false,
+                   type_text, err)) {
+        return false;
+    }
+    if (model->input_count == old_count) return true;
+    grown_ranks = realloc(model->input_view_ranks,
+                          model->input_count * sizeof(*model->input_view_ranks));
+    if (!grown_ranks) return false;
+    model->input_view_ranks = grown_ranks;
+    grown_shapes = realloc(model->input_view_shapes,
+                           model->input_count * CXPR_VIEW_MAX_RANK *
+                               sizeof(*model->input_view_shapes));
+    if (!grown_shapes) return false;
+    model->input_view_shapes = grown_shapes;
+    memset(&model->input_view_ranks[old_count], 0,
+           (model->input_count - old_count) * sizeof(*model->input_view_ranks));
+    memset(&model->input_view_shapes[old_count * CXPR_VIEW_MAX_RANK], 0,
+           (model->input_count - old_count) * CXPR_VIEW_MAX_RANK *
+               sizeof(*model->input_view_shapes));
+    if (type_text && !strncmp(type_text, "view<", 5u)) {
+        if (!cxpr_document_parse_view_shape(type_text, &rank, shape)) return false;
+        for (size_t i = old_count; i < model->input_count; ++i) {
+            model->input_view_ranks[i] = rank;
+            memcpy(&model->input_view_shapes[i * CXPR_VIEW_MAX_RANK], shape,
+                   sizeof(shape));
+        }
+    }
+    return true;
+}
+
 static bool cxpr_doc_model_append_struct_input_block(cxpr_model* model,
                                                           const cxpr_doc_ast_node* node,
                                                           cxpr_error* err) {
@@ -535,7 +636,8 @@ static bool cxpr_doc_model_append_struct_input_block(cxpr_model* model,
             return false;
         }
         snprintf(dotted, len + 1u, "%s.%s", root, field);
-        ok = cxpr_doc_model_append_string(&model->inputs, &model->input_count, dotted);
+        ok = cxpr_doc_model_append_input(
+            model, dotted, cxpr_doc_ast_node_value(child), err);
         if (!ok) {
             free(dotted);
             cxpr_document_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory");
@@ -1475,10 +1577,8 @@ static bool cxpr_document_lower_node_to_model(cxpr_model* model,
                            model, node, "param",
                            CXPR_MODEL_METADATA_TARGET_PARAM);
             }
-            return cxpr_doc_model_append_typed_name_list(
-                &model->inputs, &model->input_declared_types,
-                &model->input_element_types, &model->input_count, name, false,
-                cxpr_doc_ast_node_value(node), err);
+            return cxpr_doc_model_append_input(
+                model, name, cxpr_doc_ast_node_value(node), err);
         case CXPR_DOC_AST_PARAM_DECL:
             return cxpr_doc_model_append_constant(model, node, false) &&
                    cxpr_document_lower_metadata_children(

@@ -311,6 +311,7 @@ done:
 }
 
 static bool cxpr_model_executable_eval_order(const cxpr_model* model,
+                                             cxpr_model_compiled* program,
                                              const cxpr_registry* registry,
                                              size_t* out_order,
                                              size_t executable_count,
@@ -357,6 +358,7 @@ static bool cxpr_model_executable_eval_order(const cxpr_model* model,
         {
             cxpr_expr_ast* expanded = cxpr_model_inline_defined_calls(
                 model->bindings[i].expr, registry, err);
+            expanded = cxpr_model_inline_static_collections(expanded, program, err);
             def_sources[def_count] = expanded
                 ? cxpr_expr_ast_to_string(expanded) : NULL;
             cxpr_expr_ast_free(expanded);
@@ -1089,7 +1091,7 @@ cxpr_model_compiled* cxpr_model_compile_full(
             return NULL;
         }
         if (!cxpr_model_executable_eval_order(
-                model, compile_reg, order, executable_count, err)) {
+                model, program, compile_reg, order, executable_count, err)) {
             free(order);
             cxpr_model_compiled_free(program);
             return NULL;
@@ -1187,8 +1189,12 @@ compile_outputs:
         program->input_is_explicit = (bool*)calloc(model->input_count, sizeof(bool));
         program->input_declared_types = calloc(model->input_count, sizeof(*program->input_declared_types));
         program->input_element_types = calloc(model->input_count, sizeof(*program->input_element_types));
+        program->input_view_ranks = calloc(model->input_count, sizeof(*program->input_view_ranks));
+        program->input_view_shapes = calloc(model->input_count * CXPR_VIEW_MAX_RANK,
+                                            sizeof(*program->input_view_shapes));
         if (!program->inputs || !program->input_is_explicit ||
-            !program->input_declared_types || !program->input_element_types) {
+            !program->input_declared_types || !program->input_element_types ||
+            !program->input_view_ranks || !program->input_view_shapes) {
             cxpr_model_compiled_free(program);
             cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
             return NULL;
@@ -1211,6 +1217,46 @@ compile_outputs:
             program->input_element_types[i] =
                 model->input_element_types && i < declared_input_count
                 ? model->input_element_types[i] : CXPR_MODEL_ELEMENT_UNKNOWN;
+            if (model->input_view_ranks && i < declared_input_count) {
+                program->input_view_ranks[i] = model->input_view_ranks[i];
+                memcpy(&program->input_view_shapes[i * CXPR_VIEW_MAX_RANK],
+                       &model->input_view_shapes[i * CXPR_VIEW_MAX_RANK],
+                       CXPR_VIEW_MAX_RANK * sizeof(*program->input_view_shapes));
+            }
+            /* Inputs inferred from an unbound imported child retain the
+               child's external-view contract in the parent schema. */
+            if (program->input_declared_types[i] == CXPR_MODEL_DECL_INFERRED) {
+                for (size_t import_i = 0u; import_i < import_count; ++import_i) {
+                    const cxpr_model_compiled* child = imports[import_i].program;
+                    if (!child) continue;
+                    for (size_t child_i = 0u; child_i < child->input_count; ++child_i) {
+                        if (!cxpr_model_names_match(program->inputs[i],
+                                                    child->inputs[child_i]) ||
+                            !child->input_declared_types ||
+                            child->input_declared_types[child_i] != CXPR_MODEL_DECL_VIEW) {
+                            continue;
+                        }
+                        if (program->input_declared_types[i] == CXPR_MODEL_DECL_VIEW &&
+                            (program->input_element_types[i] != child->input_element_types[child_i] ||
+                             program->input_view_ranks[i] != child->input_view_ranks[child_i] ||
+                             memcmp(&program->input_view_shapes[i * CXPR_VIEW_MAX_RANK],
+                                    &child->input_view_shapes[child_i * CXPR_VIEW_MAX_RANK],
+                                    CXPR_VIEW_MAX_RANK * sizeof(*program->input_view_shapes)) != 0)) {
+                            cxpr_model_compiled_free(program);
+                            cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                                                 "Imported models require incompatible views with the same input name",
+                                                 0, 0);
+                            return NULL;
+                        }
+                        program->input_declared_types[i] = CXPR_MODEL_DECL_VIEW;
+                        program->input_element_types[i] = child->input_element_types[child_i];
+                        program->input_view_ranks[i] = child->input_view_ranks[child_i];
+                        memcpy(&program->input_view_shapes[i * CXPR_VIEW_MAX_RANK],
+                               &child->input_view_shapes[child_i * CXPR_VIEW_MAX_RANK],
+                               CXPR_VIEW_MAX_RANK * sizeof(*program->input_view_shapes));
+                    }
+                }
+            }
             if (!program->inputs[i]) {
                 cxpr_model_compiled_free(program);
                 cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
@@ -1227,6 +1273,13 @@ compile_outputs:
             program->input_schema_fingerprint ^=
                 (uint64_t)program->input_declared_types[i] + UINT64_C(0x100);
             program->input_schema_fingerprint *= UINT64_C(1099511628211);
+            program->input_schema_fingerprint ^= (uint64_t)program->input_view_ranks[i];
+            program->input_schema_fingerprint *= UINT64_C(1099511628211);
+            for (size_t dimension = 0u; dimension < program->input_view_ranks[i]; ++dimension) {
+                program->input_schema_fingerprint ^=
+                    (uint64_t)program->input_view_shapes[i * CXPR_VIEW_MAX_RANK + dimension];
+                program->input_schema_fingerprint *= UINT64_C(1099511628211);
+            }
             program->input_schema_fingerprint ^=
                 (uint64_t)program->input_element_types[i] + UINT64_C(0x200);
             program->input_schema_fingerprint *= UINT64_C(1099511628211);

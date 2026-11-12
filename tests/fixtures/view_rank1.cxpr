@@ -1,0 +1,20 @@
+model view_rank1
+
+in samples: view<number>[4, 8, 2]
+in frame: int64
+in row: int64
+in channel: int64
+
+fn get_clamped(values, frame, row, channel) =
+    get(values,
+        clamp(frame + 0.0, 0, length(values, 0) - 1),
+        clamp(row + 0.0, 0, length(values, 1) - 1),
+        clamp(channel + 0.0, 0, length(values, 2) - 1),
+        0)
+
+sample = samples[frame, row, channel]
+frames = length(samples, 0)
+safe = get(samples, frame, row, channel, -7.0)
+edge = get_clamped(samples, frame, row, channel)
+
+out { sample, frames, safe, edge }

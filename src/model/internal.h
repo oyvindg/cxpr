@@ -118,6 +118,8 @@ struct cxpr_model {
     char** inputs;
     cxpr_model_decl_type* input_declared_types;
     cxpr_model_element_type* input_element_types;
+    size_t* input_view_ranks;
+    size_t* input_view_shapes;
     cxpr_source_span* input_spans;
     bool* input_has_spans;
     size_t input_count;
@@ -298,6 +300,8 @@ struct cxpr_model_compiled {
     bool* input_is_explicit;
     cxpr_model_decl_type* input_declared_types;
     cxpr_model_element_type* input_element_types;
+    size_t* input_view_ranks;
+    size_t* input_view_shapes;
     size_t input_count;
     uint64_t input_schema_fingerprint;
     char* pipe_target;

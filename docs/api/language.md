@@ -247,6 +247,56 @@ Lookbacks are relative to the materialized series being indexed. Thus
 `resample(close, "1h")[1]` means the previous hourly sample, not the previous
 host tick.
 
+### Typed bounded view inputs
+
+A model can declare a read-only host-owned numeric view with compile-time
+element type, rank, and maximum dimensions:
+
+```cxpr
+in samples: view<number>[1048576]
+in pattern: view<int64>[256, 64, 5]
+in mask: view<bool>[1080, 1920]
+```
+
+The supported element types are `number`, `int64`/`int`, and `bool`. Rank is
+one through four, every maximum dimension is a positive compile-time integer,
+and the dimension product must fit the implementation limits. Runtime active
+shape comes from the host binding and may not exceed the declared maximum.
+
+Comma-separated indexing supplies exactly one index per dimension:
+
+```cxpr
+sample = samples[cursor]
+note = pattern[pattern_index, row, field]
+enabled = mask[y, x]
+```
+
+Every index must be finite, integral, non-negative, representable, and inside
+the active dimension. Normal indexing reports an invalid/out-of-range access.
+Two explicit boundary policies are available:
+
+```cxpr
+fn get_clamped(values, y, x) =
+    get(values,
+        clamp(y, 0, length(values, 0) - 1),
+        clamp(x, 0, length(values, 1) - 1),
+        false)
+
+safe = get(pattern, pattern_index, row, field, -1)
+edge = get_clamped(mask, y, x)
+rows = length(pattern, 1)
+```
+
+`get` is the native low-level operation. It takes the typed fallback as its
+final argument and returns it when an index is invalid or outside active shape.
+`get_clamped` in the example is a normal CXPR function composed from `get`,
+`length`, and `clamp`; it is not a builtin.
+`length(view, dimension)` returns active shape, and `dimension` must be a
+compile-time integer. Views are not unrestricted `map`/`reduce` sources.
+
+See [Typed bounded views](views.md) for C binding, generated descriptors,
+leases, bulk execution, and ownership.
+
 ## Model documents
 
 A model file is a sequence of top-level statements. A statement normally ends
@@ -353,6 +403,7 @@ Inputs may be singular, grouped, or rooted records:
 in close
 in { close, high, low }
 in market { open, high, low, close }
+in image: view<number>[1080, 1920, 4]
 ```
 
 The rooted form declares accessible names such as `market.close`. A defaulted

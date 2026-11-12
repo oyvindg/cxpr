@@ -69,6 +69,8 @@ evaluators for hot loops.
   and transition events;
 - artifact plugins for C, CUDA, graph JSON, and metadata JSON;
 - a stable descriptor ABI for generated C model evaluators.
+- typed bounded views for zero-copy, checked model access to host-owned numeric
+  buffers with rank one through four.
 
 The following boundaries are intentional:
 
@@ -107,6 +109,8 @@ The main types are:
 | `cxpr_expr_compiled` | Compiled typed IR for one expression |
 | `cxpr_model_compiled` | Immutable compiled plan for a complete model |
 | `cxpr_context` | Runtime variables, parameters, structs, slots, and overlays |
+| `cxpr_view` | Borrowed host memory descriptor with type, shape, strides, capacity, and access flags |
+| `cxpr_view_table` | Validated ordered model-visible views for one host generation |
 | `cxpr_registry` | Built-in, expression-defined, and host-defined functions |
 | `cxpr_model_session` | Mutable state for one execution of a model program |
 | `cxpr_engine_program` | Immutable plan for the optional rule-engine layer |
@@ -140,6 +144,7 @@ authoritative.
 | Parse, compile, and run complete models | [Documents and models](docs/api/documents-models.md) |
 | Run stateful host-driven rules | [Engine](docs/api/engine.md) |
 | Deploy generated native evaluators | [Generated C](docs/api/generated-c.md) |
+| Bind zero-copy model-visible host buffers | [Typed bounded views](docs/api/views.md) |
 | Execute arrays, grids, and CUDA host kernels | [Bulk and grid](docs/api/bulk.md) |
 | Bind host data and explicit resampling | [Providers, sources, and resampling](docs/api/providers-sources-resample.md) |
 | Emit C, CUDA, graph, metadata, or debug artifacts | [Plugins and code generation](docs/api/plugins-codegen.md) |

@@ -21,6 +21,16 @@ export declare class LanguageService implements ICxprLanguageService {
     getCompletions(source: string, pos: Position, name: string): Promise<LanguageCompletion[]>;
     getHover(source: string, pos: Position, name: string): Promise<LanguageHover | null>;
     /**
+     * Resolve hover documentation for a parser-classified CXPR type token.
+     * Semantic-token classification prevents variables that happen to use a type
+     * name from receiving type documentation.
+     * @param source Complete CXPR source text.
+     * @param pos Hover position on a type token.
+     * @param name Source file name passed to the analyzer.
+     * @returns Type documentation and its exact source range, or null.
+     */
+    private getTypeHover;
+    /**
      * Resolves a field read from a local binding initialized by an imported model call.
      * This source-level fallback remains available when an earlier parse error prevents
      * the analyzer from retaining the binding and import relationship.

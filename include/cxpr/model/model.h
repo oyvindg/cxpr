@@ -48,6 +48,7 @@ typedef enum {
     CXPR_MODEL_DECL_INT,
     CXPR_MODEL_DECL_SERIES,
     CXPR_MODEL_DECL_BUFFER,
+    CXPR_MODEL_DECL_VIEW,
 } cxpr_model_decl_type;
 
 /** Scalar element type for series and buffer declarations. */
@@ -392,6 +393,10 @@ size_t cxpr_model_compiled_input_count(const cxpr_model_compiled* program);
 
 /** @brief Return input name @p index, or NULL when out of range. */
 const char* cxpr_model_compiled_input_name(const cxpr_model_compiled* program, size_t index);
+bool cxpr_model_compiled_input_view_requirement(
+    const cxpr_model_compiled* program, size_t index,
+    cxpr_model_element_type* element_type, size_t* rank,
+    size_t max_shape[CXPR_VIEW_MAX_RANK]);
 
 /** @brief Return whether an input path came from an explicit rooted declaration. */
 bool cxpr_model_compiled_input_is_explicit(const cxpr_model_compiled* program, size_t index);
@@ -697,6 +702,10 @@ bool cxpr_model_function_declaration_source(const cxpr_model* model,
 
 size_t cxpr_model_input_count(const cxpr_model* model);
 const char* cxpr_model_input(const cxpr_model* model, size_t index);
+bool cxpr_model_input_view_requirement(const cxpr_model* model, size_t index,
+                                       cxpr_model_element_type* element_type,
+                                       size_t* rank,
+                                       size_t max_shape[CXPR_VIEW_MAX_RANK]);
 bool cxpr_model_input_source_span(const cxpr_model* model,
                                   size_t index,
                                   cxpr_source_span* out_span);

@@ -5,6 +5,9 @@
 - Use context slots and prehashed updates when the host has a stable schema.
 - Prefer `cxpr_model_session_tick_fast` for supported in-process scalar models.
 - Generate C for production hot loops that need predictable low overhead.
+- For large contiguous model-visible buffers, resolve a `cxpr_view_table` once
+  and use generated `view_tick`; avoid the dynamic checked helper in the inner
+  loop unless the backend genuinely needs runtime schema dispatch.
 - Specialize stable parameters and selected outputs only when the resulting
   artifact remains representative of the intended workload.
 - Benchmark Release builds; debug, sanitizer, and tracing builds are not
@@ -18,6 +21,8 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
 cmake --build build --target cxpr_bench_ir cxpr_bench_model
 ./build/benchmarks/cxpr_bench_ir
 ./build/benchmarks/cxpr_bench_model
+cmake --build build --target cxpr_bench_view_table
+./build/benchmarks/cxpr_bench_view_table
 ```
 
 `cxpr_bench_ir` uses the models in `benchmarks/fixtures/*.cxpr` as the single
@@ -62,6 +67,38 @@ hardware-specific; the useful signal is the ratio between execution paths.
 Generated C is consistently the fastest path; IR is a modest win over AST for
 scalars and lookback, and the gap widens dramatically once generated C flattens
 typed-struct work.
+
+### Typed bounded views (ns/load)
+
+Rank-two Release benchmark, median of seven runs with one million accesses per
+run on the same Ryzen 7 5800H class development host:
+
+| Elements | Pattern | Direct C | Generated `view_tick` | Shared bulk | Engine view source |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1,024 | sequential | 2.944 | 2.973 | 7.323 | 81.166 |
+| 65,536 | random | 2.934 | 4.131 | 8.816 | 82.562 |
+| 1,048,576 | sequential | 2.929 | 2.985 | 7.214 | 81.647 |
+| 1,048,576 | random | 3.297 | 6.084 | 19.761 | 109.282 |
+
+Generated sequential access remains close to direct memory. At 1,048,576
+random elements it is 17.96x faster than the complete engine view-source path.
+Shared bulk includes lane input/output materialization. The engine measurement
+includes cursor advancement, source index mapping, callback dispatch,
+expression evaluation, and named result lookup. Choose callbacks for dynamic
+provider behavior, not for a contiguous buffer already described by
+`cxpr_view`. See [Typed bounded views](views.md) and Proposal 021's dated
+benchmark report for the complete matrix and limitations.
+
+The benchmark also supports linker-level allocation counting. In the
+instrumented confirmation run, table resolution, generated `view_tick`, and
+shared bulk made zero allocator calls across seven runs; the engine callback
+path made four allocations per million-tick run. The generated source measured
+3,278 bytes and its stateless descriptor reported one byte of state storage.
+Allocator-instrumented timings are kept separate from the Release latency table.
+The same run measures copied `cxpr_value` and fixed static storage. At
+1,048,576 random elements they measured 9.266 and 7.049 ns/load respectively;
+copied setup required one allocation, 16,777,216 copied bytes, and 10.07 ms.
+External-view resolution remained zero-copy and zero-allocation.
 
 ### Index and history lookback (ns/eval)
 

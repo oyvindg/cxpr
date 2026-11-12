@@ -83,7 +83,10 @@ typedef enum {
     CXPR_IR_OP_LOAD_TEMP,
     CXPR_IR_OP_STORE_TEMP,
     CXPR_IR_OP_RETURN,
-    CXPR_IR_OP_INDEX
+    CXPR_IR_OP_INDEX,
+    CXPR_IR_OP_VIEW_LENGTH,
+    CXPR_IR_OP_VIEW_LOAD_CHECKED,
+    CXPR_IR_OP_VIEW_LOAD_OR
 } cxpr_ir_opcode;
 
 /** @brief Best-effort scalar result kind inferred for fast execution. */

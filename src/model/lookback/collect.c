@@ -80,6 +80,20 @@ static const cxpr_expr_ast* cxpr_model_static_collection(
             if (cxpr_model_names_match(model->bindings[i].name, name))
                 return cxpr_model_static_collection(model, model->bindings[i].expr, depth + 1u);
     }
+    if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_INDEX) {
+        const cxpr_expr_ast* collection = cxpr_model_static_collection(
+            model, cxpr_expr_ast_index_target(ast), depth + 1u);
+        if (collection && cxpr_expr_ast_kind_of(collection) == CXPR_NODE_ARRAY &&
+            cxpr_expr_ast_array_count(collection) > 0u) {
+            return cxpr_model_static_collection(
+                model, cxpr_expr_ast_array_element(collection, 0u), depth + 1u);
+        }
+        if (collection && cxpr_expr_ast_kind_of(collection) == CXPR_NODE_RECORD &&
+            cxpr_expr_ast_record_field_count(collection) > 0u) {
+            return cxpr_model_static_collection(
+                model, cxpr_expr_ast_record_field_value(collection, 0u), depth + 1u);
+        }
+    }
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FIELD_ACCESS) {
         const cxpr_expr_ast* base = cxpr_expr_ast_field_base(ast);
         const char* object = cxpr_expr_ast_field_object(ast);
@@ -103,6 +117,27 @@ static const cxpr_expr_ast* cxpr_model_static_collection(
         }
     }
     return NULL;
+}
+
+/** Return the root of an index chain and its indices in source order. */
+static const cxpr_expr_ast* cxpr_model_index_chain_root(
+    const cxpr_expr_ast* ast,
+    const cxpr_expr_ast** indices,
+    size_t* count) {
+    const cxpr_expr_ast* cursor = ast;
+    size_t used = 0u;
+    while (cursor && cxpr_expr_ast_kind_of(cursor) == CXPR_NODE_INDEX) {
+        if (used >= CXPR_VIEW_MAX_RANK) return NULL;
+        indices[used++] = cxpr_expr_ast_index_expression(cursor);
+        cursor = cxpr_expr_ast_index_target(cursor);
+    }
+    for (size_t i = 0u; i < used / 2u; ++i) {
+        const cxpr_expr_ast* swap = indices[i];
+        indices[i] = indices[used - i - 1u];
+        indices[used - i - 1u] = swap;
+    }
+    *count = used;
+    return cursor;
 }
 
 bool cxpr_model_lookback_target_key(const cxpr_expr_ast* target,
@@ -312,11 +347,34 @@ static bool cxpr_model_collect_lookbacks_in_ast(const cxpr_model* model,
     case CXPR_NODE_INDEX: {
         const cxpr_expr_ast* target = cxpr_expr_ast_index_target(ast);
         const cxpr_expr_ast* index = cxpr_expr_ast_index_expression(ast);
+        const cxpr_expr_ast* view_indices[CXPR_VIEW_MAX_RANK] = {0};
+        size_t view_index_count = 0u;
+        const cxpr_expr_ast* view_root = cxpr_model_index_chain_root(
+            ast, view_indices, &view_index_count);
         const char* capability_name = NULL;
         cxpr_value_type capability_type = CXPR_VALUE_NULL;
         unsigned literal_offset = 0u;
         size_t offset = 0u;
         size_t dynamic_bound = 0u;
+        if (view_root && cxpr_expr_ast_kind_of(view_root) == CXPR_NODE_IDENTIFIER) {
+            const char* target_name = cxpr_expr_ast_identifier_name(view_root);
+            for (size_t i = 0u; i < model->input_count; ++i) {
+                if (model->input_declared_types &&
+                    model->input_declared_types[i] == CXPR_MODEL_DECL_VIEW &&
+                    cxpr_model_names_match(model->inputs[i], target_name)) {
+                    /* View indexing is a bounded random-access load, not
+                     * temporal history. Only its dynamic index dependencies
+                     * participate in ordinary lookback collection. */
+                    for (size_t dimension = 0u;
+                         dimension < view_index_count; ++dimension) {
+                        if (!cxpr_model_collect_lookbacks_in_ast(
+                                model, registry, view_indices[dimension],
+                                enclosing_offset, specs, count, err)) return false;
+                    }
+                    return true;
+                }
+            }
+        }
         if (cxpr_model_static_collection(model, target, 0u)) {
             return cxpr_model_collect_lookbacks_in_ast(
                 model, registry, index, enclosing_offset, specs, count, err);

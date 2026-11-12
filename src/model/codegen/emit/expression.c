@@ -9,6 +9,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool cxpr_model_defined_body_uses_view_syntax(const cxpr_expr_ast* ast) {
+    const char* names[64];
+    const size_t count = cxpr_expr_ast_functions_used(ast, names, 64u);
+    for (size_t i = 0u; i < count && i < 64u; ++i) {
+        if (cxpr_model_names_match(names[i], "get") ||
+            cxpr_model_names_match(names[i], "length")) return true;
+    }
+    return false;
+}
+
 char* cxpr_model_ast_expr_to_c_with_temps(
     cxpr_model_ast_temp_emit* emit,
     const cxpr_expr_ast* ast,
@@ -311,6 +321,99 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
     if (handled) *handled = false;
     if (!name) return NULL;
 
+    if (target_data && target_data->program &&
+        cxpr_model_names_match(name, "get") && argc >= 2u &&
+        cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0u)) ==
+            CXPR_NODE_IDENTIFIER) {
+        const cxpr_expr_ast* input_ast = cxpr_expr_ast_call_arg(ast, 0u);
+        const char* input_name = cxpr_expr_ast_identifier_name(input_ast);
+        size_t input_index = 0u;
+        size_t view_slot = 0u;
+        size_t rank = 0u;
+        cxpr_model_element_type element_type = CXPR_MODEL_ELEMENT_UNKNOWN;
+        char* indices[CXPR_VIEW_MAX_RANK] = {0};
+        char* fallback = NULL;
+        const char* c_type;
+        const size_t index_count = argc - 2u;
+        for (size_t i = 0u; i < target_data->param_ast_count; ++i) {
+            if (target_data->param_names[i] && target_data->param_asts &&
+                target_data->param_asts[i] &&
+                cxpr_model_names_match(target_data->param_names[i], input_name) &&
+                cxpr_expr_ast_kind_of(target_data->param_asts[i]) ==
+                    CXPR_NODE_IDENTIFIER) {
+                input_ast = target_data->param_asts[i];
+                input_name = cxpr_expr_ast_identifier_name(input_ast);
+                break;
+            }
+        }
+        if (!cxpr_model_c_symbol_is_input(
+                target_data->program, input_name, &input_index) ||
+            !cxpr_model_compiled_input_view_requirement(
+                target_data->program, input_index, &element_type, &rank, NULL))
+            return NULL;
+        if (rank != index_count) {
+            cxpr_model_set_error(err, CXPR_ERR_WRONG_ARITY,
+                "External view helper requires one index per dimension", 0u, 0u);
+            if (handled) *handled = true;
+            return NULL;
+        }
+        for (size_t i = 0u; i < input_index; ++i)
+            if (cxpr_model_compiled_input_view_requirement(
+                    target_data->program, i, NULL, NULL, NULL)) ++view_slot;
+        for (size_t i = 0u; i < rank; ++i) {
+            indices[i] = cxpr_expr_ast_to_c_at_offset(
+                cxpr_expr_ast_call_arg(ast, i + 1u), lookback_offset,
+                &target, err);
+            if (!indices[i]) goto view_helper_fail;
+        }
+        fallback = cxpr_expr_ast_to_c_at_offset(
+            cxpr_expr_ast_call_arg(ast, argc - 1u), lookback_offset,
+            &target, err);
+        if (!fallback) goto view_helper_fail;
+        c_type = element_type == CXPR_MODEL_ELEMENT_BOOL ? "bool" :
+                 element_type == CXPR_MODEL_ELEMENT_INT ? "int64_t" : "double";
+        cxpr_model_c_printf(&b,
+            "((_cx_views && %zuu < _cx_views->count && "
+            "_cx_views->views[%zuu].rank == %zuu",
+            view_slot, view_slot, rank);
+        for (size_t i = 0u; i < rank; ++i) {
+            cxpr_model_c_printf(&b,
+                " && isfinite((double)(%s)) && floor((double)(%s)) == (double)(%s)",
+                indices[i], indices[i], indices[i]);
+            cxpr_model_c_printf(&b,
+                " && (double)(%s) >= 0.0 && (size_t)(%s) < "
+                "_cx_views->views[%zuu].shape[%zuu]",
+                indices[i], indices[i], view_slot, i);
+        }
+        cxpr_model_c_printf(&b,
+            ") ? ((const %s*)_cx_views->views[%zuu].data)[",
+            c_type, view_slot);
+        for (size_t i = 0u; i < rank; ++i) {
+            if (i) cxpr_model_c_puts(&b, " + ");
+            cxpr_model_c_printf(&b,
+                "(size_t)(%s) * _cx_views->views[%zuu].element_strides[%zuu]",
+                indices[i], view_slot, i);
+        }
+        cxpr_model_c_printf(&b, "] : %s)", fallback);
+        for (size_t i = 0u; i < rank; ++i) free(indices[i]);
+        free(fallback);
+        if (b.oom) {
+            free(b.data);
+            cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY,
+                                 "Out of memory", 0u, 0u);
+            return NULL;
+        }
+        if (handled) *handled = true;
+        return b.data;
+
+view_helper_fail:
+        for (size_t i = 0u; i < rank; ++i) free(indices[i]);
+        free(fallback);
+        free(b.data);
+        if (handled) *handled = true;
+        return NULL;
+    }
+
     if (target_data && cxpr_model_names_match(name, "__cxpr_let") && argc == 3u &&
         cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0u)) == CXPR_NODE_IDENTIFIER) {
         const char* local = cxpr_expr_ast_identifier_name(cxpr_expr_ast_call_arg(ast, 0u));
@@ -380,6 +483,58 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
         if (!result && err && err->code == CXPR_OK) { err->code = CXPR_ERR_SYNTAX; err->message = "let body C emission failed"; }
         if (handled) *handled = true;
         return result;
+    }
+
+    if (target_data && target_data->program &&
+        cxpr_model_names_match(name, "length") && argc == 2u &&
+        cxpr_expr_ast_kind_of(cxpr_expr_ast_call_arg(ast, 0u)) ==
+            CXPR_NODE_IDENTIFIER) {
+        const char* input_name = cxpr_expr_ast_identifier_name(
+            cxpr_expr_ast_call_arg(ast, 0u));
+        const cxpr_expr_ast* dimension_ast = cxpr_expr_ast_call_arg(ast, 1u);
+        size_t input_index = 0u;
+        size_t view_slot = 0u;
+        size_t rank = 0u;
+        size_t dimension = SIZE_MAX;
+        char raw[192];
+        for (size_t i = 0u; i < target_data->param_ast_count; ++i) {
+            if (target_data->param_names[i] && target_data->param_asts &&
+                target_data->param_asts[i] &&
+                cxpr_model_names_match(target_data->param_names[i], input_name) &&
+                cxpr_expr_ast_kind_of(target_data->param_asts[i]) ==
+                    CXPR_NODE_IDENTIFIER) {
+                input_name = cxpr_expr_ast_identifier_name(target_data->param_asts[i]);
+                break;
+            }
+        }
+        if (!cxpr_model_c_symbol_is_input(
+                target_data->program, input_name, &input_index) ||
+            !cxpr_model_compiled_input_view_requirement(
+                target_data->program, input_index, NULL, &rank, NULL)) return NULL;
+        if (cxpr_expr_ast_kind_of(dimension_ast) == CXPR_NODE_INT64) {
+            const int64_t value = cxpr_expr_ast_int64_value(dimension_ast);
+            if (value >= 0) dimension = (size_t)value;
+        } else if (cxpr_expr_ast_kind_of(dimension_ast) == CXPR_NODE_NUMBER) {
+            const double value = cxpr_expr_ast_number_value(dimension_ast);
+            if (isfinite(value) && value >= 0.0 && floor(value) == value &&
+                value <= (double)SIZE_MAX) dimension = (size_t)value;
+        }
+        if (dimension >= rank) {
+            cxpr_model_set_error(err, CXPR_ERR_INVALID_INDEX,
+                "External view length dimension must be a compile-time integer within rank",
+                0u, 0u);
+            return NULL;
+        }
+        for (size_t i = 0u; i < input_index; ++i)
+            if (cxpr_model_compiled_input_view_requirement(
+                    target_data->program, i, NULL, NULL, NULL)) ++view_slot;
+        snprintf(raw, sizeof(raw),
+            "((_cx_views && %zuu < _cx_views->count && "
+            "_cx_views->views[%zuu].rank == %zuu) ? "
+            "(double)_cx_views->views[%zuu].shape[%zuu] : NAN)",
+            view_slot, view_slot, rank, view_slot, dimension);
+        if (handled) *handled = true;
+        return cxpr_strdup(raw);
     }
 
     if (target_data && target_data->program &&
@@ -778,9 +933,11 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 return NULL;
             }
             if (handled) *handled = true;
-            if (target_data->inline_defined_functions) {
+            if (target_data->inline_defined_functions ||
+                cxpr_model_defined_body_uses_view_syntax(entry->defined_body)) {
                 char** names = NULL;
                 char** exprs = NULL;
+                const cxpr_expr_ast** param_asts = NULL;
                 cxpr_model_ast_c_target inline_data = *target_data;
                 cxpr_c_target inline_target = {
                     .api_version = CXPR_C_TARGET_API_VERSION,
@@ -792,9 +949,12 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 char* expr;
                 names = (char**)calloc(argc ? argc : 1u, sizeof(char*));
                 exprs = (char**)calloc(argc ? argc : 1u, sizeof(char*));
-                if (!names || !exprs) {
+                param_asts = (const cxpr_expr_ast**)calloc(
+                    argc ? argc : 1u, sizeof(*param_asts));
+                if (!names || !exprs || !param_asts) {
                     free(names);
                     free(exprs);
+                    free(param_asts);
                     if (err) {
                         err->code = CXPR_ERR_OUT_OF_MEMORY;
                         err->message = "Out of memory";
@@ -803,17 +963,21 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 }
                 for (size_t i = 0u; i < argc; ++i) {
                     names[i] = entry->defined_param_names[i];
+                    param_asts[i] = cxpr_expr_ast_call_arg(ast, i);
                     exprs[i] = cxpr_expr_ast_to_c_at_offset(cxpr_expr_ast_call_arg(ast, i),
                                                        lookback_offset, &target, err);
                     if (!exprs[i]) {
                         for (size_t j = 0u; j < i; ++j) free(exprs[j]);
                         free(exprs);
                         free(names);
+                        free(param_asts);
                         return NULL;
                     }
                 }
                 inline_data.param_names = names;
                 inline_data.param_exprs = exprs;
+                inline_data.param_asts = param_asts;
+                inline_data.param_ast_count = argc;
                 inline_data.param_count = argc;
                 expr = cxpr_expr_ast_to_c_at_offset(entry->defined_body,
                                                lookback_offset,
@@ -822,6 +986,7 @@ char* cxpr_model_ast_c_emit_call(const cxpr_expr_ast* ast,
                 for (size_t i = 0u; i < argc; ++i) free(exprs[i]);
                 free(exprs);
                 free(names);
+                free(param_asts);
                 if (!expr) return NULL;
                 cxpr_model_c_printf(&b, "(%s)", expr);
                 free(expr);

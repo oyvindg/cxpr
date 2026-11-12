@@ -1,0 +1,32 @@
+model shared_ohlcv
+
+in matrix: view<number>[16, 6]
+in row: int64
+in weight: number
+
+state visits: int = 0i64
+
+fn get_clamped(values, row, column) =
+    get(values,
+        clamp(row + 0.0, 0, length(values, 0) - 1),
+        clamp(column, 0, length(values, 1) - 1),
+        0)
+
+high = get(matrix, row, 1, 0)
+low = get(matrix, row, 2, 0)
+close = get(matrix, row, 3, 0)
+previous_close = get_clamped(matrix, row - 1, 3)
+typical = (high + low + close) / 3
+span = high - low
+high_delta = high - previous_close
+low_delta = low - previous_close
+high_gap = high_delta < 0 ? -high_delta : high_delta
+low_gap = low_delta < 0 ? -low_delta : low_delta
+gap = high_gap > low_gap ? high_gap : low_gap
+true_range = span > gap ? span : gap
+selected_return = get(matrix, row, 5, -99)
+score = typical * weight + selected_return
+next_visits = visits + 1i64
+
+out { typical, true_range, selected_return, score }
+out visits := next_visits

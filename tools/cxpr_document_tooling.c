@@ -516,11 +516,276 @@ static void walk_tokens(const cxpr_doc_ast_node* node,
     }
 }
 
+static const char* document_snapshot_model_name(const cxpr_doc_ast_node* node) {
+    size_t count;
+    const char* found;
+    if (!node) return NULL;
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_MODEL_DECL) {
+        return cxpr_doc_ast_node_name(node);
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i) {
+        found = document_snapshot_model_name(cxpr_doc_ast_node_child(node, i));
+        if (found && found[0]) return found;
+    }
+    return NULL;
+}
+
+static void document_snapshot_node(const char* id,
+                                   const char* kind,
+                                   const char* semantic_role,
+                                   const char* name,
+                                   const char* value_type,
+                                   int* comma) {
+    if (*comma) fputc(',', stdout);
+    *comma = 1;
+    fputs("{\"data\":{\"id\":", stdout); json_string(id);
+    fputs(",\"kind\":", stdout); json_string(kind);
+    fputs(",\"semantic_role\":", stdout); json_string(semantic_role);
+    fputs(",\"name\":", stdout); json_string(name);
+    fputs(",\"label\":", stdout); json_string(name);
+    fputs(",\"display_label\":", stdout); json_string(name);
+    fputs(",\"value_type\":", stdout); json_string(value_type ? value_type : "");
+    fputs("}}", stdout);
+}
+
+static void document_snapshot_edge(const char* id,
+                                   const char* source,
+                                   const char* target,
+                                   const char* role,
+                                   int* comma) {
+    if (*comma) fputc(',', stdout);
+    *comma = 1;
+    fputs("{\"data\":{\"id\":", stdout); json_string(id);
+    fputs(",\"source\":", stdout); json_string(source);
+    fputs(",\"target\":", stdout); json_string(target);
+    fputs(",\"role\":", stdout); json_string(role);
+    fputs("}}", stdout);
+}
+
+static void document_snapshot_function_declaration_nodes(const cxpr_doc_ast_node* node,
+                                                         size_t function_line,
+                                                         int* comma) {
+    size_t count;
+    if (!node) return;
+    {
+        cxpr_doc_ast_kind kind = cxpr_doc_ast_node_kind(node);
+        if (kind == CXPR_DOC_AST_LOCAL_BINDING || kind == CXPR_DOC_AST_RETURN) {
+            cxpr_source_span span = cxpr_doc_ast_node_span(node);
+            const char* name = kind == CXPR_DOC_AST_RETURN ? "return" : cxpr_doc_ast_node_name(node);
+            char id[96];
+            snprintf(id, sizeof(id), "function:%zu:declaration:%zu", function_line, span.start.line);
+            document_snapshot_node(id, kind == CXPR_DOC_AST_RETURN ? "return" : "binding",
+                kind == CXPR_DOC_AST_RETURN ? "return" : "binding",
+                name ? name : "declaration", "", comma);
+            return;
+        }
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i)
+        document_snapshot_function_declaration_nodes(cxpr_doc_ast_node_child(node, i), function_line, comma);
+}
+
+static void document_snapshot_function_nodes(const cxpr_doc_ast_node* node, int* comma) {
+    size_t count;
+    if (!node) return;
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_FUNCTION_DECL) {
+        cxpr_source_span span = cxpr_doc_ast_node_span(node);
+        const char* signature = cxpr_doc_ast_node_name(node);
+        char name[128];
+        char id[64];
+        size_t length = signature ? strcspn(signature, "(") : 0u;
+        if (length >= sizeof(name)) length = sizeof(name) - 1u;
+        memcpy(name, signature ? signature : "function", length);
+        name[length] = '\0';
+        snprintf(id, sizeof(id), "function:%zu", span.start.line);
+        document_snapshot_node(id, "function", "function", name, "", comma);
+        document_snapshot_function_declaration_nodes(node, span.start.line, comma);
+        return;
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i) {
+        document_snapshot_function_nodes(cxpr_doc_ast_node_child(node, i), comma);
+    }
+}
+
+static void document_snapshot_function_declaration_edges(const cxpr_doc_ast_node* node,
+                                                         size_t function_line,
+                                                         const char* function_id,
+                                                         size_t* edge_index,
+                                                         int* comma) {
+    size_t count;
+    cxpr_doc_ast_kind kind;
+    if (!node) return;
+    kind = cxpr_doc_ast_node_kind(node);
+    if (kind == CXPR_DOC_AST_LOCAL_BINDING || kind == CXPR_DOC_AST_RETURN) {
+        cxpr_source_span span = cxpr_doc_ast_node_span(node);
+        char id[96], edge[64];
+        snprintf(id, sizeof(id), "function:%zu:declaration:%zu", function_line, span.start.line);
+        snprintf(edge, sizeof(edge), "contains:%zu", (*edge_index)++);
+        document_snapshot_edge(edge, function_id, id, "contains", comma);
+        return;
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i)
+        document_snapshot_function_declaration_edges(cxpr_doc_ast_node_child(node, i), function_line,
+                                                     function_id, edge_index, comma);
+}
+
+static void document_snapshot_function_edges(const cxpr_doc_ast_node* node,
+                                             size_t* edge_index,
+                                             int* comma) {
+    size_t count;
+    if (!node) return;
+    if (cxpr_doc_ast_node_kind(node) == CXPR_DOC_AST_FUNCTION_DECL) {
+        cxpr_source_span span = cxpr_doc_ast_node_span(node);
+        char function_id[64], edge[64];
+        snprintf(function_id, sizeof(function_id), "function:%zu", span.start.line);
+        snprintf(edge, sizeof(edge), "contains:%zu", (*edge_index)++);
+        document_snapshot_edge(edge, "model", function_id, "contains", comma);
+        document_snapshot_function_declaration_edges(node, span.start.line, function_id,
+                                                     edge_index, comma);
+        return;
+    }
+    count = cxpr_doc_ast_node_child_count(node);
+    for (size_t i = 0u; i < count; ++i) {
+        document_snapshot_function_edges(cxpr_doc_ast_node_child(node, i), edge_index, comma);
+    }
+}
+
+static int document_snapshot_symbol_id(const cxpr_model* model,
+                                       const char* reference,
+                                       char* out,
+                                       size_t out_size) {
+    const char* root;
+    size_t length;
+    if (!model || !reference || !out || out_size == 0u) return 0;
+    root = reference[0] == '$' ? reference + 1 : reference;
+    length = strcspn(root, ".[");
+    for (size_t i = 0u; i < cxpr_model_input_count(model); ++i) {
+        const char* name = cxpr_model_input(model, i);
+        if (name && strlen(name) == length && strncmp(name, root, length) == 0) {
+            snprintf(out, out_size, "input:%zu", i); return 1;
+        }
+    }
+    for (size_t i = 0u; i < cxpr_model_constant_count(model); ++i) {
+        const char* name = cxpr_model_constant_name(model, i);
+        if (name && strlen(name) == length && strncmp(name, root, length) == 0) {
+            snprintf(out, out_size, "param:%zu", i); return 1;
+        }
+    }
+    for (size_t i = 0u; i < cxpr_model_binding_count(model); ++i) {
+        const char* name = cxpr_model_binding_name(model, i);
+        if (name && strlen(name) == length && strncmp(name, root, length) == 0) {
+            snprintf(out, out_size, "binding:%zu", i); return 1;
+        }
+    }
+    return 0;
+}
+
+char* cxpr_document_snapshot_json(const char* input, const char* source_name) {
+    cxpr_json_writer writer = {0};
+    cxpr_error err = {0};
+    cxpr_doc_ast* ast = NULL;
+    cxpr_model* model = NULL;
+    const char* model_name;
+    int comma = 0;
+    if (!input) input = "";
+    if (!source_name) source_name = "<memory>";
+    tooling_output = &writer;
+    ast = cxpr_doc_ast_parse(input, source_name, CXPR_DOC_EXTENSION_MODEL, &err);
+    model = ast ? cxpr_model_parse(input, &err) : NULL;
+    if (!ast || !model) {
+        fputs("{\"ok\":false,\"error\":", stdout);
+        json_string(err.message[0] ? err.message : "Failed to parse document snapshot");
+        fputs("}\n", stdout);
+        cxpr_model_free(model); cxpr_doc_ast_free(ast);
+        tooling_output = NULL;
+        return cxpr_json_take(&writer);
+    }
+    model_name = document_snapshot_model_name(cxpr_doc_ast_root(ast));
+    fputs("{\"schema\":\"cxpr.document_snapshot.v1\",\"name\":", stdout);
+    json_string(model_name ? model_name : "model");
+    fputs(",\"elements\":{\"nodes\":[", stdout);
+    document_snapshot_node("model", "model", "model", model_name ? model_name : "model", "", &comma);
+    for (size_t i = 0u; i < cxpr_model_input_count(model); ++i) {
+        char id[48]; snprintf(id, sizeof(id), "input:%zu", i);
+        document_snapshot_node(id, "input", "input", cxpr_model_input(model, i), "", &comma);
+    }
+    for (size_t i = 0u; i < cxpr_model_constant_count(model); ++i) {
+        char id[48]; snprintf(id, sizeof(id), "param:%zu", i);
+        document_snapshot_node(id, "param", "parameter", cxpr_model_constant_name(model, i), "", &comma);
+    }
+    for (size_t i = 0u; i < cxpr_model_binding_count(model); ++i) {
+        char id[48]; snprintf(id, sizeof(id), "binding:%zu", i);
+        document_snapshot_node(id, "binding", "binding", cxpr_model_binding_name(model, i), "", &comma);
+    }
+    for (size_t i = 0u; i < cxpr_model_output_count(model); ++i) {
+        char id[48]; snprintf(id, sizeof(id), "output:%zu", i);
+        document_snapshot_node(id, "output", "output", cxpr_model_output(model, i), "", &comma);
+    }
+    document_snapshot_function_nodes(cxpr_doc_ast_root(ast), &comma);
+    fputs("],\"edges\":[", stdout); comma = 0;
+    {
+        size_t edge_index = 0u;
+        for (size_t i = 0u; i < cxpr_model_input_count(model); ++i) {
+            char id[48], edge[48]; snprintf(id, sizeof(id), "input:%zu", i);
+            snprintf(edge, sizeof(edge), "contains:%zu", edge_index++);
+            document_snapshot_edge(edge, "model", id, "contains", &comma);
+        }
+        for (size_t i = 0u; i < cxpr_model_constant_count(model); ++i) {
+            char id[48], edge[48]; snprintf(id, sizeof(id), "param:%zu", i);
+            snprintf(edge, sizeof(edge), "contains:%zu", edge_index++);
+            document_snapshot_edge(edge, "model", id, "contains", &comma);
+        }
+        for (size_t i = 0u; i < cxpr_model_binding_count(model); ++i) {
+            const cxpr_expr_ast* expression = cxpr_model_binding_expr(model, i);
+            const char* references[256];
+            size_t count = cxpr_expr_ast_references(expression, references, 256u);
+            char target[48]; snprintf(target, sizeof(target), "binding:%zu", i);
+            for (size_t j = 0u; j < count && j < 256u; ++j) {
+                char source[48], edge[48];
+                if (!document_snapshot_symbol_id(model, references[j], source, sizeof(source)) ||
+                    strcmp(source, target) == 0) continue;
+                snprintf(edge, sizeof(edge), "dependency:%zu", edge_index++);
+                document_snapshot_edge(edge, source, target, "dependency", &comma);
+            }
+            { char edge[48]; snprintf(edge, sizeof(edge), "contains:%zu", edge_index++);
+              document_snapshot_edge(edge, "model", target, "contains", &comma); }
+        }
+        for (size_t i = 0u; i < cxpr_model_output_count(model); ++i) {
+            char target[48], source[48], edge[48];
+            const char* name = cxpr_model_output(model, i);
+            snprintf(target, sizeof(target), "output:%zu", i);
+            if (document_snapshot_symbol_id(model, name, source, sizeof(source))) {
+                snprintf(edge, sizeof(edge), "output:%zu", edge_index++);
+                document_snapshot_edge(edge, source, target, "output", &comma);
+            }
+            snprintf(edge, sizeof(edge), "contains:%zu", edge_index++);
+            document_snapshot_edge(edge, "model", target, "contains", &comma);
+        }
+        document_snapshot_function_edges(cxpr_doc_ast_root(ast), &edge_index, &comma);
+    }
+    fputs("]}}\n", stdout);
+    cxpr_model_free(model); cxpr_doc_ast_free(ast);
+    tooling_output = NULL;
+    return cxpr_json_take(&writer);
+}
+
 #include "language-core/generated/cxpr_language_spec.inc"
 
 static int tooling_keyword(const char* word, size_t length) {
     for (size_t i = 0u; i < sizeof(tooling_keywords) / sizeof(tooling_keywords[0]); ++i) {
         if (strlen(tooling_keywords[i]) == length && strncmp(tooling_keywords[i], word, length) == 0) return 1;
+    }
+    return 0;
+}
+
+static int tooling_type_name(const char* word, size_t length) {
+    for (size_t i = 0u;
+         i < sizeof(tooling_type_names) / sizeof(tooling_type_names[0]); ++i) {
+        if (strlen(tooling_type_names[i]) == length &&
+            strncmp(tooling_type_names[i], word, length) == 0) return 1;
     }
     return 0;
 }
@@ -867,6 +1132,7 @@ static void emit_source_tokens(const char* source,
                     length == 8u && strncmp(source + start, "optimize", 8u) == 0 &&
                     (source[cursor] == '=' || source[cursor] == '{') ? "namedArgument" :
                     tooling_keyword(source + start, length) ? "keyword" :
+                    tooling_type_name(source + start, length) ? "type" :
                     source[cursor] == '(' ? "function" :
                     source[cursor] == '=' && source[cursor + 1u] != '=' ?
                         (tooling_inside_metadata_block(source, start) ? "namedArgument" :

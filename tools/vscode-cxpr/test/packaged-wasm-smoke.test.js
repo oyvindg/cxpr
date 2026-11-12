@@ -36,6 +36,10 @@ test("isolated VSIX serves diagnostics, completion, hover and definition through
   for (const asset of requiredAssets) {
     assert.ok(fs.existsSync(path.join(extensionRoot, asset)), `VSIX is missing ${asset}`);
   }
+  const packagedServer = fs.readFileSync(
+    path.join(extensionRoot, "server", "server.js"), "utf8");
+  assert.match(packagedServer, /Signed 64-bit integer scalar/,
+    "packaged LSP server must include current language-service type hover");
 
   const packagedGrammar = fs.readFileSync(
     path.join(extensionRoot, "syntaxes", "cxpr.tmLanguage.json"), "utf8");
@@ -65,6 +69,40 @@ test("isolated VSIX serves diagnostics, completion, hover and definition through
   const source = "model smoke\nin close\nout x = sqrt(close)\n";
 
   assert.deepEqual(await service.getDiagnostics(source, "smoke.cxpr"), []);
+  const viewSource = `model view_smoke
+in samples: view<number>[16]
+in events: view<int64>[16, 5]
+in mask: view<bool>[16]
+out sample = get(samples, events[0, 0], 0)
+`;
+  assert.deepEqual(await service.getDiagnostics(viewSource, "view-smoke.cxpr"), []);
+  assert.match((await service.getHover(
+    viewSource, { line: 1, column: 13 }, "view-smoke.cxpr")).markdown,
+  /Read-only external typed bounded view/);
+  assert.match((await service.getHover(
+    viewSource, { line: 2, column: 18 }, "view-smoke.cxpr")).markdown,
+  /Signed 64-bit integer/);
+  const scalarTypeSource = "model scalar_type\nin cell_y: int64\nout cell_y\n";
+  assert.match((await service.getHover(
+    scalarTypeSource, { line: 1, column: 13 }, "scalar-type.cxpr")).markdown,
+  /Signed 64-bit integer/);
+  const viewTokens = await service.getSemanticTokens(viewSource, "view-smoke.cxpr");
+  for (const [line, start, length] of [[1, 12, 4], [1, 17, 6], [2, 11, 4],
+    [2, 16, 5], [3, 9, 4], [3, 14, 4]]) {
+    assert.ok(viewTokens.some((token) =>
+      token.type === "type" && token.line === line && token.start === start && token.length === length),
+    `missing semantic type token at ${line}:${start}`);
+  }
+  const rootedInputSource = `model channel(type = "tracker_channel", pipe = "event")
+in t
+in event { note as row_note, effect as row_effect }
+out value = t + row_note + row_effect
+`;
+  assert.deepEqual(await service.getDiagnostics(
+    rootedInputSource, "rooted-input.cxpr"), []);
+  assert.match((await service.getHover(
+    rootedInputSource, { line: 0, column: 8 }, "rooted-input.cxpr")).markdown,
+  /channel\(t: number, event: struct\) -> number[\s\S]*event\.note: number[\s\S]*event\.effect: number/);
   assert.deepEqual(await service.getDiagnostics(
     "model pipe\nwet = 1\n|> abs()\nout wet\n",
     "unindented-pipe.cxpr"), []);

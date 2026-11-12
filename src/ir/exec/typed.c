@@ -418,6 +418,97 @@ cxpr_value cxpr_ir_exec_typed_bound(const cxpr_ir_program* program, const cxpr_c
                 CXPR_TYPED_PUSH_OWNED(result);
             }
             break;
+        case CXPR_OP_VIEW_LENGTH:
+            {
+                const cxpr_view_resolved* view =
+                    cxpr_context_view(ctx, instr->name, NULL);
+                if (!view) {
+                    result = cxpr_null();
+                    (void)cxpr_eval_ast(
+                        (const cxpr_expr_ast*)instr->payload,
+                        ctx, reg, &result, err);
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    CXPR_TYPED_PUSH(result);
+                    break;
+                }
+                if (instr->index >= view->rank) {
+                    if (err) {
+                        err->code = CXPR_ERR_INVALID_INDEX;
+                        err->message = "External view dimension is out of range";
+                    }
+                    return cxpr_num(NAN);
+                }
+                CXPR_TYPED_PUSH(cxpr_num((double)view->shape[instr->index]));
+            }
+            break;
+        case CXPR_OP_VIEW_LOAD_CHECKED:
+        case CXPR_OP_VIEW_LOAD_OR:
+            {
+                const size_t rank = instr->index;
+                const cxpr_view_resolved* view;
+                cxpr_view_table table;
+                cxpr_view_status status;
+                double indices[CXPR_VIEW_MAX_RANK];
+                cxpr_value fallback = cxpr_num(0.0);
+                const size_t needed = rank +
+                    (instr->op == CXPR_OP_VIEW_LOAD_OR ? 1u : 0u);
+                if (rank == 0u || rank > CXPR_VIEW_MAX_RANK ||
+                    !cxpr_ir_require_stack(sp, needed, err)) {
+                    return cxpr_num(NAN);
+                }
+                if (instr->op == CXPR_OP_VIEW_LOAD_OR) {
+                    fallback = stack[sp - 1u];
+                    --sp;
+                }
+                for (size_t dimension = rank; dimension > 0u; --dimension) {
+                    cxpr_value index_value = stack[--sp];
+                    if (index_value.type != CXPR_VALUE_NUMBER &&
+                        index_value.type != CXPR_VALUE_INT64) {
+                        if (err) {
+                            err->code = CXPR_ERR_INVALID_INDEX;
+                            err->message = "External view indices must be numbers";
+                        }
+                        return cxpr_num(NAN);
+                    }
+                    indices[dimension - 1u] =
+                        index_value.type == CXPR_VALUE_INT64
+                            ? (double)index_value.i64 : index_value.d;
+                }
+                view = cxpr_context_view(ctx, instr->name, NULL);
+                if (!view) {
+                    result = cxpr_null();
+                    (void)cxpr_eval_ast(
+                        (const cxpr_expr_ast*)instr->payload,
+                        ctx, reg, &result, err);
+                    if (err && err->code != CXPR_OK) return cxpr_num(NAN);
+                    CXPR_TYPED_PUSH(result);
+                    break;
+                }
+                table = (cxpr_view_table){view, 1u, 0u};
+                if (instr->op == CXPR_OP_VIEW_LOAD_OR) {
+                    status = cxpr_view_load_or(
+                        &table, 0u, indices, rank, fallback, &result);
+                    /* Fallback is a successful expression result even though the
+                       helper preserves the original diagnostic status. */
+                    if (status == CXPR_VIEW_INVALID_INDEX ||
+                        status == CXPR_VIEW_INDEX_OUT_OF_RANGE) {
+                        status = CXPR_VIEW_OK;
+                    }
+                } else {
+                    status = cxpr_view_load_checked(
+                        &table, 0u, indices, rank, &result);
+                }
+                if (status != CXPR_VIEW_OK) {
+                    if (err) {
+                        err->code = status == CXPR_VIEW_INDEX_OUT_OF_RANGE
+                            ? CXPR_ERR_INDEX_OUT_OF_RANGE : CXPR_ERR_INVALID_INDEX;
+                        err->message = cxpr_view_status_message(status);
+                    }
+                    return cxpr_num(NAN);
+                }
+                CXPR_TYPED_PUSH(result);
+            }
+            break;
         case CXPR_OP_LOAD_LOCAL:
             if (instr->index >= local_count) {
                 return cxpr_ir_runtime_error(err, "Unknown local variable");

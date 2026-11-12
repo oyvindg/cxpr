@@ -1151,6 +1151,31 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         const cxpr_expr_ast* capability_index = ast->data.index.index;
         cxpr_expr_ast flattened_index = {0};
         bool capability_handled = false;
+        if (ast->data.index.target->type == CXPR_NODE_IDENTIFIER) {
+            const char* view_name = ast->data.index.target->data.identifier.name;
+            size_t view_slot = 0u;
+            const cxpr_view_resolved* view =
+                cxpr_context_view(ctx, view_name, &view_slot);
+            if (view) {
+                cxpr_value index = cxpr_eval_node(ast->data.index.index, ctx, reg, err);
+                cxpr_value result = cxpr_num(NAN);
+                cxpr_view_status status;
+                double numeric_index;
+                if (err && err->code != CXPR_OK) return result;
+                numeric_index = index.type == CXPR_VALUE_INT64
+                    ? (double)index.i64
+                    : index.type == CXPR_VALUE_NUMBER ? index.d : NAN;
+                cxpr_value_free(&index);
+                status = cxpr_view_load_checked(
+                    ctx->view_table, view_slot, &numeric_index, 1u, &result);
+                if (status == CXPR_VIEW_OK) return result;
+                return cxpr_eval_error(
+                    err,
+                    status == CXPR_VIEW_INDEX_OUT_OF_RANGE
+                        ? CXPR_ERR_INDEX_OUT_OF_RANGE : CXPR_ERR_INVALID_INDEX,
+                    cxpr_view_status_message(status));
+            }
+        }
         if (ast->data.index.target->type == CXPR_NODE_ARRAY) {
             cxpr_value index = cxpr_eval_node(ast->data.index.index, ctx, reg, err);
             size_t selected;
@@ -1356,6 +1381,50 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
         cxpr_func_entry* entry = cxpr_eval_cached_function_entry(ast, reg);
         cxpr_value static_reduction;
 
+        if (strcmp(name, "get") == 0 &&
+            argc >= 2u && ast->data.function_call.args[0]->type ==
+                CXPR_NODE_IDENTIFIER) {
+            const char* view_name =
+                ast->data.function_call.args[0]->data.identifier.name;
+            size_t view_slot = 0u;
+            const cxpr_view_resolved* view =
+                cxpr_context_view(ctx, view_name, &view_slot);
+            double indices[CXPR_VIEW_MAX_RANK] = {0};
+            cxpr_value result = cxpr_num(NAN);
+            cxpr_value fallback = cxpr_num(NAN);
+            cxpr_view_status status;
+            const size_t index_count = argc - 2u;
+            if (!view || index_count != view->rank)
+                return cxpr_eval_error(err, CXPR_ERR_WRONG_ARITY,
+                    "External view helper requires one index per dimension");
+            for (size_t i = 0u; i < index_count; ++i) {
+                cxpr_value index = cxpr_eval_node(
+                    ast->data.function_call.args[i + 1u], ctx, reg, err);
+                if (err && err->code != CXPR_OK) return index;
+                indices[i] = index.type == CXPR_VALUE_INT64 ? (double)index.i64
+                    : index.type == CXPR_VALUE_NUMBER ? index.d : NAN;
+                cxpr_value_free(&index);
+            }
+            fallback = cxpr_eval_node(
+                ast->data.function_call.args[argc - 1u], ctx, reg, err);
+            if (err && err->code != CXPR_OK) return fallback;
+            status = cxpr_view_load_or(
+                ctx->view_table, view_slot, indices, index_count,
+                fallback, &result);
+            cxpr_value_free(&fallback);
+            if (status == CXPR_VIEW_OK ||
+                status == CXPR_VIEW_INVALID_INDEX ||
+                status == CXPR_VIEW_INDEX_OUT_OF_RANGE)
+                return result;
+            return cxpr_eval_error(
+                err,
+                status == CXPR_VIEW_INDEX_OUT_OF_RANGE
+                    ? CXPR_ERR_INDEX_OUT_OF_RANGE :
+                  status == CXPR_VIEW_TYPE_MISMATCH
+                    ? CXPR_ERR_TYPE_MISMATCH : CXPR_ERR_INVALID_INDEX,
+                cxpr_view_status_message(status));
+        }
+
         if (strcmp(name, "__cxpr_let") == 0 && argc == 3u) {
             const cxpr_expr_ast* binding = ast->data.function_call.args[0];
             cxpr_context* overlay;
@@ -1377,6 +1446,25 @@ static cxpr_value cxpr_eval_node_uncached(const cxpr_expr_ast* ast, const cxpr_c
             cxpr_context_free(overlay);
             cxpr_value_free(&value);
             return result;
+        }
+
+        if (strcmp(name, "length") == 0 && argc == 2u &&
+            ast->data.function_call.args[0]->type == CXPR_NODE_IDENTIFIER) {
+            const char* view_name =
+                ast->data.function_call.args[0]->data.identifier.name;
+            const cxpr_view_resolved* view = cxpr_context_view(ctx, view_name, NULL);
+            cxpr_value dimension_value = cxpr_eval_node(
+                ast->data.function_call.args[1], ctx, reg, err);
+            double dimension_number = dimension_value.type == CXPR_VALUE_INT64
+                ? (double)dimension_value.i64 : dimension_value.d;
+            cxpr_value_free(&dimension_value);
+            if (!view || !isfinite(dimension_number) || dimension_number < 0.0 ||
+                floor(dimension_number) != dimension_number ||
+                dimension_number >= (double)view->rank) {
+                return cxpr_eval_error(err, CXPR_ERR_INVALID_INDEX,
+                                       "Invalid external view dimension");
+            }
+            return cxpr_int64((int64_t)view->shape[(size_t)dimension_number]);
         }
 
         if (strcmp(name, "length") == 0 && argc == 1u) {

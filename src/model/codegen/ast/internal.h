@@ -34,6 +34,8 @@ typedef struct {
     const cxpr_model_compiled* program;
     char** param_names;
     char** param_exprs;
+    const cxpr_expr_ast** param_asts;
+    size_t param_ast_count;
     size_t param_count;
     const char* inline_fn_name;
     const char* function_prefix;

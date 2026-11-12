@@ -1,0 +1,28 @@
+model image_convolution
+
+in image: view<number>[8, 8, 3]
+in kernel: view<number>[3, 3]
+in y: int64
+in x: int64
+in channel: int64
+
+fn get_clamped(values, y, x, channel) =
+    get(values,
+        clamp(y + 0.0, 0, length(values, 0) - 1),
+        clamp(x + 0.0, 0, length(values, 1) - 1),
+        clamp(channel + 0.0, 0, length(values, 2) - 1),
+        0)
+
+p00 = get_clamped(image, y - 1, x - 1, channel) * get(kernel, 0, 0, 0)
+p01 = get_clamped(image, y - 1, x, channel) * get(kernel, 0, 1, 0)
+p02 = get_clamped(image, y - 1, x + 1, channel) * get(kernel, 0, 2, 0)
+p10 = get_clamped(image, y, x - 1, channel) * get(kernel, 1, 0, 0)
+p11 = get_clamped(image, y, x, channel) * get(kernel, 1, 1, 0)
+p12 = get_clamped(image, y, x + 1, channel) * get(kernel, 1, 2, 0)
+p20 = get_clamped(image, y + 1, x - 1, channel) * get(kernel, 2, 0, 0)
+p21 = get_clamped(image, y + 1, x, channel) * get(kernel, 2, 1, 0)
+p22 = get_clamped(image, y + 1, x + 1, channel) * get(kernel, 2, 2, 0)
+convolved = p00 + p01 + p02 + p10 + p11 + p12 + p20 + p21 + p22
+center = get(image, y, x, channel, -777)
+
+out { convolved, center }

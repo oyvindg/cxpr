@@ -57,7 +57,57 @@ static void cxpr_context_reset_empty_overlay(cxpr_context* ctx, const cxpr_conte
     ctx->cached_structs_version = 1;
     ctx->parent = parent;
     ctx->expression_scope = NULL;
+    ctx->view_requirements = NULL;
+    ctx->view_table = NULL;
+    ctx->view_count = 0u;
     ctx->overlay_cache_next = NULL;
+}
+
+cxpr_view_status cxpr_context_bind_views(
+    cxpr_context* ctx,
+    const cxpr_view_requirement* requirements,
+    const cxpr_view_table* table,
+    size_t count) {
+    if (!ctx || (count > 0u && (!requirements || !table)))
+        return CXPR_VIEW_NULL_ARGUMENT;
+    if (count > CXPR_VIEW_MAX_COUNT || (table && table->count != count))
+        return CXPR_VIEW_INVALID_REQUIREMENT;
+    for (size_t i = 0u; i < count; ++i) {
+        const cxpr_view_resolved* view = &table->views[i];
+        if (!requirements[i].name || requirements[i].slot != i ||
+            view->element_type != requirements[i].element_type ||
+            view->rank != requirements[i].rank)
+            return CXPR_VIEW_INVALID_REQUIREMENT;
+        for (size_t dimension = 0u; dimension < view->rank; ++dimension) {
+            if (view->shape[dimension] > requirements[i].max_shape[dimension])
+                return CXPR_VIEW_SHAPE_EXCEEDED;
+        }
+    }
+    ctx->view_requirements = requirements;
+    ctx->view_table = table;
+    ctx->view_count = count;
+    return CXPR_VIEW_OK;
+}
+
+void cxpr_context_inherit_views(cxpr_context* destination,
+                                const cxpr_context* source) {
+    if (!destination || !source) return;
+    destination->view_requirements = source->view_requirements;
+    destination->view_table = source->view_table;
+    destination->view_count = source->view_count;
+}
+
+const cxpr_view_resolved* cxpr_context_view(
+    const cxpr_context* ctx, const char* name, size_t* out_slot) {
+    for (const cxpr_context* current = ctx; current; current = current->parent) {
+        for (size_t i = 0u; name && i < current->view_count; ++i) {
+            if (strcmp(current->view_requirements[i].name, name) == 0) {
+                if (out_slot) *out_slot = i;
+                return &current->view_table->views[i];
+            }
+        }
+    }
+    return NULL;
 }
 
 static bool cxpr_context_overlay_is_empty(const cxpr_context* ctx) {
@@ -318,6 +368,9 @@ cxpr_context* cxpr_context_clone(const cxpr_context* ctx) {
     clone->eval_memo.depth = 0u;
     clone->parent = NULL;
     clone->expression_scope = ctx->expression_scope;
+    clone->view_requirements = ctx->view_requirements;
+    clone->view_table = ctx->view_table;
+    clone->view_count = ctx->view_count;
     clone->overlay_cache_next = NULL;
     free(var_clone);
     free(param_clone);
@@ -352,6 +405,9 @@ void cxpr_context_clear(cxpr_context* ctx) {
     cxpr_array_map_clear(&ctx->array_params);
     ctx->eval_memo.count = 0u;
     ctx->eval_memo.depth = 0u;
+    ctx->view_requirements = NULL;
+    ctx->view_table = NULL;
+    ctx->view_count = 0u;
     cxpr_context_clear_entry_cache(ctx->variable_cache);
     cxpr_context_clear_entry_cache(ctx->param_cache);
     cxpr_context_clear_entry_cache(ctx->variable_ptr_cache);

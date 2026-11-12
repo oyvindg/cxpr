@@ -129,6 +129,12 @@ function main() {
 
   const rootDir = path.resolve(__dirname, "..");
   const cxprRoot = path.resolve(rootDir, "..", "..");
+  execFileSync("npm", ["run", "build"], {
+    cwd: path.join(cxprRoot, "tools", "language-service"), stdio: "inherit"
+  });
+  execFileSync("npm", ["run", "build"], {
+    cwd: path.join(cxprRoot, "tools", "language-server"), stdio: "inherit"
+  });
   execFileSync(process.execPath, [path.join(cxprRoot, "tools", "language-core", "generate-grammars.js"), "--check"],
     { stdio: "inherit" });
   const pkgPath = path.join(rootDir, "package.json");

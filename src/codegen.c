@@ -925,16 +925,18 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
         const cxpr_expr_ast* index = cxpr_expr_ast_index_expression(ast);
         unsigned offset;
         unsigned next_offset;
-        if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) {
-            if (target && target->api_version == CXPR_C_TARGET_API_VERSION &&
-                target->emit_lookback_at_offset) {
-                char* dynamic = target->emit_lookback_at_offset(
-                    ast, lookback_offset, target->userdata, err);
-                if (!dynamic) return 0;
-                cxpr_cg_puts(b, dynamic);
-                free(dynamic);
+        if (target && target->api_version == CXPR_C_TARGET_API_VERSION &&
+            target->emit_lookback_at_offset) {
+            char* selected = target->emit_lookback_at_offset(
+                ast, lookback_offset, target->userdata, err);
+            if (selected) {
+                cxpr_cg_puts(b, selected);
+                free(selected);
                 return !b->oom;
             }
+            if (err && err->code != CXPR_OK) return 0;
+        }
+        if (!cxpr_lookback_literal_offset(index, &offset, NULL, NULL)) {
             return cxpr_cg_err(
                 err, CXPR_ERR_SYNTAX,
                 !target ? "C codegen dynamic lookback has no target"
@@ -976,8 +978,12 @@ static int cxpr_cg_emit_at_offset(const cxpr_expr_ast* ast, unsigned lookback_of
     default:
         {
             static CXPR_THREAD_LOCAL char message[96];
+            char* source = cxpr_expr_ast_to_string(ast);
             snprintf(message, sizeof(message),
-                     "unsupported AST node %d in C codegen", (int)cxpr_expr_ast_kind_of(ast));
+                     "unsupported AST node %d in C codegen%s%s",
+                     (int)cxpr_expr_ast_kind_of(ast), source ? ": " : "",
+                     source ? source : "");
+            free(source);
             return cxpr_cg_err(err, CXPR_ERR_SYNTAX, message);
         }
     }

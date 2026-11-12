@@ -1,0 +1,30 @@
+# Nested static collections remain ordinary bounded arrays, not lookback chains.
+model nested_record_grid
+
+in pattern_index, row_index, channel_index
+
+fn row(note, instrument, volume, effect, param) =
+    note, instrument, volume, effect, param
+
+patterns = [
+    [
+        [row(60, 1, 50, 1, 55), row(36, 2, 56, 0, 0)],
+        [row(-1, 0, -1, 0, 0), row(-1, 0, -1, 0, 0)]
+    ],
+    [
+        [row(72, 1, 52, 1, 55), row(43, 2, 48, 0, 0)],
+        [row(-2, 0, -1, 0, 0), row(-2, 0, -1, 0, 0)]
+    ]
+]
+
+event = patterns[clamp(pattern_index, 0, 1)]
+    [clamp(row_index, 0, 1)]
+    [clamp(channel_index, 0, 1)]
+
+out {
+    note = event.note,
+    instrument = event.instrument,
+    volume = event.volume,
+    effect = event.effect,
+    param = event.param
+}

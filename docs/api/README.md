@@ -21,6 +21,7 @@ surface.
 | [Documents and models](documents-models.md) | Parsing documents, model introspection, imports, compilation, and model sessions | `doc.h`, `doc/ast.h`, `model/model.h`, `model/imports.h`, `model/compiled.h`, `model/runtime.h` |
 | [Engine](engine.md) | Stateful ticks, source hydration, roles, watches, transitions, and engine snapshots | `engine.h`, `source.h`, `snapshot.h` |
 | [Generated C](generated-c.md) | Stable generated-model ABI and native deployment | `generated.h`, `codegen.h` |
+| [Typed bounded views](views.md) | Zero-copy model-visible host buffers, validation, leases, and checked indexing | `view.h`, `view_lease.h`, `generated.h` |
 | [Bulk and grid](bulk.md) | Structure-of-arrays validation, reset, serial/range execution, and host-owned grids | `bulk.h`, `generated.h` |
 | [Providers and resampling](providers-sources-resample.md) | Provider inventories, source plans, fixed-duration parsing, binding, and materialized views | `provider.h`, `source.h`, `resample.h` |
 | [Plugins and code generation](plugins-codegen.md) | C, CUDA, graph, metadata, and debug-map artifacts | `model/plugin.h`, `plugins/c.h`, `plugins/cuda.h`, `plugins/graph.h`, `plugins/meta.h`, `plugins/debug_map.h` |
@@ -53,7 +54,8 @@ hot paths and running the benchmarks.
 | Contract | Current value | Header |
 | --- | ---: | --- |
 | Library version | 0.3.2 | `<cxpr/version.h>` |
-| Generated model descriptor ABI | 5 | `<cxpr/generated.h>` |
+| Generated model descriptor ABI | 6 | `<cxpr/generated.h>` |
+| Typed bounded view ABI | 1 | `<cxpr/view.h>` |
 | Generated resample view ABI | 1 | `<cxpr/generated.h>` |
 | Public IR view API | 1 | `<cxpr/ir.h>` |
 | C target API | 1 | `<cxpr/codegen.h>` |

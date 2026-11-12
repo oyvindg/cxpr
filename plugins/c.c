@@ -93,6 +93,23 @@ static const char* cxpr_c_generated_type_name(cxpr_model_result_kind kind) {
     }
 }
 
+static const char* cxpr_c_view_value_type_name(cxpr_model_element_type type) {
+    switch (type) {
+    case CXPR_MODEL_ELEMENT_BOOL: return "CXPR_VALUE_BOOL";
+    case CXPR_MODEL_ELEMENT_INT: return "CXPR_VALUE_INT64";
+    case CXPR_MODEL_ELEMENT_NUMBER: return "CXPR_VALUE_NUMBER";
+    default: return "CXPR_VALUE_NULL";
+    }
+}
+
+static const char* cxpr_c_view_c_type_name(cxpr_model_element_type type) {
+    switch (type) {
+    case CXPR_MODEL_ELEMENT_BOOL: return "bool";
+    case CXPR_MODEL_ELEMENT_INT: return "int64_t";
+    default: return "double";
+    }
+}
+
 static cxpr_model_result_kind cxpr_c_call_param_result_kind(
     const cxpr_model_compiled* program,
     const char* name) {
@@ -173,7 +190,7 @@ char* cxpr_c_plugin_artifact_from_program(
     static const char* default_function_name = "cxpr_model_tick";
     const char* function_name =
         options && options->function_name ? options->function_name : default_function_name;
-    const size_t input_count = cxpr_model_compiled_input_count(program);
+    const size_t model_input_count = cxpr_model_compiled_input_count(program);
     const size_t model_output_count = cxpr_model_compiled_output_count(program);
     const size_t param_count = cxpr_model_compiled_call_param_count(program);
     const size_t* output_indices = options ? options->output_indices : NULL;
@@ -181,6 +198,8 @@ char* cxpr_c_plugin_artifact_from_program(
     const cxpr_model_slot_ref** descriptor_outputs = NULL;
     size_t flat_output_count = 0u;
     size_t output_count = 0u;
+    size_t input_count = 0u;
+    size_t view_count = 0u;
     cxpr_context* defaults_ctx = NULL;
     char* evaluator = NULL;
     cxpr_c_buf out = {0};
@@ -195,6 +214,11 @@ char* cxpr_c_plugin_artifact_from_program(
         cxpr_c_set_error(
             err, CXPR_ERR_SYNTAX, "selected outputs require output indices");
         return NULL;
+    }
+    for (i = 0u; i < model_input_count; ++i) {
+        if (cxpr_model_compiled_input_view_requirement(
+                program, i, NULL, NULL, NULL)) ++view_count;
+        else ++input_count;
     }
     for (i = 0u; i < output_count && output_indices; ++i) {
         if (output_indices[i] >= model_output_count) {
@@ -272,7 +296,8 @@ char* cxpr_c_plugin_artifact_from_program(
             function_name, function_name,
             function_name, function_name,
             function_name, model_name,
-            function_name, function_name, function_name, param_count)) {
+            view_count > 0u ? "NULL" : function_name,
+            function_name, function_name, param_count)) {
         goto oom;
     }
     for (i = 0u; i < param_count; ++i) {
@@ -303,16 +328,22 @@ char* cxpr_c_plugin_artifact_from_program(
     if (!cxpr_c_appendf(&out, "    .input_count = %zu,\n", input_count)) {
         goto oom;
     }
-    for (i = 0u; i < input_count; ++i) {
+    {
+    size_t scalar_slot = 0u;
+    for (i = 0u; i < model_input_count; ++i) {
+        if (cxpr_model_compiled_input_view_requirement(
+                program, i, NULL, NULL, NULL)) continue;
         if (!cxpr_c_appendf(
                 &out,
                 "    .input_names[%zu] = \"%s\",\n"
                 "    .input_types[%zu] = %s,\n",
-                i, cxpr_model_compiled_input_name(program, i),
-                i, cxpr_c_generated_type_name(
+                scalar_slot, cxpr_model_compiled_input_name(program, i),
+                scalar_slot, cxpr_c_generated_type_name(
                        cxpr_model_compiled_input_result_kind(program, i)))) {
             goto oom;
         }
+        ++scalar_slot;
+    }
     }
     if (!cxpr_c_appendf(&out, "    .output_count = %zu,\n", output_count)) {
         goto oom;
@@ -326,6 +357,37 @@ char* cxpr_c_plugin_artifact_from_program(
                 i, cxpr_c_generated_type_name(
                        descriptor_outputs[i]->result_kind))) {
             goto oom;
+        }
+    }
+    if (view_count > 0u) {
+        size_t view_slot = 0u;
+        if (!cxpr_c_appendf(
+                &out,
+                "    .view_tick = (cxpr_generated_view_tick_fn)%s,\n"
+                "    .view_count = %zu,\n"
+                "    .view_abi_version = CXPR_VIEW_ABI_VERSION,\n",
+                function_name, view_count)) goto oom;
+        for (i = 0u; i < model_input_count; ++i) {
+            cxpr_model_element_type element_type;
+            size_t rank;
+            size_t shape[CXPR_VIEW_MAX_RANK] = {0};
+            if (!cxpr_model_compiled_input_view_requirement(
+                    program, i, &element_type, &rank, shape)) continue;
+            if (!cxpr_c_appendf(
+                    &out,
+                    "    .views[%zu] = { .name = \"%s\", .slot = %zu, "
+                    ".element_type = %s, .rank = %zu, .max_shape = { ",
+                    view_slot, cxpr_model_compiled_input_name(program, i),
+                    view_slot, cxpr_c_view_value_type_name(element_type), rank)) goto oom;
+            for (size_t dimension = 0u; dimension < CXPR_VIEW_MAX_RANK; ++dimension)
+                if (!cxpr_c_appendf(&out, "%s%zu", dimension ? ", " : "", shape[dimension]))
+                    goto oom;
+            if (!cxpr_c_appendf(
+                    &out,
+                    " }, .min_alignment = _Alignof(%s), "
+                    ".access = CXPR_VIEW_ACCESS_READ_ONLY },\n",
+                    cxpr_c_view_c_type_name(element_type))) goto oom;
+            ++view_slot;
         }
     }
     if (!cxpr_c_append(

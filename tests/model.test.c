@@ -5238,6 +5238,40 @@ static void test_static_record_map_binding_emits_c_tick(void) {
     printf("  ✓ test_static_record_map_binding_emits_c_tick\n");
 }
 
+static void test_static_record_selection_preserves_runtime_dependency_order(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = parse_model_ok(
+        "model static_record_selection_order\n"
+        "in row\n"
+        "choices = { pattern = [0, 1, 2] }\n"
+        "selected = choices[clamp(runtime_index, 0, 2)]\n"
+        "pattern = selected.pattern\n"
+        "runtime_index = floor(row)\n"
+        "out pattern\n");
+    cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &err);
+    char* code;
+    char* runtime_declaration;
+    char* pattern_emission;
+
+    if (!program) fprintf(stderr, "static selection order compile failed: %s\n",
+                          err.message ? err.message : "(null)");
+    assert(program != NULL);
+    code = cxpr_model_compiled_generate_c(
+        program, "static inline", "static_record_selection_order_tick", &err);
+    if (!code) fprintf(stderr, "static selection order C emit failed: %s\n",
+                       err.message ? err.message : "(null)");
+    assert(code != NULL);
+    runtime_declaration = strstr(code, "const double runtime_index =");
+    pattern_emission = strstr(code, "_cx_outputs[0] =");
+    assert(runtime_declaration != NULL);
+    assert(pattern_emission != NULL);
+    assert(runtime_declaration < pattern_emission);
+    free(code);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+    printf("  ✓ test_static_record_selection_preserves_runtime_dependency_order\n");
+}
+
 static void test_structural_sum_emits_nested_record_c(void) {
     cxpr_error err = {0};
     cxpr_model* model = parse_model_ok(
@@ -6172,6 +6206,115 @@ static void test_pipe_into_imported_model_with_named_params(void) {
     printf("  ✓ test_pipe_into_imported_model_with_named_params\n");
 }
 
+static void test_view_input_schema(void) {
+    cxpr_error err = {0};
+    cxpr_model* model = cxpr_model_parse(
+        "model views\n"
+        "in samples: view<number>[1024]\n"
+        "in pattern: view<int64>[256, 64, 5]\n"
+        "out 1\n", &err);
+    cxpr_model_compiled* program;
+    cxpr_model_element_type element = CXPR_MODEL_ELEMENT_UNKNOWN;
+    size_t rank = 0u;
+    size_t shape[CXPR_VIEW_MAX_RANK] = {0};
+    assert(model != NULL);
+    assert(cxpr_model_input_count(model) == 2u);
+    assert(cxpr_model_input_view_requirement(model, 0u, &element, &rank, shape));
+    assert(element == CXPR_MODEL_ELEMENT_NUMBER && rank == 1u && shape[0] == 1024u);
+    assert(cxpr_model_input_view_requirement(model, 1u, &element, &rank, shape));
+    assert(element == CXPR_MODEL_ELEMENT_INT && rank == 3u);
+    assert(shape[0] == 256u && shape[1] == 64u && shape[2] == 5u);
+    program = cxpr_model_compile(model, NULL, &err);
+    assert(program != NULL);
+    assert(cxpr_model_compiled_input_view_requirement(
+        program, 1u, &element, &rank, shape));
+    assert(rank == 3u && shape[1] == 64u);
+    cxpr_model_compiled_free(program);
+    cxpr_model_free(model);
+
+    model = cxpr_model_parse("model bad\nin x: view<number>[1,2,3,4,5]\nout 1\n", &err);
+    assert(model == NULL);
+    model = cxpr_model_parse("model bad\nin x: view<string>[4]\nout 1\n", &err);
+    assert(model == NULL);
+    printf("  \xE2\x9C\x93 test_view_input_schema\n");
+}
+
+static void test_imported_view_input_schema_is_propagated(void) {
+    cxpr_error err = {0};
+    cxpr_model* child = parse_model_ok(
+        "model sampler\n"
+        "in samples: view<number>[64, 32]\n"
+        "value = get(samples, 2, 3, 0)\n"
+        "out value\n");
+    cxpr_model_compiled* child_program = cxpr_model_compile(child, NULL, &err);
+    cxpr_model_import import = {.name = "sampler", .program = child_program};
+    cxpr_model* parent = parse_model_ok(
+        "model parent\n"
+        "use sampler\n"
+        "value = sampler().value\n"
+        "out value\n");
+    cxpr_model_compiled* parent_program;
+    cxpr_model_session* session;
+    cxpr_model_element_type element = CXPR_MODEL_ELEMENT_UNKNOWN;
+    size_t rank = 0u;
+    size_t shape[CXPR_VIEW_MAX_RANK] = {0};
+    double samples[64u * 32u] = {0};
+    cxpr_view_requirement requirement = {0};
+    cxpr_view binding = {0};
+    cxpr_view_resolved resolved = {0};
+    cxpr_view_table table = {&resolved, 1u, 1u};
+    double value = 0.0;
+
+    assert(child_program != NULL);
+    parent_program = cxpr_model_compile_with_imports(
+        parent, NULL, &import, 1u, &err);
+    assert(parent_program != NULL);
+    assert(cxpr_model_compiled_input_count(parent_program) == 1u);
+    assert(strcmp(cxpr_model_compiled_input_name(parent_program, 0u),
+                  "samples") == 0);
+    assert(cxpr_model_compiled_input_view_requirement(
+        parent_program, 0u, &element, &rank, shape));
+    assert(element == CXPR_MODEL_ELEMENT_NUMBER);
+    assert(rank == 2u && shape[0] == 64u && shape[1] == 32u);
+
+    samples[2u * 32u + 3u] = 17.25;
+    requirement.name = "samples";
+    requirement.element_type = CXPR_VALUE_NUMBER;
+    requirement.rank = 2u;
+    requirement.max_shape[0] = 64u;
+    requirement.max_shape[1] = 32u;
+    requirement.min_alignment = _Alignof(double);
+    requirement.access = CXPR_VIEW_ACCESS_READ_ONLY;
+    binding.data = samples;
+    binding.element_type = CXPR_VALUE_NUMBER;
+    binding.rank = 2u;
+    binding.shape[0] = 64u;
+    binding.shape[1] = 32u;
+    binding.strides[0] = (ptrdiff_t)(32u * sizeof(double));
+    binding.strides[1] = (ptrdiff_t)sizeof(double);
+    binding.capacity_bytes = sizeof(samples);
+    binding.flags = CXPR_VIEW_READ_ONLY | CXPR_VIEW_CONTIGUOUS;
+    assert(cxpr_views_resolve(
+        &requirement, &binding, 1u, &resolved, NULL) == CXPR_VIEW_OK);
+    session = cxpr_model_session_new(parent_program, NULL, &err);
+    assert(session != NULL);
+    assert(cxpr_context_bind_views(cxpr_model_session_context(session),
+                                   &requirement, &table, 1u) == CXPR_VIEW_OK);
+    if (!cxpr_model_session_tick(parent_program, session, NULL, &err))
+        fprintf(stderr, "imported view tick failed: %s\n",
+                err.message ? err.message : "(null)");
+    assert(err.code == CXPR_OK);
+    assert(cxpr_model_session_get_number(session, "value", &value));
+    assert(value == 17.25);
+
+    cxpr_model_session_free(session);
+    cxpr_model_compiled_free(parent_program);
+    cxpr_model_free(parent);
+    cxpr_model_compiled_free(child_program);
+    cxpr_model_free(child);
+    printf("  \xE2\x9C\x93 test_imported_view_input_schema_is_propagated\n");
+}
+
 int main(void) {
     test_external_struct_producer_lookback_emits_c();
     printf("Running cxpr model parser tests...\n");
@@ -6245,6 +6388,8 @@ int main(void) {
     test_function_block_out_expression();
     test_state_session_atomic_commit_and_events();
     test_typed_declaration_fixtures_are_accepted();
+    test_view_input_schema();
+    test_imported_view_input_schema_is_propagated();
     test_typed_buffer_state_push_and_index();
     test_session_input_lookback();
     test_session_expression_lookback();
@@ -6302,6 +6447,7 @@ int main(void) {
     test_record_param_field_access_emits_c_tick();
     test_static_reduce_compiles_and_emits_c_tick();
     test_static_record_map_binding_emits_c_tick();
+    test_static_record_selection_preserves_runtime_dependency_order();
     test_structural_sum_emits_nested_record_c();
     test_structural_sum_field_aliases_emit_fused_c();
     test_structural_sum_accepts_imported_pipe_model_records();

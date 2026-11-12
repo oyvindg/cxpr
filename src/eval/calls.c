@@ -103,6 +103,7 @@ static bool cxpr_eval_defined_call_can_inline_struct_args(
 static bool cxpr_eval_defined_call_can_inline_value_args(
     const cxpr_func_entry* entry,
     const cxpr_expr_ast* const* ordered_args);
+static bool cxpr_eval_defined_body_uses_view_syntax(const cxpr_expr_ast* ast);
 static cxpr_expr_ast* cxpr_eval_substitute_defined_args(
     const cxpr_expr_ast* ast,
     const cxpr_func_entry* entry,
@@ -128,7 +129,8 @@ cxpr_value cxpr_eval_defined_function(cxpr_func_entry* entry,
     }
 
     if (entry->defined_body &&
-        cxpr_eval_defined_call_can_inline_value_args(entry, ordered_args)) {
+        (cxpr_eval_defined_call_can_inline_value_args(entry, ordered_args) ||
+         cxpr_eval_defined_body_uses_view_syntax(entry->defined_body))) {
         cxpr_expr_ast* inlined = cxpr_eval_substitute_defined_args(
             entry->defined_body, entry, ordered_args);
         cxpr_value result;
@@ -568,6 +570,16 @@ static bool cxpr_eval_defined_call_can_inline_value_args(
         }
     }
     return true;
+}
+
+static bool cxpr_eval_defined_body_uses_view_syntax(const cxpr_expr_ast* ast) {
+    const char* names[64];
+    const size_t count = cxpr_expr_ast_functions_used(ast, names, 64u);
+    for (size_t i = 0u; i < count && i < 64u; ++i) {
+        if (strcmp(names[i], "get") == 0 || strcmp(names[i], "length") == 0)
+            return true;
+    }
+    return false;
 }
 
 static cxpr_expr_ast* cxpr_eval_clone_chain_with_replaced_root(

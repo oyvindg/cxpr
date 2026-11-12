@@ -38,7 +38,7 @@ cmake -S "$repo_dir" -B "$build_dir" \
     echo "trials=$trials"
 } | tee "$log_dir/env.log"
 
-core_benches="cxpr_bench_ir cxpr_bench_model cxpr_bench_engine cxpr_bench_index_history"
+core_benches="cxpr_bench_ir cxpr_bench_model cxpr_bench_engine cxpr_bench_index_history cxpr_bench_view_batch cxpr_bench_view_table"
 
 echo "== building benchmark targets (independently) =="
 for tgt in $core_benches; do

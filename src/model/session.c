@@ -1,4 +1,5 @@
 #include "ir/exec/internal.h"
+#include "context/internal.h"
 #include "eval/internal.h"
 #include "lookback.h"
 #include "model/internal.h"
@@ -1063,6 +1064,7 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
         free(owned_cache_key);
         return cxpr_eval_error(err, CXPR_ERR_SYNTAX, "Missing child model session");
     }
+    cxpr_context_inherit_views(child_session->ctx, ctx);
     if (child_ref->source_field_count > 0u) {
         const cxpr_expr_ast* source_arg =
             cxpr_model_child_call_source_arg(child_ref, child, ast);
@@ -1107,6 +1109,13 @@ cxpr_value cxpr_model_eval_child_producer(const cxpr_expr_ast* ast,
             (!named_input_arg && i == child_ref->source_input_index)
                 ? cxpr_model_child_call_source_arg(child_ref, child, ast)
                 : NULL;
+        if (!named_input_arg && !source_arg && !rooted_field &&
+            child->input_declared_types &&
+            child->input_declared_types[i] == CXPR_MODEL_DECL_VIEW &&
+            cxpr_context_view(ctx, child->inputs[i], NULL)) {
+            input_found = true;
+            continue;
+        }
         if (rooted_field && rooted_arg_expr &&
             cxpr_expr_ast_kind_of(rooted_arg_expr) == CXPR_NODE_IDENTIFIER) {
             const char* forwarded_root = cxpr_expr_ast_identifier_name(rooted_arg_expr);

@@ -1,0 +1,7 @@
+model view_table_generated
+
+in samples: view<number>[1024, 1024]
+in row: int64
+in column: int64
+
+out value = samples[row, column]

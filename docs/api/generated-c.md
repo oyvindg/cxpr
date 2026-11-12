@@ -7,7 +7,7 @@ scheduling, persistence, and accelerator dispatch.
 
 The public contract is `<cxpr/generated.h>`. A host should reject an artifact
 unless `cxpr_generated_model_descriptor_abi_valid()` succeeds. The current
-descriptor ABI is `CXPR_GENERATED_MODEL_ABI_VERSION == 5`; it supports at most
+descriptor ABI is `CXPR_GENERATED_MODEL_ABI_VERSION == 6`; it supports at most
 64 inputs, outputs, and parameters. Artifact-owned descriptor names, schema
 arrays, and callbacks have static lifetime.
 
@@ -30,11 +30,21 @@ and a primary cursor follow the normal arguments. Validate every view with
 an alignment entry maps a primary row to a materialized-series row, while
 `CXPR_RESAMPLE_ALIGNMENT_MISSING` denotes no value.
 
-The version-5 `cxpr_generated_model_descriptor` stores the typed four-argument
-tick type; it does not carry a resample tick pointer. Use the generated
+The version-6 `cxpr_generated_model_descriptor` stores the typed four-argument
+scalar tick and an optional five-argument `view_tick`. View requirements live
+in `views[0..view_count)` and are documented in [Typed bounded views](views.md).
+The descriptor does not carry a resample tick pointer. Use the generated
 resample function and the requirement accessors in `<cxpr/model/model.h>`
 directly. The current generic `<cxpr/bulk.h>` runner likewise accepts descriptor
 ticks only; a CUDA or other resample-aware bulk wrapper is host code.
+
+## Migrating from ABI 5 to ABI 6
+
+ABI 6 adds the optional model-visible `view_tick`, ordered `views`,
+`view_count`, and `view_abi_version`. Rebuild generated artifacts and hosts
+together. Scalar-only models retain the existing `tick` calling convention;
+view models must be resolved through `<cxpr/view.h>` and called through
+`view_tick`.
 
 ## Migrating from ABI 4 to ABI 5
 

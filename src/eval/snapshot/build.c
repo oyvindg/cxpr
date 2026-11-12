@@ -285,6 +285,17 @@ static char* cxpr_snapshot_display_label_for_node(const cxpr_snapshot_node* node
         snprintf(out, len, "%s\n= %s", title, final_value);
         return out;
     }
+    if ((strcmp(node->kind ? node->kind : "", "number") == 0 ||
+         strcmp(node->kind ? node->kind : "", "string") == 0 ||
+         strcmp(node->kind ? node->kind : "", "bool") == 0) &&
+        cxpr_snapshot_role_is_display_prefix(node->role) &&
+        !cxpr_snapshot_role_uses_colon(node->role)) {
+        len = strlen(node->role) + strlen(title) + 5u;
+        out = (char*)malloc(len);
+        if (!out) return NULL;
+        snprintf(out, len, "%s =\n%s", node->role, title);
+        return out;
+    }
     if (strcmp(node->kind ? node->kind : "", "producer_access") == 0 &&
         node->source && strcmp(value, node->source) == 0 && final_value[0] == '\0') {
         return cxpr_snapshot_strdup(title);
@@ -481,7 +492,15 @@ static bool cxpr_snapshot_relabel_arg_node(cxpr_snapshot_builder* b,
     value = node->value_text ? node->value_text : "";
     if (!source[0]) return true;
 
-    display_len = strlen(role) + strlen(source) + 5u;
+    if (strcmp(node->kind ? node->kind : "", "string") == 0 ||
+        strcmp(node->kind ? node->kind : "", "number") == 0 ||
+        strcmp(node->kind ? node->kind : "", "bool") == 0) {
+        cxpr_snapshot_set_string(&node->display_label, cxpr_snapshot_strdup(source));
+        if (!node->display_label) b->failed = 1;
+        return !b->failed;
+    }
+
+    display_len = strlen(source) + 1u;
     if (resolved[0] && strcmp(resolved, source) != 0) {
         display_len += strlen(resolved) + 4u;
     }
@@ -498,7 +517,7 @@ static bool cxpr_snapshot_relabel_arg_node(cxpr_snapshot_builder* b,
         }
         return false;
     }
-    snprintf(display_label, display_len, "%s =\n%s", role, source);
+    snprintf(display_label, display_len, "%s", source);
     if (resolved[0] && strcmp(resolved, source) != 0) {
         strcat(display_label, "\n= ");
         strcat(display_label, resolved);

@@ -1,0 +1,22 @@
+model pcm_tracker
+
+in pcm: view<number>[16]
+in tracker: view<int64>[4, 8, 4]
+in sample_index: int64
+in fraction: number
+in pattern: int64
+in row: int64
+
+fn get_clamped(values, index) =
+    get(values, clamp(index + 0.0, 0, length(values, 0) - 1), 0)
+
+left = get_clamped(pcm, sample_index)
+right = get_clamped(pcm, sample_index + 1)
+sample = left + (right - left) * fraction
+note = get(tracker, pattern, row, 0, -1i64)
+instrument = get(tracker, pattern, row, 1, -1i64)
+effect = get(tracker, pattern, row, 2, -1i64)
+parameter = get(tracker, pattern, row, 3, -1i64)
+repeated_note = get(tracker, pattern, row, 0, -1i64)
+
+out { sample, note, instrument, effect, parameter, repeated_note }

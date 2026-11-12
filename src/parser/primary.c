@@ -1074,16 +1074,34 @@ primary_done:
             cxpr_expr_ast_free(index_expr);
             return NULL;
         }
-        if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after index expression")) {
-            cxpr_expr_ast_free(node);
-            cxpr_expr_ast_free(index_expr);
-            return NULL;
-        }
         node = cxpr_expr_ast_index_new(node, index_expr);
         if (!node) {
             p->had_error = true;
             p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
             p->last_error.message = "Out of memory";
+            return NULL;
+        }
+        /* Comma-separated indices are represented as the same nested index
+         * chain as `value[first][second]`. This preserves the existing AST
+         * contract while letting typed views distinguish their declared rank
+         * during validation and lowering. */
+        while (cxpr_expr_parser_match(p, CXPR_TOK_COMMA)) {
+            index_expr = cxpr_parse_expression(p);
+            if (!index_expr || p->had_error) {
+                cxpr_expr_ast_free(node);
+                cxpr_expr_ast_free(index_expr);
+                return NULL;
+            }
+            node = cxpr_expr_ast_index_new(node, index_expr);
+            if (!node) {
+                p->had_error = true;
+                p->last_error.code = CXPR_ERR_OUT_OF_MEMORY;
+                p->last_error.message = "Out of memory";
+                return NULL;
+            }
+        }
+        if (!cxpr_expr_parser_expect(p, CXPR_TOK_RBRACKET, "Expected closing ']' after index expression")) {
+            cxpr_expr_ast_free(node);
             return NULL;
         }
     }

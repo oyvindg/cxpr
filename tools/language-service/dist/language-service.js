@@ -282,6 +282,9 @@ class LanguageService {
             if (namespace)
                 return namespace;
         }
+        const typeHover = await this.getTypeHover(source, pos, name);
+        if (typeHover)
+            return typeHover;
         let resolution = await this.analyzer.resolveAt(source, name, pos);
         const resultField = await this.getModelResultFieldHover(source, pos, name);
         if (resultField)
@@ -303,6 +306,43 @@ class LanguageService {
             ? resolution.imports : this.importSpecsForSymbol(source, resolution.name);
         const imported = await this.resolveImported(name, { ...resolution, imports });
         return imported ? { markdown: hoverMarkdown(imported.resolution, imported.uri) } : null;
+    }
+    /**
+     * Resolve hover documentation for a parser-classified CXPR type token.
+     * Semantic-token classification prevents variables that happen to use a type
+     * name from receiving type documentation.
+     * @param source Complete CXPR source text.
+     * @param pos Hover position on a type token.
+     * @param name Source file name passed to the analyzer.
+     * @returns Type documentation and its exact source range, or null.
+     */
+    async getTypeHover(source, pos, name) {
+        const documentation = {
+            bool: "Boolean scalar with the values `true` and `false`.",
+            buffer: "Bounded runtime buffer type used by buffer-oriented host APIs.",
+            int: "Integer scalar type retained for source compatibility.",
+            int64: "Signed 64-bit integer scalar. Integer literals may use the `i64` suffix.",
+            number: "Double-precision floating-point scalar.",
+            series: "Time-ordered scalar series resolved by a compatible host or backend.",
+            view: "Read-only external typed bounded view. Declare it as `view<T>[D, ...]`; " +
+                "each dimension is a compile-time maximum and the host supplies a validated active shape."
+        };
+        const analysis = await this.analyzer.analyzeDocument(source, name);
+        const token = (analysis.sourceTokens || []).find((candidate) => candidate.type === "type" && candidate.line === pos.line &&
+            pos.column >= candidate.start && pos.column <= candidate.start + candidate.length);
+        if (!token)
+            return null;
+        const typeName = source.split("\n")[token.line]?.slice(token.start, token.start + token.length) ?? "";
+        const description = documentation[typeName];
+        if (!description)
+            return null;
+        return {
+            markdown: `**${typeName}** \`CXPR type\`\n\n${description}`,
+            range: {
+                start: { line: token.line, character: token.start },
+                end: { line: token.line, character: token.start + token.length }
+            }
+        };
     }
     /**
      * Resolves a field read from a local binding initialized by an imported model call.
@@ -601,10 +641,14 @@ class LanguageService {
         // The analyzer outline is parser-backed and preserves top-level fields of
         // nested records. The regex fallback stops at the first nested `}` and may
         // collect inner fields while dropping later roots such as `bass`.
-        const outputs = recordLeaves.length
-            ? declaredOutputs
-            : outlinedOutputs.length ? outlinedOutputs
-                : resolution.outputs?.length ? resolution.outputs : declaredOutputs;
+        const compiledOutputs = resolution.outputs || [];
+        const compiledHasNestedShape = compiledOutputs.some((output) => output.name.includes("."));
+        const outputs = compiledHasNestedShape
+            ? compiledOutputs
+            : recordLeaves.length
+                ? declaredOutputs
+                : outlinedOutputs.length ? outlinedOutputs
+                    : compiledOutputs.length ? compiledOutputs : declaredOutputs;
         if (!outputs.length)
             return anonymousOutput ? { ...resolution, type: "number" } : resolution;
         const structured = structuredSyntax || outputs.length > 1;

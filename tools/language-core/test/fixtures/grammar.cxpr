@@ -4,6 +4,9 @@ use { ema, rsi } from indicators.trend
 model grammar_fixture(pipe = "stereo")
 
 in stereo { left, right as wet_right }
+in samples: view<number>[1024]
+in events: view<int64>[64, 5]
+in mask: view<bool>[1024]
 state previous = 0i64
 out signal = close.price >= ema(close, length = $period) ? "buy" : "hold"
 previous := signal // trailing comment

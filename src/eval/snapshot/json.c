@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 bool cxpr_snapshot_json_string(FILE* out, const char* text) {
     const unsigned char* p = (const unsigned char*)(text ? text : "");
@@ -152,6 +153,35 @@ static bool cxpr_snapshot_hooks_have_host(const cxpr_snapshot_json_hooks* hooks)
                      (hooks->host_schema && hooks->host_schema[0]));
 }
 
+static const char* cxpr_snapshot_semantic_role(const cxpr_eval_snapshot* snapshot,
+                                               const cxpr_snapshot_node* node) {
+    const cxpr_snapshot_node* parent = NULL;
+    const char* kind;
+    if (!node) return "";
+    kind = node->kind ? node->kind : "";
+    if (node->has_parent && snapshot && node->parent_id < snapshot->node_count) {
+        parent = &snapshot->nodes[node->parent_id];
+    }
+    if (parent && (strcmp(parent->kind ? parent->kind : "", "function_call") == 0 ||
+                   strcmp(parent->kind ? parent->kind : "", "producer_access") == 0) &&
+        strcmp(node->role ? node->role : "", "field") != 0 &&
+        strncmp(node->role ? node->role : "", "sample[", 7u) != 0 &&
+        strcmp(kind, "binary_op") != 0 && strcmp(kind, "unary_op") != 0 &&
+        strcmp(kind, "ternary") != 0) {
+        return "argument";
+    }
+    if (strcmp(kind, "function_call") == 0 || strcmp(kind, "producer_access") == 0) {
+        return "function";
+    }
+    if (strcmp(kind, "binary_op") == 0 || strcmp(kind, "unary_op") == 0 ||
+        strcmp(kind, "ternary") == 0) {
+        return "operator";
+    }
+    if (strcmp(kind, "lookback") == 0) return "lookback";
+    if (strcmp(kind, "variable") == 0) return "parameter";
+    return "";
+}
+
 bool cxpr_snapshot_write_document_prefix(
     FILE* out,
     const char* schema,
@@ -197,6 +227,8 @@ bool cxpr_eval_snapshot_write_json_ex(const cxpr_eval_snapshot* snapshot,
         if (!cxpr_snapshot_json_string(out, node->role)) return false;
         if (fputs(", \"kind\": ", out) == EOF) return false;
         if (!cxpr_snapshot_json_string(out, node->kind)) return false;
+        if (fputs(", \"semantic_role\": ", out) == EOF) return false;
+        if (!cxpr_snapshot_json_string(out, cxpr_snapshot_semantic_role(snapshot, node))) return false;
         if (fputs(", \"label\": ", out) == EOF) return false;
         if (!cxpr_snapshot_json_string(out, node->label)) return false;
         if (fputs(", \"display_label\": ", out) == EOF) return false;

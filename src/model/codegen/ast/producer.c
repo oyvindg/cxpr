@@ -15,6 +15,8 @@ static void cxpr_model_c_inherit_locals(cxpr_model_ast_c_target* target,
     if (!target || !inherited) return;
     target->param_names = inherited->param_names;
     target->param_exprs = inherited->param_exprs;
+    target->param_asts = inherited->param_asts;
+    target->param_ast_count = inherited->param_ast_count;
     target->param_count = inherited->param_count;
     target->local_declarations = inherited->local_declarations;
     target->local_cse = inherited->local_cse;
@@ -277,6 +279,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
         for (size_t i = 0u; i < child->input_count; ++i) {
             size_t input_index = 0u;
             const cxpr_expr_ast* source_arg = NULL;
+            const cxpr_expr_ast* rooted_source = NULL;
             cxpr_expr_ast* rooted_projection = NULL;
             const char* rooted_arg = NULL;
             const char* rooted_field = cxpr_model_c_child_rooted_field_for_input(
@@ -306,7 +309,7 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                     cxpr_model_names_match(
                         rooted_arg,
                         program->children[child_index].pipe_target);
-                const cxpr_expr_ast* rooted_source = pipe_root
+                rooted_source = pipe_root
                     ? cxpr_model_child_call_source_arg(
                           &program->children[child_index], child, ast)
                     : NULL;
@@ -374,7 +377,12 @@ char* cxpr_model_ast_producer_access_to_c(const cxpr_model_compiled* program,
                 .userdata = &target_data,
             };
             if (source_arg) {
-                source_expr = cxpr_expr_ast_to_c_at_offset(source_arg, 0u, &target, err);
+                source_expr = rooted_field && rooted_source &&
+                              cxpr_model_ast_is_record_like(
+                                  program, rooted_source, 0u)
+                    ? cxpr_model_ast_field_expr_to_c(
+                          program, rooted_source, rooted_field, &target, err, 0u)
+                    : cxpr_expr_ast_to_c_at_offset(source_arg, 0u, &target, err);
                 if (!source_expr) {
                     cxpr_expr_ast_free(rooted_projection);
                     free(call.data);

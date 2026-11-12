@@ -17,7 +17,7 @@
       "scope": "variable.parameter.cxpr"
     },
     "type": {
-      "pattern": "\\b(?:bool|buffer|int|number|series)\\b",
+      "pattern": "\\b(?:bool|buffer|int|int64|number|series|view)\\b",
       "scope": "entity.name.type.cxpr"
     },
     "keyword": {
@@ -373,7 +373,7 @@
     },
     {
       "name": "entity.name.type.cxpr",
-      "match": "\\b(?:bool|buffer|int|number|series)\\b"
+      "match": "\\b(?:bool|buffer|int|int64|number|series|view)\\b"
     },
     {
       "name": "keyword.control.cxpr",

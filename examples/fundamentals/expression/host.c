@@ -63,7 +63,8 @@ int main(void) {
     assert(cxpr_expressions_add(evaluator, definitions,
                                 CXPR_ARRAY_COUNT(definitions), &error));
     assert(cxpr_evaluator_compile(evaluator, &error));
-    assert(cxpr_evaluator_eval(evaluator, expression_context, &error));
+    cxpr_evaluator_eval(evaluator, expression_context, &error);
+    assert(error.code == CXPR_OK);
     expression_energy =
         cxpr_expression_get_double(evaluator, "kinetic_energy", NULL);
     expression_over_speed =

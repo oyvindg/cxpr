@@ -117,6 +117,7 @@ static const cxpr_function_info builtins[] = {
     INFO("map", "map(values, mapper)", "Maps a statically bounded array or named record while preserving its shape. Stateful model callbacks receive one independent instance per element.", p_collection_mapper, 2u, 2u, CXPR_VALUE_ARRAY, CXPR_BUILTIN_SYNTAX),
     INFO("reduce", "reduce(values, initial, reducer)", "Folds a statically bounded collection from the supplied numeric initial value.", p_collection_initial_reducer, 3u, 3u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
     INFO("length", "length(values)", "Returns the compile-time length of a static array or static record view.", p_collection, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
+    INFO("get", "get(view, indices..., fallback)", "Loads an external view element or returns a typed fallback for an invalid index.", p_values, 3u, 6u, CXPR_VALUE_NULL, CXPR_BUILTIN_SYNTAX),
     INFO("upper_bound", "upper_bound(values, value, selector)", "Returns the insertion index after equal elements in a sorted static array. Records may supply a key selector.", p_sorted_value, 2u, 3u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_SYNTAX),
     INFO("count", "count(expression)", "Counts matching basket members.", p_basket_expression, 1u, 1u, CXPR_VALUE_NUMBER, CXPR_BUILTIN_BASKET),
     INFO("window", "window(expression, period)", "Creates a compile-time trailing expression window for reducers such as mean and stddev; no runtime array is created.", p_expression_period, 2u, 2u, CXPR_VALUE_ARRAY, CXPR_BUILTIN_SYNTAX),

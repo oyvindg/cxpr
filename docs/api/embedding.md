@@ -12,11 +12,19 @@ CPU/GPU compilation and dispatch.
 | One expression or editor query | Parse an expression and use the direct or compiled expression API. |
 | Dynamic models, diagnostics, watches, or parity tests | Compile a model and create one `cxpr_model_session` or `cxpr_engine_session` per independent execution. |
 | Fixed production model and hot loop | Generate C at build time, compile it with the host, validate its descriptor, and call its tick function. |
+| Large host-owned buffers indexed by the model | Declare typed bounded views, resolve `cxpr_view` bindings once, and call generated `view_tick` with a `cxpr_view_table`. |
 | Many independent cells/entities | Use the generated descriptor with `<cxpr/bulk.h>`, or wrap the generated evaluator in a host-owned worker/kernel. |
 | CUDA | Emit CUDA-compatible math, then let the host compile, allocate, transfer, launch, and synchronize. |
 
 The reference session and generated artifact should implement the same model
 semantics. Keeping a parity test between them is the safest deployment pattern.
+
+For model-visible buffers, prefer generated typed views over callbacks when the
+host already owns contiguous numeric memory. Generated access measured near
+direct pointer speed for sequential rank-two loads and substantially faster
+than the complete engine view-source path. Use callbacks when each lookup
+requires dynamic computation, source mapping, or provider policy. See
+[Typed bounded views](views.md) for the complete binding sequence.
 
 ## Shared library and .NET P/Invoke
 

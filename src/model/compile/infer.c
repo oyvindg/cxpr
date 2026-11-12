@@ -16,6 +16,10 @@ static cxpr_expr_ast* cxpr_model_clone_call_as_field_access(
     const cxpr_expr_ast* call, const char* field, cxpr_error* err);
 static bool cxpr_model_binding_name_exists(const cxpr_model* model,
                                            const char* name);
+static cxpr_expr_ast* cxpr_model_materialize_call_record(
+    const cxpr_expr_ast* call,
+    const cxpr_model_compiled* program,
+    cxpr_error* err);
 
 static bool cxpr_model_input_name_exists(char* const* inputs, size_t count, const char* name) {
     if (!name) return false;
@@ -108,6 +112,28 @@ static cxpr_model_result_kind cxpr_model_infer_result_kind_depth(
            a numeric aggregate, so the source element type is preserved. */
         return cxpr_model_infer_result_kind_depth(
             ast->data.function_call.args[0], reg, model, program, depth + 1u);
+    }
+    if (ast->type == CXPR_NODE_FUNCTION_CALL &&
+        ast->data.function_call.name &&
+        cxpr_model_names_match(ast->data.function_call.name, "get") &&
+        ast->data.function_call.argc > 0u) {
+        const cxpr_expr_ast* source = ast->data.function_call.args[0];
+        if (source && source->type == CXPR_NODE_IDENTIFIER && program) {
+            for (size_t i = 0u; i < program->input_count; ++i) {
+                cxpr_model_element_type element = CXPR_MODEL_ELEMENT_UNKNOWN;
+                if (program->inputs[i] &&
+                    cxpr_model_names_match(program->inputs[i],
+                                           source->data.identifier.name) &&
+                    cxpr_model_compiled_input_view_requirement(
+                        program, i, &element, NULL, NULL)) {
+                    if (element == CXPR_MODEL_ELEMENT_BOOL)
+                        return CXPR_MODEL_RESULT_BOOL;
+                    if (element == CXPR_MODEL_ELEMENT_INT)
+                        return CXPR_MODEL_RESULT_INT64;
+                    return CXPR_MODEL_RESULT_NUMBER;
+                }
+            }
+        }
     }
     if (ast->type == CXPR_NODE_PRODUCER_ACCESS && reg) {
         cxpr_func_entry* entry =
@@ -324,6 +350,15 @@ static bool cxpr_model_materialize_static_value(
         cxpr_expr_ast_free(*value);
         *value = clone;
     }
+    if ((*value)->type == CXPR_NODE_FUNCTION_CALL) {
+        clone = cxpr_model_materialize_call_record(*value, program, err);
+        if (clone) {
+            cxpr_expr_ast_free(*value);
+            *value = clone;
+        } else if (err && err->code != CXPR_OK) {
+            return false;
+        }
+    }
     if ((*value)->type == CXPR_NODE_ARRAY) {
         for (size_t i = 0u; i < (*value)->data.array.count; ++i) {
             if (!cxpr_model_materialize_static_value(
@@ -531,8 +566,8 @@ static cxpr_expr_ast* cxpr_model_materialize_call_record(
     if (!call || call->type != CXPR_NODE_FUNCTION_CALL || !program ||
         !program->registry) return NULL;
     entry = cxpr_registry_find(program->registry, call->data.function_call.name);
-    if (!entry || !entry->model_producer ||
-        entry->defined_return_field_count < 2u ||
+    if (!entry || entry->defined_return_field_count == 0u ||
+        (entry->model_producer && entry->defined_return_field_count < 2u) ||
         !entry->defined_return_field_names) return NULL;
 
     names = (const char**)calloc(entry->defined_return_field_count, sizeof(*names));
@@ -651,6 +686,151 @@ oom_values:
     free(names);
     free(values);
     free(rooted_input_fields);
+    return NULL;
+}
+
+/** Build a structural selection from a statically bounded collection. */
+static cxpr_expr_ast* cxpr_model_select_static_structure(
+    const cxpr_expr_ast* collection,
+    const cxpr_expr_ast* index,
+    cxpr_error* err) {
+    const cxpr_expr_ast* first;
+    size_t count;
+    if (!collection || collection->type != CXPR_NODE_ARRAY || !index) return NULL;
+    count = collection->data.array.count;
+    if (count == 0u) return NULL;
+    first = collection->data.array.elements[0];
+    if (first->type == CXPR_NODE_ARRAY) {
+        const size_t inner_count = first->data.array.count;
+        cxpr_expr_ast** selected = (cxpr_expr_ast**)calloc(
+            inner_count ? inner_count : 1u, sizeof(*selected));
+        if (!selected) goto oom;
+        for (size_t inner = 0u; inner < inner_count; ++inner) {
+            cxpr_expr_ast** candidates = (cxpr_expr_ast**)calloc(
+                count, sizeof(*candidates));
+            cxpr_expr_ast* candidate_array;
+            if (!candidates) goto fail_array;
+            for (size_t outer = 0u; outer < count; ++outer) {
+                const cxpr_expr_ast* element = collection->data.array.elements[outer];
+                if (!element || element->type != CXPR_NODE_ARRAY ||
+                    element->data.array.count != inner_count) {
+                    free(candidates);
+                    cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                        "Nested static arrays must have equal lengths", 0u, 0u);
+                    goto fail_array;
+                }
+                candidates[outer] = cxpr_expr_ast_clone(
+                    element->data.array.elements[inner]);
+                if (!candidates[outer]) {
+                    for (size_t i = 0u; i < outer; ++i)
+                        cxpr_expr_ast_free(candidates[i]);
+                    free(candidates);
+                    goto fail_array;
+                }
+            }
+            candidate_array = cxpr_expr_ast_array_new(candidates, count);
+            if (!candidate_array) {
+                for (size_t i = 0u; i < count; ++i)
+                    cxpr_expr_ast_free(candidates[i]);
+                free(candidates);
+                goto fail_array;
+            }
+            selected[inner] = cxpr_model_select_static_structure(
+                candidate_array, index, err);
+            cxpr_expr_ast_free(candidate_array);
+            if (!selected[inner]) goto fail_array;
+        }
+        {
+            cxpr_expr_ast* result = cxpr_expr_ast_array_new(selected, inner_count);
+            if (!result) goto fail_array;
+            return result;
+        }
+fail_array:
+        for (size_t i = 0u; i < inner_count; ++i)
+            cxpr_expr_ast_free(selected[i]);
+        free(selected);
+        if (!err || err->code == CXPR_OK) goto oom;
+        return NULL;
+    }
+    if (first->type == CXPR_NODE_RECORD) {
+        const size_t field_count = first->data.record.field_count;
+        const char** names = (const char**)calloc(
+            field_count ? field_count : 1u, sizeof(*names));
+        cxpr_expr_ast** selected = (cxpr_expr_ast**)calloc(
+            field_count ? field_count : 1u, sizeof(*selected));
+        if (!names || !selected) {
+            free(names);
+            free(selected);
+            goto oom;
+        }
+        for (size_t field = 0u; field < field_count; ++field) {
+            cxpr_expr_ast** candidates = (cxpr_expr_ast**)calloc(
+                count, sizeof(*candidates));
+            cxpr_expr_ast* candidate_array;
+            names[field] = first->data.record.field_names[field];
+            if (!candidates) goto fail_record;
+            for (size_t outer = 0u; outer < count; ++outer) {
+                const cxpr_expr_ast* element = collection->data.array.elements[outer];
+                if (!element || element->type != CXPR_NODE_RECORD ||
+                    element->data.record.field_count != field_count ||
+                    strcmp(element->data.record.field_names[field], names[field]) != 0) {
+                    free(candidates);
+                    cxpr_model_set_error(err, CXPR_ERR_TYPE_MISMATCH,
+                        "Nested static records must have matching fields", 0u, 0u);
+                    goto fail_record;
+                }
+                candidates[outer] = cxpr_expr_ast_clone(
+                    element->data.record.field_values[field]);
+                if (!candidates[outer]) {
+                    for (size_t i = 0u; i < outer; ++i)
+                        cxpr_expr_ast_free(candidates[i]);
+                    free(candidates);
+                    goto fail_record;
+                }
+            }
+            candidate_array = cxpr_expr_ast_array_new(candidates, count);
+            if (!candidate_array) {
+                for (size_t i = 0u; i < count; ++i)
+                    cxpr_expr_ast_free(candidates[i]);
+                free(candidates);
+                goto fail_record;
+            }
+            selected[field] = cxpr_model_select_static_structure(
+                candidate_array, index, err);
+            cxpr_expr_ast_free(candidate_array);
+            if (!selected[field]) goto fail_record;
+        }
+        {
+            cxpr_expr_ast* result = cxpr_expr_ast_record_new(
+                names, selected, field_count);
+            free(names);
+            if (!result) goto fail_record_values;
+            return result;
+        }
+fail_record:
+        free(names);
+fail_record_values:
+        for (size_t i = 0u; i < field_count; ++i)
+            cxpr_expr_ast_free(selected[i]);
+        free(selected);
+        if (!err || err->code == CXPR_OK) goto oom;
+        return NULL;
+    }
+    {
+        cxpr_expr_ast* target = cxpr_expr_ast_clone(collection);
+        cxpr_expr_ast* selector = cxpr_expr_ast_clone(index);
+        cxpr_expr_ast* result = target && selector
+            ? cxpr_expr_ast_index_new(target, selector) : NULL;
+        if (!result) {
+            cxpr_expr_ast_free(target);
+            cxpr_expr_ast_free(selector);
+            goto oom;
+        }
+        return result;
+    }
+
+oom:
+    cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
     return NULL;
 }
 
@@ -908,6 +1088,17 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
                 cxpr_expr_ast_free(ast);
                 return NULL;
             }
+            {
+                cxpr_expr_ast* record = cxpr_model_materialize_call_record(
+                    ast->data.array.elements[i], program, err);
+                if (record) {
+                    cxpr_expr_ast_free(ast->data.array.elements[i]);
+                    ast->data.array.elements[i] = record;
+                } else if (err && err->code != CXPR_OK) {
+                    cxpr_expr_ast_free(ast);
+                    return NULL;
+                }
+            }
         }
     } else if (ast->type == CXPR_NODE_RECORD) {
         for (size_t i = 0u; i < ast->data.record.field_count; ++i) {
@@ -918,6 +1109,53 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
                 return NULL;
             }
         }
+    } else if (ast->type == CXPR_NODE_FIELD_ACCESS) {
+        const char* field = ast->data.field_access.field;
+        const cxpr_expr_ast* record = NULL;
+        if (ast->data.field_access.base) {
+            ast->data.field_access.base = cxpr_model_inline_static_collections(
+                ast->data.field_access.base, program, err);
+            if (!ast->data.field_access.base) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+            if (ast->data.field_access.base->type == CXPR_NODE_RECORD)
+                record = ast->data.field_access.base;
+        } else if (ast->data.field_access.object && program) {
+            for (size_t i = 0u; i < program->binding_count; ++i) {
+                const cxpr_expr_ast* candidate = program->bindings[i].ast;
+                bool selected_record = false;
+                if (!cxpr_model_names_match(
+                        program->bindings[i].name, ast->data.field_access.object) ||
+                    !candidate || candidate->type != CXPR_NODE_RECORD) continue;
+                for (size_t field_i = 0u;
+                     field_i < candidate->data.record.field_count; ++field_i) {
+                    if (candidate->data.record.field_values[field_i]->type ==
+                        CXPR_NODE_INDEX) {
+                        selected_record = true;
+                        break;
+                    }
+                }
+                if (selected_record) record = candidate;
+                break;
+            }
+        }
+        if (record && field) {
+            for (size_t i = 0u; i < record->data.record.field_count; ++i) {
+                if (cxpr_model_names_match(record->data.record.field_names[i], field)) {
+                    cxpr_expr_ast* selected = cxpr_expr_ast_clone(
+                        record->data.record.field_values[i]);
+                    if (!selected) {
+                        cxpr_expr_ast_free(ast);
+                        cxpr_model_set_error(
+                            err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0u, 0u);
+                        return NULL;
+                    }
+                    cxpr_expr_ast_free(ast);
+                    return selected;
+                }
+            }
+        }
     } else if (ast->type == CXPR_NODE_INDEX) {
         ast->data.index.target = cxpr_model_inline_static_collections(
             ast->data.index.target, program, err);
@@ -926,6 +1164,32 @@ cxpr_expr_ast* cxpr_model_inline_static_collections(
         if (!ast->data.index.target || !ast->data.index.index) {
             cxpr_expr_ast_free(ast);
             return NULL;
+        }
+        if (ast->data.index.target->type == CXPR_NODE_IDENTIFIER && program) {
+            cxpr_expr_ast* candidate = cxpr_expr_ast_clone(ast->data.index.target);
+            if (!candidate || !cxpr_model_materialize_static_value(
+                    &candidate, program, 0u, err)) {
+                cxpr_expr_ast_free(candidate);
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+            if (candidate->type == CXPR_NODE_ARRAY ||
+                candidate->type == CXPR_NODE_RECORD) {
+                cxpr_expr_ast_free(ast->data.index.target);
+                ast->data.index.target = candidate;
+            } else {
+                cxpr_expr_ast_free(candidate);
+            }
+        }
+        if (ast->data.index.target->type == CXPR_NODE_ARRAY) {
+            cxpr_expr_ast* selected = cxpr_model_select_static_structure(
+                ast->data.index.target, ast->data.index.index, err);
+            if (!selected) {
+                cxpr_expr_ast_free(ast);
+                return NULL;
+            }
+            cxpr_expr_ast_free(ast);
+            return selected;
         }
     } else if (ast->type == CXPR_NODE_TERNARY) {
         ast->data.ternary.condition = cxpr_model_inline_static_collections(

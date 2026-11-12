@@ -24,3 +24,12 @@ static const char* const tooling_keywords[] = {
     "assert",
     "optimize",
 };
+static const char* const tooling_type_names[] = {
+    "bool",
+    "buffer",
+    "int",
+    "int64",
+    "number",
+    "series",
+    "view",
+};

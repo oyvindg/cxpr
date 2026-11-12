@@ -4,7 +4,12 @@ file(GLOB_RECURSE CXPR_C_TESTS CONFIGURE_DEPENDS
 # Generated-C parity is registered below after its generated header exists.
 list(REMOVE_ITEM CXPR_C_TESTS
     "${CMAKE_CURRENT_SOURCE_DIR}/int64_generated_parity.test.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/codegen_regressions_generated.test.c")
+    "${CMAKE_CURRENT_SOURCE_DIR}/codegen_regressions_generated.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/view_codegen_e2e.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external_view_trading.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external_view_image.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external_view_simulation.test.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external_view_audio.test.c")
 list(SORT CXPR_C_TESTS)
 set(CXPR_C_TEST_NAMES)
 
@@ -109,6 +114,107 @@ add_dependencies(test_int64_generated_parity generate_cxpr_int64_parity)
 add_test(NAME int64_generated_parity COMMAND test_int64_generated_parity)
 
 if(TARGET cxpr_model_codegen)
+    set(CXPR_VIEW_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/view_rank1.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_VIEW_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_rank1.cxpr"
+            --output "${CXPR_VIEW_GENERATED}"
+            --function view_rank1_tick
+        DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_rank1.cxpr"
+        VERBATIM)
+    add_executable(test_view_codegen_e2e
+        view_codegen_e2e.test.c
+        "${CXPR_VIEW_GENERATED}")
+    target_link_libraries(test_view_codegen_e2e PRIVATE cxpr)
+    add_test(NAME view_codegen_e2e
+        COMMAND test_view_codegen_e2e)
+
+    set(CXPR_TRADING_VIEW_FIXTURE
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/external_views/trading/shared_ohlcv.cxpr")
+    set(CXPR_TRADING_VIEW_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/external_view_trading.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_TRADING_VIEW_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_TRADING_VIEW_FIXTURE}"
+            --output "${CXPR_TRADING_VIEW_GENERATED}"
+            --function external_view_trading_tick
+        DEPENDS cxpr_model_codegen "${CXPR_TRADING_VIEW_FIXTURE}"
+        VERBATIM)
+    add_executable(test_external_view_trading
+        external_view_trading.test.c
+        "${CXPR_TRADING_VIEW_GENERATED}")
+    target_compile_definitions(test_external_view_trading PRIVATE
+        CXPR_TRADING_VIEW_FIXTURE="${CXPR_TRADING_VIEW_FIXTURE}")
+    target_link_libraries(test_external_view_trading PRIVATE cxpr)
+    add_test(NAME external_view_trading COMMAND test_external_view_trading)
+
+    set(CXPR_IMAGE_VIEW_FIXTURE
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/external_views/image/convolution.cxpr")
+    set(CXPR_IMAGE_VIEW_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/external_view_image.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_IMAGE_VIEW_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_IMAGE_VIEW_FIXTURE}"
+            --output "${CXPR_IMAGE_VIEW_GENERATED}"
+            --function external_view_image_tick
+        DEPENDS cxpr_model_codegen "${CXPR_IMAGE_VIEW_FIXTURE}"
+        VERBATIM)
+    add_executable(test_external_view_image
+        external_view_image.test.c
+        "${CXPR_IMAGE_VIEW_GENERATED}")
+    target_compile_definitions(test_external_view_image PRIVATE
+        CXPR_IMAGE_VIEW_FIXTURE="${CXPR_IMAGE_VIEW_FIXTURE}"
+        CXPR_IMAGE_VIEW_GENERATED="${CXPR_IMAGE_VIEW_GENERATED}")
+    target_link_libraries(test_external_view_image PRIVATE cxpr)
+    add_test(NAME external_view_image COMMAND test_external_view_image)
+
+    set(CXPR_SIMULATION_VIEW_FIXTURE
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/external_views/simulation/shared_height_field.cxpr")
+    set(CXPR_SIMULATION_VIEW_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/external_view_simulation.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_SIMULATION_VIEW_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_SIMULATION_VIEW_FIXTURE}"
+            --output "${CXPR_SIMULATION_VIEW_GENERATED}"
+            --function external_view_simulation_tick
+        DEPENDS cxpr_model_codegen "${CXPR_SIMULATION_VIEW_FIXTURE}"
+        VERBATIM)
+    add_executable(test_external_view_simulation
+        external_view_simulation.test.c
+        "${CXPR_SIMULATION_VIEW_GENERATED}")
+    target_compile_definitions(test_external_view_simulation PRIVATE
+        CXPR_SIMULATION_VIEW_FIXTURE="${CXPR_SIMULATION_VIEW_FIXTURE}"
+        CXPR_SIMULATION_VIEW_GENERATED="${CXPR_SIMULATION_VIEW_GENERATED}")
+    target_link_libraries(test_external_view_simulation PRIVATE cxpr)
+    add_test(NAME external_view_simulation COMMAND test_external_view_simulation)
+
+    set(CXPR_AUDIO_VIEW_FIXTURE
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/external_views/audio/pcm_tracker.cxpr")
+    set(CXPR_AUDIO_VIEW_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/external_view_audio.gen.c")
+    add_custom_command(
+        OUTPUT "${CXPR_AUDIO_VIEW_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CXPR_AUDIO_VIEW_FIXTURE}"
+            --output "${CXPR_AUDIO_VIEW_GENERATED}"
+            --function external_view_audio_tick
+        DEPENDS cxpr_model_codegen "${CXPR_AUDIO_VIEW_FIXTURE}"
+        VERBATIM)
+    add_executable(test_external_view_audio
+        external_view_audio.test.c
+        "${CXPR_AUDIO_VIEW_GENERATED}")
+    target_compile_definitions(test_external_view_audio PRIVATE
+        CXPR_AUDIO_VIEW_FIXTURE="${CXPR_AUDIO_VIEW_FIXTURE}"
+        CXPR_AUDIO_VIEW_GENERATED="${CXPR_AUDIO_VIEW_GENERATED}")
+    target_link_libraries(test_external_view_audio PRIVATE cxpr)
+    add_test(NAME external_view_audio COMMAND test_external_view_audio)
+
     set(CXPR_STATIC_STATEFUL_MAP_GENERATED
         "${CMAKE_CURRENT_BINARY_DIR}/generated_static_stateful_map.c")
     add_custom_command(
@@ -162,6 +268,22 @@ if(TARGET cxpr_model_codegen)
     add_library(test_static_record_view_codegen OBJECT
         "${CXPR_STATIC_VIEW_GENERATED}")
     target_include_directories(test_static_record_view_codegen PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
+    set(CXPR_NESTED_RECORD_GRID_GENERATED
+        "${CMAKE_CURRENT_BINARY_DIR}/generated_nested_record_grid.c")
+    add_custom_command(
+        OUTPUT "${CXPR_NESTED_RECORD_GRID_GENERATED}"
+        COMMAND $<TARGET_FILE:cxpr_model_codegen>
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/events/nested_record_grid.cxpr"
+            --output "${CXPR_NESTED_RECORD_GRID_GENERATED}"
+            --function nested_record_grid_tick
+        DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/events/nested_record_grid.cxpr"
+        VERBATIM)
+    add_library(test_nested_record_grid_codegen OBJECT
+        "${CXPR_NESTED_RECORD_GRID_GENERATED}")
+    target_include_directories(test_nested_record_grid_codegen PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 
     add_test(NAME model_codegen_import_diagnostic
@@ -374,6 +496,7 @@ target_include_directories(test_generated_int64_resample_parity PRIVATE
 find_package(Threads REQUIRED)
 target_link_libraries(test_history PRIVATE Threads::Threads)
 target_link_libraries(test_ir PRIVATE Threads::Threads)
+target_link_libraries(test_view_concurrency PRIVATE Threads::Threads)
 
 add_executable(cxpr_cuda_bulk_codegen_tool cuda_bulk_codegen_tool.c)
 target_link_libraries(cxpr_cuda_bulk_codegen_tool PRIVATE cxpr)

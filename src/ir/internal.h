@@ -89,7 +89,10 @@ typedef enum {
     CXPR_OP_LOAD_TEMP,
     CXPR_OP_STORE_TEMP,
     CXPR_OP_RETURN,
-    CXPR_OP_INDEX
+    CXPR_OP_INDEX,
+    CXPR_OP_VIEW_LENGTH,
+    CXPR_OP_VIEW_LOAD_CHECKED,
+    CXPR_OP_VIEW_LOAD_OR
 } cxpr_opcode;
 
 /**

@@ -137,6 +137,9 @@ const char* cxpr_ir_internal_opcode_name(cxpr_opcode op) {
     case CXPR_OP_STORE_TEMP: return "STORE_TEMP";
     case CXPR_OP_RETURN: return "RETURN";
     case CXPR_OP_INDEX: return "INDEX";
+    case CXPR_OP_VIEW_LENGTH: return "VIEW_LENGTH";
+    case CXPR_OP_VIEW_LOAD_CHECKED: return "VIEW_LOAD_CHECKED";
+    case CXPR_OP_VIEW_LOAD_OR: return "VIEW_LOAD_OR";
     default: return "UNKNOWN";
     }
 }

@@ -9,13 +9,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <cxpr/types.h>
+#include <cxpr/view.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /** @brief ABI version implemented by generated model descriptors. */
-#define CXPR_GENERATED_MODEL_ABI_VERSION 5u
+#define CXPR_GENERATED_MODEL_ABI_VERSION 6u
 /** @brief Maximum number of inputs represented by a descriptor. */
 #define CXPR_GENERATED_MODEL_MAX_INPUTS 64u
 /** @brief Maximum number of outputs represented by a descriptor. */
@@ -32,6 +33,14 @@ typedef void (*cxpr_generated_tick_fn)(
     const cxpr_value* inputs,
     const cxpr_value* params,
     cxpr_value* outputs);
+
+/** Evaluate one tick against a prevalidated model-visible view table. */
+typedef void (*cxpr_generated_view_tick_fn)(
+    void* state,
+    const cxpr_value* inputs,
+    const cxpr_value* params,
+    cxpr_value* outputs,
+    const cxpr_view_table* views);
 
 /** Pre-materialized temporal series consumed by generated resample models. */
 #ifndef CXPR_RESAMPLE_VIEW_ABI_VERSION
@@ -175,6 +184,13 @@ typedef struct cxpr_generated_model_descriptor {
     cxpr_value param_defaults[CXPR_GENERATED_MODEL_MAX_PARAMS];
     /** Non-zero for parameters with an entry in @ref param_defaults. */
     unsigned char param_has_default[CXPR_GENERATED_MODEL_MAX_PARAMS];
+    /** Optional evaluator for artifacts declaring model-visible views. */
+    cxpr_generated_view_tick_fn view_tick;
+    /** Ordered build-time contracts consumed by @ref view_tick. */
+    cxpr_view_requirement
+        views[CXPR_VIEW_MAX_COUNT];
+    size_t view_count;
+    uint32_t view_abi_version;
 } cxpr_generated_model_descriptor;
 
 /** Entry-point signature used by dynamic artifact hosts. */
@@ -191,12 +207,14 @@ static inline int cxpr_generated_model_descriptor_abi_valid(
     size_t i;
     if (!descriptor ||
         descriptor->abi_version != CXPR_GENERATED_MODEL_ABI_VERSION ||
-        !descriptor->name || !descriptor->tick || !descriptor->state_size ||
+        !descriptor->name || !descriptor->state_size ||
         descriptor->input_count > CXPR_GENERATED_MODEL_MAX_INPUTS ||
         descriptor->output_count > CXPR_GENERATED_MODEL_MAX_OUTPUTS ||
-        descriptor->param_count > CXPR_GENERATED_MODEL_MAX_PARAMS) {
+        descriptor->param_count > CXPR_GENERATED_MODEL_MAX_PARAMS ||
+        descriptor->view_count > CXPR_VIEW_MAX_COUNT) {
         return 0;
     }
+    if (!descriptor->tick && descriptor->view_count == 0u) return 0;
     for (i = 0u; i < descriptor->input_count; ++i) {
         if (!descriptor->input_names[i] ||
             (descriptor->input_types[i] != CXPR_GENERATED_VALUE_NUMBER &&
@@ -219,6 +237,26 @@ static inline int cxpr_generated_model_descriptor_abi_valid(
              descriptor->param_types[i] != CXPR_GENERATED_VALUE_BOOL &&
              descriptor->param_types[i] != CXPR_GENERATED_VALUE_INT64)) {
             return 0;
+        }
+    }
+    if (descriptor->view_count > 0u &&
+        (!descriptor->view_tick ||
+         descriptor->view_abi_version != CXPR_VIEW_ABI_VERSION)) {
+        return 0;
+    }
+    for (i = 0u; i < descriptor->view_count; ++i) {
+        const cxpr_view_requirement* view = &descriptor->views[i];
+        if (!view->name || view->slot != i || view->rank == 0u ||
+            view->rank > CXPR_VIEW_MAX_RANK || view->min_alignment == 0u ||
+            (view->min_alignment & (view->min_alignment - 1u)) != 0u ||
+            view->access != CXPR_VIEW_ACCESS_READ_ONLY ||
+            (view->element_type != CXPR_VALUE_NUMBER &&
+             view->element_type != CXPR_VALUE_BOOL &&
+             view->element_type != CXPR_VALUE_INT64)) {
+            return 0;
+        }
+        for (size_t dimension = 0u; dimension < view->rank; ++dimension) {
+            if (view->max_shape[dimension] == 0u) return 0;
         }
     }
     return 1;

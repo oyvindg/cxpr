@@ -33,6 +33,13 @@ not be shared concurrently without host synchronization.
 all writable output/state regions are disjoint and shared inputs/parameters
 are read-only. The library does not create a worker pool.
 
+`cxpr_view`, `cxpr_view_resolved`, and `cxpr_view_table` borrow host storage.
+The storage and descriptors must outlive every evaluator, generated tick, or
+bulk range using them. A table generation is identity, not a publication
+primitive: the host publishes replacement tables at a safe boundary and waits
+for readers before reclaiming the old storage. `cxpr_view_lease` can reject a
+stale expected generation but does not provide host synchronization.
+
 Registry mutation and resolver installation are host synchronization points.
 The engine temporarily coordinates its lookback resolver for a borrowed
 registry; follow the lifecycle rules in [Engine](engine.md) and do not mutate
@@ -43,7 +50,8 @@ that registry concurrently.
 Compile-time library version macros do not validate a loaded generated
 artifact. Use the validator associated with each versioned transport:
 
-- `cxpr_generated_model_descriptor_abi_valid()` for descriptor ABI 5;
+- `cxpr_generated_model_descriptor_abi_valid()` for descriptor ABI 6;
+- `cxpr_views_resolve()` for typed bounded view ABI 1 and host bindings;
 - `cxpr_resample_view_validate()` for resample view ABI 1;
 - `cxpr_debug_map_validate()` for debug-map ABI 1;
 - the version constants and validation functions documented by public IR and
@@ -67,3 +75,4 @@ The language and runtime do not infer domain policy. In particular, hosts must
 provide source data required by `resample`, reject missing bindings, and own
 all CPU/GPU scheduling. See [Providers and resampling](providers-sources-resample.md),
 [Generated C](generated-c.md), and [Bulk and grid](bulk.md).
+Typed model-visible memory additionally follows [Typed bounded views](views.md).

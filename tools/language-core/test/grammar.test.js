@@ -30,10 +30,22 @@ test("TextMate and Monarch expose identical canonical token patterns", () => {
 
 test("C and editor assets use the canonical language specification", () => {
   const cSpec = fs.readFileSync(path.join(root, "generated", "cxpr_language_spec.inc"), "utf8");
-  const cKeywords = [...cSpec.matchAll(/^\s*"([^"]+)",$/gm)].map((match) => match[1]);
+  const arrayValues = (name) => {
+    const body = cSpec.match(new RegExp(`tooling_${name}\\[\\] = \\{([\\s\\S]*?)\\n\\};`))?.[1] ?? "";
+    return [...body.matchAll(/^\s*"([^"]+)",$/gm)].map((match) => match[1]);
+  };
 
   assert.deepEqual(monarch.keywords, languageSpec.keywords);
-  assert.deepEqual(cKeywords, languageSpec.keywords);
+  assert.deepEqual(arrayValues("keywords"), languageSpec.keywords);
+  assert.deepEqual(arrayValues("type_names"), languageSpec.typeNames);
+});
+
+test("view declarations expose all syntax types to VSIX grammars", () => {
+  for (const typeName of ["view", "number", "int64", "bool"]) {
+    assert.ok(languageSpec.typeNames.includes(typeName));
+    assert.match(source, new RegExp(`\\b${typeName}\\b`));
+    assert.ok(matches(monarch.tokenPatterns).type.includes(typeName));
+  }
 });
 
 test("Monarch assigns model names the yellow model class", () => {
@@ -156,6 +168,16 @@ test("the shared color profile covers every canonical token class", () => {
   for (const token of Object.keys(monarch.tokenPatterns)) {
     assert.match(colors.tokens[token], /^#[0-9A-F]{6}$/i, `missing color for ${token}`);
   }
+});
+
+test("declared inputs and their types use distinct editor colors", () => {
+  const extension = require(path.join(root, "..", "vscode-cxpr", "package.json"));
+  const semanticColors = extension.contributes.configurationDefaults
+    ["editor.semanticTokenColorCustomizations"].rules;
+
+  assert.notEqual(colors.tokens.input, colors.tokens.type);
+  assert.equal(semanticColors["input:cxpr"], colors.tokens.input);
+  assert.equal(semanticColors["type:cxpr"], colors.tokens.type);
 });
 
 test("generated assets have not drifted", () => {

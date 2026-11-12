@@ -48,6 +48,9 @@ void cxpr_context_clear_variable_bindings(cxpr_context* ctx, const char* name,
                                           cxpr_context_binding_kind keep);
 void cxpr_context_clear_param_bindings(cxpr_context* ctx, const char* name,
                                        cxpr_context_binding_kind keep);
+/** Borrow the complete validated view lease from another execution context. */
+void cxpr_context_inherit_views(cxpr_context* destination,
+                                const cxpr_context* source);
 /** @brief Find the mutable storage slot for one variable binding. */
 static inline cxpr_hashmap_entry* cxpr_context_find_variable_slot(cxpr_context* ctx,
                                                                   const char* key,

@@ -117,7 +117,8 @@ class CxprFormatter {
      */
     groupingDepthAfterLeadingClosers(stack, text) {
         const remaining = [...stack];
-        for (const character of text.match(/^[\])]+/)?.[0] ?? "")
+        const leadingClosers = text.match(/^[\])]+/)?.[0].length ?? 0;
+        for (let index = 0; index < leadingClosers; index += 1)
             remaining.pop();
         return remaining.filter((entry) => entry.visual).length;
     }

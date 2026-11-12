@@ -141,6 +141,30 @@ add_custom_command(
 
 add_executable(cxpr_bench_view_batch view_batch_bench.c)
 target_link_libraries(cxpr_bench_view_batch PRIVATE cxpr)
+
+set(CXPR_BENCH_VIEW_TABLE_GENERATED
+    "${CMAKE_CURRENT_BINARY_DIR}/view_table_generated.gen.c")
+add_custom_command(
+    OUTPUT "${CXPR_BENCH_VIEW_TABLE_GENERATED}"
+    COMMAND cxpr_model_codegen
+            --model "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_table_generated.cxpr"
+            --output "${CXPR_BENCH_VIEW_TABLE_GENERATED}"
+            --function cxpr_bench_view_table_tick
+    DEPENDS cxpr_model_codegen
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/view_table_generated.cxpr"
+    VERBATIM)
+add_executable(cxpr_bench_view_table
+    view_table_bench.c
+    "${CXPR_BENCH_VIEW_TABLE_GENERATED}")
+target_link_libraries(cxpr_bench_view_table PRIVATE cxpr)
+target_compile_definitions(cxpr_bench_view_table PRIVATE
+    CXPR_BENCH_VIEW_TABLE_GENERATED_PATH="${CXPR_BENCH_VIEW_TABLE_GENERATED}")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND NOT APPLE)
+    target_compile_definitions(cxpr_bench_view_table PRIVATE
+        CXPR_BENCH_WRAP_ALLOC=1)
+    target_link_options(cxpr_bench_view_table PRIVATE
+        "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc")
+endif()
 add_custom_command(
     OUTPUT "${CXPR_BENCH_RSI_MODEL_INLINE}"
     COMMAND cxpr_model_codegen

@@ -63,7 +63,9 @@ typedef enum cxpr_bulk_status {
     CXPR_BULK_SCHEMA_MISMATCH,
     CXPR_BULK_MISSING_BUFFER,
     CXPR_BULK_STATE_STRIDE_TOO_SMALL,
-    CXPR_BULK_RANGE_OUT_OF_BOUNDS
+    CXPR_BULK_RANGE_OUT_OF_BOUNDS,
+    CXPR_BULK_VIEWS_REQUIRED,
+    CXPR_BULK_INVALID_VIEWS
 } cxpr_bulk_status;
 
 /** Return a stable diagnostic string for a bulk status. */
@@ -85,6 +87,31 @@ cxpr_bulk_status cxpr_bulk_run_range(
 cxpr_bulk_status cxpr_bulk_run(
     const cxpr_generated_model_descriptor* descriptor,
     const cxpr_bulk_view* view);
+
+/**
+ * Validate scalar bulk columns and one shared model-visible view table.
+ *
+ * The table is shared by every lane. It must already have been resolved with
+ * `cxpr_views_resolve` against the descriptor requirements.
+ */
+cxpr_bulk_status cxpr_bulk_validate_views(
+    const cxpr_generated_model_descriptor* descriptor,
+    const cxpr_bulk_view* view,
+    const cxpr_view_table* views);
+
+/** Execute a range while sharing one immutable external-view table. */
+cxpr_bulk_status cxpr_bulk_run_range_views(
+    const cxpr_generated_model_descriptor* descriptor,
+    const cxpr_bulk_view* view,
+    const cxpr_view_table* views,
+    size_t begin,
+    size_t count);
+
+/** Execute every lane while sharing one immutable external-view table. */
+cxpr_bulk_status cxpr_bulk_run_views(
+    const cxpr_generated_model_descriptor* descriptor,
+    const cxpr_bulk_view* view,
+    const cxpr_view_table* views);
 
 /** Reset `[begin, begin + count)` to the generated model's initial state. */
 cxpr_bulk_status cxpr_bulk_reset_range(

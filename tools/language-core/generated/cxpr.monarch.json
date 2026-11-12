@@ -29,7 +29,7 @@
     "comment": "#.*$",
     "string": "(?:\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')",
     "parameter": "\\$[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*",
-    "type": "\\b(?:bool|buffer|int|number|series)\\b",
+    "type": "\\b(?:bool|buffer|int|int64|number|series|view)\\b",
     "keyword": "\\b(?:and|as|or|not|if|then|else|fn|from|in|initial|model|name|out|return|state|update|use|true|false|null|assert|optimize)\\b",
     "function": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()",
     "property": "\\.[A-Za-z_][A-Za-z0-9_]*",
@@ -246,7 +246,7 @@
         "parameter"
       ],
       [
-        "\\b(?:bool|buffer|int|number|series)\\b",
+        "\\b(?:bool|buffer|int|int64|number|series|view)\\b",
         "type"
       ],
       [
