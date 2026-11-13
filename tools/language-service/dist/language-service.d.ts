@@ -58,6 +58,13 @@ export declare class LanguageService implements ICxprLanguageService {
     private inferSumResult;
     getDefinitions(source: string, pos: Position, name: string): Promise<LanguageDefinition[]>;
     /**
+     * Detects the root model declaration that can share a name with an imported callable.
+     * @param source Complete consumer source.
+     * @param resolution Analyzer resolution carrying a document-local definition.
+     * @returns True when the definition points at this document's model declaration.
+     */
+    private isDocumentModelDefinition;
+    /**
      * Resolves a grouped import namespace to the declarations exported through it.
      * @param source Complete consumer source.
      * @param pos Cursor position within the dotted namespace after `from`.

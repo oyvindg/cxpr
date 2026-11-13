@@ -196,3 +196,97 @@ void cxpr_cxcu_backend_init(
         cxpr_cxcu_run,
     };
 }
+
+void cxpr_cxcu_view_plan_init(cxpr_cxcu_view_plan* plan, int device_ordinal) {
+    if (!plan) return;
+    memset(plan, 0, sizeof(*plan));
+    cxcu_device_view_plan_init(&plan->residency, device_ordinal);
+}
+
+void cxpr_cxcu_view_plan_free(cxpr_cxcu_view_plan* plan) {
+    int device_ordinal;
+    if (!plan) return;
+    device_ordinal = plan->residency.device_ordinal;
+    cxcu_device_view_plan_free(&plan->residency);
+    cxpr_cxcu_view_plan_init(plan, device_ordinal);
+}
+
+static int cxpr_cxcu_view_type(
+    cxpr_value_type type,
+    cxcu_device_view_element_type* out,
+    size_t* element_size) {
+    if (!out || !element_size) return 0;
+    switch (type) {
+        case CXPR_VALUE_NUMBER:
+            *out = CXCU_DEVICE_VIEW_NUMBER;
+            *element_size = sizeof(double);
+            return 1;
+        case CXPR_VALUE_INT64:
+            *out = CXCU_DEVICE_VIEW_INT64;
+            *element_size = sizeof(int64_t);
+            return 1;
+        case CXPR_VALUE_BOOL:
+            *out = CXCU_DEVICE_VIEW_BOOL;
+            *element_size = sizeof(bool);
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+int cxpr_cxcu_view_plan_bind(
+    cxpr_cxcu_view_plan* plan,
+    const cxpr_view_table* table,
+    cxpr_error* err) {
+    cxcu_device_view_binding bindings[CXPR_VIEW_MAX_COUNT];
+    cxcu_error cxerr = {0};
+    size_t i;
+    if (!plan || !table || !table->views || table->count == 0u ||
+        table->count > CXPR_VIEW_MAX_COUNT || table->generation == 0u) {
+        cxpr_cxcu_set_error(err, CXPR_ERR_TYPE_MISMATCH, "Invalid CXPR device view table");
+        return 0;
+    }
+    memset(bindings, 0, sizeof(bindings));
+    for (i = 0u; i < table->count; ++i) {
+        const cxpr_view_resolved* view = &table->views[i];
+        size_t element_size = 0u;
+        size_t elements = 1u;
+        size_t expected_stride = 1u;
+        size_t dimension;
+        if (!view->data || view->rank == 0u || view->rank > CXPR_VIEW_MAX_RANK ||
+            !cxpr_cxcu_view_type(view->element_type, &bindings[i].element_type, &element_size)) {
+            cxpr_cxcu_set_error(err, CXPR_ERR_TYPE_MISMATCH, "Unsupported CXPR CUDA view binding");
+            return 0;
+        }
+        for (dimension = view->rank; dimension > 0u; --dimension) {
+            const size_t slot = dimension - 1u;
+            if (view->shape[slot] == 0u || view->element_strides[slot] != expected_stride ||
+                elements > SIZE_MAX / view->shape[slot]) {
+                cxpr_cxcu_set_error(err, CXPR_ERR_TYPE_MISMATCH, "CXPR CUDA views must be contiguous row-major");
+                return 0;
+            }
+            elements *= view->shape[slot];
+            expected_stride = elements;
+        }
+        if (elements > SIZE_MAX / element_size) {
+            cxpr_cxcu_set_error(err, CXPR_ERR_OVERFLOW, "CXPR CUDA view size overflow");
+            return 0;
+        }
+        bindings[i].host_data = view->data;
+        bindings[i].rank = view->rank;
+        memcpy(bindings[i].shape, view->shape, sizeof(bindings[i].shape));
+        bindings[i].capacity_bytes = elements * element_size;
+        bindings[i].generation = table->generation;
+        bindings[i].flags = CXCU_DEVICE_VIEW_READ_ONLY | CXCU_DEVICE_VIEW_CONTIGUOUS;
+    }
+    if (!cxcu_device_view_plan_bind(
+            &plan->residency, bindings, table->count, plan->descriptors, &cxerr)) {
+        cxpr_cxcu_translate_error(
+            err, CXPR_ERR_UNAVAILABLE, "cxcu failed to bind CXPR device views", &cxerr);
+        return 0;
+    }
+    plan->count = table->count;
+    plan->generation = table->generation;
+    if (err) *err = (cxpr_error){0};
+    return 1;
+}

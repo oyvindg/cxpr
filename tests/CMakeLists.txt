@@ -866,6 +866,15 @@ endif()
 
 # Standalone CPU <-> cxcu (CUDA) parity for optimize-scoped assert pruning.
 if(CXPR_WITH_CXCU AND TARGET cxpr_cxcu)
+    add_executable(cxpr_cxcu_view_residency
+        cxcu_view_residency.test.c)
+    target_link_libraries(cxpr_cxcu_view_residency PRIVATE cxpr_cxcu)
+    target_compile_options(cxpr_cxcu_view_residency PRIVATE -UNDEBUG)
+    add_test(NAME cxpr_cxcu_view_residency
+        COMMAND $<TARGET_FILE:cxpr_cxcu_view_residency>)
+    set_tests_properties(cxpr_cxcu_view_residency PROPERTIES
+        LABELS "cuda" SKIP_RETURN_CODE 77)
+
     add_executable(cxpr_optimize_cxcu_constraint_parity
         optimize_cxcu_constraint_parity.test.c)
     target_link_libraries(cxpr_optimize_cxcu_constraint_parity PRIVATE cxpr_cxcu)

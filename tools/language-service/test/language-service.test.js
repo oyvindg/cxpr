@@ -200,6 +200,43 @@ test("definition searches exported symbols inside imported modules", async () =>
   assert.deepEqual(requested, ["ts/pivots", "ts/window"])
 })
 
+test("definition prefers an explicit import over a colliding document model name", async () => {
+  const source = "model supertrend {\n  type = \"strategy\"\n}\nuse { supertrend } from indicators\nst = supertrend()\n"
+  const importedSource = "model supertrend\nin high, low, close\nout value\n"
+  const analyzer = {
+    async analyzeDocument(value) {
+      return value === importedSource
+        ? { ok: true, outline: [{ kind: "model", name: "supertrend",
+          startLine: 0, startChar: 6, endLine: 0, endChar: 16 }] }
+        : { ok: true, outline: [] }
+    },
+    async resolveAt(value) {
+      return value === source
+        ? { name: "supertrend", kind: "function", builtin: false,
+          definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 16 } }
+        : { name: "supertrend", kind: "model", builtin: false,
+          definition: { startLine: 0, startChar: 6, endLine: 0, endChar: 16 } }
+    },
+    async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const workspace = {
+    async readFile() { return importedSource },
+    importDir() { return "/workspace" },
+    async resolveImport(spec) {
+      return spec === "indicators.supertrend"
+        ? { path: "/workspace/indicators/supertrend.cxpr", source: importedSource }
+        : null
+    }
+  }
+
+  assert.deepEqual(await new LanguageService(analyzer, workspace).getDefinitions(
+    source, { line: 4, column: 7 }, "/workspace/strategies/supertrend.cxpr"), [{
+    uri: "/workspace/indicators/supertrend.cxpr",
+    range: { start: { line: 0, character: 6 }, end: { line: 0, character: 16 } },
+    source: importedSource
+  }])
+})
+
 test("import hover resolves the declaration so compiled typed signatures survive", async () => {
   const importedSource = "model resonance\nin mono\nout low, band, high\n"
   const analyzer = {

@@ -434,7 +434,8 @@ class LanguageService {
             const grouped = line.match(/^\s*use\s+(.+?)\s+from\s+([A-Za-z_][A-Za-z0-9_.]*)\s*$/);
             if (!grouped)
                 continue;
-            const names = grouped[1].split(",").map((candidate) => candidate.trim());
+            const names = grouped[1].replace(/^\s*\{\s*|\s*\}\s*$/g, "")
+                .split(",").map((candidate) => candidate.trim());
             if (names.includes(symbol))
                 specs.push(`${grouped[2]}.${symbol}`);
         }
@@ -512,6 +513,14 @@ class LanguageService {
         const resolution = await this.analyzer.resolveAt(source, name, pos);
         if (!resolution)
             return [];
+        const imports = this.importSpecsForSymbol(source, resolution.name);
+        if (resolution.definition && imports.length > 0 &&
+            this.isDocumentModelDefinition(source, resolution)) {
+            const imported = await this.resolveImported(name, { ...resolution, definition: undefined, imports });
+            if (imported?.resolution.definition) {
+                return [{ uri: imported.uri, range: range(imported.resolution.definition), source: imported.source }];
+            }
+        }
         if (resolution.definition)
             return [{ uri: name, range: range(resolution.definition) }];
         if (resolution.kind !== "unresolved")
@@ -520,6 +529,19 @@ class LanguageService {
         return imported?.resolution.definition
             ? [{ uri: imported.uri, range: range(imported.resolution.definition), source: imported.source }]
             : [];
+    }
+    /**
+     * Detects the root model declaration that can share a name with an imported callable.
+     * @param source Complete consumer source.
+     * @param resolution Analyzer resolution carrying a document-local definition.
+     * @returns True when the definition points at this document's model declaration.
+     */
+    isDocumentModelDefinition(source, resolution) {
+        if (!resolution.definition)
+            return false;
+        const line = source.split("\n")[resolution.definition.startLine] ?? "";
+        return new RegExp(`^\\s*model\\s+${resolution.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
+            .test(line);
     }
     /**
      * Resolves a grouped import namespace to the declarations exported through it.
