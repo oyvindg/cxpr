@@ -13,7 +13,7 @@ export declare class LanguageService implements ICxprLanguageService {
      * Validate grouped `use` namespaces against the active workspace module roots.
      * @param source Complete CXPR source text.
      * @param name Source file name used as the import-resolution origin.
-     * @returns Diagnostics whose ranges cover unresolved `from` namespaces.
+     * @returns Diagnostics whose ranges cover each unresolved imported symbol.
      */
     private getImportDiagnostics;
     /** Validate fields read from local bindings initialized by model calls. */

@@ -158,7 +158,7 @@ export class LanguageService implements ICxprLanguageService {
    * Validate grouped `use` namespaces against the active workspace module roots.
    * @param source Complete CXPR source text.
    * @param name Source file name used as the import-resolution origin.
-   * @returns Diagnostics whose ranges cover unresolved `from` namespaces.
+   * @returns Diagnostics whose ranges cover each unresolved imported symbol.
    */
   private async getImportDiagnostics(
     source: string, name: string
@@ -170,23 +170,25 @@ export class LanguageService implements ICxprLanguageService {
     for (let line = 0; line < lines.length; line += 1) {
       const match = lines[line].match(groupedImport)
       if (!match || match.index === undefined) continue
-      const imports = match[1].split(",").map((item) => item.trim())
-        .filter((item) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(item))
+      const importText = match[1]
+      const importStart = match.index + match[0].indexOf(importText)
+      const imports = [...importText.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)]
+        .map((item) => ({ name: item[0], start: importStart + (item.index ?? 0) }))
       if (imports.length === 0) continue
       const namespace = match[2]
       const resolved = await Promise.all(imports.map((item) =>
-        this.workspace.resolveImport(`${namespace}.${item}`, name)))
-      const missing = imports.filter((_item, index) => !resolved[index])
-      if (missing.length === 0) continue
-      const start = match.index + match[0].lastIndexOf(namespace)
-      diagnostics.push({
-        severity: 1,
-        source: "cxpr",
-        message: `Namespace '${namespace}' does not contain: ${missing.join(", ")}`,
-        range: {
-          start: { line, character: start },
-          end: { line, character: start + namespace.length }
-        }
+        this.workspace.resolveImport(`${namespace}.${item.name}`, name)))
+      imports.forEach((item, index) => {
+        if (resolved[index]) return
+        diagnostics.push({
+          severity: 1,
+          source: "cxpr",
+          message: `Namespace '${namespace}' does not contain: ${item.name}`,
+          range: {
+            start: { line, character: item.start },
+            end: { line, character: item.start + item.name.length }
+          }
+        })
       })
     }
     return diagnostics

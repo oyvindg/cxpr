@@ -42,7 +42,7 @@ test("service accepts an async analyzer", async () => {
   assert.equal(resumed, true)
 })
 
-test("diagnoses the from namespace when grouped imports cannot be resolved", async () => {
+test("diagnoses the missing symbol when grouped imports cannot be resolved", async () => {
   const analyzer = {
     async analyzeDocument() { return { ok: true, diagnostics: [], functions: [] } },
     async resolveAt() { return null }, async completeAt() { return [] }, async queryFunctions() { return [] }
@@ -60,9 +60,28 @@ test("diagnoses the from namespace when grouped imports cannot be resolved", asy
     source: "cxpr",
     message: "Namespace 'stereo.effects' does not contain: chamber",
     range: {
-      start: { line: 0, character: 23 },
-      end: { line: 0, character: 37 }
+      start: { line: 0, character: 4 },
+      end: { line: 0, character: 11 }
     }
+  }])
+})
+
+test("diagnoses each missing grouped import at its own token", async () => {
+  const analyzer = {
+    async analyzeDocument() { return { ok: true, diagnostics: [], functions: [] } },
+    async resolveAt() { return null }, async completeAt() { return [] }, async queryFunctions() { return [] }
+  }
+  const diagnostics = await new LanguageService(analyzer, workspace).getDiagnostics(
+    "use atr, emxa, supertrend from indicators\n", "/workspace/strategy.cxpr")
+  assert.deepEqual(diagnostics.map(({ message, range }) => ({ message, range })), [{
+    message: "Namespace 'indicators' does not contain: atr",
+    range: { start: { line: 0, character: 4 }, end: { line: 0, character: 7 } }
+  }, {
+    message: "Namespace 'indicators' does not contain: emxa",
+    range: { start: { line: 0, character: 9 }, end: { line: 0, character: 13 } }
+  }, {
+    message: "Namespace 'indicators' does not contain: supertrend",
+    range: { start: { line: 0, character: 15 }, end: { line: 0, character: 25 } }
   }])
 })
 

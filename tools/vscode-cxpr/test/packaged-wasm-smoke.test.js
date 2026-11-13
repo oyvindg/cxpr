@@ -113,9 +113,12 @@ out { left = stereo.left, right = stereo.right }
 `;
   const groupedUseDiagnostics = await service.getDiagnostics(
     groupedUseSource, "grouped-use.cxpr");
-  assert.equal(groupedUseDiagnostics.length, 1);
-  assert.match(groupedUseDiagnostics[0].message,
-    /Namespace 'stereo\.effects' does not contain/);
+  assert.equal(groupedUseDiagnostics.length, 8);
+  assert.ok(groupedUseDiagnostics.every((diagnostic) =>
+    /Namespace 'stereo\.effects' does not contain/.test(diagnostic.message)));
+  assert.deepEqual(groupedUseDiagnostics[0].range, {
+    start: { line: 1, character: 4 }, end: { line: 1, character: 10 }
+  });
   const selectorSource = `model selector
 fn voice(level) { return { phoneme = level } }
 phoneme = sum([voice(1), voice(2)], x => x.phoneme)
