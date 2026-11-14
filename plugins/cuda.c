@@ -347,16 +347,50 @@ char* cxpr_cuda_plugin_source_from_program(
         function_name,
         err);
     if (!code) return NULL;
+    /* NVRTC compiles CUDA as C++, where C99 compound literals are unavailable.
+     * Preserve generated collection semantics through a fixed-capacity aggregate
+     * that converts to the pointer expected by window helpers and supports []. */
     if (strstr(code, "((const double[]){") != NULL) {
-        free(code);
-        if (err) {
-            err->code = CXPR_ERR_UNAVAILABLE;
-            err->message =
-                "CUDA backend does not support dynamic static collection indexing";
-            err->line = 0u;
-            err->column = 0u;
+        static const char marker[] = "(const double[]){";
+        static const char replacement[] = "cxpr_cuda_static_array{{";
+        char* cursor = code;
+        while ((cursor = strstr(cursor, marker)) != NULL) {
+            char* body = cursor + sizeof(marker) - 1u;
+            char* end = body;
+            unsigned depth = 1u;
+            while (*end && depth > 0u) {
+                if (*end == '{') ++depth;
+                else if (*end == '}') --depth;
+                ++end;
+            }
+            if (depth != 0u) {
+                free(code);
+                if (err) {
+                    err->code = CXPR_ERR_SYNTAX;
+                    err->message = "Malformed generated static collection";
+                }
+                return NULL;
+            }
+            {
+                const size_t prefix = (size_t)(cursor - code);
+                const size_t body_len = (size_t)((end - 1) - body);
+                const size_t suffix_len = strlen(end);
+                const size_t replacement_len = sizeof(replacement) - 1u;
+                char* next = (char*)malloc(prefix + replacement_len + body_len + 2u + suffix_len + 1u);
+                if (!next) {
+                    free(code);
+                    return NULL;
+                }
+                memcpy(next, code, prefix);
+                memcpy(next + prefix, replacement, replacement_len);
+                memcpy(next + prefix + replacement_len, body, body_len);
+                memcpy(next + prefix + replacement_len + body_len, "}}", 2u);
+                memcpy(next + prefix + replacement_len + body_len + 2u, end, suffix_len + 1u);
+                free(code);
+                code = next;
+                cursor = code + prefix + replacement_len + body_len + 2u;
+            }
         }
-        return NULL;
     }
 
     patched = cxpr_cuda_replace_all(
@@ -412,7 +446,17 @@ char* cxpr_cuda_plugin_source_from_program(
         return NULL;
     }
 
-    if (!cxpr_cuda_append_math_binding_unconditional(
+    if (!cxpr_cuda_append(
+            &out,
+            "#ifndef CXPR_CUDA_STATIC_ARRAY_DEFINED\n"
+            "#define CXPR_CUDA_STATIC_ARRAY_DEFINED 1\n"
+            "struct cxpr_cuda_static_array {\n"
+            "    double values[512];\n"
+            "    __host__ __device__ operator const double*() const { return values; }\n"
+            "    __host__ __device__ double operator[](unsigned long long i) const { return values[i]; }\n"
+            "};\n"
+            "#endif\n") ||
+        !cxpr_cuda_append_math_binding_unconditional(
             &out,
             "extern \"C\" __device__ double __nv_fabs(double);\n",
             "#define fabs(x) __nv_fabs((double)(x))\n") ||

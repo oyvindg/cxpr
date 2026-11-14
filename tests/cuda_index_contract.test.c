@@ -116,7 +116,7 @@ static void test_cuda_supports_neutral_scalar_history(void) {
     cxpr_model_free(model);
 }
 
-static void test_cuda_rejects_dynamic_aggregate_index(void) {
+static void test_cuda_lowers_dynamic_aggregate_index(void) {
     cxpr_model* model = NULL;
     cxpr_error err = {0};
     cxpr_model_compiled* program = compile_model(
@@ -126,11 +126,11 @@ static void test_cuda_rejects_dynamic_aggregate_index(void) {
         "out value\n",
         &model, &err);
     char* source = cxpr_cuda_plugin_source_from_program(program, NULL, &err);
-    assert(source == NULL);
-    assert(err.code != CXPR_OK);
-    assert(err.message != NULL);
-    assert(strcmp(err.message,
-                  "CUDA backend does not support dynamic static collection indexing") == 0);
+    assert(source != NULL);
+    assert(err.code == CXPR_OK);
+    assert(strstr(source, "cxpr_cuda_static_array{{") != NULL);
+    assert(strstr(source, "((const double[]){") == NULL);
+    cxpr_cuda_plugin_source_free(source);
     cxpr_model_compiled_free(program);
     cxpr_model_free(model);
 }
@@ -138,7 +138,7 @@ static void test_cuda_rejects_dynamic_aggregate_index(void) {
 int main(void) {
     test_cuda_supports_neutral_scalar_history();
     test_cuda_resample_view_lowering();
-    test_cuda_rejects_dynamic_aggregate_index();
+    test_cuda_lowers_dynamic_aggregate_index();
     puts("CUDA neutral index contract tests passed");
     return 0;
 }
