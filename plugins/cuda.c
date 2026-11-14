@@ -13,6 +13,8 @@ typedef struct cxpr_cuda_buf {
 } cxpr_cuda_buf;
 
 static const char cxpr_cuda_value_runtime_source[] =
+    "#ifndef CXPR_CUDA_VALUE_RUNTIME_H\n"
+    "#define CXPR_CUDA_VALUE_RUNTIME_H\n"
     "#define CXPR_TYPES_DEVICE_ONLY 1\n"
     "#include <cxpr/types.h>\n"
     "#undef CXPR_TYPES_DEVICE_ONLY\n"
@@ -24,7 +26,8 @@ static const char cxpr_cuda_value_runtime_source[] =
     "static __host__ __device__ inline cxpr_value cxpr_null(void) { cxpr_value v = {CXPR_VALUE_NULL}; return v; }\n"
     "static __host__ __device__ inline cxpr_value cxpr_timestamp(int64_t x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_TIMESTAMP; v.i64 = x; return v; }\n"
     "static __host__ __device__ inline cxpr_value cxpr_duration(int64_t x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_DURATION; v.i64 = x; return v; }\n"
-    "static __host__ __device__ inline cxpr_value cxpr_array(cxpr_array_value* x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_ARRAY; v.a = x; return v; }\n\n";
+    "static __host__ __device__ inline cxpr_value cxpr_array(cxpr_array_value* x) { cxpr_value v = {CXPR_VALUE_NULL}; v.type = CXPR_VALUE_ARRAY; v.a = x; return v; }\n"
+    "#endif\n\n";
 
 static int cxpr_cuda_append_bytes(
     cxpr_cuda_buf* b,
