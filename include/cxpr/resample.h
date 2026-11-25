@@ -34,6 +34,8 @@ bool cxpr_parse_fixed_duration(const char* text, cxpr_resample_interval* out,
                                cxpr_error* err);
 bool cxpr_resample_call_parse(const cxpr_expr_ast* ast, cxpr_resample_call* out,
                               cxpr_error* err);
+/** Return an owned canonical static source path such as `close` or `primary.close`. */
+char* cxpr_resample_static_source_name(const cxpr_expr_ast* source, cxpr_error* err);
 /** Validate every resample call contained in an expression tree. */
 bool cxpr_resample_validate_ast(const cxpr_expr_ast* ast, cxpr_error* err);
 #ifdef __cplusplus

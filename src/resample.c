@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void set_error(cxpr_error* err, cxpr_error_code code, const char* message) {
@@ -123,6 +124,27 @@ bool cxpr_resample_call_parse(const cxpr_expr_ast* ast, cxpr_resample_call* out,
             return false;
     }
     return true;
+}
+
+char* cxpr_resample_static_source_name(const cxpr_expr_ast* source, cxpr_error* err) {
+    cxpr_expr_ast_kind kind;
+    char* name;
+    if (!source) return NULL;
+    kind = cxpr_expr_ast_kind_of(source);
+    if (kind != CXPR_NODE_IDENTIFIER && kind != CXPR_NODE_FIELD_ACCESS &&
+        kind != CXPR_NODE_CHAIN_ACCESS) {
+        set_error(err, CXPR_ERR_SYNTAX,
+                  "Generated resample requires a static identifier or rooted field source");
+        locate_error(err, source);
+        return NULL;
+    }
+    name = cxpr_expr_ast_to_string(source);
+    if (!name || !name[0]) {
+        free(name);
+        set_error(err, CXPR_ERR_SYNTAX, "Failed to canonicalize resample source");
+        return NULL;
+    }
+    return name;
 }
 
 bool cxpr_resample_validate_ast(const cxpr_expr_ast* ast, cxpr_error* err) {

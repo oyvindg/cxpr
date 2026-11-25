@@ -4,6 +4,7 @@
 #include "lookback.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 int cxpr_validate_generated_resample_bindings(
@@ -34,7 +35,7 @@ static int cxpr_bound_resample_slot(const cxpr_source_plan_bindings* bindings,
                                     const cxpr_expr_ast* ast, size_t* out_slot,
                                     cxpr_error* err) {
     cxpr_resample_call call = {0};
-    const char* source;
+    char* source;
     if (!ast || !out_slot) return 0;
     if (!bindings || (bindings->count > 0u &&
                       (!bindings->requirements || !bindings->handles))) {
@@ -45,16 +46,17 @@ static int cxpr_bound_resample_slot(const cxpr_source_plan_bindings* bindings,
         return 0;
     }
     if (!cxpr_resample_call_parse(ast, &call, err) || !call.source ||
-        cxpr_expr_ast_kind_of(call.source) != CXPR_NODE_IDENTIFIER) return 0;
-    source = cxpr_expr_ast_identifier_name(call.source);
+        !(source = cxpr_resample_static_source_name(call.source, err))) return 0;
     for (size_t i = 0u; i < bindings->count; ++i) {
         const cxpr_series_requirement* requirement = &bindings->requirements[i];
         if (requirement->source_name && strcmp(requirement->source_name, source) == 0 &&
             requirement->every.duration_ns == call.every.duration_ns) {
             *out_slot = i;
+            free(source);
             return 1;
         }
     }
+    free(source);
     if (err) {
         err->code = CXPR_ERR_UNKNOWN_IDENTIFIER;
         err->message = "No bound requirement matches the resample source and interval";

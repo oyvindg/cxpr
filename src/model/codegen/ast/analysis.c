@@ -14,13 +14,16 @@ static size_t cxpr_model_resample_slot(const cxpr_model_compiled* program,
                                        const cxpr_expr_ast* ast) {
     cxpr_resample_call call = {0};
     cxpr_error ignored = {0};
+    char* source_name;
+    size_t slot = (size_t)-1;
     if (!program || !cxpr_resample_call_parse(ast, &call, &ignored) || !call.source ||
-        cxpr_expr_ast_kind_of(call.source) != CXPR_NODE_IDENTIFIER) return (size_t)-1;
+        !(source_name = cxpr_resample_static_source_name(call.source, &ignored))) return (size_t)-1;
     for (size_t i = 0; i < program->resample_requirement_count; ++i)
         if (program->resample_requirements[i].duration_ns == call.every.duration_ns &&
             cxpr_model_names_match(program->resample_requirements[i].source_name,
-                                   cxpr_expr_ast_identifier_name(call.source))) return i;
-    return (size_t)-1;
+                                   source_name)) { slot = i; break; }
+    free(source_name);
+    return slot;
 }
 
 static bool cxpr_model_resample_cse_add(cxpr_model_ast_c_target* target,

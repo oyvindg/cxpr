@@ -372,6 +372,115 @@ const cxpr_expr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t ind
     return model && index < model->binding_count ? model->bindings[index].expr : NULL;
 }
 
+bool cxpr_model_append_output_binding(cxpr_model* model,
+                                      const char* name,
+                                      cxpr_expr_ast* ast,
+                                      cxpr_error* err) {
+    const size_t binding_count = model ? model->binding_count : 0u;
+    const size_t output_count = model ? model->output_count : 0u;
+    cxpr_model_binding* bindings = NULL;
+    char** outputs = NULL;
+    cxpr_model_decl_type* output_declared_types = NULL;
+    cxpr_model_element_type* output_element_types = NULL;
+    cxpr_source_span* output_spans = NULL;
+    bool* output_has_spans = NULL;
+    char* binding_name = NULL;
+    char* binding_source = NULL;
+    char* output_name = NULL;
+
+    if (!model || !name || !name[0] || !ast) {
+        cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                             "Output binding requires a model, name, and AST", 0, 0);
+        return false;
+    }
+    for (size_t i = 0u; i < binding_count; ++i) {
+        if (cxpr_model_names_match(model->bindings[i].name, name)) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Duplicate model binding", 0, 0);
+            return false;
+        }
+    }
+    for (size_t i = 0u; i < output_count; ++i) {
+        if (cxpr_model_names_match(model->outputs[i], name)) {
+            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
+                                 "Duplicate model output", 0, 0);
+            return false;
+        }
+    }
+
+    bindings = (cxpr_model_binding*)calloc(binding_count + 1u, sizeof(*bindings));
+    outputs = (char**)calloc(output_count + 1u, sizeof(*outputs));
+    output_declared_types = (cxpr_model_decl_type*)calloc(
+        output_count + 1u, sizeof(*output_declared_types));
+    output_element_types = (cxpr_model_element_type*)calloc(
+        output_count + 1u, sizeof(*output_element_types));
+    output_spans = (cxpr_source_span*)calloc(output_count + 1u, sizeof(*output_spans));
+    output_has_spans = (bool*)calloc(output_count + 1u, sizeof(*output_has_spans));
+    binding_name = cxpr_strdup(name);
+    binding_source = cxpr_strdup(name);
+    output_name = cxpr_strdup(name);
+    if (!bindings || !outputs || !output_declared_types || !output_element_types ||
+        !output_spans || !output_has_spans || !binding_name || !binding_source ||
+        !output_name) {
+        free(bindings);
+        free(outputs);
+        free(output_declared_types);
+        free(output_element_types);
+        free(output_spans);
+        free(output_has_spans);
+        free(binding_name);
+        free(binding_source);
+        free(output_name);
+        cxpr_model_set_error(err, CXPR_ERR_OUT_OF_MEMORY, "Out of memory", 0, 0);
+        return false;
+    }
+
+    if (binding_count > 0u) {
+        memcpy(bindings, model->bindings, binding_count * sizeof(*bindings));
+    }
+    if (output_count > 0u) {
+        memcpy(outputs, model->outputs, output_count * sizeof(*outputs));
+        if (model->output_declared_types) memcpy(
+            output_declared_types, model->output_declared_types,
+            output_count * sizeof(*output_declared_types));
+        if (model->output_element_types) memcpy(
+            output_element_types, model->output_element_types,
+            output_count * sizeof(*output_element_types));
+        if (model->output_spans) memcpy(
+            output_spans, model->output_spans, output_count * sizeof(*output_spans));
+        if (model->output_has_spans) memcpy(
+            output_has_spans, model->output_has_spans,
+            output_count * sizeof(*output_has_spans));
+    }
+    bindings[binding_count] = (cxpr_model_binding){
+        .kind = CXPR_MODEL_BINDING_EXPR,
+        .name = binding_name,
+        .source = binding_source,
+        .expr = ast,
+        .declared_type = CXPR_MODEL_DECL_INFERRED,
+        .element_type = CXPR_MODEL_ELEMENT_UNKNOWN,
+    };
+    outputs[output_count] = output_name;
+    output_declared_types[output_count] = CXPR_MODEL_DECL_INFERRED;
+    output_element_types[output_count] = CXPR_MODEL_ELEMENT_UNKNOWN;
+
+    free(model->bindings);
+    free(model->outputs);
+    free(model->output_declared_types);
+    free(model->output_element_types);
+    free(model->output_spans);
+    free(model->output_has_spans);
+    model->bindings = bindings;
+    model->binding_count = binding_count + 1u;
+    model->outputs = outputs;
+    model->output_declared_types = output_declared_types;
+    model->output_element_types = output_element_types;
+    model->output_spans = output_spans;
+    model->output_has_spans = output_has_spans;
+    model->output_count = output_count + 1u;
+    return true;
+}
+
 cxpr_model_decl_type cxpr_model_binding_declared_type(const cxpr_model* model,
                                                        size_t index) {
     return model && index < model->binding_count

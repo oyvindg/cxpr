@@ -60,6 +60,19 @@ static void test_calls(void) {
     reject_call("resample(1 + 2, every=\"1h\")", CXPR_ERR_TYPE_MISMATCH);
 }
 
+static void test_static_rooted_source_name(void) {
+    cxpr_error err = {0};
+    cxpr_resample_call call = {0};
+    cxpr_expr_ast* ast = parse("resample(primary.close, every=\"5m\")");
+    char* name;
+    assert(cxpr_resample_call_parse(ast, &call, &err));
+    name = cxpr_resample_static_source_name(call.source, &err);
+    assert(name != NULL);
+    assert(strcmp(name, "primary.close") == 0);
+    free(name);
+    cxpr_expr_ast_free(ast);
+}
+
 static void test_argument_spans_and_diagnostics(void) {
     const char* text = "resample(close, every=\"1h\")";
     cxpr_expr_ast* ast = parse(text);
@@ -151,7 +164,8 @@ static void test_aggregate_type_contract(void) {
 }
 
 int main(void) {
-    test_durations(); test_calls(); test_argument_spans_and_diagnostics();
+    test_durations(); test_calls(); test_static_rooted_source_name();
+    test_argument_spans_and_diagnostics();
     test_model_semantic_validation();
     test_alias_preserves_resample();
     test_analysis_treats_resample_as_core_transform();

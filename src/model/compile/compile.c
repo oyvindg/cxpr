@@ -121,23 +121,23 @@ static bool cxpr_model_collect_resamples_ast(cxpr_model_compiled* program,
     if (cxpr_expr_ast_kind_of(ast) == CXPR_NODE_FUNCTION_CALL &&
         cxpr_expr_ast_call_name(ast) &&
         strcmp(cxpr_expr_ast_call_name(ast), "resample") == 0) {
-        const char* source_name;
+        char* source_name;
         cxpr_model_resample_requirement* grown;
         if (!cxpr_resample_call_parse(ast, &call, err) || !call.source ||
-            cxpr_expr_ast_kind_of(call.source) != CXPR_NODE_IDENTIFIER) {
-            cxpr_model_set_error(err, CXPR_ERR_SYNTAX,
-                                 "Generated resample requires an identifier source", 0, 0);
+            !(source_name = cxpr_resample_static_source_name(call.source, err))) {
             return false;
         }
-        source_name = cxpr_expr_ast_identifier_name(call.source);
         for (i = 0; i < program->resample_requirement_count; ++i) {
             if (program->resample_requirements[i].duration_ns == call.every.duration_ns &&
                 cxpr_model_names_match(program->resample_requirements[i].source_name,
-                                       source_name)) return true;
+                                       source_name)) {
+                free(source_name);
+                return true;
+            }
         }
         grown = realloc(program->resample_requirements,
                         (program->resample_requirement_count + 1u) * sizeof(*grown));
-        if (!grown) return false;
+        if (!grown) { free(source_name); return false; }
         program->resample_requirements = grown;
         grown += program->resample_requirement_count++;
         {
@@ -155,6 +155,7 @@ static bool cxpr_model_collect_resamples_ast(cxpr_model_compiled* program,
             .result_kind = source_kind,
         };
         }
+        free(source_name);
         return grown->source_name && grown->canonical;
     }
     switch (cxpr_expr_ast_kind_of(ast)) {

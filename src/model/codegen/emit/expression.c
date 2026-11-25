@@ -644,14 +644,13 @@ view_helper_fail:
 
     if (cxpr_model_names_match(name, "resample")) {
         cxpr_resample_call call = {0};
-        const char* source_name;
+        char* source_name;
         size_t slot = (size_t)-1;
         char raw[768];
         if (handled) *handled = true;
         if (!target_data || !target_data->program ||
             !cxpr_resample_call_parse(ast, &call, err) || !call.source ||
-            cxpr_expr_ast_kind_of(call.source) != CXPR_NODE_IDENTIFIER) return NULL;
-        source_name = cxpr_expr_ast_identifier_name(call.source);
+            !(source_name = cxpr_resample_static_source_name(call.source, err))) return NULL;
         for (size_t i = 0u; i < target_data->program->resample_requirement_count; ++i) {
             const cxpr_model_resample_requirement* req =
                 &target_data->program->resample_requirements[i];
@@ -662,10 +661,12 @@ view_helper_fail:
             }
         }
         if (slot == (size_t)-1) {
+            free(source_name);
             cxpr_model_set_error(err, CXPR_ERR_UNKNOWN_IDENTIFIER,
                                  "Unknown generated resample requirement", 0, 0);
             return NULL;
         }
+        free(source_name);
         {
             bool typed_views = false;
             const bool int64_value = target_data->program->resample_requirements[slot].result_kind ==

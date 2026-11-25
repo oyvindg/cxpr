@@ -726,6 +726,23 @@ cxpr_model_binding_kind cxpr_model_binding_kind_at(const cxpr_model* model, size
 const char* cxpr_model_binding_name(const cxpr_model* model, size_t index);
 const cxpr_expr_ast* cxpr_model_binding_expr(const cxpr_model* model, size_t index);
 
+/**
+ * @brief Append an owned expression binding and expose it as a model output.
+ *
+ * The model takes ownership of @p ast only when this function succeeds. On
+ * failure, the model and AST ownership are unchanged.
+ *
+ * @param model Model to extend.
+ * @param name Unique binding and output name.
+ * @param ast Owned expression AST to append.
+ * @param err Optional error destination.
+ * @returns `true` on success; otherwise `false`.
+ */
+bool cxpr_model_append_output_binding(cxpr_model* model,
+                                      const char* name,
+                                      cxpr_expr_ast* ast,
+                                      cxpr_error* err);
+
 cxpr_model_decl_type cxpr_model_binding_declared_type(const cxpr_model* model,
                                                        size_t index);
 cxpr_model_element_type cxpr_model_binding_element_type(const cxpr_model* model,
