@@ -753,6 +753,9 @@ bool cxpr_model_binding_source_span(const cxpr_model* model,
                                     cxpr_source_span* out_span);
 
 size_t cxpr_model_output_count(const cxpr_model* model);
+
+/** Returns whether the model exports a record, including a single-field output block. */
+bool cxpr_model_output_is_record(const cxpr_model* model);
 const char* cxpr_model_output(const cxpr_model* model, size_t index);
 bool cxpr_model_output_source_span(const cxpr_model* model,
                                    size_t index,

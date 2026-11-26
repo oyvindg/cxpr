@@ -2,7 +2,6 @@
 
 model ema {
     type = "indicator"
-    output_type = "scalar"
     pipe = "series"
 }
 

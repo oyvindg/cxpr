@@ -10,7 +10,8 @@ static const char baseline_json[] =
     "\"startLine\":0,\"startChar\":0,\"endLine\":0,\"endChar\":10},{\"kind\":\"input\","
     "\"name\":\"close\",\"value\":\"\",\"startLine\":1,\"startChar\":0,\"endLine\":1,"
     "\"endChar\":8},{\"kind\":\"output\",\"name\":\"result\",\"value\":\"\","
-    "\"startLine\":2,\"startChar\":0,\"endLine\":2,\"endChar\":18}],\"modelType\":\"\",\"folds\":[{"
+    "\"startLine\":2,\"startChar\":0,\"endLine\":2,\"endChar\":18}],\"modelType\":\"\","
+    "\"modelReturnType\":\"unknown\",\"folds\":[{"
     "\"startLine\":0,\"startChar\":0,\"endLine\":3,\"endChar\":0}],\"requirements\":[],\"tokens\":[{\"line\":0,"
     "\"start\":6,\"length\":4,\"type\":\"model\"},{\"line\":1,\"start\":3,\"length\":5,"
     "\"type\":\"input\"},{\"line\":2,\"start\":4,\"length\":6,\"type\":\"assignment\"}],"
@@ -29,6 +30,15 @@ static void test_outline_splits_comma_separated_outputs(void) {
         "exit = false\n"
         "out entry, exit\n";
     char* json = cxpr_document_analyze_json(source, "outputs.cxpr");
+    char* single_field = cxpr_document_analyze_json(
+        "model demo\nentry = true\nout { entry }\n", "single-field.cxpr");
+    char* scalar = cxpr_document_analyze_json(
+        "model demo\nentry = true\nout entry\n", "scalar.cxpr");
+
+    assert(single_field && strstr(single_field, "\"modelReturnType\":\"struct\""));
+    assert(scalar && strstr(scalar, "\"modelReturnType\":\"bool\""));
+    free(single_field);
+    free(scalar);
 
     assert(json != NULL);
     assert(strstr(json, "\"kind\":\"output\",\"name\":\"entry\",\"value\":\"\","

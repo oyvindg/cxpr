@@ -22,6 +22,7 @@ export interface Analysis {
   ok: boolean; diagnostics?: Diagnostic[]; outline?: OutlineItem[]; tokens?: SemanticToken[]
   sourceTokens?: SemanticToken[]; requirements?: SourceRequirement[]
   functions?: FunctionInfo[]; folds?: Fold[]; modelType?: string
+  modelReturnType?: string
   error?: string; line?: number; column?: number
 }
 export interface SymbolResolution {

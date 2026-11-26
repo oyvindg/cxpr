@@ -512,6 +512,10 @@ size_t cxpr_model_output_count(const cxpr_model* model) {
     return model ? model->output_count : 0;
 }
 
+bool cxpr_model_output_is_record(const cxpr_model* model) {
+    return model && (model->output_is_record || model->output_count > 1u);
+}
+
 const char* cxpr_model_output(const cxpr_model* model, size_t index) {
     return model && index < model->output_count ? model->outputs[index] : NULL;
 }

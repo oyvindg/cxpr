@@ -1430,6 +1430,8 @@ static void tooling_collect_requirements_ast(const cxpr_expr_ast* ast,
     }
 }
 
+static const char* tooling_result_kind_name(cxpr_model_result_kind kind);
+
 char* cxpr_document_analyze_json(const char* input, const char* source_name) {
     cxpr_json_writer writer = {0};
     char* json;
@@ -1529,6 +1531,18 @@ char* cxpr_document_analyze_json(const char* input, const char* source_name) {
         }
         json_string(model_type ? model_type : "");
         free(model_type);
+    }
+    if (cxpr_model_output_count(model) > 0u) {
+        const char* return_type = "struct";
+        if (!cxpr_model_output_is_record(model)) {
+            cxpr_error compile_err = {0};
+            cxpr_model_compiled* program = cxpr_model_compile(model, NULL, &compile_err);
+            return_type = program ? tooling_result_kind_name(
+                cxpr_model_compiled_output_result_kind(program, 0u)) : "unknown";
+            cxpr_model_compiled_free(program);
+        }
+        fputs(",\"modelReturnType\":", stdout);
+        json_string(return_type);
     }
     fputs(",\"folds\":[", stdout);
     comma = 0;

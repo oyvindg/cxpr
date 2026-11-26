@@ -2,7 +2,6 @@
 
 model true_range {
     type = "indicator"
-    output_type = "scalar"
 }
 
 in {
